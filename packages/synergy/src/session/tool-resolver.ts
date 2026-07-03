@@ -28,7 +28,7 @@ import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
-import type { ProfileId, ResolvedProfile } from "@/control-profile/types"
+import type { ResolvedProfile } from "@/control-profile/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
@@ -83,25 +83,6 @@ export namespace ToolResolver {
   export interface ResolvedTools {
     tools: Record<string, AITool>
     activeToolIDs: string[]
-  }
-
-  /**
-   * Resolve the effective control profile id using precedence:
-   *   1. session controlProfile (resolved from parent chain)
-   *   2. agent config controlProfile
-   *   3. top-level config controlProfile
-   *   4. default 'guarded'
-   */
-  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, sessionProfile?: string): ProfileId {
-    return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
-  }
-
-  async function currentTopLevelProfile(): Promise<string | undefined> {
-    try {
-      return (await Config.current()).controlProfile
-    } catch {
-      return undefined
-    }
   }
 
   interface PluginGateData {
@@ -655,16 +636,14 @@ export namespace ToolResolver {
       const resolvedProfile = async (): Promise<ResolvedProfile> => {
         if (!profilePromise) {
           profilePromise = (async () => {
-            const topLevelProfile = await currentTopLevelProfile()
-            const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
-            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
+            const profileId = await Session.resolveEffectiveControlProfile({
+              sessionID: input.session?.id,
+              agentControlProfile: input.agent.controlProfile,
+            })
             const workspaceInfo = ScopeContext.current.workspace
-            const interaction = input.session?.interaction
-            const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
             return ControlProfileCompiler.resolve(profileId, {
               workspace: ScopeContext.current.directory,
               workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-              interactionMode,
             })
           })()
         }
@@ -695,10 +674,7 @@ export namespace ToolResolver {
         },
         async ask(req) {
           const profile = await resolvedProfile()
-          const requestMetadata = {
-            ...req.metadata,
-            ...PermissionNext.requestMetadata(input.session),
-          }
+          const requestMetadata = req.metadata ?? {}
           const decision = ApprovalPolicy.decidePermission(profile, req.permission, requestMetadata)
           if (decision.action === "deny") {
             const approval = ApprovalPolicy.metadata(profile.approval, decision, "auto_denied")
@@ -788,6 +764,10 @@ export namespace ToolResolver {
 
     for (const def of defs) {
       const isEphemeral = ephemeralToolIds.has(def.id)
+      if (!isEphemeral && def.id === "look_at" && input.model.capabilities.input.image) {
+        continue
+      }
+
       const modeDiagnostic = isEphemeral
         ? undefined
         : SessionModePolicy.visibility({ toolName: def.id, session: input.session })
@@ -998,20 +978,16 @@ export namespace ToolResolver {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
                 const workspace = ScopeContext.current.directory
                 const workspaceInfo = ScopeContext.current.workspace
-                const interaction = runtimeInput.session?.interaction
-                const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-                const topLevelProfile = await currentTopLevelProfile()
-                const sessionProfile = runtimeInput.session?.id
-                  ? await Session.resolveControlProfile(runtimeInput.session.id)
-                  : undefined
-                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
+                const profileId = await Session.resolveEffectiveControlProfile({
+                  sessionID: runtimeInput.session?.id,
+                  agentControlProfile: runtimeInput.agent.controlProfile,
+                })
                 const synergyRoot = Global.Path.root
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                  interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
                   registeredPluginTools: pluginToolIds,
                   pluginToolCapabilities: pluginGateData.toolCapabilities,
@@ -1228,19 +1204,15 @@ export namespace ToolResolver {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
                   const workspace = ScopeContext.current.directory
                   const workspaceInfo = ScopeContext.current.workspace
-                  const interaction = runtimeInput.session?.interaction
-                  const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-                  const topLevelProfile = await currentTopLevelProfile()
-                  const sessionProfile = runtimeInput.session?.id
-                    ? await Session.resolveControlProfile(runtimeInput.session.id)
-                    : undefined
-                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
+                  const profileId = await Session.resolveEffectiveControlProfile({
+                    sessionID: runtimeInput.session?.id,
+                    agentControlProfile: runtimeInput.agent.controlProfile,
+                  })
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: mcpToolNames,
                     registeredPluginTools: pluginToolIds,

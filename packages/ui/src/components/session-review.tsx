@@ -2,6 +2,7 @@ import { Accordion } from "./accordion"
 import { Button } from "./button"
 import { RadioGroup } from "./radio-group"
 import { DiffChanges } from "./diff-changes"
+import { DiffPreview } from "./tool/diff-preview"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -127,34 +128,13 @@ export const SessionReview = (props: SessionReviewProps) => {
                   </Accordion.Trigger>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
-                  <DiffPreview diff={diff} />
+                  <DiffPreview diff={diff} variant="review" />
                 </Accordion.Content>
               </Accordion.Item>
             )}
           </For>
         </Accordion>
       </div>
-    </div>
-  )
-}
-
-function DiffPreview(props: { diff: FileDiff }) {
-  return (
-    <div data-component="session-review-preview">
-      <div class="text-12-regular text-text-weak">
-        {props.diff.beforeBytes ?? 0} bytes to {props.diff.afterBytes ?? 0} bytes
-        <Show when={props.diff.truncated}> - preview truncated</Show>
-      </div>
-      <Show
-        when={props.diff.preview}
-        fallback={<div class="text-12-regular text-text-weaker">No text preview available.</div>}
-      >
-        {(preview) => (
-          <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
-            {preview()}
-          </pre>
-        )}
-      </Show>
     </div>
   )
 }

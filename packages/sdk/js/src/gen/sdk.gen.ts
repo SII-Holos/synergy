@@ -415,6 +415,7 @@ import type {
   SessionUnrollbackResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionWorkspaceSelection,
   SkillImportErrors,
   SkillImportResponses,
   SkillImportUrlErrors,
@@ -1528,6 +1529,7 @@ export class Session extends HeyApiClient {
       title?: string
       id?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
+      workspace?: SessionWorkspaceSelection
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1542,6 +1544,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "title" },
             { in: "body", key: "id" },
             { in: "body", key: "controlProfile" },
+            { in: "body", key: "workspace" },
           ],
         },
       ],
@@ -1709,6 +1712,11 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+      search?: string
+      includeArchived?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1720,6 +1728,11 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+            { in: "query", key: "search" },
+            { in: "query", key: "includeArchived" },
           ],
         },
       ],
@@ -1893,21 +1906,7 @@ export class Session extends HeyApiClient {
             type: "before"
             messageID: string
           }
-      workspace?:
-        | {
-            mode: "current"
-          }
-        | {
-            mode: "existing"
-            target: string
-            force?: boolean
-          }
-        | {
-            mode: "create"
-            name?: string
-            baseRef?: "current" | "fresh"
-            baseRevision?: string
-          }
+      workspace?: SessionWorkspaceSelection
       title?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
     },

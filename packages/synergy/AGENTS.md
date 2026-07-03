@@ -6,8 +6,11 @@
 - **Source dev**: from the repo root, use `bun dev server`, `bun dev web`, or `bun dev desktop`
 - **Product CLI smoke**: from this package, use `bun run --conditions=browser ./src/index.ts`
 - **Typecheck**: `bun run typecheck`
-- **Test**: `bun test` (runs all tests)
+- **Test**: `bun test` (runs all tests without coverage)
 - **Single test**: `bun test test/tool/tool.test.ts` (specific test file)
+- **Changed tests**: `bun run test:changed` (runs tests affected by changes against `origin/dev`)
+- **Coverage**: `bun run test:coverage` (full suite with coverage, matching CI)
+- **Profile tests**: `bun run test:profile` (writes JUnit timing to `coverage/test-profile-junit.xml`)
 
 ## Code Style
 

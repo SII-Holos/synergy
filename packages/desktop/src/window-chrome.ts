@@ -54,6 +54,12 @@ export function desktopIconPath(options: DesktopWindowChromeOptions): string | u
   return undefined
 }
 
+export function desktopStartupIconPath(options: DesktopWindowChromeOptions): string {
+  const platformPath = options.platform === "win32" ? path.win32 : path.posix
+  if (options.isPackaged) return platformPath.resolve(options.resourcesPath, "icons", "icon.png")
+  return platformPath.resolve(options.dirname, "..", "build", "icon.png")
+}
+
 export function desktopUsesSystemTray(platform: NodeJS.Platform): boolean {
   return platform === "win32" || platform === "linux"
 }

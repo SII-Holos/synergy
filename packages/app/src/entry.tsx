@@ -3,6 +3,7 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { schedulePromptAttachmentImagePipelineWarmup } from "@/utils/prompt-attachment"
 import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import pkg from "../package.json"
@@ -14,6 +15,9 @@ declare global {
       shell?: {
         openExternal(url: string): Promise<void>
       }
+      startup?: {
+        appReady(): Promise<boolean>
+      }
       window?: Platform["desktopWindow"]
     }
   }
@@ -24,6 +28,20 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(
     "Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?",
   )
+}
+
+const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
+
+function scheduleBootShellRemoval() {
+  const remove = () => {
+    document.getElementById("synergy-app-boot")?.remove()
+    void window.synergyDesktop?.startup?.appReady?.()
+  }
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(remove)
+    return
+  }
+  window.setTimeout(remove, 0)
 }
 
 const platform: Platform = {
@@ -75,6 +93,8 @@ const platform: Platform = {
   },
 }
 
+window.addEventListener(APP_SURFACE_READY_EVENT, scheduleBootShellRemoval, { once: true })
+
 configureClipboard({
   writer: platform.clipboard?.writeText,
   onFailure: (failure) => {
@@ -96,3 +116,5 @@ render(
   ),
   root!,
 )
+
+schedulePromptAttachmentImagePipelineWarmup()

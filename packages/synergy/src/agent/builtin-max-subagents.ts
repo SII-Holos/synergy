@@ -20,7 +20,6 @@ import { createPropertyTestEngineerAgent } from "./prompt/property-test-engineer
 import { createPythonQualityEngineerAgent } from "./prompt/python-quality-engineer/builder"
 import { createQualityGatekeeperAgent } from "./prompt/quality-gatekeeper/builder"
 import { createRefactoringEngineerAgent } from "./prompt/refactoring-engineer/builder"
-import { createRegressionReproducerAgent } from "./prompt/regression-reproducer/builder"
 import { createRequirementsEngineerAgent } from "./prompt/requirements-engineer/builder"
 import { createResearchMethodologistAgent } from "./prompt/research-methodologist/builder"
 import { createResearchScoutAgent } from "./prompt/research-scout/builder"
@@ -42,7 +41,6 @@ const FACTORIES = [
   createApiContractDesignerAgent,
   createMigrationArchitectAgent,
   createTestStrategistAgent,
-  createRegressionReproducerAgent,
   createFixtureBuilderAgent,
   createPropertyTestEngineerAgent,
   createTypeTestEngineerAgent,

@@ -11,6 +11,8 @@ import {
   AnchoredViewTool,
 } from "../../anchored-tool-card"
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
+import { ToolTextOutput } from "../../tool-output-text"
+import { ToolDiffPreview } from "../diff-preview"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -21,6 +23,7 @@ ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 ToolRegistry.register({
   name: "file_search",
   render(props) {
+    const count = () => props.metadata?.count as number | undefined
     return (
       <BasicTool
         {...props}
@@ -28,8 +31,17 @@ ToolRegistry.register({
           icon: "scan-document",
           title: "File Search",
           subtitle: props.input.query as string | undefined,
+          tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
         }}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -50,7 +62,7 @@ ToolRegistry.register({
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
         }}
       >
-        <Show when={props.status !== "generating" && (props.metadata.filediff || props.input.filePath)}>
+        <Show when={props.status !== "generating" && props.metadata.filediff}>
           <ToolDiffPreview diff={props.metadata.filediff} />
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
@@ -120,24 +132,3 @@ ToolRegistry.register({
     )
   },
 })
-
-function ToolDiffPreview(props: { diff: any }) {
-  return (
-    <div data-component="edit-content">
-      <div class="text-12-regular text-text-weak">
-        {props.diff?.beforeBytes ?? 0} bytes to {props.diff?.afterBytes ?? 0} bytes
-        <Show when={props.diff?.truncated}> - preview truncated</Show>
-      </div>
-      <Show
-        when={props.diff?.preview}
-        fallback={<div class="text-12-regular text-text-weaker">No text preview available.</div>}
-      >
-        {(preview) => (
-          <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
-            {preview()}
-          </pre>
-        )}
-      </Show>
-    </div>
-  )
-}

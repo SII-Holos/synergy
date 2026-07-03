@@ -9,6 +9,7 @@ import {
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
+import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
@@ -33,12 +34,15 @@ import {
 import { installAppMenu } from "./menu.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
+import { DesktopStartupOverlay } from "./startup-overlay.js"
+import type { DesktopStartupStatus } from "./startup-page.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 import {
   desktopDevDockIconPath,
   desktopIconPath,
   desktopShouldHideToTray,
+  desktopStartupIconPath,
   desktopUsesSystemTray,
   desktopWindowChromeOptions,
   desktopWindowState,
@@ -48,6 +52,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
 
 let mainWindow: BrowserWindow | null = null
+let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let browserHost: BrowserWebRTCHost | null = null
 let serverManager: DesktopServerManager | null = null
@@ -79,6 +84,19 @@ function runtimeLog(message: string, data?: Record<string, unknown>) {
   console.log(`[desktop-runtime] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`)
 }
 
+async function loadStartupIconDataURL(iconPath: string): Promise<string | undefined> {
+  try {
+    const data = await readFile(iconPath)
+    return `data:image/png;base64,${data.toString("base64")}`
+  } catch (error) {
+    runtimeLog("startupIconUnavailable", {
+      iconPath,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
+
 runtimeLog("mainLoaded", { argv: process.argv })
 
 async function createWindow() {
@@ -102,10 +120,22 @@ async function createWindow() {
     await updater.init()
   }
 
-  const targetURL = await resolveAppURL()
-  runtimeLog("createWindow", { targetURL, mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
-
   const windowState = await loadWindowState(app.getPath("userData"))
+  const iconPath = desktopIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  const startupIconDataUrl = await loadStartupIconDataURL(
+    desktopStartupIconPath({
+      platform: process.platform,
+      dirname,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+  )
+  const preloadPath = path.join(dirname, "preload.cjs")
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
     width: windowState.width,
@@ -119,7 +149,7 @@ async function createWindow() {
       resourcesPath: process.resourcesPath,
     }),
     webPreferences: {
-      preload: path.join(dirname, "preload.cjs"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -131,30 +161,73 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  runtimeLog("createWindow", { mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
   }
   nativeViews = new BrowserNativeViewManager(mainWindow)
   installWindowSecurity(mainWindow, () => currentAppURL)
-  enforceProductionLoading(mainWindow.webContents, currentAppURL)
+  enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
   installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
   installDesktopWindowStateEvents(mainWindow)
   installWindowCloseBehavior(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
+  startupOverlay = new DesktopStartupOverlay({
+    window: mainWindow,
+    preloadPath,
+    chrome: process.platform === "darwin" ? "native" : "custom",
+    iconDataUrl: startupIconDataUrl,
+  })
+  await startupOverlay.load()
+  startupOverlay.attach()
   if (process.env.SYNERGY_DESKTOP_SHOW !== "0") {
-    mainWindow.once("ready-to-show", () => mainWindow?.show())
+    mainWindow.show()
   }
 
   mainWindow.on("closed", () => {
+    startupOverlay?.destroy()
+    startupOverlay = null
     nativeViews?.destroy()
     nativeViews = null
     mainWindow = null
   })
 
-  await mainWindow.loadURL(targetURL)
+  await setStartupStatus({
+    title: mode === "external" ? "Connecting to Synergy" : "Starting local runtime",
+    detail:
+      mode === "external"
+        ? "Opening the configured desktop app surface."
+        : "Synergy is opening the local server and workspace.",
+  })
+
+  const targetURL = await resolveAppURL()
+  await setStartupStatus({
+    title: currentAppURL ? "Loading workspace" : "Startup needs attention",
+    detail: currentAppURL
+      ? "Connecting to the local app surface."
+      : "Synergy could not start the local runtime. Opening diagnostics.",
+  })
+  try {
+    await mainWindow.loadURL(targetURL)
+  } catch (error) {
+    await dismissStartupOverlay()
+    throw error
+  }
+  if (!currentAppURL) await dismissStartupOverlay()
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
+}
+
+async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
+  await startupOverlay?.setStatus(status)
+}
+
+async function dismissStartupOverlay(): Promise<void> {
+  const overlay = startupOverlay
+  if (!overlay) return
+  await overlay.dismiss()
+  if (startupOverlay === overlay) startupOverlay = null
 }
 
 async function ensureMainWindow() {
@@ -257,6 +330,11 @@ function registerIpcHandlers() {
     clipboard.writeText(text)
     return true
   })
+  ipcMain.handle("desktop.startup.appReady", async (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false
+    await dismissStartupOverlay()
+    return true
+  })
   ipcMain.handle("desktop.window.minimize", () => {
     mainWindow?.minimize()
   })
@@ -325,7 +403,6 @@ function installDesktopTray(channel: DesktopChannel): void {
   desktopTray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Synergy", click: showMainWindow },
-      { type: "separator" },
       { label: "Quit Synergy", click: () => app.quit() },
     ]),
   )

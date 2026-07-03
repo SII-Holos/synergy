@@ -36,6 +36,14 @@ const model = {
   options: {},
 } as any
 
+const imageModel = {
+  ...model,
+  capabilities: {
+    ...model.capabilities,
+    input: { ...model.capabilities.input, image: true },
+  },
+} as any
+
 const allowAllAgent: Agent.Info = {
   name: "synergy",
   mode: "primary",
@@ -45,11 +53,11 @@ const allowAllAgent: Agent.Info = {
 
 async function definitionIDs(
   session: Session.Info,
-  input?: { agent?: Agent.Info; userTools?: Record<string, boolean> },
+  input?: { agent?: Agent.Info; model?: typeof model; userTools?: Record<string, boolean> },
 ) {
   const defs = await ToolResolver.definitions({
     agent: input?.agent ?? allowAllAgent,
-    model,
+    model: input?.model ?? model,
     sessionID: session.id,
     session,
     userTools: input?.userTools,
@@ -109,6 +117,19 @@ describe("tool exposure", () => {
     expect(ToolExposure.normalize("browser_navigate")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
     expect(internal.exposure).toEqual({ mode: "internal" })
+  })
+
+  test("ToolResolver hides look_at when the active model supports image input", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect((await definitionIDs(session)).has("look_at")).toBe(true)
+        expect((await definitionIDs(session, { model: imageModel })).has("look_at")).toBe(false)
+      },
+    })
   })
 
   test("ToolResolver hides deferred groups until the session expands them", async () => {

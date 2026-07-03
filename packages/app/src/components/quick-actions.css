@@ -10,17 +10,18 @@
 }
 
 .qa-cloud {
+  transform-origin: bottom right;
   animation: qa-cloud-in 0.15s ease-out both;
 }
 
 @keyframes qa-cloud-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -89,4 +90,11 @@
 
 .qa-bubble-pill:hover:not(:disabled) {
   background: var(--surface-raised-base-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-cloud,
+  .qa-bubble {
+    animation: none;
+  }
 }

@@ -1,46 +1,93 @@
 import { describe, expect, test } from "bun:test"
-import { ControlProfileCompiler } from "../../src/control-profile/compiler"
-import type { ProfileId } from "../../src/control-profile/types"
+import { Session } from "../../src/session"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
-// Minimal inline mock of resolveEffectiveProfile for direct unit testing
-// This mirrors the logic in tool-resolver.ts
-function resolveEffectiveProfile(
-  sessionProfile: string | undefined,
-  agentProfile: string | undefined,
-  topLevelProfile: string | undefined,
-): ProfileId {
-  return ControlProfileCompiler.normalize(sessionProfile ?? agentProfile ?? topLevelProfile)
-}
+describe("Session.resolveEffectiveControlProfile", () => {
+  test("uses guarded for ordinary sessions when nothing is configured", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
 
-describe("resolveEffectiveProfile", () => {
-  test("default is guarded when nothing is configured", () => {
-    expect(resolveEffectiveProfile(undefined, undefined, undefined)).toBe("guarded")
+        expect(await Session.resolveEffectiveControlProfile({ sessionID: session.id })).toBe("guarded")
+
+        await Session.remove(session.id)
+      },
+    })
   })
 
-  test("top-level config overrides default", () => {
-    expect(resolveEffectiveProfile(undefined, undefined, "full_access")).toBe("full_access")
+  test("honors top-level config before source fallback", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveEffectiveControlProfile({ sessionID: session.id })).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
   })
 
-  test("agent config overrides top-level", () => {
-    expect(resolveEffectiveProfile(undefined, "full_access", "guarded")).toBe("full_access")
+  test("honors agent config before top-level config", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(
+          await Session.resolveEffectiveControlProfile({
+            sessionID: session.id,
+            agentControlProfile: "full_access",
+          }),
+        ).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
   })
 
-  test("session config has highest precedence", () => {
-    expect(resolveEffectiveProfile("autonomous", "full_access", "guarded")).toBe("autonomous")
+  test("honors explicit session config before agent and top-level config", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          controlProfile: "autonomous",
+        })
+
+        expect(
+          await Session.resolveEffectiveControlProfile({
+            sessionID: session.id,
+            agentControlProfile: "full_access",
+          }),
+        ).toBe("autonomous")
+
+        await Session.remove(session.id)
+      },
+    })
   })
 
-  test("invalid top-level falls back to guarded", () => {
-    expect(resolveEffectiveProfile(undefined, undefined, "bogus")).toBe("guarded")
-  })
+  test("normalizes invalid configured profile values", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
 
-  test("both absent falls back to guarded", () => {
-    expect(resolveEffectiveProfile(undefined, undefined, undefined)).toBe("guarded")
-  })
+        expect(
+          await Session.resolveEffectiveControlProfile({
+            sessionID: session.id,
+            topLevelControlProfile: "bogus",
+          }),
+        ).toBe("guarded")
 
-  test("all valid profiles are accepted", () => {
-    const ids: ProfileId[] = ["guarded", "autonomous", "full_access"]
-    for (const id of ids) {
-      expect(resolveEffectiveProfile(id, undefined, undefined)).toBe(id)
-    }
+        await Session.remove(session.id)
+      },
+    })
   })
 })

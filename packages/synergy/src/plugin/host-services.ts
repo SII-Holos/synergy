@@ -246,20 +246,16 @@ export async function requestPluginPermission(
 
   const agent = await Agent.get(context.agent)
   const session = await Session.get(context.sessionID)
-  const topLevelProfile = await topLevelControlProfile()
-  const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
-  const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent?.controlProfile ?? topLevelProfile)
+  const profileId = await Session.resolveEffectiveControlProfile({
+    sessionID: session?.id,
+    agentControlProfile: agent?.controlProfile,
+  })
   const workspaceInfo = ScopeContext.current.workspace
-  const interaction = session?.interaction
   const profile = await ControlProfileCompiler.resolve(profileId, {
     workspace: context.directory ?? ScopeContext.current.directory,
     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-    interactionMode: interaction?.mode === "unattended" ? "unattended" : "attended",
   })
-  const metadata = {
-    ...request.metadata,
-    ...PermissionNext.requestMetadata(session),
-  }
+  const metadata = request.metadata ?? {}
   const decision = ApprovalPolicy.decidePermission(profile, request.permission, metadata)
   if (decision.action === "deny") {
     throw new EnforcementError.PolicyDenied(
@@ -279,14 +275,6 @@ export async function requestPluginPermission(
     ruleset: PermissionNext.merge(agent?.permission ?? [], PermissionNext.sessionRuleset(session)),
     signal: context.abort,
   })
-}
-
-async function topLevelControlProfile(): Promise<string | undefined> {
-  try {
-    return (await Config.current()).controlProfile
-  } catch {
-    return undefined
-  }
 }
 
 async function parentModel(context: RuntimeContext) {

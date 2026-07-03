@@ -23,6 +23,11 @@ import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+const booleanQuery = z.preprocess((value) => {
+  if (value === "true" || value === true) return true
+  if (value === "false" || value === false) return false
+  return value
+}, z.boolean())
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
   const messageID = input.messageID ?? Identifier.ascending("message")
@@ -76,9 +81,8 @@ export const SessionRoute = new Hono()
           .number()
           .optional()
           .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
-        pinned: z.coerce.boolean().optional().meta({ description: "Only include pinned sessions" }),
-        parentOnly: z.coerce
-          .boolean()
+        pinned: booleanQuery.optional().meta({ description: "Only include pinned sessions" }),
+        parentOnly: booleanQuery
           .default(true)
           .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
       }),
@@ -166,10 +170,10 @@ export const SessionRoute = new Hono()
       operationId: "session.children",
       responses: {
         200: {
-          description: "List of children",
+          description: "Paginated child sessions",
           content: {
             "application/json": {
-              schema: resolver(Session.Info.array()),
+              schema: resolver(Session.ChildrenPage),
             },
           },
         },
@@ -179,13 +183,37 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: Session.children.schema,
+        sessionID: Identifier.schema("session"),
       }),
+    ),
+    validator(
+      "query",
+      z
+        .object({
+          limit: z.coerce.number().int().min(1).max(50).default(8),
+          cursorLastActivityAt: z.coerce.number().optional(),
+          cursorId: z.string().optional(),
+          search: z.string().optional(),
+          includeArchived: booleanQuery.optional().default(false),
+        })
+        .refine((query) => (query.cursorLastActivityAt === undefined) === (query.cursorId === undefined), {
+          message: "cursorLastActivityAt and cursorId must be provided together",
+        }),
     ),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      const session = await Session.children(sessionID)
-      return c.json(session)
+      const query = c.req.valid("query")
+      const result = await Session.childPage({
+        parentID: sessionID,
+        limit: query.limit,
+        cursor:
+          query.cursorLastActivityAt !== undefined && query.cursorId !== undefined
+            ? { lastActivityAt: query.cursorLastActivityAt, id: query.cursorId }
+            : undefined,
+        search: query.search,
+        includeArchived: query.includeArchived,
+      })
+      return c.json(result)
     },
   )
   .get(
@@ -318,12 +346,19 @@ export const SessionRoute = new Hono()
           title: z.string().optional(),
           id: z.string().optional(),
           controlProfile: ControlProfileId.optional(),
+          workspace: Session.WorkspaceSelection.optional(),
         })
         .optional(),
     ),
     async (c) => {
-      const body = c.req.valid("json") ?? {}
-      const session = await Session.create(body)
+      const { workspace, ...body } = c.req.valid("json") ?? {}
+      let session = await Session.create(body)
+      try {
+        session = await Session.applyWorkspaceSelection(session.id, workspace)
+      } catch (error) {
+        await Session.remove(session.id)
+        throw error
+      }
       return c.json(session)
     },
   )
@@ -730,7 +765,7 @@ export const SessionRoute = new Hono()
       "query",
       z.object({
         limit: z.coerce.number().optional(),
-        raw: z.coerce.boolean().optional(),
+        raw: booleanQuery.optional(),
       }),
     ),
     async (c) => {

@@ -16,6 +16,7 @@ import { type SessionMeta } from "@/composables/use-session-meta"
 import type { usePrompt } from "@/context/prompt"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
+import type { NewSessionWorkspaceSelection } from "./worktree-session"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -35,9 +36,11 @@ export function PromptDock(props: {
   forkedFromID?: string
   forkedFromTitle?: string
   backPath?: Accessor<string | undefined>
-  newSessionWorktree: Accessor<string>
-  onNewSessionWorktreeChange: (worktree: string) => void
-  onNewSessionWorktreeReset: () => void
+  newSessionWorkspaceSelection: Accessor<NewSessionWorkspaceSelection>
+  newSessionCanonicalDirectory: Accessor<string | undefined>
+  newSessionCurrentDirectory: Accessor<string | undefined>
+  onNewSessionWorkspaceSelectionChange: (selection: NewSessionWorkspaceSelection) => void
+  onNewSessionWorkspaceSelectionReset: () => void
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
@@ -155,10 +158,12 @@ export function PromptDock(props: {
                 <div class="relative">
                   <PromptInput
                     ref={props.inputRef}
-                    newSessionWorktree={props.newSessionWorktree()}
+                    newSessionWorkspaceSelection={props.newSessionWorkspaceSelection()}
+                    newSessionCanonicalDirectory={props.newSessionCanonicalDirectory()}
+                    newSessionCurrentDirectory={props.newSessionCurrentDirectory()}
                     newSessionCanCreateWorktree={!props.isGlobal}
-                    onNewSessionWorktreeChange={props.onNewSessionWorktreeChange}
-                    onNewSessionWorktreeReset={props.onNewSessionWorktreeReset}
+                    onNewSessionWorkspaceSelectionChange={props.onNewSessionWorkspaceSelectionChange}
+                    onNewSessionWorkspaceSelectionReset={props.onNewSessionWorkspaceSelectionReset}
                     hideAgentSelector={!props.meta().showInputBar}
                   />
                   <Show when={props.sessionID}>

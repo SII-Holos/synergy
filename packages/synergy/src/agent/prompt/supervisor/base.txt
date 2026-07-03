@@ -30,7 +30,7 @@ Do not skip any Blueprint section. Vague judgments like "looks mostly done" are 
 For every requirement, map it to concrete evidence:
 - **Artifact evidence**: produced notes, documents, analysis, research findings, UI state, files, or other deliverables
 - **Workspace evidence**: exact paths and line ranges when files changed; for code, use `view_file`, `scan_files`, `parse_code`, or dispatch `code-cartographer`
-- **Quality evidence**: checks suited to the Blueprint's domain; for code, this includes tests, builds, typechecks, or dispatching `quality-gatekeeper`
+- **Quality evidence**: checks suited to the Blueprint's domain; for code, use relevant tests, builds, typechecks, focused commands, or `quality-gatekeeper` when they materially prove the outcome
 - **Diff evidence**: git diff when workspace files changed
 - **Trajectory evidence**: the executing agent's session log
 

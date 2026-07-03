@@ -1,5 +1,6 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { isGuidedContextUserMessage } from "@ericsanchezok/synergy-ui/session-turn"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -29,19 +30,26 @@ import { SessionReviewTab } from "@/components/session"
 
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
-import { isHomeScope } from "@/utils/scope"
+import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkbenchPanelsProvider } from "@/context/workbench-panels"
+import { WorkbenchPanelsProvider, useWorkbenchPanels } from "@/context/workbench-panels"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
+import { blueprintNoteCreateFocusRequest } from "@/components/note/blueprint-note-focus"
+import {
+  defaultNewSessionWorkspaceSelection,
+  normalizePathForCompare,
+  type NewSessionWorkspaceSelection,
+} from "@/components/session/worktree-session"
 
 const handoff = {
   prompt: "",
@@ -70,6 +78,7 @@ function SessionPageContent() {
   const location = useLocation()
   const sdk = useSDK()
   const prompt = usePrompt()
+  const workbench = useWorkbenchPanels()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
@@ -175,7 +184,7 @@ function SessionPageContent() {
     messageId: undefined as string | undefined,
     turnStart: 0,
     mobileTab: "session" as "session" | "review",
-    newSessionWorktree: "main",
+    newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
   })
 
@@ -212,7 +221,12 @@ function SessionPageContent() {
   })
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
-    () => messages().filter((m) => m.role === "user" && !(m as UserMessage).metadata?.synthetic) as UserMessage[],
+    () =>
+      messages().filter((m) => {
+        if (m.role !== "user") return false
+        const user = m as UserMessage
+        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user)
+      }) as UserMessage[],
     emptyUserMessages,
   )
   const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
@@ -221,6 +235,7 @@ function SessionPageContent() {
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
+        if (isGuidedContextUserMessage(user)) return false
         return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
       }) as UserMessage[],
     emptyUserMessages,
@@ -295,14 +310,14 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const newSessionWorktree = createMemo(() => {
-    if (store.newSessionWorktree === "create") return "create"
-    const scope = sync.scope
-    if (scope && sync.data.path.directory !== scope.worktree) return sync.data.path.directory
-    return "main"
-  })
-
   const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const newSessionWorkspaceSelection = createMemo(() =>
+    defaultNewSessionWorkspaceSelection({
+      selected: store.newSessionWorkspaceSelection,
+      currentDirectory: sync.data.path.directory,
+      canonicalDirectory: scopeRoot(),
+    }),
+  )
   const scopeName = createMemo(() => getFilename(scopeRoot()))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
@@ -360,11 +375,10 @@ function SessionPageContent() {
       () => params.id,
       (id, prevId) => {
         if (prevId && prevId !== id) {
-          sync.evictSession(prevId)
           hydratedSessions.delete(prevId)
           initializedSessions.delete(prevId)
         }
-        if (id) sync.session.sync(id)
+        if (id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
   )
@@ -372,7 +386,7 @@ function SessionPageContent() {
   createEffect(() => {
     if (!sdk.connected()) return
     const id = params.id
-    if (id) sync.session.sync(id)
+    if (id) sync.session.sync(id, { refreshVolatile: true })
   })
 
   createEffect(
@@ -397,6 +411,38 @@ function SessionPageContent() {
 
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
+  const focusedBlueprintWriteParts = new Set<string>()
+  const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {
+    const sessionID = params.id
+    if (!sessionID) return
+
+    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
+    if (!request) return
+
+    const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`
+    if (focusedBlueprintWriteParts.has(key)) return
+    focusedBlueprintWriteParts.add(key)
+
+    void workbench.openPanel("notes", {
+      reuseExisting: true,
+      init: {
+        resourceId: request.noteID,
+        source: sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey,
+      },
+    })
+  })
+  onCleanup(unsubBlueprintNoteWrite)
+
+  createEffect(() => {
+    const session = currentSession()
+    const id = params.id
+    if (!session || !id) return
+    const routeScope = sdk.scopeKey
+    const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
+    if (!sessionScope) return
+    if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
+    navigate(`/${base64Encode(sessionScope)}/session/${id}`, { replace: true })
+  })
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -545,13 +591,7 @@ function SessionPageContent() {
     sync.session.diff(id)
   })
 
-  const isWorking = createMemo(() => {
-    // Canonical source: Session.Info.working field from the server
-    const session = currentSession()
-    if (session?.working) return true
-    // Fallback for pre-update sessions (before server returns working field)
-    return status().type !== "idle"
-  })
+  const isWorking = createMemo(() => status().type !== "idle")
   const autoScroll = createAutoScroll({
     working: isWorking,
   })
@@ -927,9 +967,11 @@ function SessionPageContent() {
               forkedFromID={currentSession()?.forkedFrom?.sessionID}
               forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
-              newSessionWorktree={newSessionWorktree}
-              onNewSessionWorktreeChange={(worktree) => setStore("newSessionWorktree", worktree)}
-              onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+              newSessionWorkspaceSelection={newSessionWorkspaceSelection}
+              newSessionCanonicalDirectory={scopeRoot}
+              newSessionCurrentDirectory={() => sync.data.path.directory}
+              onNewSessionWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
+              onNewSessionWorkspaceSelectionReset={() => setStore("newSessionWorkspaceSelection", undefined)}
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}

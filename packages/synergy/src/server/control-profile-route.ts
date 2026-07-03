@@ -61,7 +61,6 @@ export const ControlProfileRoute = new Hono()
             ControlProfileCompiler.resolve(id, {
               workspace: "/",
               workspaceType: "main",
-              interactionMode: "attended",
             }),
           ])
           return { id, label: label.label, description: resolved.description }

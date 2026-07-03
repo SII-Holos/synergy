@@ -24,7 +24,43 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.workbenchSurfaces["home/session-1"].side.size).toBe(720)
   })
 
-  test("migrates old terminal height into bottom surface state", () => {
+  test("does not restore old empty side workspaces as open launchers", () => {
+    const migrated = migrateWorkbenchLayout({
+      workspaceSessions: {
+        "home/session-1": {
+          opened: true,
+          active: null,
+          width: 720,
+        },
+      },
+    }) as {
+      workbenchSurfaces: Record<string, { side: { opened: boolean; active?: string; tabs: unknown[]; size?: number } }>
+    }
+
+    expect(migrated.workbenchSurfaces["home/session-1"].side.opened).toBe(false)
+    expect(migrated.workbenchSurfaces["home/session-1"].side.active).toBeUndefined()
+    expect(migrated.workbenchSurfaces["home/session-1"].side.tabs).toEqual([])
+    expect(migrated.workbenchSurfaces["home/session-1"].side.size).toBe(720)
+  })
+
+  test("closes persisted workbench surfaces that have no tabs", () => {
+    const migrated = migrateWorkbenchLayout({
+      workbenchSurfaces: {
+        "home/session-1": {
+          side: { opened: true, active: "notes", tabs: [] },
+          bottom: { opened: true, tabs: [{ id: "terminal:1", panelId: "terminal" }] },
+        },
+      },
+    }) as {
+      workbenchSurfaces: Record<string, { side: { opened: boolean }; bottom: { opened: boolean; active?: string } }>
+    }
+
+    expect(migrated.workbenchSurfaces["home/session-1"].side.opened).toBe(false)
+    expect(migrated.workbenchSurfaces["home/session-1"].bottom.opened).toBe(true)
+    expect(migrated.workbenchSurfaces["home/session-1"].bottom.active).toBe("terminal:1")
+  })
+
+  test("migrates old terminal height without restoring an empty bottom launcher", () => {
     const migrated = migrateWorkbenchLayout({
       terminal: { opened: true, height: 360 },
       workspaceSessions: {
@@ -36,7 +72,7 @@ describe("migrateWorkbenchLayout", () => {
     }
 
     expect(migrated.terminal).toBeUndefined()
-    expect(migrated.workbenchSurfaces["home/session-1"].bottom.opened).toBe(true)
+    expect(migrated.workbenchSurfaces["home/session-1"].bottom.opened).toBe(false)
     expect(migrated.workbenchSurfaces["home/session-1"].bottom.size).toBe(360)
   })
 })

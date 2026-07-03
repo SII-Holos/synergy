@@ -190,16 +190,11 @@ export namespace SessionInvoke {
         continue
       }
 
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeInboxItems: no model for mail, skipping", { sessionID, inboxItemID: item.id })
-        continue
-      }
       const noReply = options?.guiding ? true : mail.noReply
       const created = await createUserMessage({
         sessionID,
         agent: mail.agent,
-        model,
+        model: mail.model ?? fallbackModel,
         parts: partsFromMail(mail),
         noReply,
         summary: mail.summary,
@@ -227,15 +222,10 @@ export namespace SessionInvoke {
         await writeAssistantMail(sessionID, mail)
         continue
       }
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeLegacyMails: no model for mail, skipping", { sessionID })
-        continue
-      }
       const created = await createUserMessage({
         sessionID,
         agent: mail.agent,
-        model,
+        model: mail.model ?? fallbackModel,
         parts: partsFromMail(mail),
         noReply: mail.noReply,
         summary: mail.summary,
@@ -409,11 +399,10 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -590,17 +579,13 @@ export namespace SessionInvoke {
         try {
           const workspace = ScopeContext.current.directory
           const workspaceInfo = ScopeContext.current.workspace
-          const interaction = session?.interaction
-          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            interactionMode,
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -763,26 +748,51 @@ export namespace SessionInvoke {
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
+        const deadlineError = new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError")
+        let rejectDeadline: (error: Error) => void
+        const deadlinePromise = new Promise<never>((_, reject) => {
+          rejectDeadline = reject
+        })
+        deadlinePromise.catch(() => {})
         const turnTimer = setTimeout(() => {
-          turnDeadline.abort(new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError"))
+          turnDeadline.abort(deadlineError)
+          rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
         abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
-        const result = await processor.process({
-          user: lastUser,
-          agent,
-          abort: combinedAbort,
-          sessionID,
-          system: promptPlan.system,
-          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-          messages: promptPlan.messages,
-          tools: resolvedTools.tools,
-          activeToolIDs: resolvedTools.activeToolIDs,
-          model,
-        })
-        clearTimeout(turnTimer)
-        processTimer.stop()
+        // Race against the deadline instead of relying on abort propagation:
+        // the processor can be stuck in an await that never observes signals
+        // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
+        let result: Awaited<ReturnType<typeof processor.process>>
+        try {
+          result = await Promise.race([
+            processor.process({
+              user: lastUser,
+              agent,
+              abort: combinedAbort,
+              sessionID,
+              system: promptPlan.system,
+              systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+              messages: promptPlan.messages,
+              tools: resolvedTools.tools,
+              activeToolIDs: resolvedTools.activeToolIDs,
+              model,
+            }),
+            deadlinePromise,
+          ])
+        } catch (error) {
+          if (error !== deadlineError) throw error
+          log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
+          processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+          processor.message.time.completed = Date.now()
+          await Session.updateMessage(processor.message)
+          Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+          result = "stop"
+        } finally {
+          clearTimeout(turnTimer)
+          processTimer.stop()
+        }
 
         // post-LLM jobs
         const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })

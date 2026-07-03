@@ -12,6 +12,9 @@ import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
 import { NoteStore } from "../note"
+import { Log } from "../util/log"
+
+const log = Log.create({ service: "server.blueprint" })
 
 const CreateInput = z
   .object({
@@ -68,7 +71,7 @@ function defaultFirstPrompt(loop: { id: string; title: string; noteID: string },
   if (isCodingBlueprintAgent(agentName)) {
     return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
-Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, tests, migration or compatibility expectations, cleanup, and verification commands.
+Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
 Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
 Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
 When the Blueprint is ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).
@@ -89,6 +92,17 @@ async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "e
   await Session.update(sessionID, (draft) => {
     draft.blueprint = { ...draft.blueprint, loopID, loopRole }
   })
+}
+
+async function assertLoopSessionInCurrentScope(sessionID: string) {
+  const session = await Session.get(sessionID)
+  const sessionScopeID = session.scope.id
+  const loopScopeID = ScopeContext.current.scope.id
+  if (sessionScopeID !== loopScopeID) {
+    throw new Error(
+      `Session ${sessionID} belongs to scope ${sessionScopeID}, but this BlueprintLoop is in ${loopScopeID}.`,
+    )
+  }
 }
 
 async function deliverFirstPrompt(
@@ -169,6 +183,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const body = c.req.valid("json")
+        await assertLoopSessionInCurrentScope(body.sessionID)
         const [executionAgent, auditAgent] = await Promise.all([
           resolveBlueprintAgent(body.sessionID, body.noteID),
           resolveBlueprintAuditAgent(body.noteID),
@@ -181,6 +196,9 @@ export const BlueprintRoute = new Hono()
         })
         return c.json(loop)
       } catch (err: any) {
+        if (err instanceof LoopError.AlreadyActive) {
+          return c.json({ message: "This Blueprint already has an active run.", data: err.data }, 400)
+        }
         return c.json({ message: err?.message ?? String(err) }, 400)
       }
     },
@@ -332,7 +350,14 @@ export const BlueprintRoute = new Hono()
         const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         started = true
         await bindSessionToLoop(before.sessionID, id, "execution")
-        await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
+        const scopeID = ScopeContext.current.scope.id
+        void deliverFirstPrompt(before.sessionID, before, body?.userPrompt).catch((err) => {
+          log.error("failed to deliver BlueprintLoop start prompt", { loopID: id, error: err })
+          BlueprintLoopStore.updateStatus(scopeID, id, {
+            status: "failed",
+            error: err?.message ?? String(err),
+          }).catch(() => undefined)
+        })
         return c.json(loop)
       } catch (err: any) {
         if (started) {

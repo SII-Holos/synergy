@@ -16,6 +16,7 @@ import { closeWorkbenchPanelTab, openWorkbenchPanelTab } from "./workbench-panel
 export interface OpenWorkbenchPanelOptions {
   forceNew?: boolean
   reuseExisting?: boolean
+  init?: WorkbenchPanelTabInit
 }
 
 export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = createSimpleContext({
@@ -67,6 +68,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const shouldReuse = options.reuseExisting || (!options.forceNew && entry.cardinality !== "multi")
       const existing = shouldReuse ? tabs.find((tab) => tab.panelId === panelId) : undefined
       let init: WorkbenchPanelTabInit | undefined = existing
+        ? { ...existing, ...options.init, id: existing.id }
+        : options.init
       if (!init && entry.createTab) {
         const created = await entry.createTab()
         if (!created) return undefined
@@ -100,6 +103,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
         target.setTabs(next.tabs)
         target.setActive(next.active)
+        if (next.tabs.length === 0) target.close()
         return
       }
     }
@@ -126,6 +130,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         if (!nextTabs.some((tab) => tab.id === target.active())) {
           target.setActive(nextTabs[0]?.id)
         }
+        if (nextTabs.length === 0) target.close()
       }
     })
 

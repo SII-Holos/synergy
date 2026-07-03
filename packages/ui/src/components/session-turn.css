@@ -74,6 +74,7 @@
   [data-slot="session-turn-timeline-item"]:is(
     [data-kind="text"],
     [data-kind="reasoning"],
+    [data-kind="guided-user"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);

@@ -34,7 +34,26 @@ function ensurePluginThemeLinkElement(): HTMLLinkElement {
 }
 
 function getSystemMode(): "light" | "dark" {
+  if (typeof window === "undefined" || !window.matchMedia) return "light"
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+}
+
+function isColorScheme(value: string | null): value is ColorScheme {
+  return value === "light" || value === "dark" || value === "system"
+}
+
+function getSavedColorScheme(): ColorScheme | null {
+  try {
+    if (typeof localStorage === "undefined") return null
+    const value = localStorage.getItem(STORAGE_KEYS.COLOR_SCHEME)
+    return isColorScheme(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+function resolveColorSchemeMode(scheme: ColorScheme): "light" | "dark" {
+  return scheme === "system" ? getSystemMode() : scheme
 }
 
 function applyThemeCss(mode: "light" | "dark") {
@@ -70,9 +89,10 @@ function applyPluginThemeCss(themeId: string) {
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: () => {
+    const initialColorScheme = getSavedColorScheme() ?? "system"
     const [store, setStore] = createStore({
-      colorScheme: "system" as ColorScheme,
-      mode: getSystemMode(),
+      colorScheme: initialColorScheme,
+      mode: resolveColorSchemeMode(initialColorScheme),
       themeId: synergyTheme.id,
     })
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
@@ -87,12 +107,10 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mediaQuery.addEventListener("change", handler)
       onCleanup(() => mediaQuery.removeEventListener("change", handler))
 
-      const savedScheme = localStorage.getItem(STORAGE_KEYS.COLOR_SCHEME) as ColorScheme | null
+      const savedScheme = getSavedColorScheme()
       if (savedScheme) {
         setStore("colorScheme", savedScheme)
-        if (savedScheme !== "system") {
-          setStore("mode", savedScheme)
-        }
+        setStore("mode", resolveColorSchemeMode(savedScheme))
       }
 
       const unsubscribe = subscribePluginThemes(() => setThemeRegistryVersion((version) => version + 1))

@@ -39,6 +39,7 @@ import { Installation } from "@/global/installation"
 import { MDNS } from "./mdns"
 import { Worktree } from "../project/worktree"
 import { Session } from "../session"
+import { SessionManager } from "../session/manager"
 import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { ProviderRoute } from "./provider"
@@ -224,6 +225,15 @@ export namespace Server {
     } catch {
       return scopeID
     }
+  }
+
+  function assertWorktreeSessionIdle(sessionID: string | undefined) {
+    if (!sessionID) return
+    if (!SessionManager.isRunning(sessionID)) return
+    throw new Worktree.SessionBusyError({
+      sessionID,
+      message: "Stop the session before changing worktree.",
+    })
   }
 
   async function resolveScopedRequestScope(
@@ -813,6 +823,7 @@ export namespace Server {
           validator("json", Worktree.PublicCreateInput),
           async (c) => {
             const body = c.req.valid("json")
+            if (body.bind !== false) assertWorktreeSessionIdle(body.sessionID)
             const worktree = await Worktree.create(body)
             return c.json(worktree)
           },
@@ -866,6 +877,7 @@ export namespace Server {
           ),
           async (c) => {
             const sessionID = c.req.valid("param").sessionID
+            assertWorktreeSessionIdle(sessionID)
             const session = await Worktree.leave(sessionID)
             return c.json(session)
           },

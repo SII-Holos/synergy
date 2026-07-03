@@ -16,6 +16,9 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { Config } from "@/config/config"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import type { ProfileId } from "@/control-profile/types"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -57,7 +60,8 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    return { ...session }
+    const { working: _working, ...rest } = session
+    return rest
   }
 
   export type PageIndex = {
@@ -70,6 +74,60 @@ export namespace Session {
       parentID?: string
     }>
   }
+
+  export type ChildIndexEntry = {
+    id: string
+    title: string
+    updated: number
+    created: number
+    archived: boolean
+  }
+
+  export type ChildIndex = {
+    version: 1
+    scopeID: string
+    parentID: string
+    updatedAt: number
+    entries: ChildIndexEntry[]
+  }
+
+  export const ChildCursor = z
+    .object({
+      lastActivityAt: z.number(),
+      id: z.string(),
+    })
+    .meta({ ref: "SessionChildCursor" })
+
+  export const ChildrenPage = z
+    .object({
+      items: Info.array(),
+      nextCursor: ChildCursor.nullable(),
+      total: z.number(),
+    })
+    .meta({ ref: "SessionChildrenPage" })
+
+  export type ChildCursor = z.infer<typeof ChildCursor>
+  export type ChildrenPage = z.infer<typeof ChildrenPage>
+
+  export const WorkspaceSelection = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("current"),
+      }),
+      z.object({
+        mode: z.literal("existing"),
+        target: z.string().min(1),
+        force: z.boolean().optional(),
+      }),
+      z.object({
+        mode: z.literal("create"),
+        name: z.string().optional(),
+        baseRef: z.enum(["current", "fresh"]).optional(),
+        baseRevision: z.string().min(1).optional(),
+      }),
+    ])
+    .meta({ ref: "SessionWorkspaceSelection" })
+  export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
 
   export async function readPageIndex(scopeID: string): Promise<PageIndex> {
     return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch(() => ({ entries: [] }))
@@ -104,6 +162,60 @@ export namespace Session {
       archived: !!session.time.archived,
       parentID: session.parentID,
     }
+  }
+
+  function toChildIndexEntry(session: Info): ChildIndexEntry {
+    return {
+      id: session.id,
+      title: session.title,
+      updated: session.time.updated,
+      created: session.time.created,
+      archived: !!session.time.archived,
+    }
+  }
+
+  function sortChildIndexEntries(entries: ChildIndexEntry[]) {
+    entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
+  }
+
+  export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
+    return Storage.read<ChildIndex>(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID))).catch(
+      () => ({
+        version: 1,
+        scopeID,
+        parentID,
+        updatedAt: 0,
+        entries: [],
+      }),
+    )
+  }
+
+  export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
+    sortChildIndexEntries(index.entries)
+    await Storage.write(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)), {
+      ...index,
+      updatedAt: Date.now(),
+    })
+  }
+
+  export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
+    const index = await readChildIndex(scopeID, parentID)
+    const existing = index.entries.findIndex((e) => e.id === entry.id)
+    if (existing >= 0) index.entries.splice(existing, 1)
+    index.entries.push(entry)
+    await writeChildIndex(scopeID, parentID, index)
+  }
+
+  export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
+    const index = await readChildIndex(scopeID, parentID)
+    const nextEntries = index.entries.filter((e) => e.id !== sessionID)
+    if (nextEntries.length === index.entries.length) return
+    index.entries = nextEntries
+    await writeChildIndex(scopeID, parentID, index)
+  }
+
+  export async function removeChildIndex(scopeID: string, parentID: string) {
+    await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
   }
 
   function toNavEntry(session: Info): SessionNavEntry {
@@ -234,6 +346,7 @@ export namespace Session {
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await writeEndpointIndex(result)
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     await SessionNav.upsertNavEntry(toNavEntry(result))
 
     if (result.agenda) {
@@ -248,6 +361,32 @@ export namespace Session {
 
     await publishInfo(SessionEvent.Updated, result)
     return withRuntimeInfo(result)
+  }
+
+  export async function applyWorkspaceSelection(
+    sessionID: string,
+    selection?: WorkspaceSelection,
+  ): Promise<Info & { working?: WorkingInfoType }> {
+    if (!selection || selection.mode === "current") return get(sessionID)
+
+    const { Worktree } = await import("../project/worktree")
+    if (selection.mode === "create") {
+      await Worktree.create({
+        sessionID,
+        name: selection.name,
+        baseRef: selection.baseRef ?? "current",
+        baseRevision: selection.baseRevision,
+        bind: true,
+      })
+      return get(sessionID)
+    }
+
+    await Worktree.enter({
+      sessionID,
+      target: selection.target,
+      force: selection.force ?? false,
+    })
+    return get(sessionID)
   }
 
   export const fork = fn(
@@ -265,24 +404,7 @@ export namespace Session {
           }),
         ])
         .optional(),
-      workspace: z
-        .discriminatedUnion("mode", [
-          z.object({
-            mode: z.literal("current"),
-          }),
-          z.object({
-            mode: z.literal("existing"),
-            target: z.string().min(1),
-            force: z.boolean().optional(),
-          }),
-          z.object({
-            mode: z.literal("create"),
-            name: z.string().optional(),
-            baseRef: z.enum(["current", "fresh"]).optional(),
-            baseRevision: z.string().min(1).optional(),
-          }),
-        ])
-        .optional(),
+      workspace: WorkspaceSelection.optional(),
       title: z.string().optional(),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
     }),
@@ -293,7 +415,7 @@ export namespace Session {
         scope: source.scope as Scope,
         workspace: source.workspace,
         title: input.title,
-        controlProfile: input.controlProfile,
+        controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
           sessionID: source.id,
           messageID: forkPoint,
@@ -326,26 +448,7 @@ export namespace Session {
       }
 
       try {
-        if (input.workspace?.mode === "create") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.create({
-            sessionID: session.id,
-            name: input.workspace.name,
-            baseRef: input.workspace.baseRef ?? "current",
-            baseRevision: input.workspace.baseRevision,
-            bind: true,
-          })
-          session = await get(session.id)
-        }
-        if (input.workspace?.mode === "existing") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.enter({
-            sessionID: session.id,
-            target: input.workspace.target,
-            force: input.workspace.force ?? false,
-          })
-          session = await get(session.id)
-        }
+        session = await applyWorkspaceSelection(session.id, input.workspace)
       } catch (error) {
         await remove(session.id)
         throw error
@@ -380,16 +483,52 @@ export namespace Session {
     return updated
   }
 
-  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+  async function sessionControlProfileState(
+    sessionID: string,
+  ): Promise<{ controlProfile?: Info["controlProfile"]; root: Info }> {
     let currentID = sessionID
     while (true) {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
-      const info = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))
-      if (info?.controlProfile) return info.controlProfile
-      if (!info?.parentID) return "guarded"
+      const info =
+        (await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
+      if (info.controlProfile) return { controlProfile: info.controlProfile, root: info }
+      if (!info.parentID) return { root: info }
       currentID = info.parentID
     }
+  }
+
+  export function defaultControlProfileForSessionSource(session?: Pick<Info, "endpoint" | "agenda">): ProfileId {
+    if (session?.endpoint?.kind === "channel") return "autonomous"
+    if (session?.agenda) return "autonomous"
+    return "guarded"
+  }
+
+  export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
+    return (await sessionControlProfileState(sessionID)).controlProfile
+  }
+
+  export async function resolveEffectiveControlProfile(input: {
+    sessionID?: string
+    agentControlProfile?: string
+    topLevelControlProfile?: string
+  }): Promise<ProfileId> {
+    const sessionState = input.sessionID ? await sessionControlProfileState(input.sessionID) : undefined
+    if (sessionState?.controlProfile) return ControlProfileCompiler.normalize(sessionState.controlProfile)
+    if (input.agentControlProfile) return ControlProfileCompiler.normalize(input.agentControlProfile)
+
+    const topLevelProfile =
+      input.topLevelControlProfile ??
+      (await Config.current()
+        .then((cfg) => cfg.controlProfile)
+        .catch(() => undefined))
+    if (topLevelProfile) return ControlProfileCompiler.normalize(topLevelProfile)
+
+    return defaultControlProfileForSessionSource(sessionState?.root)
+  }
+
+  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+    return resolveEffectiveControlProfile({ sessionID })
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
@@ -418,6 +557,12 @@ export namespace Session {
     await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    if (before.parentID && before.parentID !== result.parentID) {
+      await removeChildIndexEntry(scope.id, before.parentID, result.id)
+    }
+    if (result.parentID) {
+      await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
+    }
     await SessionNav.upsertNavEntry(toNavEntry(result))
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
@@ -526,12 +671,67 @@ export namespace Session {
     }
   }
 
-  export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const sessions: Info[] = []
-    for await (const session of listAll()) {
-      if (session.parentID === parentID) sessions.push(session)
+  async function queryChildren(input: {
+    parentID: string
+    cursor?: ChildCursor | null
+    limit?: number
+    search?: string
+    includeArchived?: boolean
+  }): Promise<ChildrenPage> {
+    const parent = await SessionManager.requireSession(input.parentID)
+    const scope = parent.scope as Scope
+    const index = await readChildIndex(scope.id, input.parentID)
+    let entries = index.entries
+
+    if (!input.includeArchived) entries = entries.filter((entry) => !entry.archived)
+
+    const search = input.search?.trim().toLowerCase()
+    if (search) {
+      entries = entries.filter((entry) => entry.title.toLowerCase().includes(search))
     }
-    return sessions
+
+    const total = entries.length
+    let startIdx = 0
+    if (input.cursor) {
+      const cursor = input.cursor
+      startIdx = entries.findIndex(
+        (entry) =>
+          entry.updated < cursor.lastActivityAt || (entry.updated === cursor.lastActivityAt && entry.id < cursor.id),
+      )
+      if (startIdx === -1) startIdx = entries.length
+    }
+
+    const limit = input.limit ?? total
+    const slice = entries.slice(startIdx, startIdx + limit)
+    const hasMore = startIdx + slice.length < total
+    const last = slice.at(-1)
+    const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
+
+    const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
+    const sessions = await Storage.readMany<Info>(keys)
+    const items = await Promise.all(
+      sessions
+        .filter((session): session is Info => session != null && !!session.scope)
+        .map((session) => withRuntimeInfo(session)),
+    )
+
+    return { items, nextCursor, total }
+  }
+
+  export const childPage = fn(
+    z.object({
+      parentID: Identifier.schema("session"),
+      cursor: ChildCursor.nullable().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+      search: z.string().optional(),
+      includeArchived: z.boolean().optional(),
+    }),
+    queryChildren,
+  )
+
+  export const children = fn(Identifier.schema("session"), async (parentID) => {
+    const page = await queryChildren({ parentID, includeArchived: true })
+    return page.items
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
@@ -551,8 +751,10 @@ export namespace Session {
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
       await removePageIndexEntry(scope.id, sessionID)
+      if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
+      await removeChildIndex(scope.id, sessionID)
       await SessionNav.removeNavEntry(scope.id, sessionID)
-      Bus.publish(SessionEvent.Deleted, {
+      await Bus.publish(SessionEvent.Deleted, {
         info: session,
       })
     } catch (e) {
@@ -807,7 +1009,11 @@ export namespace Session {
     return SessionManager.isRunning(sessionID)
   }
 
-  export async function deliver(input: { target: string | SessionEndpoint.Info; mail: SessionManager.SessionMail }) {
+  export async function deliver(input: {
+    target: string | SessionEndpoint.Info
+    mail: SessionManager.SessionMail
+    waitForProcessing?: boolean
+  }) {
     await SessionManager.deliver(input)
   }
 }

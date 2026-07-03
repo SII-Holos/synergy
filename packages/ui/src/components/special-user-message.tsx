@@ -1,6 +1,8 @@
-import { For, Show, createMemo, type Component } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, type Component, type JSX } from "solid-js"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import h from "solid-js/h"
 import { useData } from "../context"
+import { Icon, type IconName } from "./icon"
 import { Message } from "./message-part"
 import "./special-user-message.css"
 
@@ -39,41 +41,44 @@ function metadataText(message: UserMessage, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
-function Field(props: { label: string; value: string | undefined }) {
-  return (
-    <Show when={props.value}>
-      {(value) => (
-        <div data-slot="special-message-field">
-          <div data-slot="special-message-field-label">{props.label}</div>
-          <div data-slot="special-message-field-value">{value()}</div>
-        </div>
-      )}
-    </Show>
-  )
+function Field(props: { label: string; value: string | undefined }): JSX.Element {
+  return h(Show, {
+    when: props.value,
+    children: (value: () => string) =>
+      h("div", { "data-slot": "special-message-field" }, [
+        h("div", { "data-slot": "special-message-field-label" }, props.label),
+        h("div", { "data-slot": "special-message-field-value" }, value()),
+      ]),
+  }) as unknown as JSX.Element
 }
 
-function SourceSessionLink(props: { sessionID: string | undefined }) {
+function SourceSessionLink(props: { sessionID: string | undefined }): JSX.Element {
   const data = useData()
-  return (
-    <Show when={props.sessionID}>
-      {(sessionID) => (
-        <button data-slot="special-message-link" onClick={() => data.navigateToSession?.(sessionID())}>
-          Supervisor session
-        </button>
-      )}
-    </Show>
-  )
+  return h(Show, {
+    when: props.sessionID,
+    children: (sessionID: () => string) =>
+      h(
+        "button",
+        { "data-slot": "special-message-link", onClick: () => data.navigateToSession?.(sessionID()) },
+        "Source session",
+      ),
+  }) as unknown as JSX.Element
 }
 
-function PlanModeUserRequestMessage(props: SpecialUserMessageProps) {
-  return (
-    <div data-component="special-user-message" data-kind="plan-mode-request" data-tone="plan">
-      <Message message={props.message} parts={props.parts} />
-    </div>
-  )
+function PlanModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
+  return h(
+    "div",
+    { "data-component": "special-user-message", "data-kind": "plan-mode-request", "data-layout": "user-bubble" },
+    [
+      h("div", { "data-slot": "special-message-badge" }, "Plan mode"),
+      h(Message, { message: props.message, parts: props.parts, userVariant: "turn-bubble" }),
+    ],
+  ) as unknown as JSX.Element
 }
 
-function BlueprintControlMessage(props: SpecialUserMessageProps) {
+function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
+  const [detailsOpen, setDetailsOpen] = createSignal(false)
+  let detailsTrigger: HTMLButtonElement | undefined
   const source = createMemo(() => props.message.metadata?.source as string | undefined)
   const title = createMemo(() => metadataText(props.message, "title"))
   const loopID = createMemo(() => metadataText(props.message, "loopID"))
@@ -85,6 +90,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
       case "blueprint_loop_start":
         return {
           tone: "start",
+          icon: "clipboard-list" as IconName,
           eyebrow: "Blueprint",
           heading: "Started execution",
           description: "The execution session is now driving this BlueprintLoop.",
@@ -92,6 +98,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
       case "blueprint_loop_continuation":
         return {
           tone: "continue",
+          icon: "refresh-ccw" as IconName,
           eyebrow: "Blueprint",
           heading: "Continued from idle",
           description: "The loop is still running, so the session was asked to inspect progress and continue.",
@@ -99,6 +106,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
       case "blueprint_loop_restart":
         return {
           tone: "restart",
+          icon: "clipboard-check" as IconName,
           eyebrow: "Supervisor audit",
           heading: "Changes requested",
           description: "The audit found remaining work and returned the loop to the execution session.",
@@ -106,6 +114,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
       default:
         return {
           tone: "default",
+          icon: "workflow" as IconName,
           eyebrow: "Blueprint",
           heading: "Blueprint event",
           description: "A BlueprintLoop control message was delivered to this session.",
@@ -120,39 +129,94 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
     { label: "Remaining", value: metadataText(props.message, "remaining") },
     { label: "Next actions", value: metadataText(props.message, "instructions") },
   ])
+  const hasRestartDetails = createMemo(() => restartFields().some((field) => !!field.value))
 
-  return (
-    <div data-component="special-user-message" data-kind="blueprint" data-tone={view().tone}>
-      <div data-slot="special-message-body">
-        <div data-slot="special-message-header">
-          <div data-slot="special-message-heading-row">
-            <span data-slot="special-message-eyebrow">{view().eyebrow}</span>
-            <span data-slot="special-message-heading">{view().heading}</span>
-          </div>
-          <SourceSessionLink sessionID={sourceSessionID()} />
-        </div>
-        <Show when={title()}>{(value) => <div data-slot="special-message-title">{value()}</div>}</Show>
-        <div data-slot="special-message-description">{view().description}</div>
-        <div data-slot="special-message-meta">
-          <Show when={loopID()}>{(id) => <span>Loop {id()}</span>}</Show>
-          <Show when={noteID()}>{(id) => <span>Note {id()}</span>}</Show>
-        </div>
-        <Show when={userPrompt()}>
-          {(prompt) => (
-            <div data-slot="special-message-user-prompt">
-              <div data-slot="special-message-field-label">User instruction</div>
-              <div data-slot="special-message-field-value">{prompt()}</div>
-            </div>
-          )}
-        </Show>
-        <Show when={source() === "blueprint_loop_restart"}>
-          <div data-slot="special-message-fields">
-            <For each={restartFields()}>{(field) => <Field label={field.label} value={field.value} />}</For>
-          </div>
-        </Show>
-      </div>
-    </div>
-  )
+  createEffect(() => {
+    detailsTrigger?.setAttribute("aria-expanded", String(detailsOpen()))
+  })
+
+  return h(
+    "div",
+    {
+      "data-component": "special-user-message",
+      "data-kind": "blueprint",
+      "data-layout": "event-card",
+      "data-tone": () => view().tone,
+    },
+    [
+      h("div", { "data-slot": "special-message-icon", "aria-hidden": "true" }, [
+        h(Icon, { name: () => view().icon, size: "small" }),
+      ]),
+      h("div", { "data-slot": "special-message-body" }, [
+        h("div", { "data-slot": "special-message-header" }, [
+          h("div", { "data-slot": "special-message-heading-row" }, [
+            h("span", { "data-slot": "special-message-eyebrow" }, () => view().eyebrow),
+            h("span", { "data-slot": "special-message-heading" }, () => view().heading),
+          ]),
+        ]),
+        h(Show, {
+          when: title(),
+          children: (value: () => string) => h("div", { "data-slot": "special-message-title" }, value()),
+        }),
+        h("div", { "data-slot": "special-message-description" }, () => view().description),
+        h("div", { "data-slot": "special-message-meta" }, [
+          h(Show, {
+            when: loopID(),
+            children: (id: () => string) => h("span", {}, ["Loop ", id()]),
+          }),
+          h(Show, {
+            when: noteID(),
+            children: (id: () => string) => h("span", {}, ["Note ", id()]),
+          }),
+          h(SourceSessionLink, { sessionID: sourceSessionID() }),
+        ]),
+        h(Show, {
+          when: userPrompt(),
+          children: (prompt: () => string) =>
+            h("div", { "data-slot": "special-message-user-prompt" }, [
+              h("div", { "data-slot": "special-message-field-label" }, "User instruction"),
+              h("div", { "data-slot": "special-message-field-value" }, prompt()),
+            ]),
+        }),
+        h(Show, {
+          when: () => source() === "blueprint_loop_restart" && hasRestartDetails(),
+          children: () => [
+            h(
+              "button",
+              {
+                ref: (element: HTMLButtonElement) => {
+                  detailsTrigger = element
+                },
+                type: "button",
+                "data-slot": "special-message-details-trigger",
+                "aria-expanded": () => detailsOpen(),
+                onClick: () => setDetailsOpen((value) => !value),
+              },
+              [
+                h(Show, {
+                  when: () => detailsOpen(),
+                  fallback: h(Icon, { name: "chevron-right", size: "small" }),
+                  children: () => h(Icon, { name: "chevron-down", size: "small" }),
+                }),
+                h("span", {}, "Details"),
+              ],
+            ),
+            h(Show, {
+              when: () => detailsOpen(),
+              children: () =>
+                h("div", { "data-slot": "special-message-fields" }, [
+                  h(For, {
+                    each: restartFields(),
+                    children: (field: { label: string; value: string | undefined }) =>
+                      h(Field, { label: field.label, value: field.value }),
+                  }),
+                ]),
+            }),
+          ],
+        }),
+      ]),
+    ],
+  ) as unknown as JSX.Element
 }
 
 registerSpecialUserMessageRenderer({

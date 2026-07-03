@@ -35,6 +35,28 @@ export function createWorkbenchTab(input: {
   }
 }
 
+function updateWorkbenchTab(tab: WorkbenchPanelTab, init?: WorkbenchPanelTabInit): WorkbenchPanelTab {
+  if (!init) return tab
+
+  const next: WorkbenchPanelTab = { ...tab }
+  let changed = false
+
+  if (init.resourceId !== undefined && init.resourceId !== tab.resourceId) {
+    next.resourceId = init.resourceId
+    changed = true
+  }
+  if (init.title !== undefined && init.title !== tab.title) {
+    next.title = init.title
+    changed = true
+  }
+  if (init.source !== undefined && init.source !== tab.source) {
+    next.source = init.source
+    changed = true
+  }
+
+  return changed ? next : tab
+}
+
 export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
   tabs: WorkbenchPanelTab[]
   active: string
@@ -48,7 +70,14 @@ export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
   }
 
   if (input.cardinality === "singleton" || input.reuseExisting) {
-    if (existing) return { tabs: input.tabs, active: existing.id }
+    if (existing) {
+      const updated = updateWorkbenchTab(existing, input.init)
+      if (updated === existing) return { tabs: input.tabs, active: existing.id }
+      return {
+        tabs: input.tabs.map((tab) => (tab.id === existing.id ? updated : tab)),
+        active: updated.id,
+      }
+    }
     const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init, createId: input.createId })
     return { tabs: [...input.tabs, tab], active: tab.id, created: tab }
   }

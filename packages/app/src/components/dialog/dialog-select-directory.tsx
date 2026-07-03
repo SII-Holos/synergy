@@ -109,6 +109,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           emptyMessage={results.loading ? "Searching..." : "No folders found"}
           items={results() ?? []}
           key={(x) => x}
+          filter={resolveInput(filter()).query}
           onSelect={(path) => {
             if (!path) return
             resolve(path)

@@ -28,6 +28,72 @@ import { Identifier } from "../../src/id/id"
  */
 
 describe("BlueprintLoopStore transitions", () => {
+  test("rejects a second active loop for the same Blueprint", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const first = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "First active loop",
+          sessionID: "ses_first",
+        })
+
+        await expect(
+          BlueprintLoopStore.create({
+            noteID: "note_test",
+            title: "Second active loop",
+            sessionID: "ses_second",
+          }),
+        ).rejects.toBeInstanceOf(LoopError.AlreadyActive)
+
+        try {
+          await BlueprintLoopStore.create({
+            noteID: "note_test",
+            title: "Second active loop",
+            sessionID: "ses_second",
+          })
+          throw new Error("expected BlueprintLoopAlreadyActive")
+        } catch (err) {
+          expect(err).toBeInstanceOf(LoopError.AlreadyActive)
+          expect((err as InstanceType<typeof LoopError.AlreadyActive>).data).toEqual({
+            noteID: "note_test",
+            loopID: first.id,
+            sessionID: "ses_first",
+            status: "armed",
+          })
+        }
+      },
+    })
+  })
+
+  test("allows a new loop after the previous active loop is terminal", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const first = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "First loop",
+          sessionID: "ses_first",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, first.id, { status: "cancelled" })
+
+        const second = await BlueprintLoopStore.create({
+          noteID: "note_test",
+          title: "Second loop",
+          sessionID: "ses_second",
+        })
+        expect(second.id).not.toBe(first.id)
+        expect(second.status).toBe("armed")
+      },
+    })
+  })
+
   test("armed → running is valid", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope

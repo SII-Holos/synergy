@@ -3,11 +3,10 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
-import { DialogConfirm, DialogSessionRename, ModelSelectorPopover } from "@/components/dialog"
+import { DialogSessionRename, ModelSelectorPopover, useConfirm } from "@/components/dialog"
+import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog/confirm-copy"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
-import { useGlobalSDK } from "@/context/global-sdk"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
@@ -17,15 +16,13 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { WorktreeTransitionDialog } from "@/components/session/worktree-transition-dialog"
+import { isSessionRunningForWorkspaceChange } from "@/components/session/worktree-session"
 import "./session-top-bar.css"
-
-function errorDescription(error: unknown) {
-  return error instanceof Error ? error.message : "Request failed"
-}
 
 function SessionActionMenu(props: {
   isWorktree: () => boolean
-  worktreePending: () => boolean
+  worktreeDisabled: () => boolean
   onRename: () => void
   onWorktreeToggle: () => void
   onExport: () => void
@@ -68,16 +65,15 @@ function SessionActionMenu(props: {
           type="button"
           class="stb-menu-item"
           role="menuitem"
-          disabled={props.worktreePending()}
+          disabled={props.worktreeDisabled()}
+          title={props.worktreeDisabled() ? "Stop the session before changing worktree." : undefined}
           onClick={() => run(props.onWorktreeToggle)}
         >
           <Icon
             name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
             size="small"
           />
-          <span>
-            {props.worktreePending() ? "Updating worktree..." : props.isWorktree() ? "Exit worktree" : "Enter worktree"}
-          </span>
+          <span>{props.isWorktree() ? "Exit worktree" : "Enter worktree"}</span>
         </button>
         <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
           <Icon name={getSemanticIcon("action.export")} size="small" />
@@ -101,7 +97,7 @@ export function SessionTopBar() {
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
-  const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
   const layout = useLayout()
   const local = useLocal()
   const command = useCommand()
@@ -117,6 +113,13 @@ export function SessionTopBar() {
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
+  const worktreeDisabled = createMemo(() =>
+    isSessionRunningForWorkspaceChange({
+      pending: worktreePending(),
+      status: sync.data.session_status[params.id ?? ""],
+      working: sessionInfo()?.working,
+    }),
+  )
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
@@ -140,55 +143,49 @@ export function SessionTopBar() {
     dialog.show(() => <DialogSessionRename session={session} directory={dir} />)
   }
 
-  const toggleWorktree = async () => {
+  const showWorktreeTransition = (mode: "enter" | "leave", sessionID: string, dir: string) => {
+    dialog.show(() => (
+      <WorktreeTransitionDialog
+        mode={mode}
+        sessionID={sessionID}
+        directory={dir}
+        onPendingChange={setWorktreePending}
+      />
+    ))
+  }
+
+  const toggleWorktree = () => {
     const session = sessionInfo()
     const dir = sessionDirectory()
-    if (!session || !dir || worktreePending()) return
-    setWorktreePending(true)
-    try {
-      if (isWorktreeSession()) {
-        await globalSDK.client.worktree.leave({ directory: dir, sessionID: session.id })
-        showToast({ type: "info", title: "Exited worktree", description: "Session returned to the main checkout." })
-      } else {
-        const result = await globalSDK.client.worktree.create({
-          directory: dir,
-          worktreeCreateInput: { sessionID: session.id, bind: true },
-        })
-        showToast({
-          type: "info",
-          title: "Entered worktree",
-          description: result.data?.name ? `Session is now using ${result.data.name}.` : "Worktree created.",
-        })
-      }
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: isWorktreeSession() ? "Exit worktree failed" : "Enter worktree failed",
-        description: errorDescription(error),
-      })
-    } finally {
-      setWorktreePending(false)
+    if (!session || !dir || worktreeDisabled()) return
+    if (!isWorktreeSession()) {
+      showWorktreeTransition("enter", session.id, dir)
+      return
     }
+    confirm.show({
+      ...leaveWorktreeConfirm(session.title),
+      onConfirm: () => {
+        setTimeout(() => {
+          if (worktreeDisabled()) return
+          showWorktreeTransition("leave", session.id, dir)
+        }, 0)
+      },
+    })
   }
 
   const archiveSession = () => {
     const session = sessionInfo()
     if (!session) return
-    dialog.show(() => (
-      <DialogConfirm
-        title="Archive session"
-        description={`Archive "${session.title || "Untitled session"}"? The session will be hidden from active lists and its data preserved.`}
-        confirmLabel="Archive"
-        cancelLabel="Cancel"
-        onConfirm={async () => {
-          const nextSession = await layout.nav.archiveSession(session)
-          if (session.id === params.id) {
-            if (nextSession) navigate(`/${params.dir}/session/${nextSession.id}`)
-            else navigate(`/${params.dir}/session`)
-          }
-        }}
-      />
-    ))
+    confirm.show({
+      ...archiveSessionConfirm(session.title),
+      onConfirm: async () => {
+        const nextSession = await layout.nav.archiveSession(session)
+        if (session.id === params.id) {
+          if (nextSession) navigate(`/${params.dir}/session/${nextSession.id}`)
+          else navigate(`/${params.dir}/session`)
+        }
+      },
+    })
   }
 
   return (
@@ -238,9 +235,9 @@ export function SessionTopBar() {
         <Show when={!!params.id && !isGlobal()}>
           <SessionActionMenu
             isWorktree={isWorktreeSession}
-            worktreePending={worktreePending}
+            worktreeDisabled={worktreeDisabled}
             onRename={showRenameDialog}
-            onWorktreeToggle={() => void toggleWorktree()}
+            onWorktreeToggle={toggleWorktree}
             onExport={() => dialog.show(() => <DialogSessionExport />)}
             onArchive={archiveSession}
           />

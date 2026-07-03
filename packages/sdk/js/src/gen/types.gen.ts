@@ -2830,6 +2830,17 @@ export type SessionStatus =
       description?: string
     }
 
+export type SessionChildCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionChildrenPage = {
+  items: Array<Session>
+  nextCursor: SessionChildCursor | null
+  total: number
+}
+
 export type Todo = {
   /**
    * Brief description of the task
@@ -2938,6 +2949,22 @@ export type SessionAgendaResponse = {
   total: number
   hasMore: boolean
 }
+
+export type SessionWorkspaceSelection =
+  | {
+      mode: "current"
+    }
+  | {
+      mode: "existing"
+      target: string
+      force?: boolean
+    }
+  | {
+      mode: "create"
+      name?: string
+      baseRef?: "current" | "fresh"
+      baseRevision?: string
+    }
 
 export type SessionInboxItemSource = {
   type: string
@@ -7265,6 +7292,7 @@ export type SessionCreateData = {
     title?: string
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    workspace?: SessionWorkspaceSelection
   }
   path?: never
   query?: {
@@ -7439,6 +7467,11 @@ export type SessionChildrenData = {
   query?: {
     directory?: string
     scopeID?: string
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+    search?: string
+    includeArchived?: boolean
   }
   url: "/session/{sessionID}/children"
 }
@@ -7458,9 +7491,9 @@ export type SessionChildrenError = SessionChildrenErrors[keyof SessionChildrenEr
 
 export type SessionChildrenResponses = {
   /**
-   * List of children
+   * Paginated child sessions
    */
-  200: Array<Session>
+  200: SessionChildrenPage
 }
 
 export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChildrenResponses]
@@ -7630,21 +7663,7 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
-    workspace?:
-      | {
-          mode: "current"
-        }
-      | {
-          mode: "existing"
-          target: string
-          force?: boolean
-        }
-      | {
-          mode: "create"
-          name?: string
-          baseRef?: "current" | "fresh"
-          baseRevision?: string
-        }
+    workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
   }

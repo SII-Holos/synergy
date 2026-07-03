@@ -13,6 +13,7 @@ import {
   createMemo,
   createSignal,
   createResource,
+  untrack,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
@@ -72,6 +73,13 @@ import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import {
+  blueprintRequestErrorMessage,
+  isTerminalBlueprintLoopStatus,
+  resolveBlueprintSlotDisplay,
+  type BlueprintSlotDisplay,
+} from "@/components/prompt-input/blueprint-slot"
+import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -139,20 +147,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return { loopID, directory: sessionScopeDirectory() }
   })
 
-  const [sessionLoop] = createResource(sessionLoopSource, async ({ loopID, directory }) => {
-    if (!loopID) return null
-    try {
-      const result = await sdk.client.blueprint.loop.get(blueprintLoopRequest(loopID, directory))
-      return (result.data as BlueprintLoopInfo) ?? null
-    } catch {
-      return null
-    }
-  })
+  const [sessionLoop, { mutate: mutateSessionLoop }] = createResource(
+    sessionLoopSource,
+    async ({ loopID, directory }) => {
+      if (!loopID) return null
+      try {
+        const result = await sdk.client.blueprint.loop.get(blueprintLoopRequest(loopID, directory))
+        return (result.data as BlueprintLoopInfo) ?? null
+      } catch {
+        return null
+      }
+    },
+  )
 
-  type BlueprintSlotDisplay = {
-    slot: BlueprintSlot
-    mode: string
-  }
+  createEffect(
+    on(
+      sessionLoopSource,
+      (source) => {
+        const loop = untrack(sessionLoop)
+        if (!source || (loop && loop.id !== source.loopID)) mutateSessionLoop(null)
+      },
+      { defer: true },
+    ),
+  )
 
   const getBlueprintSlotStatusLabel = (status: string) => {
     switch (status) {
@@ -196,15 +213,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  function requestErrorMessage(err: unknown) {
-    if (err && typeof err === "object" && "data" in err) {
-      const data = (err as { data?: { message?: string } }).data
-      if (data?.message) return data.message
-    }
-    if (err instanceof Error) return err.message
-    return "Request failed"
-  }
-
   const getBlueprintSlotHoldLabel = (slot: BlueprintSlotDisplay) => {
     if (slot.slot.type === "loop" && working()) return "Hold for 2 seconds to stop this Blueprint run."
     if (slot.mode === "waiting" || slot.mode === "auditing") return "Hold for 2 seconds to cancel this BlueprintLoop."
@@ -244,6 +252,30 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     )
   }
 
+  const clearVisibleSessionLoop = (sessionID: string | undefined, loopID: string) => {
+    clearBoundLoop(sessionID, loopID)
+    mutateSessionLoop(null)
+  }
+
+  const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
+    const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
+    const displayedLoopID = untrack(sessionLoop)?.id
+    if (loop.id !== activeLoopID && loop.id !== displayedLoopID) return
+
+    if (loop.id !== activeLoopID || isTerminalBlueprintLoopStatus(loop.status)) {
+      if (loop.id === activeLoopID) clearVisibleSessionLoop(params.id, loop.id)
+      else mutateSessionLoop(null)
+      return
+    }
+
+    mutateSessionLoop(loop)
+  }
+
+  const unsubBlueprintLoopUpdated = sdk.event.on("blueprint_loop.updated", (event) => {
+    applySessionLoopEvent(event.properties.loop)
+  })
+  onCleanup(unsubBlueprintLoopUpdated)
+
   const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
   let slotLongPressFrame: number | undefined
@@ -264,17 +296,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (slotLongPressFrame !== undefined) cancelAnimationFrame(slotLongPressFrame)
       slotLongPressFrame = undefined
       setSlotLongPressProgress(1)
-      const stopRunningSession = slot.slot.type === "loop" && working()
+      let stopRunningSession = false
       let stoppedSession = false
       try {
-        if (stopRunningSession) {
-          await abortSession(sessionID)
-          stoppedSession = true
-        }
         if (slot.slot.type === "loop") {
           const loopID = slot.slot.loopID
+          const isLocalSlot = localArmedLoop() === slot.slot
+          const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
+          const loop = sessionLoop()
+          if (!isLocalSlot && activeLoopID !== loopID) {
+            if (loop?.id === loopID) mutateSessionLoop(null)
+            return
+          }
+          if (!isLocalSlot && isTerminalBlueprintLoopStatus(loop?.status ?? slot.mode)) {
+            clearVisibleSessionLoop(sessionID, loopID)
+            showToast({
+              type: "info",
+              title: "Blueprint unequipped",
+              description: slot.slot.title,
+            })
+            return
+          }
+          stopRunningSession = working()
+          if (stopRunningSession) {
+            await abortSession(sessionID)
+            stoppedSession = true
+          }
           await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(loopID))
-          clearBoundLoop(sessionID, loopID)
+          clearVisibleSessionLoop(sessionID, loopID)
         }
         if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
         showToast({
@@ -286,7 +335,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         showToast({
           type: "error",
           title: getBlueprintFailureTitle(stopRunningSession, stoppedSession),
-          description: requestErrorMessage(err),
+          description: blueprintRequestErrorMessage(err),
         })
       } finally {
         setSlotLongPressProgress(0)
@@ -310,21 +359,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   onCleanup(cancelLongPress)
 
   const displayedBlueprintLoop = createMemo<BlueprintSlotDisplay | null>(() => {
-    const localSlot = localArmedLoop()
-    if (localSlot) return { slot: localSlot, mode: localSlot.type === "pending" ? "pending" : "armed" }
-    const loop = sessionLoop()
-    if (loop)
-      return {
-        slot: {
-          type: "loop" as const,
-          loopID: loop.id,
-          noteID: loop.noteID,
-          title: loop.title,
-          runMode: loop.runMode ?? "current",
-        },
-        mode: loop.status,
-      }
-    return null
+    return resolveBlueprintSlotDisplay({
+      localSlot: localArmedLoop(),
+      sessionLoop: sessionLoop(),
+      activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
+    })
   })
 
   const canSubmit = createMemo(() => prompt.dirty() || working() || !!localArmedLoop())
@@ -352,6 +391,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } finally {
       setBlueprintLoading(false)
       setLocalArmedLoop(null)
+      if (slot.type === "loop") mutateSessionLoop(null)
     }
   }
   const scrollCursorIntoView = () => {
@@ -466,9 +506,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
     if (params.id) return []
 
-    const creatingWorktree = props.newSessionWorktree === "create"
+    const workspaceSelection = props.newSessionWorkspaceSelection ?? { mode: "current" as const }
+    const worktreeSelected = isWorktreeWorkspaceSelection(workspaceSelection)
     const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
-    const localLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Local"
+    const mainLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Main checkout"
     const localDescription = isHomeScope(sdk.scopeKey) ? "Global context" : "Current checkout"
 
     return [
@@ -478,23 +519,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         options: [
           {
             id: "workspace.local",
-            label: localLabel,
+            label: mainLabel,
             description: localDescription,
             icon: getSemanticIcon("workspace.main"),
-            selected: !creatingWorktree,
-            onSelect: () => props.onNewSessionWorktreeChange?.("main"),
+            selected: !worktreeSelected,
+            onSelect: () => props.onNewSessionWorkspaceSelectionChange?.({ mode: "current" }),
           },
           {
             id: "workspace.worktree",
             label: "Worktree",
             description: "Isolated checkout",
             icon: getSemanticIcon("workspace.worktree"),
-            selected: creatingWorktree,
+            selected: worktreeSelected,
             disabled: !canCreateWorktree,
             tooltip: canCreateWorktree
               ? "Create an isolated worktree for this session."
               : "Choose a project to use worktree isolation.",
-            onSelect: () => props.onNewSessionWorktreeChange?.("create"),
+            onSelect: () =>
+              props.onNewSessionWorkspaceSelectionChange?.(
+                worktreeOptionSelection({
+                  currentDirectory: props.newSessionCurrentDirectory,
+                  canonicalDirectory: props.newSessionCanonicalDirectory,
+                }),
+              ),
           },
         ],
       },

@@ -24,6 +24,7 @@ const workbenchSurface = await Bun.file(new URL("./components/session/workbench-
 const workbenchSurfaceCss = await Bun.file(
   new URL("./components/session/workbench-surface.css", import.meta.url),
 ).text()
+const workbenchPanels = await Bun.file(new URL("./context/workbench-panels.tsx", import.meta.url)).text()
 const workspaceNotesTool = await Bun.file(new URL("./components/workspace/tool-notes.tsx", import.meta.url)).text()
 const workspaceBrowserTool = await Bun.file(new URL("./components/workspace/tool-browser.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
@@ -137,6 +138,11 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurfaceCss).toContain("var(--workbench-tab-bg)")
     expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
     expect(workbenchSurfaceCss).toContain("left: 0;")
+  })
+
+  test("workbench surfaces close instead of persisting empty launchers", () => {
+    expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
+    expect(workbenchPanels).toContain("if (nextTabs.length === 0) target.close()")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {

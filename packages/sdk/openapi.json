@@ -3669,7 +3669,6 @@
             "in": "query",
             "name": "parentOnly",
             "schema": {
-              "default": true,
               "type": "boolean"
             },
             "description": "Only include top-level sessions (exclude subsessions). Default: true"
@@ -3774,6 +3773,9 @@
                   "controlProfile": {
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
+                  },
+                  "workspace": {
+                    "$ref": "#/components/schemas/SessionWorkspaceSelection"
                   }
                 }
               }
@@ -4106,6 +4108,44 @@
               "pattern": "^ses.*"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 8,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorLastActivityAt",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "summary": "Get session children",
@@ -4113,14 +4153,11 @@
         "description": "Retrieve all child sessions that were forked from the specified parent session.",
         "responses": {
           "200": {
-            "description": "List of children",
+            "description": "Paginated child sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Session"
-                  }
+                  "$ref": "#/components/schemas/SessionChildrenPage"
                 }
               }
             }
@@ -4563,56 +4600,7 @@
                     ]
                   },
                   "workspace": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "current"
-                          }
-                        },
-                        "required": ["mode"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "existing"
-                          },
-                          "target": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "force": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": ["mode", "target"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "create"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "baseRef": {
-                            "type": "string",
-                            "enum": ["current", "fresh"]
-                          },
-                          "baseRevision": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "required": ["mode"]
-                      }
-                    ]
+                    "$ref": "#/components/schemas/SessionWorkspaceSelection"
                   },
                   "title": {
                     "type": "string"
@@ -22462,6 +22450,43 @@
           }
         ]
       },
+      "SessionChildCursor": {
+        "type": "object",
+        "properties": {
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": ["lastActivityAt", "id"]
+      },
+      "SessionChildrenPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionChildCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
+      },
       "Todo": {
         "type": "object",
         "properties": {
@@ -22635,6 +22660,58 @@
           }
         },
         "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
+      },
+      "SessionWorkspaceSelection": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "current"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "existing"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "force": {
+                "type": "boolean"
+              }
+            },
+            "required": ["mode", "target"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "create"
+              },
+              "name": {
+                "type": "string"
+              },
+              "baseRef": {
+                "type": "string",
+                "enum": ["current", "fresh"]
+              },
+              "baseRevision": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["mode"]
+          }
+        ]
       },
       "SessionInboxItemSource": {
         "type": "object",

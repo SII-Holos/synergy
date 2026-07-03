@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" style="background-color: var(--background-base); overflow: hidden">
+<html lang="en" style="overflow: hidden">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -25,6 +25,7 @@
           for (var name in attrs) html += " " + name + '="' + attr(attrs[name]) + '"'
           document.write(html + ">")
         }
+        window.__SYNERGY_ASSET_PREFIX__ = prefix
         write("link", { rel: "icon", type: "image/png", href: asset("/favicon-96x96.png"), sizes: "96x96" })
         write("link", { rel: "icon", type: "image/svg+xml", href: asset("/favicon.svg") })
         write("link", { rel: "shortcut icon", href: asset("/favicon.ico") })
@@ -38,16 +39,338 @@
     <meta name="theme-color" content="#131010" media="(prefers-color-scheme: dark)" />
     <script id="synergy-theme-preload-script">
       ;(function () {
-        var scheme = localStorage.getItem("synergy-color-scheme") || "system"
-        var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
+        var desktopWindow = window.synergyDesktop && window.synergyDesktop.window
+        var fallbackScheme = desktopWindow ? "dark" : "system"
+        var scheme = fallbackScheme
+        try {
+          scheme = localStorage.getItem("synergy-color-scheme") || fallbackScheme
+        } catch (error) {
+          scheme = fallbackScheme
+        }
+        if (scheme !== "light" && scheme !== "dark" && scheme !== "system") scheme = fallbackScheme
+        var systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        var isDark = scheme === "dark" || (scheme === "system" && systemDark)
         var mode = isDark ? "dark" : "light"
         document.documentElement.style.setProperty("color-scheme", mode)
+        document.documentElement.setAttribute("data-synergy-color-scheme", mode)
       })()
     </script>
+    <script id="synergy-app-boot-preload-script">
+      ;(function () {
+        var desktopWindow = window.synergyDesktop && window.synergyDesktop.window
+        var chrome = desktopWindow && desktopWindow.chrome
+        if (chrome === "custom" || chrome === "native") {
+          document.documentElement.setAttribute("data-synergy-desktop-chrome", chrome)
+        }
+      })()
+    </script>
+    <style id="synergy-app-boot-style">
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #111214;
+      }
+
+      #synergy-app-boot {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: #111214;
+        color: #f5f6f7;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .synergy-app-boot-chrome {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 2;
+        display: none;
+        user-select: none;
+        -webkit-app-region: drag;
+      }
+
+      html[data-synergy-desktop-chrome="custom"] .synergy-app-boot-chrome--custom {
+        display: flex;
+      }
+
+      html[data-synergy-desktop-chrome="native"] .synergy-app-boot-chrome--native {
+        display: flex;
+      }
+
+      .synergy-app-boot-chrome--custom {
+        align-items: stretch;
+        height: 36px;
+      }
+
+      .synergy-app-boot-chrome--native {
+        height: 28px;
+      }
+
+      .synergy-app-boot-drag {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .synergy-app-boot-traffic-space {
+        flex: 0 0 90px;
+        height: 100%;
+      }
+
+      .synergy-app-boot-controls {
+        display: flex;
+        align-items: stretch;
+        height: 100%;
+        margin-left: auto;
+        -webkit-app-region: no-drag;
+      }
+
+      .synergy-app-boot-control {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #b8bdc7;
+        font: inherit;
+        transition:
+          background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+          color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .synergy-app-boot-control:hover,
+      .synergy-app-boot-control:focus-visible {
+        background: #24262a;
+        color: #f5f6f7;
+        outline: none;
+      }
+
+      .synergy-app-boot-control:focus-visible {
+        box-shadow: inset 0 0 0 2px rgba(245, 246, 247, 0.18);
+      }
+
+      .synergy-app-boot-control--close:hover,
+      .synergy-app-boot-control--close:focus-visible {
+        background: #c7392f;
+        color: #ffffff;
+      }
+
+      .synergy-app-boot-glyph {
+        position: relative;
+        display: block;
+        width: 12px;
+        height: 12px;
+      }
+
+      .synergy-app-boot-glyph--minimize::before {
+        position: absolute;
+        right: 1px;
+        bottom: 2px;
+        left: 1px;
+        height: 1px;
+        background: currentColor;
+        content: "";
+      }
+
+      .synergy-app-boot-glyph--maximize::before {
+        position: absolute;
+        inset: 1px;
+        border: 1px solid currentColor;
+        content: "";
+      }
+
+      .synergy-app-boot-glyph--close::before,
+      .synergy-app-boot-glyph--close::after {
+        position: absolute;
+        top: 5px;
+        left: 1px;
+        width: 10px;
+        height: 1px;
+        background: currentColor;
+        content: "";
+      }
+
+      .synergy-app-boot-glyph--close::before {
+        transform: rotate(45deg);
+      }
+
+      .synergy-app-boot-glyph--close::after {
+        transform: rotate(-45deg);
+      }
+
+      .synergy-app-boot-stage {
+        display: grid;
+        place-items: center;
+      }
+
+      .synergy-app-boot-mark {
+        position: relative;
+        display: grid;
+        width: 96px;
+        height: 96px;
+        place-items: center;
+        animation: synergy-app-boot-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      .synergy-app-boot-icon {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        border-radius: 14px;
+        opacity: 0;
+        transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .synergy-app-boot-icon.is-loaded {
+        opacity: 1;
+      }
+
+      .synergy-app-boot-status {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      @keyframes synergy-app-boot-breathe {
+        0%,
+        100% {
+          opacity: 0.72;
+          transform: scale(0.96);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .synergy-app-boot-mark {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body class="antialiased overscroll-none text-12-regular overflow-hidden">
     <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="synergy-app-boot" aria-live="polite" aria-busy="true">
+      <header class="synergy-app-boot-chrome synergy-app-boot-chrome--custom">
+        <div class="synergy-app-boot-drag"></div>
+        <div class="synergy-app-boot-controls">
+          <button
+            type="button"
+            class="synergy-app-boot-control"
+            data-synergy-app-boot-window-action="minimize"
+            aria-label="Minimize"
+            title="Minimize"
+          >
+            <span class="synergy-app-boot-glyph synergy-app-boot-glyph--minimize"></span>
+          </button>
+          <button
+            type="button"
+            class="synergy-app-boot-control"
+            data-synergy-app-boot-window-action="maximize"
+            aria-label="Maximize"
+            title="Maximize"
+          >
+            <span class="synergy-app-boot-glyph synergy-app-boot-glyph--maximize"></span>
+          </button>
+          <button
+            type="button"
+            class="synergy-app-boot-control synergy-app-boot-control--close"
+            data-synergy-app-boot-window-action="close"
+            aria-label="Close"
+            title="Close"
+          >
+            <span class="synergy-app-boot-glyph synergy-app-boot-glyph--close"></span>
+          </button>
+        </div>
+      </header>
+      <header class="synergy-app-boot-chrome synergy-app-boot-chrome--native">
+        <div class="synergy-app-boot-traffic-space"></div>
+        <div class="synergy-app-boot-drag"></div>
+      </header>
+      <main class="synergy-app-boot-stage">
+        <div class="synergy-app-boot-mark" aria-hidden="true">
+          <img class="synergy-app-boot-icon" data-synergy-app-boot-icon alt="" draggable="false" />
+        </div>
+        <div class="synergy-app-boot-status">Opening Synergy</div>
+      </main>
+    </div>
     <div id="root" class="flex flex-col h-dvh"></div>
+    <script id="synergy-app-boot-script">
+      ;(function () {
+        var desktopWindow = window.synergyDesktop && window.synergyDesktop.window
+        var chrome = desktopWindow && desktopWindow.chrome
+        if (chrome === "custom" || chrome === "native") {
+          document.documentElement.setAttribute("data-synergy-desktop-chrome", chrome)
+        }
+
+        var icons = document.querySelectorAll("[data-synergy-app-boot-icon]")
+        if (icons.length) {
+          var prefix = window.__SYNERGY_ASSET_PREFIX__ || ""
+          icons.forEach(function (icon) {
+            function revealIcon() {
+              icon.classList.add("is-loaded")
+            }
+            icon.addEventListener("load", revealIcon, { once: true })
+            icon.addEventListener(
+              "error",
+              function () {
+                icon.removeAttribute("src")
+              },
+              { once: true },
+            )
+            icon.setAttribute("src", prefix + "/favicon-96x96.png")
+            if (icon.complete && icon.naturalWidth > 0) revealIcon()
+          })
+        }
+
+        function bindAction(action, method) {
+          var button = document.querySelector('[data-synergy-app-boot-window-action="' + action + '"]')
+          if (!button) return
+          button.addEventListener("click", function () {
+            if (desktopWindow && desktopWindow[method]) desktopWindow[method]()
+          })
+        }
+
+        bindAction("minimize", "minimize")
+        bindAction("maximize", "toggleMaximize")
+        bindAction("close", "close")
+
+        var maximize = document.querySelector('[data-synergy-app-boot-window-action="maximize"]')
+        function updateMaximizeLabel(state) {
+          if (!maximize) return
+          var label = state && (state.maximized || state.fullscreen) ? "Restore" : "Maximize"
+          maximize.setAttribute("aria-label", label)
+          maximize.setAttribute("title", label)
+        }
+
+        if (desktopWindow && desktopWindow.state) {
+          desktopWindow
+            .state()
+            .then(updateMaximizeLabel)
+            .catch(function () {})
+        }
+        if (desktopWindow && desktopWindow.onEvent) {
+          desktopWindow.onEvent(function (event) {
+            if (event && event.type === "state") updateMaximizeLabel(event.state)
+          })
+        }
+      })()
+    </script>
     <script src="/src/entry.tsx" type="module"></script>
   </body>
 </html>

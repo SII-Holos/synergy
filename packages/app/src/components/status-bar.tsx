@@ -1,9 +1,10 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
+import { useSDK } from "@/context/sdk"
 import { ContextBar } from "@/components/context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
@@ -16,7 +17,14 @@ import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
-import { childSessionsForParent, sessionActivityTime } from "./status-bar-subsession"
+import {
+  normalizeSubsessionSearch,
+  resolveSubsessionStatus,
+  sessionActivityTime,
+  subsessionCursorParams,
+  subsessionRangeLabel,
+  type SubsessionCursor,
+} from "./status-bar-subsession"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -164,12 +172,23 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
 // ─── Subsessions button ───────────────────────────────────────────
 
 function SubsessionsButton(props: {
-  sessions: Session[]
+  sessionID: string
   statusFor: (sessionID: string) => { label: string; icon: IconName; tone: "base" | "active" | "danger" }
   onSelect: (session: Session) => void
 }) {
+  const pageSize = 8
+  const sdk = useSDK()
   const [open, setOpen] = createSignal(false)
-  const count = () => props.sessions.length
+  const [items, setItems] = createSignal<Session[]>([])
+  const [total, setTotal] = createSignal<number | undefined>()
+  const [nextCursor, setNextCursor] = createSignal<SubsessionCursor | null>(null)
+  const [pageIndex, setPageIndex] = createSignal(0)
+  const [startCursors, setStartCursors] = createSignal<(SubsessionCursor | null)[]>([null])
+  const [loading, setLoading] = createSignal(false)
+  const [error, setError] = createSignal(false)
+  const [search, setSearch] = createSignal("")
+  const [debouncedSearch, setDebouncedSearch] = createSignal("")
+  let requestSeq = 0
 
   function preview(session: Session): string | undefined {
     return session.lastExchange?.assistant ?? session.lastExchange?.user
@@ -181,76 +200,264 @@ function SubsessionsButton(props: {
     return "text-icon-weak"
   }
 
+  function resetPageState() {
+    requestSeq += 1
+    setItems([])
+    setTotal(undefined)
+    setNextCursor(null)
+    setPageIndex(0)
+    setStartCursors([null])
+    setLoading(false)
+    setError(false)
+  }
+
+  async function loadPage(input: {
+    pageIndex: number
+    cursor: SubsessionCursor | null
+    starts?: (SubsessionCursor | null)[]
+    query?: string
+    sessionID?: string
+  }) {
+    const sessionID = input.sessionID ?? props.sessionID
+    if (!sessionID) return
+    const query = input.query ?? debouncedSearch()
+
+    const seq = ++requestSeq
+    setLoading(true)
+    setError(false)
+
+    try {
+      const response = await sdk.client.session.children({
+        sessionID,
+        limit: pageSize,
+        search: query || undefined,
+        ...subsessionCursorParams(input.cursor),
+      })
+      const page = response.data
+      if (!page) throw new Error("Missing subsession page response")
+      if (seq !== requestSeq) return
+
+      setItems(page.items)
+      setTotal(page.total)
+      setNextCursor(page.nextCursor)
+      setPageIndex(input.pageIndex)
+      if (input.starts) setStartCursors(input.starts)
+      setLoading(false)
+    } catch {
+      if (seq !== requestSeq) return
+      setLoading(false)
+      setError(true)
+    }
+  }
+
+  createEffect((previousID: string | undefined) => {
+    const sessionID = props.sessionID
+    if (previousID !== undefined && previousID !== sessionID) {
+      setOpen(false)
+      setSearch("")
+      setDebouncedSearch("")
+      resetPageState()
+    }
+    return sessionID
+  })
+
+  createEffect(() => {
+    const value = search()
+    const timer = setTimeout(() => setDebouncedSearch(normalizeSubsessionSearch(value)), 300)
+    onCleanup(() => clearTimeout(timer))
+  })
+
+  createEffect(() => {
+    const sessionID = props.sessionID
+    const active = open()
+    const query = debouncedSearch()
+    if (!active) return
+
+    setItems([])
+    setTotal(undefined)
+    setNextCursor(null)
+    setPageIndex(0)
+    setStartCursors([null])
+    setError(false)
+    void loadPage({ pageIndex: 0, cursor: null, starts: [null], query, sessionID })
+  })
+
+  function nextPage() {
+    const cursor = nextCursor()
+    if (!cursor || loading()) return
+    const next = pageIndex() + 1
+    const starts = [...startCursors()]
+    starts[next] = cursor
+    void loadPage({ pageIndex: next, cursor, starts })
+  }
+
+  function previousPage() {
+    if (pageIndex() === 0 || loading()) return
+    const previous = pageIndex() - 1
+    void loadPage({ pageIndex: previous, cursor: startCursors()[previous] ?? null })
+  }
+
+  const tooltip = () => {
+    const loadedTotal = total()
+    if (loadedTotal === undefined) return "Subsessions"
+    return `${loadedTotal} subsession${loadedTotal !== 1 ? "s" : ""}`
+  }
+  const rangeText = () => subsessionRangeLabel(pageIndex(), pageSize, items().length, total() ?? 0)
+  const emptyText = () => (debouncedSearch() ? "No matching subsessions" : "No subsessions yet")
+
   return (
-    <Show when={count() > 0}>
-      <Popover
-        open={open()}
-        onOpenChange={setOpen}
-        placement="top-end"
-        gutter={10}
-        class="statusbar-subsession-popover"
-        trigger={
-          <Tooltip placement="top" value={`${count()} subsession${count() !== 1 ? "s" : ""}`}>
-            <button
-              type="button"
-              class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
-              aria-label={`${count()} subsession${count() !== 1 ? "s" : ""}`}
-            >
-              <Icon name={getSemanticIcon("session.child")} size="small" />
-              <span class="statusbar-indicator-value text-text-weak">{count()}</span>
-            </button>
-          </Tooltip>
-        }
-      >
-        <div class="min-w-0">
-          <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/60 px-1 pb-2">
-            <span class="truncate text-12-medium text-text-base">Subsessions</span>
-            <span class="shrink-0 text-11-regular text-text-subtle">{count()} total</span>
-          </div>
-          <div class="mt-1 max-h-64 overflow-y-auto [scrollbar-width:thin]">
-            <For each={props.sessions}>
-              {(session) => {
-                const status = createMemo(() => props.statusFor(session.id))
-                return (
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement="top-end"
+      gutter={10}
+      class="statusbar-subsession-popover"
+      trigger={
+        <Tooltip placement="top" value={tooltip()}>
+          <button
+            type="button"
+            class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+            aria-label={tooltip()}
+          >
+            <Icon name={getSemanticIcon("session.child")} size="small" />
+            <Show when={total() !== undefined && total()! > 0}>
+              <span class="statusbar-indicator-value text-text-weak">{total()}</span>
+            </Show>
+          </button>
+        </Tooltip>
+      }
+    >
+      <div class="min-w-0">
+        <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/60 px-1 pb-2">
+          <span class="truncate text-12-medium text-text-base">Subsessions</span>
+          <span class="shrink-0 text-11-regular text-text-subtle">
+            <Show when={total() !== undefined} fallback="Loading">
+              {total()} total
+            </Show>
+          </span>
+        </div>
+
+        <label class="mt-2 flex h-8 items-center gap-2 rounded-md bg-[var(--workbench-input-bg,var(--input-base))] px-2 text-text-subtle ring-1 ring-inset ring-border-weaker-base focus-within:ring-border-strong">
+          <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak" />
+          <input
+            value={search()}
+            placeholder="Search subsessions..."
+            class="min-w-0 flex-1 bg-transparent text-12-regular text-text-base placeholder:text-text-subtle focus:outline-none"
+            onInput={(event) => setSearch(event.currentTarget.value)}
+          />
+        </label>
+
+        <div class="mt-2 min-h-44 max-h-72 overflow-y-auto [scrollbar-width:thin]">
+          <Show
+            when={!loading() || items().length > 0}
+            fallback={<div class="px-2 py-8 text-center text-12-regular text-text-subtle">Loading subsessions</div>}
+          >
+            <Show
+              when={!error()}
+              fallback={
+                <div class="flex min-h-32 flex-col items-center justify-center gap-2 px-2 py-6 text-center">
+                  <div class="text-12-medium text-text-base">Couldn’t load subsessions</div>
                   <button
                     type="button"
-                    class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_3.25rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong"
-                    onClick={() => {
-                      setOpen(false)
-                      props.onSelect(session)
-                    }}
+                    class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong"
+                    onClick={() =>
+                      void loadPage({
+                        pageIndex: pageIndex(),
+                        cursor: startCursors()[pageIndex()] ?? null,
+                      })
+                    }
                   >
-                    <Icon name={status().icon} size="small" class={`mt-0.5 ${rowIconClass(status().tone)}`} />
-                    <span class="min-w-0">
-                      <span class="block truncate text-12-medium text-text-base">{session.title || "New session"}</span>
-                      <Show when={preview(session)}>
-                        {(text) => <span class="mt-0.5 block truncate text-11-regular text-text-weak">{text()}</span>}
-                      </Show>
-                    </span>
-                    <span class="min-w-0 justify-self-end text-right">
-                      <Show when={status().tone !== "base"}>
-                        <span
-                          classList={{
-                            "block truncate text-10-medium": true,
-                            "text-text-interactive-base": status().tone === "active",
-                            "text-text-critical-base": status().tone === "danger",
-                          }}
-                        >
-                          {status().label}
-                        </span>
-                      </Show>
-                      <span class="block truncate text-10-regular text-text-subtle">
-                        {relativeTime(sessionActivityTime(session))}
-                      </span>
-                    </span>
+                    Retry
                   </button>
-                )
-              }}
-            </For>
+                </div>
+              }
+            >
+              <Show
+                when={items().length > 0}
+                fallback={<div class="px-2 py-8 text-center text-12-regular text-text-subtle">{emptyText()}</div>}
+              >
+                <For each={items()}>
+                  {(session) => {
+                    const status = createMemo(() => props.statusFor(session.id))
+                    return (
+                      <button
+                        type="button"
+                        class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_4.5rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong"
+                        onClick={() => {
+                          setOpen(false)
+                          props.onSelect(session)
+                        }}
+                      >
+                        <Icon name={status().icon} size="small" class={`mt-0.5 ${rowIconClass(status().tone)}`} />
+                        <span class="min-w-0">
+                          <span class="block truncate text-12-medium text-text-base">
+                            {session.title || "New session"}
+                          </span>
+                          <Show
+                            when={preview(session)}
+                            fallback={
+                              <span class="mt-0.5 block text-11-regular text-text-subtle">No exchanges yet</span>
+                            }
+                          >
+                            {(text) => (
+                              <span class="mt-0.5 block truncate text-11-regular text-text-weak">{text()}</span>
+                            )}
+                          </Show>
+                        </span>
+                        <span class="min-w-0 justify-self-end text-right">
+                          <Show when={status().tone !== "base"}>
+                            <span
+                              classList={{
+                                "block truncate text-10-medium": true,
+                                "text-text-interactive-base": status().tone === "active",
+                                "text-text-critical-base": status().tone === "danger",
+                              }}
+                            >
+                              {status().label}
+                            </span>
+                          </Show>
+                          <span class="block truncate text-10-regular text-text-subtle">
+                            {relativeTime(sessionActivityTime(session))}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  }}
+                </For>
+              </Show>
+            </Show>
+          </Show>
+        </div>
+
+        <div class="mt-2 flex items-center justify-between gap-2 border-t border-border-weaker-base/60 px-1 pt-2">
+          <span class="min-w-0 truncate text-11-regular text-text-subtle">{rangeText()}</span>
+          <div class="flex items-center gap-1">
+            <Tooltip placement="top" value="Previous">
+              <button
+                type="button"
+                classList={iconButtonClass()}
+                disabled={pageIndex() === 0 || loading()}
+                aria-label="Previous subsessions page"
+                onClick={previousPage}
+              >
+                <Icon name={getSemanticIcon("navigation.back")} size="small" />
+              </button>
+            </Tooltip>
+            <Tooltip placement="top" value="Next">
+              <button
+                type="button"
+                classList={iconButtonClass()}
+                disabled={!nextCursor() || loading()}
+                aria-label="Next subsessions page"
+                onClick={nextPage}
+              >
+                <Icon name={getSemanticIcon("navigation.forward")} size="small" />
+              </button>
+            </Tooltip>
           </div>
         </div>
-      </Popover>
-    </Show>
+      </div>
+    </Popover>
   )
 }
 
@@ -303,7 +510,6 @@ export function StatusBar() {
     if (!id) return undefined
     return sync.data.session.find((item) => item.id === id)
   })
-  const childSessions = createMemo(() => childSessionsForParent(sync.data.session, params.id))
   const status = createMemo(() => (params.id ? sync.data.session_status[params.id] : undefined))
   const waiting = createMemo(() => {
     const id = params.id
@@ -347,8 +553,13 @@ export function StatusBar() {
   const childSessionStatus = (sessionID: string) => {
     const status = sync.data.session_status[sessionID]
     const waiting = !!sync.data.permission[sessionID]?.length || !!sync.data.question[sessionID]?.length
-    if (waiting) return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
-    if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering")
+    const state = resolveSubsessionStatus({
+      waiting,
+      running: status?.type === "busy" || status?.type === "retry" || status?.type === "recovering",
+    })
+    if (state === "waiting")
+      return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
+    if (state === "running")
       return { label: "running", icon: getSemanticIcon("session.running"), tone: "active" as const }
     return { label: "idle", icon: getSemanticIcon("session.child"), tone: "base" as const }
   }
@@ -433,7 +644,7 @@ export function StatusBar() {
           <Show when={params.id}>
             <SessionCortexIndicator sessionID={params.id!} />
             <SubsessionsButton
-              sessions={childSessions()}
+              sessionID={params.id!}
               statusFor={childSessionStatus}
               onSelect={(child) => navigate(`/${params.dir}/session/${child.id}`)}
             />

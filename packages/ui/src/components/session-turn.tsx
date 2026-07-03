@@ -16,6 +16,7 @@ import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
+import { DiffPreview } from "./tool/diff-preview"
 import { Message, Part } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -141,6 +142,54 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
+export function isGuidedContextUserMessage(message: Pick<UserMessage, "metadata">): boolean {
+  const metadata = message.metadata
+  return metadata?.guided === true && metadata?.noReply === true
+}
+
+function isInlineContextUserMessage(message: UserMessage): boolean {
+  return message.metadata?.synthetic === true || isGuidedContextUserMessage(message)
+}
+
+export type SessionTurnDisplayMessage = AssistantMessage | UserMessage
+
+export function collectMessagesForTurnDisplay(
+  messages: MessageType[],
+  userMessageID: string,
+): SessionTurnDisplayMessage[] {
+  const search = Binary.search(messages, userMessageID, (m) => m.id)
+  if (!search.found) return []
+
+  const userMessage = messages[search.index]
+  if (!userMessage || userMessage.role !== "user") return []
+
+  const validParentIDs = new Set([userMessage.id])
+  const result: SessionTurnDisplayMessage[] = []
+  for (let i = search.index + 1; i < messages.length; i++) {
+    const item = messages[i]
+    if (!item) continue
+    if (item.role === "user") {
+      const user = item as UserMessage
+      if (isInlineContextUserMessage(user)) {
+        if (user.metadata?.synthetic && hasSpecialUserMessageRenderer(user)) break
+        validParentIDs.add(user.id)
+        if (isGuidedContextUserMessage(user)) result.push(user)
+        continue
+      }
+      break
+    }
+    if (item.role === "assistant" && validParentIDs.has((item as AssistantMessage).parentID))
+      result.push(item as AssistantMessage)
+  }
+  return result
+}
+
+export function collectAssistantMessagesForTurn(messages: MessageType[], userMessageID: string): AssistantMessage[] {
+  return collectMessagesForTurnDisplay(messages, userMessageID).filter(
+    (message): message is AssistantMessage => message.role === "assistant",
+  )
+}
+
 export function providerPreludeText(status: SessionStatus | undefined): string {
   if (status?.type === "busy") {
     const description = status.description?.trim()
@@ -172,6 +221,35 @@ function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
   const kind = timelineVisualKind(item)
   return kind === "tool" || kind === "media-pending" || kind === "tool-attachments"
+}
+
+type SessionTurnDisplayItem =
+  | SessionTurnTimelineItem
+  | {
+      kind: "guided-user"
+      message: UserMessage
+      parts: PartType[]
+    }
+
+function isAssistantTimelineDisplayItem(item: SessionTurnDisplayItem): item is SessionTurnTimelineItem {
+  return item.kind !== "guided-user"
+}
+
+function displayItemStableKey(item: SessionTurnDisplayItem): string {
+  if (item.kind === "guided-user") return `guided-user:${item.message.id}`
+  return timelineItemStableKey(item)
+}
+
+function displayItemVisualKind(item: SessionTurnDisplayItem): SessionTurnTimelineVisualKind | "guided-user" {
+  if (item.kind === "guided-user") return "guided-user"
+  return timelineVisualKind(item)
+}
+
+function TimelineDisplay(props: { item: SessionTurnDisplayItem; serverUrl: string }) {
+  if (props.item.kind === "guided-user") {
+    return <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
+  }
+  return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
 }
 
 function ProviderPrelude(props: { text: string }) {
@@ -221,6 +299,8 @@ export function SessionTurn(
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
+  const emptyDisplayMessages: SessionTurnDisplayMessage[] = []
+  const emptyDisplayItems: SessionTurnDisplayItem[] = []
   const emptyPermissions: PermissionRequest[] = []
 
   const allMessages = createMemo(() => data.store.message[props.sessionID] ?? emptyMessages)
@@ -271,33 +351,19 @@ export function SessionTurn(
     return data.store.part[msg.id] ?? emptyParts
   })
 
-  const assistantMessages = createMemo(
+  const displayMessages = createMemo(
     () => {
       const msg = message()
-      if (!msg) return emptyAssistant
+      if (!msg) return emptyDisplayMessages
+      return collectMessagesForTurnDisplay(allMessages(), msg.id)
+    },
+    emptyDisplayMessages,
+    { equals: same },
+  )
 
-      const messages = allMessages()
-      const index = messageIndex()
-      if (index < 0) return emptyAssistant
-
-      const validParentIDs = new Set([msg.id])
-      const result: AssistantMessage[] = []
-      for (let i = index + 1; i < messages.length; i++) {
-        const item = messages[i]
-        if (!item) continue
-        if (item.role === "user") {
-          const user = item as UserMessage
-          if (user.metadata?.synthetic) {
-            if (hasSpecialUserMessageRenderer(user)) break
-            validParentIDs.add(user.id)
-            continue
-          }
-          break
-        }
-        if (item.role === "assistant" && validParentIDs.has((item as AssistantMessage).parentID))
-          result.push(item as AssistantMessage)
-      }
-      return result
+  const assistantMessages = createMemo(
+    () => {
+      return displayMessages().filter((message): message is AssistantMessage => message.role === "assistant")
     },
     emptyAssistant,
     { equals: same },
@@ -340,8 +406,24 @@ export function SessionTurn(
   })
 
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
-  const timelineItems = createMemo(() =>
-    collectSessionTurnTimelineItems(assistantMessages(), data.store.part, working()),
+  const timelineItems = createMemo(
+    () => {
+      const result: SessionTurnDisplayItem[] = []
+      for (const item of displayMessages()) {
+        if (item.role === "user") {
+          result.push({
+            kind: "guided-user",
+            message: item,
+            parts: data.store.part[item.id] ?? emptyParts,
+          })
+          continue
+        }
+        result.push(...collectSessionTurnTimelineItems([item], data.store.part, working()))
+      }
+      return result
+    },
+    emptyDisplayItems,
+    { equals: same },
   )
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
@@ -349,17 +431,21 @@ export function SessionTurn(
     return collectSessionTurnTimelineItems([latest], data.store.part, working())
   })
   const timelineItemMap = createMemo(() => {
-    const result = new Map<string, SessionTurnTimelineItem>()
-    for (const item of timelineItems()) result.set(timelineItemStableKey(item), item)
+    const result = new Map<string, SessionTurnDisplayItem>()
+    for (const item of timelineItems()) result.set(displayItemStableKey(item), item)
     return result
   })
-  const timelineItemKeys = createMemo(() => timelineItems().map(timelineItemStableKey))
+  const timelineItemKeys = createMemo(() => timelineItems().map(displayItemStableKey))
   const timelineSlotIndexes = createMemo(() => {
     const items = timelineItems()
-    const firstReasoning = items.findIndex((item) => timelineVisualKind(item) === "reasoning")
-    const lastReasoning = items.findLastIndex((item) => timelineVisualKind(item) === "reasoning")
-    const firstTool = items.findIndex(isToolTimelineItem)
-    const lastTool = items.findLastIndex(isToolTimelineItem)
+    const firstReasoning = items.findIndex(
+      (item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "reasoning",
+    )
+    const lastReasoning = items.findLastIndex(
+      (item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "reasoning",
+    )
+    const firstTool = items.findIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
+    const lastTool = items.findLastIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
     return { firstReasoning, lastReasoning, firstTool, lastTool }
   })
   const renderMessageSlot = (slot: MessageSlotName) => (
@@ -460,9 +546,9 @@ export function SessionTurn(
                                     </Show>
                                     <div
                                       data-slot="session-turn-timeline-item"
-                                      data-kind={timelineVisualKind(current())}
+                                      data-kind={displayItemVisualKind(current())}
                                     >
-                                      <TimelineItemDisplay item={current()} serverUrl={data.serverUrl} />
+                                      <TimelineDisplay item={current()} serverUrl={data.serverUrl} />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>
                                       {renderMessageSlot("after-reasoning")}
@@ -492,58 +578,43 @@ export function SessionTurn(
                             }}
                           >
                             <For each={(msg().summary?.diffs ?? []).slice(0, store.diffLimit)}>
-                              {(diff) => (
-                                <Accordion.Item value={diff.file}>
-                                  <StickyAccordionHeader>
-                                    <Accordion.Trigger>
-                                      <div data-slot="session-turn-accordion-trigger-content">
-                                        <div data-slot="session-turn-file-info">
-                                          <FileIcon
-                                            node={{ path: diff.file, type: "file" }}
-                                            data-slot="session-turn-file-icon"
-                                          />
-                                          <div data-slot="session-turn-file-path">
-                                            <Show when={diff.file.includes("/")}>
-                                              <span data-slot="session-turn-directory">
-                                                {getDirectory(diff.file)}&lrm;
-                                              </span>
-                                            </Show>
-                                            <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
+                              {(diff, index) => {
+                                const diffKey = () => diff.file || `diff-${index()}`
+
+                                return (
+                                  <Accordion.Item value={diffKey()}>
+                                    <StickyAccordionHeader>
+                                      <Accordion.Trigger>
+                                        <div data-slot="session-turn-accordion-trigger-content">
+                                          <div data-slot="session-turn-file-info">
+                                            <FileIcon
+                                              node={{ path: diff.file, type: "file" }}
+                                              data-slot="session-turn-file-icon"
+                                            />
+                                            <div data-slot="session-turn-file-path">
+                                              <Show when={diff.file.includes("/")}>
+                                                <span data-slot="session-turn-directory">
+                                                  {getDirectory(diff.file)}&lrm;
+                                                </span>
+                                              </Show>
+                                              <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
+                                            </div>
+                                          </div>
+                                          <div data-slot="session-turn-accordion-actions">
+                                            <DiffChanges changes={diff} />
+                                            <Icon name="grip-vertical" size="small" />
                                           </div>
                                         </div>
-                                        <div data-slot="session-turn-accordion-actions">
-                                          <DiffChanges changes={diff} />
-                                          <Icon name="grip-vertical" size="small" />
-                                        </div>
-                                      </div>
-                                    </Accordion.Trigger>
-                                  </StickyAccordionHeader>
-                                  <Accordion.Content data-slot="session-turn-accordion-content">
-                                    <Show when={store.diffsOpen.includes(diff.file!)}>
-                                      <div data-component="session-turn-diff-preview">
-                                        <div class="text-12-regular text-text-weak">
-                                          {diff.beforeBytes ?? 0} bytes to {diff.afterBytes ?? 0} bytes
-                                          <Show when={diff.truncated}> - preview truncated</Show>
-                                        </div>
-                                        <Show
-                                          when={diff.preview}
-                                          fallback={
-                                            <div class="text-12-regular text-text-weaker">
-                                              No text preview available.
-                                            </div>
-                                          }
-                                        >
-                                          {(preview) => (
-                                            <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
-                                              {preview()}
-                                            </pre>
-                                          )}
-                                        </Show>
-                                      </div>
-                                    </Show>
-                                  </Accordion.Content>
-                                </Accordion.Item>
-                              )}
+                                      </Accordion.Trigger>
+                                    </StickyAccordionHeader>
+                                    <Accordion.Content data-slot="session-turn-accordion-content">
+                                      <Show when={store.diffsOpen.includes(diffKey())}>
+                                        <DiffPreview diff={diff} variant="session" />
+                                      </Show>
+                                    </Accordion.Content>
+                                  </Accordion.Item>
+                                )
+                              }}
                             </For>
                           </Accordion>
                           <Show when={(msg().summary?.diffs?.length ?? 0) > store.diffLimit}>

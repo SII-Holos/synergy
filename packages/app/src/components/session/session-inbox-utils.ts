@@ -13,6 +13,20 @@ export function sortInboxItems(items: SessionInboxItem[]) {
   })
 }
 
+export type SessionInboxView =
+  | { status: "loading"; items: SessionInboxItem[]; count: 0 }
+  | { status: "empty"; items: SessionInboxItem[]; count: 0 }
+  | { status: "ready"; items: SessionInboxItem[]; count: number }
+
+export function deriveSessionInboxView(items: SessionInboxItem[] | undefined): SessionInboxView {
+  if (items === undefined) return { status: "loading", items: [], count: 0 }
+
+  const sorted = sortInboxItems(items)
+  if (sorted.length === 0) return { status: "empty", items: sorted, count: 0 }
+
+  return { status: "ready", items: sorted, count: sorted.length }
+}
+
 export function isInboxItemInteractive(item: SessionInboxItem) {
   return item.kind === "queued_user"
 }

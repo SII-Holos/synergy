@@ -569,6 +569,29 @@ function createGlobalSync() {
     }
   }
 
+  async function refreshRetainedVolatileState(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
+    const sessionIDs = Array.from(
+      new Set([...Object.keys(store.inbox), ...Object.keys(store.todo), ...Object.keys(store.dag)]),
+    )
+    const sdk = createScopedClient(scopeKey)
+    await runInstanceRequests(sessionIDs, async (sessionID) => {
+      await Promise.all([
+        sdk.session
+          .inbox({ sessionID })
+          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .catch(() => {}),
+        sdk.session
+          .todo({ sessionID })
+          .then((result) => setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .catch(() => {}),
+        sdk.session
+          .dag({ sessionID, ...scopeRequest(scopeKey) })
+          .then((result) => setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .catch(() => {}),
+      ])
+    })
+  }
+
   async function resyncInstance(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     const [store, setStore] = children[scopeKey]
@@ -593,6 +616,7 @@ function createGlobalSync() {
         .list()
         .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
       sdk.question.list().then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
+      refreshRetainedVolatileState(scopeKey, store, setStore),
       ...(!isHome
         ? [
             sdk.mcp.status().then((x) => setStore("mcp", x.data!)),

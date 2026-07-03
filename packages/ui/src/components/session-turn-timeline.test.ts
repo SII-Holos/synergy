@@ -1,5 +1,11 @@
 import { describe, expect, mock, test } from "bun:test"
-import type { AssistantMessage, Part as PartType, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  AssistantMessage,
+  Message as MessageType,
+  Part as PartType,
+  SessionStatus,
+  UserMessage,
+} from "@ericsanchezok/synergy-sdk/client"
 
 const Empty = () => null
 
@@ -27,28 +33,43 @@ mock.module("./icon", () => ({ Icon: Empty }))
 mock.module("./media-generation-card", () => ({ MediaGenerationCard: Empty }))
 mock.module("./message-part", () => ({ Message: Empty, Part: Empty }))
 mock.module("./session-turn.css", () => ({}))
-mock.module("./special-user-message", () => ({
-  getSpecialUserMessageRenderer: () => undefined,
-  hasSpecialUserMessageRenderer: () => false,
-}))
 mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }))
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
 const {
+  collectAssistantMessagesForTurn,
+  collectMessagesForTurnDisplay,
   collectSessionTurnTimelineItems,
+  isGuidedContextUserMessage,
   providerPreludeText,
   shouldShowProviderPrelude,
   timelineItemStableKey,
   timelineVisualKind,
 } = await import("./session-turn")
 
+function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
+  return {
+    id,
+    sessionID: "session",
+    role: "user",
+    time: { created: 1 },
+    agent: "synergy",
+    model: { providerID: "provider", modelID: "model" },
+    metadata,
+  } as UserMessage
+}
+
 function assistant(id: string): AssistantMessage {
+  return assistantFor(id, "user")
+}
+
+function assistantFor(id: string, parentID: string): AssistantMessage {
   return {
     id,
     sessionID: "session",
     role: "assistant",
-    parentID: "user",
+    parentID,
     mode: "test",
     agent: "synergy",
     path: { cwd: "/tmp", root: "/tmp" },
@@ -171,6 +192,41 @@ function ordinaryTool(input: {
             },
   } as PartType
 }
+
+describe("session turn assistant collection", () => {
+  test("keeps guided inbox context inside the active turn", () => {
+    const firstUser = user("msg_001_user")
+    const toolStep = assistantFor("msg_002_assistant_tool", firstUser.id)
+    const guided = user("msg_003_user_guided", { guided: true, noReply: true })
+    const final = assistantFor("msg_004_assistant_final", firstUser.id)
+
+    expect(isGuidedContextUserMessage(guided)).toBe(true)
+    expect(collectMessagesForTurnDisplay([firstUser, toolStep, guided, final] as MessageType[], firstUser.id)).toEqual([
+      toolStep,
+      guided,
+      final,
+    ])
+    expect(
+      collectAssistantMessagesForTurn([firstUser, toolStep, guided, final] as MessageType[], firstUser.id).map(
+        (message) => message.id,
+      ),
+    ).toEqual([toolStep.id, final.id])
+  })
+
+  test("stops at the next normal user turn", () => {
+    const firstUser = user("msg_001_user")
+    const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
+    const nextUser = user("msg_003_user")
+    const nextAssistant = assistantFor("msg_004_assistant", firstUser.id)
+
+    expect(
+      collectAssistantMessagesForTurn(
+        [firstUser, firstAssistant, nextUser, nextAssistant] as MessageType[],
+        firstUser.id,
+      ).map((message) => message.id),
+    ).toEqual([firstAssistant.id])
+  })
+})
 
 describe("session turn timeline", () => {
   test("shows provider prelude while the first assistant response has no visible part", () => {

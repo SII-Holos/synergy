@@ -26,6 +26,9 @@ Use one visual source of truth for shared document editing.
 Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
+When an agent successfully creates a new Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; ordinary note writes should stay in the message flow without opening the side panel.
+Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
+Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
 Use one neutral surface system: light mode reads as a near-white canvas with white or transparent rows, hairline borders, and very light hover/selected fills; dark mode reads inward by getting brighter than its shell.
 Treat that surface model as a hierarchy invariant, not a per-page decoration choice; if a page drifts blue-gray or slab-heavy, audit the token source first, then the component consumer.
@@ -33,6 +36,8 @@ Treat that surface model as a hierarchy invariant, not a per-page decoration cho
 ## Interaction & Visual Principles
 
 Treat the Holos agent as the Synergy account identity. Model subscriptions, API keys, quota windows, and provider logins belong to Providers and Usage, not Account.
+
+User-visible high-risk operations that archive, delete, cancel, overwrite, or uninstall product data must use the shared confirmation dialog. Browser page dialogs, permission review surfaces, and runtime controls with dedicated gesture semantics may keep specialized interfaces when the domain requires it.
 
 Holos agent profile is remote-owned identity data. Synergy may collect the initial name, description, and avatar URL when creating an agent, and may edit those fields from Account settings, but local storage should only retain the agent ID, agent secret, and timestamps. Importing an existing agent must fetch the remote profile instead of asking users to recreate or overwrite it.
 
@@ -64,6 +69,8 @@ Product updates are owned by the installation surface, not global server config.
 
 The desktop app should read as a native Synergy product shell, not a browser wrapper. Windows and Linux use a compact custom window chrome with the Synergy product icon, a quiet drag region, and standard window controls; closing the window hides the shell to a Synergy system tray icon with reopen and quit actions so the managed local server is not stranded. macOS keeps its native traffic-light convention with a narrow top titlebar row for the system buttons and window dragging. Keep the HOLOS sidebar header and session top-bar controls in their own surfaces below that macOS titlebar row instead of moving them into an overlay. Do not expose development-style File/Edit/View/Window/Help menu bars inside Windows or Linux desktop windows. The custom chrome is part of the outer shell and should not compete with session, sidebar, or workbench controls.
 
+Desktop cold start should show a native Synergy shell immediately instead of a blank window while the managed local server and Web renderer become ready. Desktop startup UI should stay outside the main Web renderer navigation path so loading the app URL never exposes a black or white gap. The startup surface should use the same desktop chrome height and product icon as the main app, but it should behave as a compact splash state rather than a mock copy of the sidebar, workbench, or prompt composer. Before the saved Web theme is available, the desktop shell should use the dark neutral startup base rather than flashing a light system surface. The Web app HTML should carry a matching static icon splash as a fallback and remove it only when the app surface is ready, after which desktop may dismiss its native overlay.
+
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
@@ -76,7 +83,9 @@ Tool audit icons are a quiet exception rail, not a status badge on every tool ca
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 
-Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata.
+Special user-message renderers must preserve authorship semantics. Plan Mode user requests are user-authored prompts and should keep the right-aligned bubble treatment, while Blueprint control messages are orchestration events and should render as quiet centered event cards instead of pretending to be user speech.
+
+Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
 
 Copy controls should use the shared clipboard capability and shared copied/failed feedback. Success is shown in the triggering control, while failures use the global error toast; do not add local `navigator.clipboard` or `execCommand` implementations in product UI.
 
@@ -86,7 +95,7 @@ Session timeline spacing should follow semantic rhythm: compact spacing for cons
 
 Conversation attachment display should be owned by each attachment's presentation policy. Tool metadata may hide or show the tool card, but must not choose primary attachments, promote media results, or override attachment sizing outside the persisted part order. Media such as memes should render as message content at a bounded conversational size, while screenshots and documents can opt into larger or file-style presentation through attachment-level fields.
 
-Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Show them as a compact recent-activity switcher ordered by each child session's latest update time, with running or waiting state visible in the row.
+Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Keep the child-session button persistent, but load children lazily only when the user opens its StatusBar panel. Show them as a compact paginated recent-activity switcher ordered by each child session's latest update time, with search, previous/next paging, and running or waiting state visible in the row.
 
 Opening a workbench panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workbench boundary. Auto-opened workbench panels should occupy about half the viewport; user-resized workbench widths can remain sticky.
 
@@ -127,6 +136,8 @@ Form controls should have quiet filled surfaces. In dark mode, controls should b
 Prompt composers should read as one grounded input surface with a quiet bottom toolbar. Ordinary mode, agent, permission, and add controls should behave like toolbar buttons rather than separate bordered pills; reserve filled chips for active modes, pending state, or meaningful workflow status. Composer add and initialization menus should use the shared toolbar selector and list primitives rather than bespoke popover themes. Composer controls that are secondary to sending should compact to icon-only controls at constrained widths instead of forcing toolbar wrapping or cramped labels.
 
 New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
+
+New-session initialization must use a blocking workbench progress surface whenever workspace or session setup can take visible time. The user should see compact step progress for worktree creation, session preparation, and prompt dispatch, and should not be able to operate the half-initialized session until setup completes or fails cleanly.
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 

@@ -299,7 +299,7 @@ export namespace SessionNav {
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",
         name: scopeInfo?.name,
-        directory: sid === "home" ? home.directory : (scopeInfo?.directory ?? ""),
+        directory: sid === "home" ? home.directory : (scopeInfo?.worktree ?? scopeInfo?.directory ?? ""),
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,

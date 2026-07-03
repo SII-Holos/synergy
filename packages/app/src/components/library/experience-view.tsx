@@ -6,6 +6,8 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { VList, type VListHandle } from "virtua/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
 import { absoluteDate, relativeTime } from "@/utils/time"
 import type {
@@ -78,6 +80,7 @@ export function ExperienceView(props: {
   currentScopeID: string | undefined
   currentSessionID: string | undefined
 }) {
+  const confirm = useConfirm()
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
   const [filterOpen, setFilterOpen] = createSignal(false)
@@ -326,9 +329,16 @@ export function ExperienceView(props: {
     await loadPage(true)
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
     const ids = [...selected()]
     if (ids.length === 0) return
+    confirm.show({
+      ...deleteLibraryItemsConfirm("experience", ids.length),
+      onConfirm: () => performDeleteSelected(ids),
+    })
+  }
+
+  async function performDeleteSelected(ids: string[]) {
     setDeleting(true)
     try {
       await Promise.all(ids.map((id) => props.sdk.client.library.experience.remove({ id })))
@@ -340,8 +350,9 @@ export function ExperienceView(props: {
       exitSelection()
       await refreshList()
       props.refetchStats()
-    } catch {}
-    setDeleting(false)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   function toggleSection(key: string) {
@@ -363,18 +374,23 @@ export function ExperienceView(props: {
     } catch {}
   }
 
-  async function deleteExperience(id: string, e: MouseEvent) {
+  function deleteExperience(id: string, e: MouseEvent) {
     e.stopPropagation()
-    try {
-      await props.sdk.client.library.experience.remove({ id })
-      setExpandedCards((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      await refreshList()
-      props.refetchStats()
-    } catch {}
+    confirm.show({
+      ...deleteLibraryItemsConfirm("experience", 1),
+      onConfirm: () => performDeleteExperience(id),
+    })
+  }
+
+  async function performDeleteExperience(id: string) {
+    await props.sdk.client.library.experience.remove({ id })
+    setExpandedCards((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    await refreshList()
+    props.refetchStats()
   }
 
   return (

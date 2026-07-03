@@ -73,6 +73,12 @@ const desktopClipboard = {
   },
 }
 
+const desktopStartup = {
+  appReady() {
+    return ipcRenderer.invoke("desktop.startup.appReady") as Promise<boolean>
+  },
+}
+
 const desktopWindow = {
   chrome: process.platform === "darwin" ? "native" : "custom",
   minimize() {
@@ -101,6 +107,7 @@ contextBridge.exposeInMainWorld("synergyDesktop", {
   update,
   shell: desktopShell,
   clipboard: desktopClipboard,
+  startup: desktopStartup,
   window: desktopWindow,
   browserNative,
 })

@@ -137,7 +137,7 @@ describe("PlanModeUserWrapper projection", () => {
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy-max in coding Plan Mode")
     expect(text).toContain("Do not implement code. Do not edit files.")
-    expect(text).toContain("TDD strategy")
+    expect(text).toContain("verification approach")
     expect(text).toContain("User request:\nrefactor the route layer")
   })
 

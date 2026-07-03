@@ -134,6 +134,8 @@ Run tests from `packages/synergy`, not from repo root:
 cd packages/synergy
 bun test
 bun test test/tool/read.test.ts
+bun run test:changed
+bun run test:coverage
 bun test --watch
 ```
 
@@ -382,6 +384,7 @@ Skipping any of these causes the tool to fall back to a generic icon and label, 
 - expand verification if the change affects shared abstractions
 - use the repo formatter if formatting is needed
 - do not silently ignore failing relevant tests
+- If a pre-push or prepush check fails, agents may make the narrow fixes required by that hook, verify them, commit the fix directly, and retry the push. Do not bypass the hook or leave required fixes uncommitted.
 
 Do not run root-level `test` scripts expecting the main suite; the root intentionally blocks that path.
 

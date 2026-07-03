@@ -5,9 +5,12 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { agendaActionConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
@@ -25,6 +28,14 @@ import {
 } from "./activity-state"
 import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 import "./agenda-dialog.css"
+
+type AgendaAction = "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove"
+
+function errorDescription(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === "string" && error) return error
+  return "Request failed"
+}
 
 function triggerSummary(triggers: AgendaItem["triggers"]): string {
   if (!triggers || triggers.length === 0) return "Manual"
@@ -58,6 +69,7 @@ export function AgendaPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const params = useParams()
 
@@ -110,10 +122,7 @@ export function AgendaPanel() {
     } catch {}
   }
 
-  async function performAction(
-    id: string,
-    action: "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove",
-  ) {
+  async function performAction(id: string, action: AgendaAction, options?: { throwOnError?: boolean }) {
     const item = itemById(id)
     const dir = item ? directoryForItem(item) : directory()
     if (!dir) return
@@ -147,12 +156,20 @@ export function AgendaPanel() {
           2000,
         )
       }
-    } catch {}
-    setActionLoading((prev) => {
-      const next = new Set(prev)
-      next.delete(`${id}-${action}`)
-      return next
-    })
+    } catch (error) {
+      if (options?.throwOnError) throw error
+      showToast({
+        type: "error",
+        title: "Agenda action failed",
+        description: errorDescription(error),
+      })
+    } finally {
+      setActionLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(`${id}-${action}`)
+        return next
+      })
+    }
   }
 
   const isLoading = (id: string, action: string) => actionLoading().has(`${id}-${action}`)
@@ -183,6 +200,17 @@ export function AgendaPanel() {
     setPopoverRect(rect)
     setPopoverItem(item)
     loadRuns(item.id)
+  }
+
+  function requestAction(item: AgendaItem, action: AgendaAction) {
+    if (action === "cancel" || action === "remove") {
+      confirm.show({
+        ...agendaActionConfirm(action, item.title),
+        onConfirm: () => performAction(item.id, action, { throwOnError: true }),
+      })
+      return
+    }
+    void performAction(item.id, action)
   }
 
   function handleEventClick(event: CalendarEvent, e?: MouseEvent) {
@@ -322,7 +350,7 @@ export function AgendaPanel() {
                       isLoading={isLoading}
                       isDone={isDone}
                       onClose={() => setPopoverItem(undefined)}
-                      onAction={(action) => performAction(popoverItem()!.id, action)}
+                      onAction={(action) => requestAction(popoverItem()!, action)}
                       onEdit={() => {
                         const pi = popoverItem()!
                         setPopoverItem(undefined)
@@ -389,7 +417,7 @@ function DetailPopover(props: {
   isLoading: (id: string, action: string) => boolean
   isDone: (id: string, action: string) => boolean
   onClose: () => void
-  onAction: (action: "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove") => void
+  onAction: (action: AgendaAction) => void
   onEdit: () => void
 }) {
   const pos = () => {
@@ -581,7 +609,7 @@ function ActionBar(props: {
   item: AgendaItem
   isLoading: (id: string, action: string) => boolean
   isDone: (id: string, action: string) => boolean
-  onAction: (action: "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove") => void
+  onAction: (action: AgendaAction) => void
 }) {
   const status = () => props.item.status
 

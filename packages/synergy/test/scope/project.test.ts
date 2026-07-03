@@ -67,8 +67,15 @@ describe("Scope.fromDirectory with worktrees", () => {
       expect(scope.worktree).toBe(tmp.path)
       expect(sandbox).toBe(worktreePath)
       if (scope.type === "project") {
+        expect(scope.directory).toBe(worktreePath)
         expect(scope.sandboxes).toContain(worktreePath)
         expect(scope.sandboxes).not.toContain(tmp.path)
+
+        const listed = (await Scope.list()).find((item) => item.id === scope.id)
+        expect(listed?.directory).toBe(tmp.path)
+
+        const fromID = await Scope.fromID(scope.id)
+        expect(fromID?.directory).toBe(tmp.path)
       }
     } finally {
       await $`git worktree remove --force ${worktreePath}`.cwd(tmp.path).quiet().nothrow()

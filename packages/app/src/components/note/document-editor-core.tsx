@@ -541,7 +541,9 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
         />
       </div>
       <div ref={bubbleRef} class="note-bubble-menu">
-        <Show when={editorInstance()}>{(getEditor) => <BubbleMenuContent editor={getEditor()} />}</Show>
+        <Show when={editorInstance()} keyed>
+          {(editor) => <BubbleMenuContent editor={editor} />}
+        </Show>
       </div>
       <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
         <Show when={props.saving} fallback="Saved">

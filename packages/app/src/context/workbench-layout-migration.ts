@@ -7,6 +7,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+function normalizeSurfaceState(value: unknown): WorkbenchSurfaceLayoutState | undefined {
+  if (!isRecord(value)) return undefined
+
+  const tabs = Array.isArray(value.tabs) ? (value.tabs as WorkbenchPanelTab[]) : []
+  return {
+    ...value,
+    opened: value.opened === true && tabs.length > 0,
+    active:
+      typeof value.active === "string" && tabs.some((tab) => tab.id === value.active) ? value.active : tabs[0]?.id,
+    tabs,
+  }
+}
+
+function normalizeWorkbenchSurfaces(value: Record<string, unknown>) {
+  const next: Record<string, unknown> = {}
+  for (const [sessionKey, raw] of Object.entries(value)) {
+    const session = isRecord(raw) ? raw : {}
+    const side = normalizeSurfaceState(session.side)
+    const bottom = normalizeSurfaceState(session.bottom)
+    next[sessionKey] = {
+      ...session,
+      ...(side ? { side } : {}),
+      ...(bottom ? { bottom } : {}),
+    }
+  }
+  return next
+}
+
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
 
@@ -21,7 +49,7 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
       const active = typeof raw.active === "string" ? raw.active : undefined
       const tab: WorkbenchPanelTab | undefined = active ? { id: active, panelId: active } : undefined
       const side: WorkbenchSurfaceLayoutState = {
-        opened: raw.opened === true,
+        opened: raw.opened === true && !!tab,
         active,
         tabs: tab ? [tab] : [],
         size: typeof raw.width === "number" ? raw.width : undefined,
@@ -48,7 +76,7 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
     }
   }
 
-  next.workbenchSurfaces = existingSurfaces
+  next.workbenchSurfaces = normalizeWorkbenchSurfaces(existingSurfaces)
   delete next.terminal
   delete next.workspaceSessions
   return next

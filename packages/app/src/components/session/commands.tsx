@@ -287,7 +287,11 @@ export function useSessionCommands(params: {
       onSelect: async () => {
         const sessionID = routeParams.id
         if (!sessionID) return
-        const forked = await sdk.client.session.fork({ sessionID, workspace: { mode: "current" } })
+        const forked = await sdk.client.session.fork({
+          sessionID,
+          workspace: { mode: "current" },
+          controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
+        })
         if (forked.data) navigate(`/${routeParams.dir}/session/${forked.data.id}`)
       },
     },

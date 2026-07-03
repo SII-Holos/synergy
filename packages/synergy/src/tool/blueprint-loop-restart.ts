@@ -95,7 +95,7 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
       },
     }
 
-    await SessionManager.deliver({ target: loop.sessionID, mail })
+    await SessionManager.deliver({ target: loop.sessionID, mail, waitForProcessing: false })
 
     return {
       title: `Loop ${params.loopID} restarted`,

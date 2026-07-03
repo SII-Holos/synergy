@@ -5,9 +5,8 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 // enforcement/mcp-plugin.test.ts
 //
 // Tests for the EnforcementGate MCP and plugin opaque strategy — unknown
-// external tools must trigger ask/deny and never be auto-approved in
-// unattended mode.
-//
+// external tools must trigger ask/deny according to the active profile.
+
 // These tests encode the MCP/plugin external I/O boundary contract.
 // ---------------------------------------------------------------------------
 
@@ -58,12 +57,11 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(mcpCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown MCP tool", async () => {
+  test("guarded profile asks for unknown MCP tools", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
-      interactionMode: "unattended",
     })
 
     const envelope = gate.evaluate("mcp__any_service__do_work", {
@@ -71,7 +69,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
       toolName: "do_work",
     })
 
-    // Unattended mode must NOT auto-approve MCP opaque externalIO
+    // Guarded profile must ask for opaque MCP externalIO.
     expect(envelope.decision).toBe("ask")
   })
 
@@ -152,12 +150,11 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(pluginCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown plugin tool", async () => {
+  test("guarded profile asks for unknown plugin tools", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
-      interactionMode: "unattended",
     })
 
     const envelope = gate.evaluate("plugin__remote_plugin__fetch", {
@@ -165,7 +162,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       actionName: "fetch",
     })
 
-    // Unattended mode must NOT auto-approve plugin opaque externalIO
+    // Guarded profile must ask for opaque plugin externalIO.
     expect(envelope.decision).toBe("ask")
   })
 

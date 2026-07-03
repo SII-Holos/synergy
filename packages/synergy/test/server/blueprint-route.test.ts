@@ -65,6 +65,74 @@ describe("BlueprintRoute start prompt", () => {
     })
   })
 
+  test("rejects a loop bound to a session from another scope", async () => {
+    await using blueprintScope = await tmpdir({ git: true })
+    await using otherScope = await tmpdir({ git: true })
+    let otherSessionID = ""
+
+    await ScopeContext.provide({
+      scope: await otherScope.scope(),
+      fn: async () => {
+        otherSessionID = (await Session.create({})).id
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await blueprintScope.scope(),
+      fn: async () => {
+        const note = await createBlueprint("synergy-max")
+        const response = await app().request("/blueprint/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            noteID: note.id,
+            title: "Wrong scope",
+            sessionID: otherSessionID,
+            runMode: "current",
+          }),
+        })
+
+        expect(response.status).toBe(400)
+        const body = (await response.json()) as { message?: string }
+        expect(body.message).toContain("belongs to scope")
+      },
+    })
+  })
+
+  test("rejects a second active loop for the same Blueprint", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const firstSession = await Session.create({})
+        const secondSession = await Session.create({})
+        const note = await createBlueprint("synergy-max")
+        const firstLoop = await createLoop(note.id, firstSession.id)
+
+        const response = await app().request("/blueprint/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            noteID: note.id,
+            title: "Duplicate run",
+            sessionID: secondSession.id,
+            runMode: "new",
+          }),
+        })
+
+        expect(response.status).toBe(400)
+        const body = (await response.json()) as { message?: string; data?: Record<string, string> }
+        expect(body.message).toBe("This Blueprint already has an active run.")
+        expect(body.data).toEqual({
+          noteID: note.id,
+          loopID: firstLoop.id,
+          sessionID: firstSession.id,
+          status: "armed",
+        })
+      },
+    })
+  })
+
   test("uses the general Blueprint prompt for synergy", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -96,6 +164,41 @@ describe("BlueprintRoute start prompt", () => {
         expect(text).not.toContain("coding Blueprint")
         expect(text).not.toContain("migration or compatibility")
         expect(text).not.toContain("parallel implementation slices")
+      },
+    })
+  })
+
+  test("start returns after scheduling the first prompt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy")
+        const loop = await createLoop(note.id, session.id)
+        let releaseDeliver: (() => void) | undefined
+        ;(SessionManager.deliver as any) = mock(async () => {
+          await new Promise<void>((resolve) => {
+            releaseDeliver = resolve
+          })
+        })
+
+        const request = app().request(`/blueprint/loop/${loop.id}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+        const response = await Promise.race([
+          request,
+          new Promise<Response | undefined>((resolve) => setTimeout(() => resolve(undefined), 50)),
+        ])
+
+        try {
+          expect(response?.status).toBe(200)
+        } finally {
+          releaseDeliver?.()
+          await request
+        }
       },
     })
   })
