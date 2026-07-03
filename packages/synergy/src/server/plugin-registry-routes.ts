@@ -30,6 +30,13 @@ const RegistryPermissionSummary = z
   })
   .meta({ ref: "RegistryPermissionSummary" })
 
+const RegistryPluginCompatibility = z
+  .object({
+    synergy: z.string().min(1),
+  })
+  .strict()
+  .meta({ ref: "RegistryPluginCompatibility" })
+
 const PluginSignature = z
   .object({
     algorithm: z.literal("ed25519"),
@@ -89,6 +96,7 @@ const RegistryPluginEntry = z
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
+    compatibility: RegistryPluginCompatibility.optional(),
     versions: z.array(RegistryPluginVersion),
     createdAt: z.number(),
     updatedAt: z.number(),

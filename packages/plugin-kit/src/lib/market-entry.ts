@@ -35,6 +35,7 @@ export interface RegistryEntry {
   verified: boolean
   official: boolean
   keywords: string[]
+  compatibility: { synergy: string }
   versions: Array<{
     version: string
     downloadUrl: string
@@ -166,6 +167,12 @@ function iconForManifest(manifest: PluginManifestType, extractedDir: string): Re
   return { type: "registry-svg", path: registryIconPath(manifest.name) }
 }
 
+function compatibilityForManifest(manifest: PluginManifestType): RegistryEntry["compatibility"] {
+  const synergy = manifest.engines?.synergy?.trim()
+  if (!synergy) throw new Error("Marketplace registry entry requires plugin.json engines.synergy")
+  return { synergy }
+}
+
 export function uiSurfaces(manifest: PluginManifestType): string[] {
   const ui = manifest.contributes?.ui
   if (!ui) return []
@@ -254,6 +261,7 @@ export function registryEntry(input: {
     verified: false,
     official: false,
     keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])].sort(),
+    compatibility: compatibilityForManifest(manifest),
     versions: [
       {
         version: manifest.version,
