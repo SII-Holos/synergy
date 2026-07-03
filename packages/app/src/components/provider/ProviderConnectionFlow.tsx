@@ -24,6 +24,7 @@ export function ProviderConnectionFlow(props: {
   completeDescription?: string
   iconID?: string
   compact?: boolean
+  skipAutoAdvance?: boolean
   onBack?: () => void
   onComplete?: () => void | Promise<void>
 }) {
@@ -104,7 +105,7 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (!connected() && methods().length === 1) void selectMethod(0)
+    if (!connected() && methods().length === 1 && !props.skipAutoAdvance) void selectMethod(0)
   })
 
   async function complete() {
