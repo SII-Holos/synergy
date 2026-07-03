@@ -447,6 +447,9 @@ export type SessionNavEntry = {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  completionNotice: {
+    unread: boolean
+  }
 }
 
 export type NavCursor = {
@@ -2674,6 +2677,11 @@ export type PermissionRule = {
 
 export type PermissionRuleset = Array<PermissionRule>
 
+export type SessionCompletionNotice = {
+  unread: boolean
+  silent: boolean
+}
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -2786,6 +2794,7 @@ export type Session = {
     expandedGroups?: Array<string>
     activatedTools?: Array<string>
   }
+  completionNotice: SessionCompletionNotice
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -7299,6 +7308,9 @@ export type SessionCreateData = {
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
+    completionNotice?: {
+      silent?: boolean
+    }
   }
   path?: never
   query?: {
@@ -7429,6 +7441,9 @@ export type SessionUpdateData = {
     title?: string
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    completionNotice?: {
+      unread: false
+    }
     time?: {
       archived?: number
     }

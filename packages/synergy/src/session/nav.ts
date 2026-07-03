@@ -19,6 +19,9 @@ export const SessionNavEntry = z
     archived: z.boolean(),
     parentID: z.string().optional(),
     endpointKind: z.literal("channel").optional(),
+    completionNotice: z.object({
+      unread: z.boolean(),
+    }),
   })
   .meta({ ref: "SessionNavEntry" })
 
@@ -84,6 +87,9 @@ export interface SessionNavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  completionNotice: {
+    unread: boolean
+  }
 }
 export interface ScopeNavEntry {
   scopeID: string
@@ -173,6 +179,9 @@ export namespace SessionNav {
           archived: !!session.time.archived,
           parentID: session.parentID,
           endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+          completionNotice: {
+            unread: session.completionNotice.unread,
+          },
         })
       }
     }

@@ -22,6 +22,7 @@ function makeEntry(id: string, lastActivityAt: number, pinned = 0, archived = fa
     lastActivityAt,
     pinned,
     archived,
+    completionNotice: { unread: false },
   }
 }
 

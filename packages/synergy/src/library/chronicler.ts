@@ -52,6 +52,7 @@ export namespace Chronicler {
       parentID: ctx.sessionID,
       title: "Chronicler",
       interaction: SessionInteraction.unattended("chronicler"),
+      completionNotice: { silent: true },
     })
     const childSessionID = childSession.id
 

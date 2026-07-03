@@ -3776,6 +3776,15 @@
                   },
                   "workspace": {
                     "$ref": "#/components/schemas/SessionWorkspaceSelection"
+                  },
+                  "completionNotice": {
+                    "type": "object",
+                    "properties": {
+                      "silent": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 }
               }
@@ -4060,6 +4069,17 @@
                   "controlProfile": {
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
+                  },
+                  "completionNotice": {
+                    "type": "object",
+                    "properties": {
+                      "unread": {
+                        "type": "boolean",
+                        "const": false
+                      }
+                    },
+                    "required": ["unread"],
+                    "additionalProperties": false
                   },
                   "time": {
                     "type": "object",
@@ -17941,9 +17961,28 @@
           "endpointKind": {
             "type": "string",
             "const": "channel"
+          },
+          "completionNotice": {
+            "type": "object",
+            "properties": {
+              "unread": {
+                "type": "boolean"
+              }
+            },
+            "required": ["unread"]
           }
         },
-        "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
+        "required": [
+          "id",
+          "scopeID",
+          "scopeType",
+          "title",
+          "category",
+          "lastActivityAt",
+          "pinned",
+          "archived",
+          "completionNotice"
+        ]
       },
       "NavCursor": {
         "type": "object",
@@ -21976,6 +22015,18 @@
           "$ref": "#/components/schemas/PermissionRule"
         }
       },
+      "SessionCompletionNotice": {
+        "type": "object",
+        "properties": {
+          "unread": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          }
+        },
+        "required": ["unread", "silent"]
+      },
       "SessionInteractionMode": {
         "type": "string",
         "enum": ["interactive", "unattended"]
@@ -22323,6 +22374,9 @@
               }
             }
           },
+          "completionNotice": {
+            "$ref": "#/components/schemas/SessionCompletionNotice"
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -22380,7 +22434,7 @@
             }
           }
         },
-        "required": ["id", "scope", "title", "version", "time"]
+        "required": ["id", "scope", "title", "version", "time", "completionNotice"]
       },
       "VcsInfo": {
         "type": "object",

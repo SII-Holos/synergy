@@ -8,6 +8,7 @@ export type SessionVisualState = {
   label: string
   tone: "default" | "active" | "waiting" | "worktree" | "muted"
   pulse?: boolean
+  completionUnread?: boolean
 }
 
 export interface SessionVisualStore {
@@ -42,15 +43,60 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
       return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
     if (running || childTasksRunning)
       return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
-    if (fullSession?.workspace?.type === "git_worktree")
-      return { icon: getSemanticIcon("workspace.worktree"), label: "Worktree session", tone: "worktree" }
-    if (entry.parentID) return { icon: getSemanticIcon("session.child"), label: "Child session", tone: "muted" }
+    if (fullSession?.workspace?.type === "git_worktree") {
+      const unread = entry.completionNotice.unread
+      return {
+        icon: getSemanticIcon("workspace.worktree"),
+        label: `Worktree session${unread ? "; response ready" : ""}`,
+        tone: "worktree",
+        completionUnread: unread || undefined,
+      }
+    }
+    if (entry.parentID) {
+      const unread = entry.completionNotice.unread
+      return {
+        icon: getSemanticIcon("session.child"),
+        label: `Child session${unread ? "; response ready" : ""}`,
+        tone: "muted",
+        completionUnread: unread || undefined,
+      }
+    }
   }
 
-  if (entry.category === "background")
-    return { icon: getSemanticIcon("session.background"), label: "Background session", tone: "muted" }
-  if (entry.category === "channel")
-    return { icon: getSemanticIcon("session.channel"), label: "Channel session", tone: "muted" }
-  if (entry.category === "home") return { icon: "home", label: "Home session", tone: "default" }
-  return { icon: getSemanticIcon("session.default"), label: "Session", tone: "default" }
+  if (entry.category === "background") {
+    const unread = entry.completionNotice.unread
+    return {
+      icon: getSemanticIcon("session.background"),
+      label: `Background session${unread ? "; response ready" : ""}`,
+      tone: "muted",
+      completionUnread: unread || undefined,
+    }
+  }
+  if (entry.category === "channel") {
+    const unread = entry.completionNotice.unread
+    return {
+      icon: getSemanticIcon("session.channel"),
+      label: `Channel session${unread ? "; response ready" : ""}`,
+      tone: "muted",
+      completionUnread: unread || undefined,
+    }
+  }
+  if (entry.category === "home") {
+    const unread = entry.completionNotice.unread
+    return {
+      icon: "home",
+      label: `Home session${unread ? "; response ready" : ""}`,
+      tone: "default",
+      completionUnread: unread || undefined,
+    }
+  }
+  {
+    const unread = entry.completionNotice.unread
+    return {
+      icon: getSemanticIcon("session.default"),
+      label: `Session${unread ? "; response ready" : ""}`,
+      tone: "default",
+      completionUnread: unread || undefined,
+    }
+  }
 }
