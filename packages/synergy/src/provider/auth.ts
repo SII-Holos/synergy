@@ -104,11 +104,15 @@ export namespace ProviderAuth {
             type: "api" as const,
             label: "GitHub token",
           },
-          {
-            type: "oauth" as const,
-            label: "Sign in with GitHub",
-            authorize: () => GitHubProvider.authorizeDeviceCode(),
-          },
+          ...(GitHubProvider.hasOAuthClient()
+            ? [
+                {
+                  type: "oauth" as const,
+                  label: "Sign in with GitHub",
+                  authorize: () => GitHubProvider.authorizeDeviceCode(),
+                } as const,
+              ]
+            : []),
         ],
       },
       [MiniMaxProvider.PROVIDER_ID]: {

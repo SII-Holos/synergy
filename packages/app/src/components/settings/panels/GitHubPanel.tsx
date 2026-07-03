@@ -86,23 +86,25 @@ export function GitHubPanel() {
                 <p class="providers-connect-copy">
                   GitHub credentials are connected and available to GitHub CLI-backed shell commands.
                 </p>
-                <Show when={account().url}>
-                  <a class="provider-auth-link mt-3" href={account().url} target="_blank" rel="noreferrer">
-                    <span>Open GitHub profile</span>
-                    <Icon name={getSemanticIcon("action.open")} size="small" />
-                  </a>
-                </Show>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="small"
-                icon={getSemanticIcon("account.logout")}
-                onClick={logout}
-              >
-                Log out
-              </Button>
             </div>
+            <Show when={account().url}>
+              <div class="providers-connect-actions">
+                <a class="provider-auth-link" href={account().url} target="_blank" rel="noreferrer">
+                  <span>Open GitHub profile</span>
+                  <Icon name={getSemanticIcon("action.open")} size="small" />
+                </a>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  icon={getSemanticIcon("account.logout")}
+                  onClick={logout}
+                >
+                  Log out
+                </Button>
+              </div>
+            </Show>
           </SettingsSection>
         )}
       </Show>
@@ -112,7 +114,6 @@ export function GitHubPanel() {
           providerID="github"
           providerName="GitHub"
           connectedOverride={connected()}
-          iconID="github-copilot"
           completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
           onComplete={refreshStatus}
         />
