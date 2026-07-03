@@ -94,15 +94,10 @@ export function GitHubPanel() {
                   <span>Open GitHub profile</span>
                   <Icon name={getSemanticIcon("action.open")} size="small" />
                 </a>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="small"
-                  icon={getSemanticIcon("account.logout")}
-                  onClick={logout}
-                >
-                  Log out
-                </Button>
+                <button type="button" class="provider-auth-link" onClick={logout}>
+                  <span>Log out</span>
+                  <Icon name={getSemanticIcon("account.logout")} size="small" />
+                </button>
               </div>
             </Show>
           </SettingsSection>
