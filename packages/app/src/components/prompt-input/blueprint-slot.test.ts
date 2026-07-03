@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
-import { blueprintRequestErrorMessage, resolveBlueprintSlotDisplay, type BlueprintSlotDisplay } from "./blueprint-slot"
+import {
+  blueprintRequestErrorMessage,
+  isTerminalBlueprintLoopStatus,
+  resolveBlueprintSlotDisplay,
+  type BlueprintSlotDisplay,
+} from "./blueprint-slot"
 import type { BlueprintSlot } from "./types"
 
 function loop(status: BlueprintLoopInfo["status"] = "running") {
@@ -54,6 +59,44 @@ describe("prompt blueprint slot display", () => {
       slot: localSlot,
       mode: "pending",
     } satisfies BlueprintSlotDisplay)
+  })
+
+  test("displays all non-terminal statuses without returning null", () => {
+    const nonTerminalStatuses: BlueprintLoopInfo["status"][] = ["armed", "running", "waiting", "auditing"]
+    for (const status of nonTerminalStatuses) {
+      const result = resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })
+      expect(result).not.toBeNull()
+      expect(result!.mode).toBe(status)
+      expect(result!.slot).toEqual({
+        type: "loop",
+        loopID: "bll_active",
+        noteID: "note_blueprint",
+        title: "Active Blueprint",
+        runMode: "current",
+      })
+    }
+  })
+})
+
+describe("isTerminalBlueprintLoopStatus", () => {
+  test("returns true for completed, failed, and cancelled", () => {
+    expect(isTerminalBlueprintLoopStatus("completed")).toBe(true)
+    expect(isTerminalBlueprintLoopStatus("failed")).toBe(true)
+    expect(isTerminalBlueprintLoopStatus("cancelled")).toBe(true)
+  })
+
+  test("returns false for non-terminal statuses", () => {
+    expect(isTerminalBlueprintLoopStatus("armed")).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("running")).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("waiting")).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("auditing")).toBe(false)
+  })
+
+  test("returns false for nullish and unknown values", () => {
+    expect(isTerminalBlueprintLoopStatus(null)).toBe(false)
+    expect(isTerminalBlueprintLoopStatus(undefined)).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("unknown")).toBe(false)
+    expect(isTerminalBlueprintLoopStatus("")).toBe(false)
   })
 })
 

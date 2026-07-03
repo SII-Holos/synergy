@@ -75,4 +75,34 @@ describe("blueprintNoteCreateFocusRequest", () => {
       ),
     ).toBeUndefined()
   })
+
+  test("extracts scopeID from metadata when present", () => {
+    const part = toolPart({
+      action: "create",
+      kind: "blueprint",
+      noteID: "note_123",
+      title: "Plan",
+    })
+    ;((part as any).state.metadata as Record<string, unknown>).scopeID = "scope_abc"
+
+    expect(blueprintNoteCreateFocusRequest(part, "ses_current")).toEqual({
+      noteID: "note_123",
+      title: "Plan",
+      scopeID: "scope_abc",
+    })
+  })
+
+  test("does not include scopeID when metadata does not carry it", () => {
+    expect(
+      blueprintNoteCreateFocusRequest(
+        toolPart({
+          action: "create",
+          kind: "blueprint",
+          noteID: "note_123",
+          title: "Plan",
+        }),
+        "ses_current",
+      ),
+    ).toEqual({ noteID: "note_123", title: "Plan" })
+  })
 })

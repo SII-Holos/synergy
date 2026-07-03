@@ -5,6 +5,7 @@ import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
 import DESCRIPTION from "./blueprint-loop-finish.txt"
+import { SessionManager } from "../session/manager"
 
 const parameters = z.object({
   loopID: z.string().describe("The BlueprintLoop ID to finish."),
@@ -121,13 +122,18 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
         status: "auditing",
         auditSessionID,
       })
-      await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "failed" })
       await Bus.publish(LoopEvent.Failed, { loopID: params.loopID, error: params.summary ?? "Loop execution failed" })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
+      SessionManager.signalAbort(ctx.sessionID)
     } else if (params.status === "completed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
       await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
+      SessionManager.signalAbort(ctx.sessionID)
     }
 
     const statusLabel: Record<string, string> = {
