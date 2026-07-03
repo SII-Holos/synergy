@@ -242,11 +242,7 @@ function errorResult(input: {
   }
 }
 
-function blockMap(doc: NoteDocument.Node) {
-  return new Map(NoteDocument.listBlocks(doc, { includeJson: true }).map((block) => [block.id, block]))
-}
-
-function blocksMap(blocks: NoteDocument.BlockInfo[]) {
+function blockMap(blocks: NoteDocument.BlockInfo[]) {
   return new Map(blocks.map((block) => [block.id, block]))
 }
 
@@ -258,7 +254,7 @@ function requireHash(block: NoteDocument.BlockInfo, expectedHash: string | undef
 }
 
 function resolveById(doc: NoteDocument.Node, blockId: string, expectedHash: string | undefined, context: string) {
-  const block = blockMap(doc).get(blockId)
+  const block = blockMap(NoteDocument.listBlocks(doc, { includeJson: true })).get(blockId)
   if (!block) throw new Error(`${context} target block ${blockId} was not found.`)
   if (expectedHash) requireHash(block, expectedHash, context)
   return block
@@ -495,8 +491,8 @@ function changedBlocks(before: NoteDocument.Node, after: NoteDocument.Node, touc
 }
 
 function changedIds(beforeBlocks: NoteDocument.BlockInfo[], afterBlocks: NoteDocument.BlockInfo[]) {
-  const before = blocksMap(beforeBlocks)
-  const after = blocksMap(afterBlocks)
+  const before = blockMap(beforeBlocks)
+  const after = blockMap(afterBlocks)
   const ids = new Set([...before.keys(), ...after.keys()])
   return [...ids].filter((id) => before.get(id)?.hash !== after.get(id)?.hash)
 }
@@ -507,8 +503,8 @@ function ancestorIds(
   directIds: Set<string>,
   changed: Set<string>,
 ) {
-  const before = blocksMap(beforeBlocks)
-  const after = blocksMap(afterBlocks)
+  const before = blockMap(beforeBlocks)
+  const after = blockMap(afterBlocks)
   const ancestors = new Set<string>()
   for (const id of directIds) {
     let current = after.get(id) ?? before.get(id)
@@ -533,8 +529,8 @@ function classifyChanges(
   afterBlocks: NoteDocument.BlockInfo[],
   directIds: string[],
 ) {
-  const before = blocksMap(beforeBlocks)
-  const after = blocksMap(afterBlocks)
+  const before = blockMap(beforeBlocks)
+  const after = blockMap(afterBlocks)
   const changed = new Set(changedIds(beforeBlocks, afterBlocks))
   const insertedIds = [...after.keys()].filter((id) => !before.has(id))
   const allDirect = new Set(
@@ -566,8 +562,8 @@ function buildOperationResult(input: {
 }): OperationSemanticResult {
   const beforeHash = NoteDocument.hash(input.beforeDoc)
   const afterHash = NoteDocument.hash(input.afterDoc)
-  const before = blocksMap(input.beforeBlocks)
-  const after = blocksMap(input.afterBlocks)
+  const before = blockMap(input.beforeBlocks)
+  const after = blockMap(input.afterBlocks)
   const classified = classifyChanges(input.beforeBlocks, input.afterBlocks, input.seed.directIds)
   const noop = beforeHash === afterHash
   const targetBlocks = input.seed.targetIds
