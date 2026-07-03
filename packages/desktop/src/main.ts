@@ -224,7 +224,7 @@ async function createWindow() {
     await dismissStartupOverlay()
     throw error
   }
-  if (!currentAppURL) await dismissStartupOverlay()
+  await dismissStartupOverlay()
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
 }
 

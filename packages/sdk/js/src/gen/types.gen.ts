@@ -2794,7 +2794,7 @@ export type Session = {
     expandedGroups?: Array<string>
     activatedTools?: Array<string>
   }
-  completionNotice: SessionCompletionNotice
+  completionNotice?: SessionCompletionNotice
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -3112,7 +3112,11 @@ export type AttachmentPartInput = {
 export type UserMessage = {
   id: string
   sessionID: string
+  visible?: boolean
+  includeInContext?: boolean
+  rootID?: string
   role: "user"
+  isRoot?: boolean
   time: {
     created: number
   }
@@ -3184,6 +3188,9 @@ export type ApiError = {
 export type AssistantMessage = {
   id: string
   sessionID: string
+  visible?: boolean
+  includeInContext?: boolean
+  rootID?: string
   role: "assistant"
   time: {
     created: number

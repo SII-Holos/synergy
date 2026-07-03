@@ -318,17 +318,26 @@ export namespace SessionNav {
     return results
   }
 
-  export async function upsertNavEntry(entry: SessionNavEntry): Promise<void> {
+  export async function upsertNavEntry(
+    entry: SessionNavEntry,
+    options?: { preserveActivityAt?: boolean },
+  ): Promise<void> {
     const index = await readNavIndex(entry.scopeID)
     const existing = index.entries.findIndex((e) => e.id === entry.id)
+    const nextEntry =
+      options?.preserveActivityAt && existing >= 0
+        ? { ...entry, lastActivityAt: index.entries[existing].lastActivityAt }
+        : entry
     if (existing >= 0) index.entries.splice(existing, 1)
     const insertAt = index.entries.findIndex(
-      (e) => e.lastActivityAt < entry.lastActivityAt || (e.lastActivityAt === entry.lastActivityAt && e.id < entry.id),
+      (e) =>
+        e.lastActivityAt < nextEntry.lastActivityAt ||
+        (e.lastActivityAt === nextEntry.lastActivityAt && e.id < nextEntry.id),
     )
-    if (insertAt === -1) index.entries.push(entry)
-    else index.entries.splice(insertAt, 0, entry)
+    if (insertAt === -1) index.entries.push(nextEntry)
+    else index.entries.splice(insertAt, 0, nextEntry)
     index.updatedAt = Date.now()
-    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(entry.scopeID)), index)
+    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(nextEntry.scopeID)), index)
   }
 
   export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {

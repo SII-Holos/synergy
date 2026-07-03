@@ -130,3 +130,26 @@ describe("SessionProcessor.streamToolErrorOutcome", () => {
     }
   })
 })
+
+describe("SessionProcessor.isFastAbort", () => {
+  test("detects pre-aborted signals", () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(SessionProcessor.isFastAbort(controller.signal)).toBe(true)
+  })
+
+  test("detects abort errors", () => {
+    const controller = new AbortController()
+
+    expect(
+      SessionProcessor.isFastAbort(controller.signal, new DOMException("The operation was aborted.", "AbortError")),
+    ).toBe(true)
+  })
+
+  test("ignores normal errors while the signal is active", () => {
+    const controller = new AbortController()
+
+    expect(SessionProcessor.isFastAbort(controller.signal, new Error("boom"))).toBe(false)
+  })
+})

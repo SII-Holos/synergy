@@ -270,27 +270,73 @@ export namespace SessionCompaction {
 
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
+  const ANCHOR_METADATA_KEY = "compactionAnchor"
+
+  type Anchor = {
+    text: string
+    sourceMessageID?: string
+  }
+
+  function realUserText(msg: MessageV2.WithParts): string | undefined {
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic && !p.ignored)
+    if (textParts.length === 0) return undefined
+    const text = textParts
+      .map((p) => p.text)
+      .join("\n")
+      .trim()
+    return text || undefined
+  }
+
+  function formatAnchor(text: string): string {
+    return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+  }
+
+  function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
+    if (msg.info.role !== "user") return false
+    const metadata = msg.info.metadata
+    return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
+  }
+
+  function carriedAnchor(msg: MessageV2.WithParts): Anchor | undefined {
+    if (msg.info.role !== "user") return undefined
+    const value = msg.info.metadata?.[ANCHOR_METADATA_KEY]
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+    const text = typeof value.text === "string" ? value.text.trim() : undefined
+    if (!text) return undefined
+    const sourceMessageID = typeof value.sourceMessageID === "string" ? value.sourceMessageID : undefined
+    return { text, sourceMessageID }
+  }
 
   /**
-   * Extract the last real (non-synthetic) user message before the compaction
-   * trigger as an anchor, so the agent remembers what it was working on.
+   * Preserve the active user request across compaction. Prefer the compaction
+   * parent when it is a real reply-requesting user message; synthetic, no-reply,
+   * and guided context messages fall back to the latest earlier real request.
    */
-  function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+  export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
+    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
+    const parentText = parent ? realUserText(parent) : undefined
+    if (parent && parentText) return { text: parentText, sourceMessageID: parent.info.id }
+
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg.info.role !== "user") continue
+      if (!isAnchorEligibleUser(msg)) continue
       if (msg.info.id === parentID) continue
-      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
-      if (textParts.length === 0) continue
-      const text = textParts
-        .map((p) => p.text)
-        .join("\n")
-        .trim()
+      const text = realUserText(msg)
       if (!text) continue
-      return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+      return { text, sourceMessageID: msg.info.id }
+    }
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const anchor = carriedAnchor(messages[i])
+      if (anchor) return anchor
     }
 
     return undefined
+  }
+
+  export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+    const anchor = resolveAnchor(messages, parentID)
+    return anchor ? formatAnchor(anchor.text) : undefined
   }
 
   export async function process(input: {
@@ -412,6 +458,7 @@ export namespace SessionCompaction {
     await Session.updateMessage(msg)
 
     if (input.auto) {
+      const anchor = resolveAnchor(input.messages, input.parentID)
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",
@@ -422,6 +469,13 @@ export namespace SessionCompaction {
         agent: userMessage.agent,
         model: userMessage.model,
         summary: { title: "Compaction complete", diffs: [] },
+        ...(anchor
+          ? {
+              metadata: {
+                [ANCHOR_METADATA_KEY]: anchor,
+              },
+            }
+          : {}),
       })
       const now = Date.now()
       await Session.updatePart({
@@ -433,7 +487,6 @@ export namespace SessionCompaction {
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
-      const anchor = buildAnchor(input.messages, input.parentID)
       if (anchor) {
         await Session.updatePart({
           id: Identifier.ascending("part"),
@@ -441,7 +494,7 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: anchor,
+          text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })
       }

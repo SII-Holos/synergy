@@ -85,12 +85,43 @@ export namespace Snapshot {
     return { signal: controller.signal, cleanup }
   }
 
+  function abortedGitResult(): { exitCode: number; text: string; stderr: string } {
+    return { exitCode: -1, text: "", stderr: "" }
+  }
+
+  function abortError(signal: AbortSignal): Error {
+    if (signal.reason instanceof Error) return signal.reason
+    return new DOMException("Snapshot git command aborted", "AbortError")
+  }
+
+  function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) return Promise.reject(abortError(signal))
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = () => {
+        promise.catch(() => {})
+        reject(abortError(signal))
+      }
+      signal.addEventListener("abort", onAbort, { once: true })
+      promise.then(
+        (value) => {
+          signal.removeEventListener("abort", onAbort)
+          resolve(value)
+        },
+        (error) => {
+          signal.removeEventListener("abort", onAbort)
+          reject(error)
+        },
+      )
+    })
+  }
+
   async function gitSpawn(
     args: string[],
     cwd: string,
     env?: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<{ exitCode: number; text: string; stderr: string }> {
+    if (signal?.aborted) return abortedGitResult()
     const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
     let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined
     try {
@@ -104,12 +135,18 @@ export namespace Snapshot {
       const stdout = new Response(proc.stdout).text()
       const stderr = new Response(proc.stderr).text().catch(() => "")
       const [text, stderrText, exitCode] = await withTimeout(
-        Promise.all([stdout, stderr, proc.exited]),
+        withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),
         SNAPSHOT_HARD_TIMEOUT_MS,
         { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
       )
       return { exitCode, text, stderr: stderrText }
     } catch (err) {
+      if (signal?.aborted) {
+        try {
+          proc?.kill()
+        } catch {}
+        return abortedGitResult()
+      }
       log.warn("git spawn failed", { args, cwd, error: String(err) })
       try {
         proc?.kill()
@@ -121,6 +158,7 @@ export namespace Snapshot {
   }
 
   export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
+    if (signal?.aborted) return
     if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") return
     const cfg = await Config.current()
     if (cfg.snapshot === false) return
@@ -177,6 +215,7 @@ export namespace Snapshot {
     sessionID: string,
     opts?: { indexFresh?: boolean; signal?: AbortSignal },
   ): Promise<Patch> {
+    if (opts?.signal?.aborted) return { hash, files: [] }
     const started = Date.now()
     log.debug("patch start", { sessionID, hash })
     const git = gitdir(sessionID)
@@ -187,6 +226,7 @@ export namespace Snapshot {
         return { hash, files: [] }
       }
     }
+    if (opts?.signal?.aborted) return { hash, files: [] }
     const diffResult = await gitSpawn(
       [
         "git",

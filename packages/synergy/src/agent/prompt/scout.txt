@@ -149,5 +149,3 @@ Be concise and evidence-based:
 1. **Direct answer** with source link
 2. **Code example** if applicable
 3. **Caveats** (version requirements, known issues, source quality)
-
-Don't add unnecessary preamble. Get straight to the answer.

@@ -221,8 +221,8 @@
     width: 100%;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
-    padding-top: 4px;
+    gap: 10px;
+    padding-top: 6px;
   }
 
   [data-slot="dialog-meta-list"] {
@@ -234,16 +234,16 @@
     overflow: hidden;
     border: 1px solid var(--dialog-border-weak);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--dialog-control-bg) 74%, transparent);
+    background: color-mix(in srgb, var(--dialog-control-bg) 62%, transparent);
   }
 
   [data-slot="dialog-meta-row"] {
     display: grid;
-    grid-template-columns: 20px minmax(72px, auto) minmax(0, 1fr);
+    grid-template-columns: 20px minmax(86px, auto) minmax(0, 1fr);
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     min-width: 0;
-    padding: 9px 12px;
+    padding: 10px 12px;
     color: var(--text-weak);
     border-top: 1px solid var(--dialog-border-weak);
   }
@@ -273,7 +273,7 @@
     color: var(--text-base);
     font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
     font-size: var(--type-ui-caption-size, 12px);
-    line-height: var(--type-ui-caption-line-height, 16px);
+    line-height: var(--type-ui-body-line-height, 20px);
   }
 
   [data-slot="dialog-option-list"] {
@@ -286,11 +286,11 @@
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
     border: 1px solid var(--dialog-border-weak);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--dialog-control-bg) 62%, transparent);
-    padding: 12px 14px;
+    background: color-mix(in srgb, var(--dialog-control-bg) 58%, transparent);
+    padding: 13px 14px;
     color: var(--text-base);
     text-align: left;
     transition:
@@ -307,13 +307,45 @@
 
   [data-slot="dialog-option"][data-selected="true"] {
     background: var(--dialog-selected-bg);
-    border-color: color-mix(in oklch, var(--border-base) 48%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border-base) 20%, transparent);
+    border-color: color-mix(in oklch, var(--border-base) 54%, transparent);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, var(--border-base) 18%, transparent),
+      0 1px 0 color-mix(in oklch, var(--text-strong) 4%, transparent);
   }
 
   [data-slot="dialog-option"]:focus-visible {
     outline: none;
     box-shadow: var(--dialog-focus-ring);
+  }
+
+  [data-component="button"] {
+    border-radius: 9px;
+  }
+
+  [data-component="button"][data-size="small"] {
+    height: 30px;
+    padding: 0 11px;
+    font-size: var(--type-ui-control-size, 13px);
+    line-height: var(--type-ui-control-line-height, 18px);
+  }
+
+  [data-component="button"][data-size="normal"] {
+    height: 32px;
+    padding: 0 12px;
+    font-size: var(--type-ui-control-size, 13px);
+    line-height: var(--type-ui-control-line-height, 18px);
+  }
+
+  [data-component="button"][data-size="large"] {
+    height: 36px;
+    padding: 0 15px;
+    font-size: var(--type-ui-body-size, 14px);
+    line-height: var(--type-ui-body-line-height, 20px);
+  }
+
+  [data-component="button"][data-variant="secondary"],
+  [data-component="button"][data-variant="ghost"] {
+    color: var(--text-strong);
   }
 }
 

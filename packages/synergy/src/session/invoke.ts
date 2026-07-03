@@ -30,6 +30,7 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
+import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -386,6 +387,17 @@ export namespace SessionInvoke {
           log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
         }
 
+        // Drain agent-update items (cortex task completions etc.) for mid-turn
+        // injection.  Materialized with guiding: true so they become synthetic
+        // user messages in the conversation without triggering a redundant
+        // reply cycle — the running turn processes them naturally next step.
+        const agentUpdateItems = await SessionInbox.drainAgentUpdates(sessionID)
+        if (agentUpdateItems.length > 0) {
+          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true })
+          msgs.push(...updates.userMessages)
+          log.info("drained agent updates into session", { sessionID, count: agentUpdateItems.length })
+        }
+
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
         if (legacyUserMails.length > 0) {
           const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
@@ -447,10 +459,12 @@ export namespace SessionInvoke {
             buildCortexExecutionContext(sessionID),
           ])
 
+          const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
+
           const context: ExternalAgent.TurnContext = {
             sessionID,
             prompt: MessageV2.extractText(lastUserParts!),
-            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
@@ -758,7 +772,7 @@ export namespace SessionInvoke {
         })
         toolResolveTimer.stop()
 
-        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()

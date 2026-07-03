@@ -43,6 +43,7 @@ const {
   collectSessionTurnTimelineItems,
   isGuidedContextUserMessage,
   providerPreludeText,
+  providerPreludeTimeLabel,
   shouldShowProviderPrelude,
   timelineItemStableKey,
   timelineVisualKind,
@@ -313,11 +314,16 @@ describe("session turn timeline", () => {
   test("keeps backend provider prelude status text verbatim", () => {
     const status = {
       type: "busy",
-      description: "Awaiting response...",
+      description: "Awaiting response…",
     } satisfies SessionStatus
 
-    expect(providerPreludeText(status)).toBe("Awaiting response...")
-    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response...")
+    expect(providerPreludeText(status)).toBe("Awaiting response…")
+    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response…")
+  })
+
+  test("formats provider prelude time as a quiet clock label", () => {
+    expect(providerPreludeTimeLabel(new Date("2026-07-04T05:01:00").getTime())).toBe("05:01")
+    expect(providerPreludeTimeLabel(undefined)).toBeUndefined()
   })
 
   test("keeps reasoning before a running media placeholder and later text", () => {
