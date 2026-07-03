@@ -215,9 +215,16 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
   }
 
   if (method === "desktop" && targets.desktopPathEntry && process.platform === "win32") {
-    prompts.log.warn(
-      `Remove ${targets.desktopPathEntry} from your user PATH if the Desktop uninstaller has not already done so.`,
-    )
+    spinner.start("Removing Desktop CLI PATH entry...")
+    const result = await DesktopInstallation.removeWindowsUserPathEntry(targets.desktopPathEntry).catch((e) => e)
+    if (result instanceof Error) {
+      spinner.stop("Failed to remove Desktop CLI PATH entry", 1)
+      errors.push(`Desktop CLI PATH entry: ${result.message}`)
+    } else if (result.removed) {
+      spinner.stop("Removed Desktop CLI PATH entry")
+    } else {
+      spinner.stop("Desktop CLI PATH entry was already absent")
+    }
   }
 
   if (method !== "unknown" && method !== "desktop") {

@@ -67,15 +67,11 @@ async function printInstallationChecks() {
     if (link.path) console.log(`     Path: ${link.path}`)
     if (link.target) console.log(`     Target: ${link.target}`)
 
-    const expectedRuntime = DesktopInstallation.expectedRuntimePath(process.platform)
-    if (expectedRuntime) {
-      const consistent = DesktopInstallation.samePath(realExecPath, expectedRuntime, process.platform)
-      console.log(
-        `  ${consistent ? "✅" : "⚠️"} Version source: ${Installation.VERSION} from ${consistent ? "expected" : "unexpected"} Desktop runtime path`,
-      )
-    } else {
-      console.log(`  ℹ️ Version source: ${Installation.VERSION}`)
-    }
+    const versionStatus = await DesktopInstallation.packageVersionStatus(context, Installation.VERSION)
+    const versionIcon =
+      versionStatus.status === "matching" ? "✅" : versionStatus.status === "not-applicable" ? "ℹ️" : "⚠️"
+    console.log(`  ${versionIcon} Desktop package version: ${versionStatus.message}`)
+    if (versionStatus.metadataPath) console.log(`     Metadata: ${versionStatus.metadataPath}`)
   }
 
   const candidates = await DesktopInstallation.pathCandidates(context)

@@ -80,4 +80,11 @@ describe("desktop packaging", () => {
     expect(nsisScript).not.toContain("WriteRegExpandStr HKLM")
     expect(nsisScript).not.toContain("$INSTDIR\\resources\\synergy\\bin;")
   })
+
+  test("writes Desktop package version metadata beside the embedded runtime", async () => {
+    const afterPackScript = await Bun.file(new URL("../script/after-pack.cjs", import.meta.url)).text()
+
+    expect(afterPackScript).toContain("desktop-package.json")
+    expect(afterPackScript).toContain("appInfo?.version")
+  })
 })

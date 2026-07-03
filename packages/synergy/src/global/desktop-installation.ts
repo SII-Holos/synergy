@@ -21,6 +21,26 @@ export namespace DesktopInstallation {
     isCurrent: boolean
   }
 
+  export interface DesktopPackageVersionStatus {
+    status: "matching" | "mismatch" | "unavailable" | "not-applicable"
+    runtimeVersion: string
+    packageVersion: string | null
+    metadataPath: string | null
+    message: string
+  }
+
+  export interface WindowsUserPathStore {
+    read(): Promise<string | null>
+    write(value: string): Promise<void>
+    broadcast?(): Promise<void>
+  }
+
+  export interface WindowsUserPathRemovalResult {
+    removed: boolean
+    previousValue: string
+    nextValue: string
+  }
+
   export function normalizePath(value: string) {
     return value.replace(/\\/g, "/").toLowerCase()
   }
@@ -48,6 +68,88 @@ export namespace DesktopInstallation {
     const normalized = context.realExecPath.replace(/\\/g, path.win32.sep)
     const installRoot = path.win32.resolve(normalized, "..", "..", "..", "..")
     return path.win32.join(installRoot, "bin")
+  }
+
+  export function runtimeRoot(realExecPath: string, platform: NodeJS.Platform) {
+    const pathModule = platform === "win32" ? path.win32 : path
+    return pathModule.resolve(realExecPath, "..", "..")
+  }
+
+  export function packageVersionMetadataPath(realExecPath: string, platform: NodeJS.Platform) {
+    if (!isRuntimePath(platform, realExecPath)) return null
+    const pathModule = platform === "win32" ? path.win32 : path
+    return pathModule.join(runtimeRoot(realExecPath, platform), "desktop-package.json")
+  }
+
+  export async function packageVersionStatus(
+    context: Context,
+    runtimeVersion: string,
+  ): Promise<DesktopPackageVersionStatus> {
+    if (!detectDesktopInstall(context)) {
+      return {
+        status: "not-applicable",
+        runtimeVersion,
+        packageVersion: null,
+        metadataPath: null,
+        message: "Desktop package version is only checked for Desktop-managed runtimes.",
+      }
+    }
+
+    const metadataPath = packageVersionMetadataPath(context.realExecPath, context.platform)
+    if (!metadataPath) {
+      return {
+        status: "unavailable",
+        runtimeVersion,
+        packageVersion: null,
+        metadataPath: null,
+        message: "Desktop package version metadata is unavailable.",
+      }
+    }
+
+    const metadata = await readPackageVersionMetadata(metadataPath)
+    if (!metadata) {
+      return {
+        status: "unavailable",
+        runtimeVersion,
+        packageVersion: null,
+        metadataPath,
+        message: "Desktop package version metadata could not be read.",
+      }
+    }
+
+    if (metadata.version !== runtimeVersion) {
+      return {
+        status: "mismatch",
+        runtimeVersion,
+        packageVersion: metadata.version,
+        metadataPath,
+        message: `Desktop package version ${metadata.version} does not match runtime version ${runtimeVersion}.`,
+      }
+    }
+
+    return {
+      status: "matching",
+      runtimeVersion,
+      packageVersion: metadata.version,
+      metadataPath,
+      message: `Desktop package version ${metadata.version} matches runtime version ${runtimeVersion}.`,
+    }
+  }
+
+  async function readPackageVersionMetadata(metadataPath: string) {
+    const text = await fs.readFile(metadataPath, "utf8").catch(() => null)
+    if (!text) return null
+    const parsed = parseJsonObject(text)
+    if (!parsed || typeof parsed.version !== "string" || parsed.version.length === 0) return null
+    return { version: parsed.version }
+  }
+
+  function parseJsonObject(text: string) {
+    try {
+      return JSON.parse(text) as { version?: unknown }
+    } catch {
+      return null
+    }
   }
 
   export function linkPath(context: Context) {
@@ -150,6 +252,65 @@ export namespace DesktopInstallation {
   export function userPathEntries(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform) {
     const delimiter = platform === "win32" ? ";" : path.delimiter
     return (env.Path ?? env.PATH ?? "").split(delimiter).filter(Boolean)
+  }
+
+  export function removePathEntry(pathValue: string, entryToRemove: string, platform: NodeJS.Platform) {
+    const delimiter = platform === "win32" ? ";" : path.delimiter
+    return pathValue
+      .split(delimiter)
+      .filter((entry) => entry.length > 0 && !samePath(entry, entryToRemove, platform))
+      .join(delimiter)
+  }
+
+  export async function removeWindowsUserPathEntry(
+    entryToRemove: string,
+    store: WindowsUserPathStore = windowsUserPathStore(),
+  ): Promise<WindowsUserPathRemovalResult> {
+    const previousValue = (await store.read()) ?? ""
+    const nextValue = removePathEntry(previousValue, entryToRemove, "win32")
+    if (nextValue === previousValue) return { removed: false, previousValue, nextValue }
+    await store.write(nextValue)
+    await store.broadcast?.()
+    return { removed: true, previousValue, nextValue }
+  }
+
+  function windowsUserPathStore(): WindowsUserPathStore {
+    return {
+      async read() {
+        const proc = Bun.spawn(["reg.exe", "query", "HKCU\\Environment", "/v", "Path"], {
+          stdout: "pipe",
+          stderr: "pipe",
+        })
+        const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
+        if (exitCode !== 0) return ""
+        const line = output
+          .split(/\r?\n/)
+          .map((item) => item.trim())
+          .find((item) => item.toLowerCase().startsWith("path"))
+        if (!line) return ""
+        const parts = line.split(/\s{2,}/)
+        return parts.at(-1) ?? ""
+      },
+      async write(value) {
+        await Bun.spawn(
+          ["reg.exe", "add", "HKCU\\Environment", "/v", "Path", "/t", "REG_EXPAND_SZ", "/d", value, "/f"],
+          {
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        ).exited
+      },
+      async broadcast() {
+        await Bun.spawn([
+          "powershell.exe",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          '[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User"), "User")',
+        ]).exited
+      },
+    }
   }
 
   export async function pathCandidates(context: Context): Promise<PathCandidate[]> {

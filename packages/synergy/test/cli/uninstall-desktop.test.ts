@@ -38,4 +38,53 @@ describe("desktop-managed uninstall helpers", () => {
     )
     expect(DesktopInstallation.launcherDirectory(context)).not.toContain("resources\\synergy\\bin")
   })
+
+  test("removes only the exact Windows Desktop launcher directory from User PATH", async () => {
+    const launcherDir = "C:\\Users\\Eric\\AppData\\Local\\Programs\\Synergy\\bin"
+    const pathValue = [
+      "C:\\Windows\\System32",
+      launcherDir,
+      "C:\\Users\\Eric\\AppData\\Local\\Programs\\Synergy\\bin-extra",
+      "C:\\Tools",
+    ].join(";")
+
+    expect(DesktopInstallation.removePathEntry(pathValue, launcherDir.toLowerCase(), "win32")).toBe(
+      "C:\\Windows\\System32;C:\\Users\\Eric\\AppData\\Local\\Programs\\Synergy\\bin-extra;C:\\Tools",
+    )
+  })
+
+  test("updates Windows User PATH store and broadcasts when launcher entry is removed", async () => {
+    const writes: string[] = []
+    let broadcastCount = 0
+    const result = await DesktopInstallation.removeWindowsUserPathEntry("C:\\Synergy\\bin", {
+      async read() {
+        return "C:\\Windows;C:\\Synergy\\bin;C:\\Synergy\\bin-extra"
+      },
+      async write(value) {
+        writes.push(value)
+      },
+      async broadcast() {
+        broadcastCount++
+      },
+    })
+
+    expect(result.removed).toBe(true)
+    expect(writes).toEqual(["C:\\Windows;C:\\Synergy\\bin-extra"])
+    expect(broadcastCount).toBe(1)
+  })
+
+  test("does not write Windows User PATH when the launcher entry is absent", async () => {
+    const writes: string[] = []
+    const result = await DesktopInstallation.removeWindowsUserPathEntry("C:\\Synergy\\bin", {
+      async read() {
+        return "C:\\Windows;C:\\Synergy\\bin-extra"
+      },
+      async write(value) {
+        writes.push(value)
+      },
+    })
+
+    expect(result.removed).toBe(false)
+    expect(writes).toEqual([])
+  })
 })
