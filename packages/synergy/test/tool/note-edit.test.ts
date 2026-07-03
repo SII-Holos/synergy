@@ -471,6 +471,9 @@ describe("note_edit anchored operations", () => {
         expect(op.checks.replacementPresentInTarget).toBe(true)
         expect(op.checks.oldTextRemainingInTargetCount).toBe(0)
         expect(op.checks.noop).toBe(false)
+        expect(op.targetBlocks[0].beforeHash).toBe(block.hash)
+        expect(op.targetBlocks[0].afterHash).not.toBe(block.hash)
+        expect(result.output).toContain(`${block.hash} ->`)
         expect(result.output).toContain('Matched: "TARGET"')
         expect(result.output).toContain("After context:")
       },
@@ -564,9 +567,11 @@ describe("note_edit anchored operations", () => {
         expect(op.semantic.row).toBe(0)
         expect(op.semantic.col).toBe(0)
         expect(op.semantic.beforeText).toBe("old cell")
+        expect(op.semantic.afterText).toBe("new cell")
         expect(op.directChangedBlocks[0].text).toBe("new cell")
         expect(op.checks.replacementPresentInTarget).toBe(true)
         expect(result.output).toContain("row=0 col=0")
+        expect(result.output).toContain("After: new cell")
       },
     })
   })

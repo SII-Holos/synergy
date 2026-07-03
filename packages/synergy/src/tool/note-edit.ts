@@ -100,6 +100,8 @@ type BlockPreview = {
   type: string
   path: string
   hash?: string
+  beforeHash?: string
+  afterHash?: string
   text?: string
   summary: string
   row?: number
@@ -171,6 +173,19 @@ function blockPreview(block: NoteDocument.BlockInfo | undefined): BlockPreview |
     col: block.col,
     tableId: block.tableId,
   }
+}
+
+function targetBlockPreview(
+  id: string,
+  before: Map<string, NoteDocument.BlockInfo>,
+  after: Map<string, NoteDocument.BlockInfo>,
+) {
+  const block = after.get(id) ?? before.get(id)
+  const preview = blockPreview(block)
+  if (!preview) return undefined
+  preview.beforeHash = before.get(id)?.hash
+  preview.afterHash = after.get(id)?.hash
+  return preview
 }
 
 function compactBlocks(content: unknown, ids?: string[]) {
@@ -428,6 +443,7 @@ function applyOperation(doc: NoteDocument.Node, op: Operation): ApplyResult {
         content: nodes,
       })
       const requestedText = contentText(nodes)
+      const afterCell = NoteDocument.listBlocks(result.doc).find((block) => block.id === result.cell.id)
       return {
         doc: result.doc,
         touched: [result.cell.id],
@@ -439,7 +455,8 @@ function applyOperation(doc: NoteDocument.Node, op: Operation): ApplyResult {
             tableId: result.cell.tableId,
             row: result.cell.row,
             col: result.cell.col,
-            beforeText: previewText(result.cell.text),
+            beforeText: previewText(current.text),
+            afterText: previewText(afterCell?.text ?? ""),
             replacementText: previewText(requestedText),
           },
           checks: { replacementPresentInTarget: requestedText.length ? undefined : true },
@@ -554,7 +571,7 @@ function buildOperationResult(input: {
   const classified = classifyChanges(input.beforeBlocks, input.afterBlocks, input.seed.directIds)
   const noop = beforeHash === afterHash
   const targetBlocks = input.seed.targetIds
-    .map((id) => previewForId(id, before, after))
+    .map((id) => targetBlockPreview(id, before, after))
     .filter((block): block is BlockPreview => !!block)
   const checks: Record<string, boolean | number | string | undefined> = { ...input.seed.checks, noop }
   if (input.action === "updateTableCell" && checks.replacementPresentInTarget === undefined) {
@@ -582,10 +599,15 @@ function buildOperationResult(input: {
   }
 }
 
+function renderHashTransition(block: BlockPreview) {
+  if (!("beforeHash" in block) && !("afterHash" in block)) return block.hash ?? "unknown"
+  return `${block.beforeHash ?? "missing"} -> ${block.afterHash ?? "missing"}`
+}
+
 function renderBlockTarget(block: BlockPreview) {
   const rowCol = block.row !== undefined && block.col !== undefined ? ` row=${block.row} col=${block.col}` : ""
   const table = block.tableId ? ` table=${block.tableId}` : ""
-  return `${block.type} path=${block.path} id=${block.id}${rowCol}${table} hash=${block.hash}`
+  return `${block.type} path=${block.path} id=${block.id}${rowCol}${table} hash=${renderHashTransition(block)}`
 }
 
 function renderChecks(checks: OperationSemanticResult["checks"]) {
