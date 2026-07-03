@@ -300,9 +300,17 @@ describe("CSS Token Integrity", () => {
     const codeBlock = extractRuleBlock(css, '[data-slot="markdown-code-block"]')
     expect(codeBlock).toContain("background-color: var(--workbench-control-bg")
 
-    const lightOverride = extractRuleBlock(css, ':root[data-color-scheme="light"] [data-component="markdown"]')
-    expect(lightOverride).toContain("var(--surface-base) 92%")
-    expect(lightOverride).toContain("var(--surface-base) 78%")
+    const lightCodeBlock = extractRuleBlock(
+      css,
+      ':root[data-color-scheme="light"] [data-component="markdown"] [data-slot="markdown-code-block"]',
+    )
+    expect(lightCodeBlock).toContain("var(--surface-base) 92%")
+
+    const lightInlineCode = extractRuleBlock(
+      css,
+      ':root[data-color-scheme="light"] [data-component="markdown"] :not(pre) > code',
+    )
+    expect(lightInlineCode).toContain("var(--surface-base) 78%")
 
     const header = extractRuleBlock(css, '[data-slot="markdown-code-header"]')
     expect(header).toContain("background-color: transparent")
