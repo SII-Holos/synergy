@@ -22,5 +22,10 @@ Content inputs:
 
 Safety behavior:
 - Version mismatch, docHash mismatch, missing targets, hash mismatch, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing.
-- On failure, the tool returns current version, current docHash, and current block summaries so you can re-read/retry deliberately.
-- dryRun:true validates and reports changed blocks without writing.
+- On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred.
+- dryRun:true validates and returns the same semantic operation preview without writing.
+
+Result interpretation:
+- Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct.
+- `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set.
+- Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note.

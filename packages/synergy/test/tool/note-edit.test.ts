@@ -425,6 +425,303 @@ describe("note_edit anchored operations", () => {
     })
   })
 
+  test("replaceText semantic result reports match context and checks", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic replaceText",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "prefix " },
+                  { type: "text", text: "CODE", marks: [{ type: "code" }] },
+                  { type: "text", text: " before TARGET after" },
+                ],
+              },
+            ],
+          },
+        })
+        const block = NoteDocument.listBlocks(note.content)[0]
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: block.id,
+              expectedHash: block.hash,
+              find: "TARGET",
+              replacement: "DONE",
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.semantic.matchedText).toBe("TARGET")
+        expect(op.semantic.afterContext).toContain("DONE")
+        expect(op.checks.replacementPresentInTarget).toBe(true)
+        expect(op.checks.oldTextRemainingInTargetCount).toBe(0)
+        expect(op.checks.noop).toBe(false)
+        expect(result.output).toContain('Matched: "TARGET"')
+        expect(result.output).toContain("After context:")
+      },
+    })
+  })
+
+  test("classifies parent container changes as ancestors", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic ancestors",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "blockquote",
+                content: [paragraph("child TARGET")],
+              },
+            ],
+          },
+        })
+        const blocks = NoteDocument.listBlocks(note.content)
+        const blockquote = blocks.find((block) => block.type === "blockquote")!
+        const child = blocks.find((block) => block.parentId === blockquote.id && block.type === "paragraph")!
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: child.id,
+              expectedHash: child.hash,
+              find: "TARGET",
+              replacement: "done",
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.directChangedBlocks.map((block: any) => block.id)).toContain(child.id)
+        expect(op.ancestorChangedBlocks.map((block: any) => block.id)).toContain(blockquote.id)
+        expect(op.unexpectedChangedBlocks).toHaveLength(0)
+      },
+    })
+  })
+
+  test("table cell semantic result includes coordinates and before after text", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic table",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "table",
+                content: [{ type: "tableRow", content: [{ type: "tableCell", content: [paragraph("old cell")] }] }],
+              },
+            ],
+          },
+        })
+        const cell = NoteDocument.listBlocks(note.content).find((block) => block.type === "tableCell")!
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "updateTableCell",
+              tableId: cell.tableId,
+              row: cell.row,
+              col: cell.col,
+              expectedHash: cell.hash,
+              content: { format: "text", text: "new cell" },
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.semantic.row).toBe(0)
+        expect(op.semantic.col).toBe(0)
+        expect(op.semantic.beforeText).toBe("old cell")
+        expect(op.directChangedBlocks[0].text).toBe("new cell")
+        expect(op.checks.replacementPresentInTarget).toBe(true)
+        expect(result.output).toContain("row=0 col=0")
+      },
+    })
+  })
+
+  test("insert and delete semantic results report inserted and deleted previews", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic insert delete",
+          content: { type: "doc", content: [paragraph("anchor"), paragraph("remove me")] },
+        })
+        const [anchor, removed] = NoteDocument.listBlocks(note.content)
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            { action: "insertAfter", blockId: anchor.id, content: { format: "text", text: "inserted block" } },
+            { action: "deleteBlock", blockId: removed.id, expectedHash: removed.hash },
+          ],
+        })
+
+        const insertOp = result.metadata.operationResults[0]
+        const deleteOp = result.metadata.operationResults[1]
+        expect(insertOp.semantic.insertedText).toBe("inserted block")
+        expect(insertOp.directChangedBlocks.some((block: any) => block.text === "inserted block")).toBe(true)
+        expect(deleteOp.semantic.deletedText).toBe("remove me")
+        expect(deleteOp.directChangedBlocks.some((block: any) => block.text === "remove me")).toBe(true)
+      },
+    })
+  })
+
+  test("failed operation reports failed index and action without writing", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic failure",
+          content: { type: "doc", content: [paragraph("target and target")] },
+        })
+        const block = NoteDocument.listBlocks(note.content)[0]
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: block.id,
+              expectedHash: block.hash,
+              find: "target",
+              replacement: "done",
+            },
+          ],
+        })
+
+        const current = await NoteStore.get(scope.id, note.id)
+        expect(result.metadata.errorCode).toBe("EDIT_PRECONDITION_FAILED")
+        expect(result.metadata.failedOpIndex).toBe(0)
+        expect(result.metadata.failedAction).toBe("replaceText")
+        expect(result.output).toContain("No write occurred.")
+        expect(noteText(current.content)).toContain("target and target")
+      },
+    })
+  })
+
+  test("failed second operation leaves earlier operation unwritten", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic partial failure",
+          content: { type: "doc", content: [paragraph("first"), paragraph("target and target")] },
+        })
+        const [first, second] = NoteDocument.listBlocks(note.content)
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: first.id,
+              expectedHash: first.hash,
+              find: "first",
+              replacement: "changed",
+            },
+            {
+              action: "replaceText",
+              blockId: second.id,
+              expectedHash: second.hash,
+              find: "target",
+              replacement: "done",
+            },
+          ],
+        })
+
+        const current = await NoteStore.get(scope.id, note.id)
+        expect(result.metadata.errorCode).toBe("EDIT_PRECONDITION_FAILED")
+        expect(result.metadata.failedOpIndex).toBe(1)
+        expect(result.metadata.failedAction).toBe("replaceText")
+        expect(current.version).toBe(note.version)
+        expect(noteText(current.content)).toContain("first")
+        expect(noteText(current.content)).not.toContain("changed")
+      },
+    })
+  })
+
+  test("replaceText rejects empty find instead of hanging", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Empty find",
+          content: { type: "doc", content: [paragraph("target")] },
+        })
+        const block = NoteDocument.listBlocks(note.content)[0]
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: block.id,
+              expectedHash: block.hash,
+              find: "",
+              replacement: "bad",
+            },
+          ],
+        })
+
+        expect(result.metadata.errorCode).toBe("EDIT_PRECONDITION_FAILED")
+        expect(result.output).toContain("find must not be empty")
+      },
+    })
+  })
+
   test("dryRun validates edits without updating version or content", async () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
@@ -456,6 +753,10 @@ describe("note_edit anchored operations", () => {
         const current = await NoteStore.get(scope.id, note.id)
         expect(result.metadata.dryRun).toBe(true)
         expect(current.version).toBe(note.version)
+        expect(result.metadata.operationResults[0].status).toBe("applied")
+        expect(result.metadata.operationResults[0].semantic.replacementText).toBe("new")
+        expect(result.metadata.operationResults[0].checks.noop).toBe(false)
+        expect(result.output).toContain("Operation 1 replaceBlock: applied")
         expect(noteText(current.content)).toContain("old")
       },
     })
