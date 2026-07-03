@@ -1599,3 +1599,63 @@
   color: var(--text-base);
   background: var(--sb-hover-bg);
 }
+
+/* --- Holos status panel --- */
+
+.sidebar-holos-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.sidebar-holos-status-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: var(--text-base);
+  font-size: var(--font-size-small);
+  font-weight: 500;
+}
+
+.sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="success"] {
+  color: #7ddf90;
+}
+
+.sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="danger"] {
+  color: #ff7474;
+}
+
+.sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="muted"] {
+  color: var(--text-subtle);
+}
+
+.sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="active"] {
+  color: #85beff;
+}
+
+.sidebar-holos-status-error {
+  margin: 4px 9px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(255, 116, 116, 0.08);
+  color: #ff7474;
+  font-size: var(--font-size-x-small);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.sidebar-holos-reconnect-btn {
+  margin-top: 4px;
+  color: #7ddf90;
+}
+
+.sidebar-holos-reconnect-btn:hover:not(:disabled),
+.sidebar-holos-reconnect-btn:focus-visible:not(:disabled) {
+  background: rgba(125, 223, 144, 0.08);
+}

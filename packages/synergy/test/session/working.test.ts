@@ -7,6 +7,7 @@ import { SessionManager } from "../../src/session/manager"
 import * as SessionWorking from "../../src/session/working"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
+import { SessionInvoke } from "../../src/session/invoke"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -175,6 +176,135 @@ describe("SessionWorking", () => {
     test("converts recovering WorkingInfo to StatusInfo", () => {
       const result = SessionWorking.toStatus({ status: "recovering" })
       expect(result).toEqual({ type: "recovering" })
+    })
+  })
+
+  describe("repairAfterAbort()", () => {
+    test("repairs incomplete assistant message so resolve() stops returning recovering", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+
+          // Set pendingReply on the session to simulate a stuck session
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          // Create an incomplete assistant message (time.committed == null)
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          const assistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: assistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          // Before repair: should be recovering
+          const before = await SessionWorking.resolve(session.id)
+          assertExists(before)
+          expect(before.status).toBe("recovering")
+
+          // Repair
+          await SessionInvoke.repairAfterAbort(session.id)
+
+          // After repair: should not be recovering
+          const after = await SessionWorking.resolve(session.id)
+          expect(after).toBeUndefined()
+
+          // pendingReply should be cleared
+          const refreshed = await Session.get(session.id)
+          expect(refreshed.pendingReply).toBeUndefined()
+
+          // Assistant message should now have time.completed and error
+          const msgs = await Session.messages({ sessionID: session.id })
+          const assistant = msgs.find((m) => m.info.id === assistantID)
+          assertExists(assistant)
+          expect(assistant.info.role).toBe("assistant")
+          const assistantInfo = assistant.info as import("../../src/session/message-v2").MessageV2.Assistant
+          expect(assistantInfo.time.completed).toBeGreaterThan(0)
+          expect(assistantInfo.finish).toBe("error")
+          expect(assistantInfo.error).toBeDefined()
+          expect(assistantInfo.error?.name).toBe("MessageAbortedError")
+        },
+      })
+    })
+
+    test("no-ops when session does not exist", async () => {
+      expect(async () => {
+        await SessionInvoke.repairAfterAbort("ses_nonexistent")
+      }).not.toThrow()
+    })
+
+    test("no-ops when session has no messages", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+
+          expect(async () => {
+            await SessionInvoke.repairAfterAbort(session.id)
+          }).not.toThrow()
+        },
+      })
+    })
+
+    test("no-ops when latest assistant already has time.completed", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: Date.now(), completed: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+
+          // Should not throw
+          await SessionInvoke.repairAfterAbort(session.id)
+
+          // Should still be complete (not recovering)
+          const result = await SessionWorking.resolve(session.id)
+          expect(result).toBeUndefined()
+        },
+      })
     })
   })
 })

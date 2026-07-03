@@ -313,4 +313,28 @@ export namespace SessionInbox {
       (item) => item.kind === "queued_user" || item.kind === "guiding" || item.kind === "agent_update",
     )
   }
+
+  /**
+   * Peek ready inbox items without deleting them from storage.
+   * Used by the session loop's after-turn boundary so items are only
+   * committed after the full reply cycle succeeds.
+   */
+  export async function peekReady(sessionID: string, excludeIDs?: Set<string>): Promise<StoredItem[]> {
+    const items = await listStored(sessionID)
+    const ready = items.filter(
+      (item) =>
+        (item.kind === "queued_user" || item.kind === "guiding" || item.kind === "agent_update") &&
+        (!excludeIDs || !excludeIDs.has(item.id)),
+    )
+    return sortItems(ready)
+  }
+
+  /**
+   * Commit (delete) inbox items after they have been successfully
+   * materialized into the session and the reply cycle has completed.
+   */
+  export async function commitReady(sessionID: string, itemIDs: Iterable<string>): Promise<void> {
+    const ids = Array.from(itemIDs)
+    await removeItems(sessionID, ids)
+  }
 }

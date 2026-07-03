@@ -43,6 +43,7 @@ const GUARDED_MEDIUM_ALLOWED = new Set(["file_write", "network_request", "sessio
 
 const AUTONOMOUS_DENIED = new Set([
   "shell_hardline",
+  "shell_remote_write",
   "shell_destructive",
   "file_external_write",
   "secrets",

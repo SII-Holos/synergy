@@ -1062,6 +1062,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const agentActions = useHolosAgentActions(props.globalSDK)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
+  const [holosStatusOpen, setHolosStatusOpen] = createSignal(false)
 
   const avatarSrc = () => holos.state.social.profile?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
   const activeAgentId = () => holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined
@@ -1109,6 +1110,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const closeMenu = () => {
     setMenuOpen(false)
     setAgentSwitcherOpen(false)
+    setHolosStatusOpen(false)
     document.removeEventListener("keydown", handleEscape)
   }
 
@@ -1158,16 +1160,8 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
 
   const handleHolosClick = () => {
     if (!holos.loaded) return
-    if (!holos.state.identity.loggedIn) {
-      closeMenu()
-      void agentActions.createAgent()
-      return
-    }
-    if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected") {
-      closeMenu()
-      void agentActions.reconnect()
-      return
-    }
+    closeMenu()
+    void agentActions.createAgent()
   }
 
   const openImportExistingAgentDialog = () => {
@@ -1188,6 +1182,26 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const logout = () => {
     closeMenu()
     void agentActions.logoutActiveAgent()
+  }
+  const showHolosStatus = () =>
+    holos.state.identity.loggedIn &&
+    (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
+
+  const toggleAccountCard = () => {
+    if (showHolosStatus()) {
+      setHolosStatusOpen((value) => !value)
+      setAgentSwitcherOpen(false)
+    } else if (holos.state.identity.loggedIn) {
+      setAgentSwitcherOpen((value) => !value)
+      setHolosStatusOpen(false)
+    } else {
+      setAgentSwitcherOpen((value) => !value)
+      setHolosStatusOpen(false)
+    }
+  }
+
+  const handleReconnect = () => {
+    void agentActions.reconnect()
   }
 
   return (
@@ -1226,8 +1240,8 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
             <button
               type="button"
               class="sidebar-account-card-main"
-              onClick={() => setAgentSwitcherOpen((value) => !value)}
-              aria-expanded={agentSwitcherOpen()}
+              onClick={toggleAccountCard}
+              aria-expanded={agentSwitcherOpen() || holosStatusOpen()}
             >
               <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
                 <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
@@ -1238,7 +1252,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 <span class="sidebar-account-card-description">{displayDescription()}</span>
                 <span class="sidebar-account-card-meta">{activeAgentShortID() ?? "No agent"}</span>
               </span>
-              <Icon name={agentSwitcherOpen() ? "chevron-up" : "chevron-down"} size="small" />
+              <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>
           </div>
 
@@ -1296,6 +1310,45 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 <Icon name={getSemanticIcon("account.import")} size="small" />
                 <span>Import Agent</span>
               </button>
+            </div>
+          </Show>
+
+          <Show when={holosStatusOpen()}>
+            <div class="sidebar-account-popover" role="menu">
+              <div class="sidebar-account-section-label">Holos Connection</div>
+              <div class="sidebar-holos-status-panel">
+                <div class="sidebar-holos-status-row">
+                  <Icon name={getSemanticIcon("connection.holos")} size="small" />
+                  <span>Login</span>
+                  <span
+                    class="sidebar-account-menuStatus"
+                    data-tone={holos.state.identity.loggedIn ? "success" : "muted"}
+                  >
+                    {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
+                  </span>
+                </div>
+                <div class="sidebar-holos-status-row">
+                  <Icon name={getSemanticIcon("settings.providers")} size="small" />
+                  <span>Service</span>
+                  <span class="sidebar-account-menuStatus" data-tone={connectionTone()}>
+                    {holosMenuRightLabel()}
+                  </span>
+                </div>
+                <Show when={holos.state.connection.error}>
+                  <div class="sidebar-holos-status-error">{holos.state.connection.error}</div>
+                </Show>
+                <Show when={showHolosStatus()}>
+                  <button
+                    type="button"
+                    class="sidebar-account-menuItem sidebar-holos-reconnect-btn"
+                    role="menuitem"
+                    onClick={handleReconnect}
+                  >
+                    <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                    <span>Reconnect</span>
+                  </button>
+                </Show>
+              </div>
             </div>
           </Show>
 
@@ -1357,6 +1410,12 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <Icon name={getSemanticIcon("settings.account")} size="small" />
               <span>Account</span>
             </button>
+            <Show when={showHolosStatus()}>
+              <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={handleReconnect}>
+                <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                <span>Reconnect</span>
+              </button>
+            </Show>
             <button
               type="button"
               class="sidebar-account-menuItem"

@@ -87,15 +87,21 @@ export namespace SessionInvoke {
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-
-    // Clean up all pending PermissionNext entries for this session before
-    // releasing the runtime. Otherwise the promises block forever and the
-    // entries remain in the pending map as orphans.
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
-
     SessionManager.signalAbort(sessionID)
+  }
+
+  /**
+   * Repair the persisted incomplete assistant message and clear pendingReply
+   * for a session after abort. This is safe to call from the HTTP abort handler
+   * or anywhere with a valid sessionID.
+   */
+  export async function repairAfterAbort(sessionID: string): Promise<void> {
+    await repairIncompleteAssistant(sessionID).catch((err) => {
+      log.error("assistant repair after abort failed", { sessionID, error: err })
+    })
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -848,15 +854,31 @@ export namespace SessionInvoke {
         continue
       }
 
-      // Inner loop finished — drain queued user input and agent updates in the
-      // same visible Inbox order. If any item requires a reply, re-enter the loop.
-      const readyItems = await SessionInbox.drainReady(sessionID)
+      // Inner loop finished — use peek-then-commit pattern for inbox items
+      // so items are never deleted before they are successfully materialized
+      // and the reply cycle completes. If needsReply, commit now (they're
+      // already in the session as user messages) and re-enter the loop.
+      // Otherwise, commit after the full loop exits with a final race check.
+      const readyItems = await SessionInbox.peekReady(sessionID)
       const readyResult = await materializeInboxItems(sessionID, readyItems)
-      if (readyResult.needsReply) continue outer
+      const committedIDs = new Set(readyItems.map((item) => item.id))
+
+      if (readyResult.needsReply) {
+        await SessionInbox.commitReady(sessionID, committedIDs)
+        continue outer
+      }
 
       const legacyMails = SessionManager.drainAllMails(sessionID).filter((mail) => !mail.inboxItemID)
       const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-      if (legacyResult.needsReply) continue outer
+      if (legacyResult.needsReply) {
+        await SessionInbox.commitReady(sessionID, committedIDs)
+        continue outer
+      }
+
+      // Commit to remove materialized items from the inbox, then do a
+      // final check for late-arriving items before clearing pendingReply.
+      await SessionInbox.commitReady(sessionID, committedIDs)
+      if (await hasLateArrivingInbox(sessionID)) continue outer
       break
     }
 
@@ -926,6 +948,62 @@ export namespace SessionInvoke {
   }
 
   // --- Helpers ---
+
+  /**
+   * Repair an incomplete assistant message when abort was requested but the
+   * processor never reached the normal completion path. Marks the last assistant
+   * with time.completed, finish: "error", and an AbortedError, then clears
+   * pendingReply so working.ts no longer reports "recovering".
+   */
+  async function repairIncompleteAssistant(sessionID: string): Promise<void> {
+    const session = await SessionManager.getSession(sessionID)
+    if (!session) return
+
+    const messages = await Session.messages({ sessionID })
+    let latestAssistant: MessageV2.Assistant | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].info.role === "assistant") {
+        latestAssistant = messages[i].info as MessageV2.Assistant
+        break
+      }
+    }
+    if (!latestAssistant || latestAssistant.time.completed != null) return
+
+    log.info("repairing incomplete assistant after abort", {
+      sessionID,
+      messageID: latestAssistant.id,
+    })
+
+    const repaired: MessageV2.Assistant = {
+      ...latestAssistant,
+      time: { ...latestAssistant.time, completed: Date.now() },
+      finish: "error",
+      error: new MessageV2.AbortedError({
+        message: "Session aborted during turn — assistant response was not completed",
+      }).toObject(),
+    }
+    await Session.updateMessage(repaired)
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+  }
+
+  /**
+   * Check for inbox items that arrived after the after-turn boundary closed.
+   * Returns true if any ready items exist and should trigger a loop re-entry.
+   */
+  async function hasLateArrivingInbox(sessionID: string): Promise<boolean> {
+    const lateItems = await SessionInbox.peekReady(sessionID)
+    if (lateItems.length > 0) {
+      log.info("late-arriving inbox items detected, re-entering loop", {
+        sessionID,
+        count: lateItems.length,
+      })
+      return true
+    }
+    return false
+  }
 
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
     const assistantMessage = (await Session.updateMessage({
@@ -1590,6 +1668,18 @@ export namespace SessionInvoke {
       }
 
       if (!pendingReply) continue
+
+      // Auto-repair: if a session has pendingReply but the latest assistant
+      // message is incomplete (time.completed == null) and no runtime is
+      // active, repair it so working.ts stops reporting "recovering".
+      const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
+      if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.getRuntime(sessionID)?.abort) {
+        log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
+        await repairIncompleteAssistant(sessionID).catch((err) => {
+          log.error("auto-repair failed", { sessionID, error: err })
+        })
+        continue
+      }
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
