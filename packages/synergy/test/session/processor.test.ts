@@ -143,10 +143,7 @@ describe("SessionProcessor.isFastAbort", () => {
     const controller = new AbortController()
 
     expect(
-      SessionProcessor.isFastAbort(
-        controller.signal,
-        new DOMException("The operation was aborted.", "AbortError"),
-      ),
+      SessionProcessor.isFastAbort(controller.signal, new DOMException("The operation was aborted.", "AbortError")),
     ).toBe(true)
   })
 
