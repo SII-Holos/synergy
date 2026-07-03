@@ -306,6 +306,17 @@ export namespace SessionInbox {
     return drainWhere(sessionID, (item) => item.kind === "guiding")
   }
 
+  /**
+   * Drain agent-update inbox items (e.g. cortex background-task completion
+   * notifications).  Unlike {@link drainReady}, this is designed for mid-turn
+   * injection — callers should materialize with `{ guiding: true }` so the
+   * update is injected into the running conversation without triggering a
+   * redundant reply cycle.
+   */
+  export async function drainAgentUpdates(sessionID: string): Promise<StoredItem[]> {
+    return drainWhere(sessionID, (item) => item.kind === "agent_update")
+  }
+
   export async function drainReady(sessionID: string): Promise<StoredItem[]> {
     return drainWhere(
       sessionID,

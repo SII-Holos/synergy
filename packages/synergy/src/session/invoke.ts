@@ -387,6 +387,17 @@ export namespace SessionInvoke {
           log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
         }
 
+        // Drain agent-update items (cortex task completions etc.) for mid-turn
+        // injection.  Materialized with guiding: true so they become synthetic
+        // user messages in the conversation without triggering a redundant
+        // reply cycle — the running turn processes them naturally next step.
+        const agentUpdateItems = await SessionInbox.drainAgentUpdates(sessionID)
+        if (agentUpdateItems.length > 0) {
+          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true })
+          msgs.push(...updates.userMessages)
+          log.info("drained agent updates into session", { sessionID, count: agentUpdateItems.length })
+        }
+
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
         if (legacyUserMails.length > 0) {
           const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
