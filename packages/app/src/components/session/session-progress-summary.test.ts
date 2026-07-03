@@ -213,44 +213,44 @@ describe("computeProgressIslandSnapshot", () => {
     expect(formatProgressIslandLabel(snapshot)).toBe("Ready · 0/2")
   })
 
-  test("paused pending-only work is hidden instead of shown as active", () => {
+  test("pending-only work stays visible without lifecycle suppression", () => {
     const dag = computeDagSummary([n("a", "pending"), n("b", "pending")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "paused")
+    const snapshot = computeProgressIslandSnapshot("dag", dag)
 
-    expect(snapshot.status).toBe("hidden")
-    expect(snapshot.total).toBe(0)
+    expect(snapshot.status).toBe("active")
+    expect(snapshot.tone).toBe("ready")
+    expect(snapshot.total).toBe(2)
   })
 
-  test("paused work with attention still stays visible", () => {
+  test("work with attention stays visible", () => {
     const dag = computeDagSummary([n("a", "completed"), n("b", "blocked"), n("c", "pending")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "paused")
+    const snapshot = computeProgressIslandSnapshot("dag", dag)
 
     expect(snapshot.status).toBe("attention")
     expect(snapshot.tone).toBe("blocked")
   })
 
-  test("settled work with non-terminal nodes is hidden (orphaned frame fix)", () => {
+  test("incomplete non-terminal DAG work remains visible as ready work", () => {
     const dag = computeDagSummary([n("a", "completed"), n("b", "pending"), n("c", "pending")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+    const snapshot = computeProgressIslandSnapshot("dag", dag)
 
-    expect(snapshot.status).toBe("hidden")
-    expect(snapshot.total).toBe(0)
+    expect(snapshot.status).toBe("active")
+    expect(snapshot.tone).toBe("ready")
+    expect(snapshot.total).toBe(3)
   })
 
-  test("settled work with running nodes is hidden (agent forgot to mark final node)", () => {
-    // The classic orphan: agent left a self-executed node in "running" state
-    // but the session went idle. settled means the work is finished even if
-    // node statuses weren't cleaned up.
+  test("running DAG work remains visible without idle-as-settled suppression", () => {
     const dag = computeDagSummary([n("a", "completed"), n("b", "running"), n("c", "pending")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+    const snapshot = computeProgressIslandSnapshot("dag", dag)
 
-    expect(snapshot.status).toBe("hidden")
-    expect(snapshot.total).toBe(0)
+    expect(snapshot.status).toBe("active")
+    expect(snapshot.tone).toBe("running")
+    expect(snapshot.total).toBe(3)
   })
 
-  test("settled fully-completed work shows complete (not hidden)", () => {
+  test("fully-completed work shows complete", () => {
     const dag = computeDagSummary([n("a", "completed"), n("b", "completed")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+    const snapshot = computeProgressIslandSnapshot("dag", dag)
 
     expect(snapshot.status).toBe("complete")
   })

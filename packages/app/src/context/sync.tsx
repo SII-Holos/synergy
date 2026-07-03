@@ -7,6 +7,9 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
 
+type RefreshOptions = { force?: boolean }
+type SessionSyncOptions = { refreshVolatile?: boolean }
+
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
   init: () => {
@@ -18,6 +21,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const maxMessages = 500
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
+    const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
     const inflightDag = new Map<string, Promise<void>>()
     const [meta, setMeta] = createStore({
@@ -113,24 +117,76 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         .catch(() => {})
     }
 
-    const evictSession = (sessionID: string) => {
-      setStore(
-        produce((draft) => {
-          delete draft.session_diff[sessionID]
-          delete draft.todo[sessionID]
-          delete draft.dag[sessionID]
-          if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
-          delete draft.question[sessionID]
-          delete draft.inbox[sessionID]
-        }),
+    const loadInbox = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.inbox[sessionID] !== undefined) return
+
+      const pending = inflightInbox.get(sessionID)
+      if (pending) return pending
+
+      const promise = retry(() => sdk.client.session.inbox({ sessionID }))
+        .then((result) => {
+          setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+        })
+        .catch(() => {})
+        .finally(() => {
+          inflightInbox.delete(sessionID)
+        })
+
+      inflightInbox.set(sessionID, promise)
+      return promise
+    }
+
+    const loadTodo = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.todo[sessionID] !== undefined) return
+
+      const pending = inflightTodo.get(sessionID)
+      if (pending) return pending
+
+      const promise = retry(() => sdk.client.session.todo({ sessionID }))
+        .then((todo) => {
+          setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
+        })
+        .catch(() => {})
+        .finally(() => {
+          inflightTodo.delete(sessionID)
+        })
+
+      inflightTodo.set(sessionID, promise)
+      return promise
+    }
+
+    const loadDag = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.dag[sessionID] !== undefined) return
+
+      const pending = inflightDag.get(sessionID)
+      if (pending) return pending
+
+      const promise = retry(() =>
+        sdk.client.session
+          .dag({
+            sessionID,
+            ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+          })
+          .then((r) => r.data as any),
       )
-      setMeta(
-        produce((draft) => {
-          delete draft.limit[sessionID]
-          delete draft.complete[sessionID]
-          delete draft.loading[sessionID]
-        }),
-      )
+        .then((nodes) => {
+          setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
+        })
+        .catch(() => {})
+        .finally(() => {
+          inflightDag.delete(sessionID)
+        })
+
+      inflightDag.set(sessionID, promise)
+      return promise
+    }
+
+    const refreshVolatile = async (sessionID: string) => {
+      await Promise.all([
+        loadInbox(sessionID, { force: true }),
+        loadTodo(sessionID, { force: true }),
+        loadDag(sessionID, { force: true }),
+      ])
     }
 
     return {
@@ -147,7 +203,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if (match.found) return globalSync.data.scope[match.index]
         return undefined
       },
-      evictSession,
       session: {
         get: getSession,
         addOptimisticMessage(input: {
@@ -181,7 +236,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
         },
-        async sync(sessionID: string) {
+        async sync(sessionID: string, options?: SessionSyncOptions) {
           const syncPermissions = () =>
             retry(() => sdk.client.permission.list())
               .then((res) => {
@@ -197,50 +252,50 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           hydrateMessages(sessionID)
 
           const hasMessages = store.message[sessionID] !== undefined
-          const hasInbox = store.inbox[sessionID] !== undefined
-          if (hasSession && hasMessages && hasInbox) return syncPermissions()
+          const ready = hasSession && hasMessages
+          const pending = ready ? undefined : inflight.get(sessionID)
+          const baseReq =
+            pending ??
+            (ready
+              ? Promise.resolve()
+              : (() => {
+                  const limit = meta.limit[sessionID] ?? chunk
+                  const sessionReq = hasSession
+                    ? Promise.resolve()
+                    : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
+                        if (!session.data) return
+                        reconcileCortexFromSession(session.data)
+                        setStore(
+                          "session",
+                          produce((draft) => {
+                            const match = Binary.search(draft, sessionID, (s) => s.id)
+                            if (match.found) {
+                              draft[match.index] = session.data
+                              return
+                            }
+                            draft.splice(match.index, 0, session.data)
+                          }),
+                        )
+                      })
+                  const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
+                  const promise = Promise.all([sessionReq, messagesReq])
+                    .then(() => {})
+                    .finally(() => {
+                      inflight.delete(sessionID)
+                    })
+                  inflight.set(sessionID, promise)
+                  return promise
+                })())
 
-          const pending = inflight.get(sessionID)
-          if (pending) return pending
+          const requests = [baseReq, syncPermissions()]
+          if (options?.refreshVolatile) {
+            requests.push(refreshVolatile(sessionID))
+          } else {
+            const inboxReq = loadInbox(sessionID)
+            if (inboxReq) requests.push(inboxReq)
+          }
 
-          const limit = meta.limit[sessionID] ?? chunk
-
-          const sessionReq = hasSession
-            ? Promise.resolve()
-            : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
-                if (!session.data) return
-                reconcileCortexFromSession(session.data)
-                setStore(
-                  "session",
-                  produce((draft) => {
-                    const match = Binary.search(draft, sessionID, (s) => s.id)
-                    if (match.found) {
-                      draft[match.index] = session.data
-                      return
-                    }
-                    draft.splice(match.index, 0, session.data)
-                  }),
-                )
-              })
-
-          const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
-
-          const permissionReq = syncPermissions()
-          const inboxReq = hasInbox
-            ? Promise.resolve()
-            : retry(() => sdk.client.session.inbox({ sessionID }))
-                .then((result) => {
-                  setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
-                })
-                .catch(() => {})
-
-          const promise = Promise.all([sessionReq, messagesReq, permissionReq, inboxReq])
-            .then(() => {})
-            .finally(() => {
-              inflight.delete(sessionID)
-            })
-          inflight.set(sessionID, promise)
-          return promise
+          await Promise.all(requests)
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return
@@ -259,47 +314,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           inflightDiff.set(sessionID, promise)
           return promise
         },
-        async todo(sessionID: string) {
-          if (store.todo[sessionID] !== undefined) return
-
-          const pending = inflightTodo.get(sessionID)
-          if (pending) return pending
-
-          const promise = retry(() => sdk.client.session.todo({ sessionID }))
-            .then((todo) => {
-              setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
-            })
-            .finally(() => {
-              inflightTodo.delete(sessionID)
-            })
-
-          inflightTodo.set(sessionID, promise)
-          return promise
-        },
-        async dag(sessionID: string) {
-          if (store.dag[sessionID] !== undefined) return
-
-          const pending = inflightDag.get(sessionID)
-          if (pending) return pending
-
-          const promise = retry(() =>
-            sdk.client.session
-              .dag({
-                sessionID,
-                ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
-              })
-              .then((r) => r.data as any),
-          )
-            .then((nodes) => {
-              setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
-            })
-            .finally(() => {
-              inflightDag.delete(sessionID)
-            })
-
-          inflightDag.set(sessionID, promise)
-          return promise
-        },
+        inbox: loadInbox,
+        todo: loadTodo,
+        dag: loadDag,
+        refreshVolatile,
         history: {
           more(sessionID: string) {
             if (store.message[sessionID] === undefined) return false

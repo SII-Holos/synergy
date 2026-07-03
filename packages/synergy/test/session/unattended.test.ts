@@ -33,25 +33,30 @@ test("sessionRuleset denies question for unattended sessions", async () => {
   expect(PermissionNext.evaluate("question", "*", ruleset).action).toBe("deny")
 })
 
-test("unattended permission ask auto-approves ask actions", async () => {
+test("unattended permission ask remains pending for ask actions", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await expect(
-        PermissionNext.ask({
-          sessionID: "ses_unattended",
-          permission: "bash",
-          patterns: ["ls"],
-          metadata: { sessionInteractionMode: "unattended" },
-          ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
-        }),
-      ).resolves.toBeUndefined()
+      const promise = PermissionNext.ask({
+        id: "permission_unattended_session_ask",
+        sessionID: "ses_unattended",
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: { sessionInteractionMode: "unattended" },
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      const pending = await PermissionNext.list()
+      expect(pending.find((r) => r.id === "permission_unattended_session_ask")).toBeDefined()
+
+      await PermissionNext.reply({ requestID: "permission_unattended_session_ask", reply: "once" })
+      await expect(promise).resolves.toBeUndefined()
     },
   })
 })
 
-test("unattended permission ask still rejects explicit deny", async () => {
+test("unattended permission ask still rejects explicit deny rules", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
