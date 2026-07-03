@@ -32,7 +32,8 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["commit", "shell"],
   ["merge", "shell"],
   ["pull", "shell"],
-  ["push", "shell"],
+  ["push", "shell_remote_write"],
+  ["tag", "shell"],
   ["revert", "shell_destructive"],
   ["rm", "shell_destructive"],
   // ── destructive ───────────────────────────────────────────
@@ -111,7 +112,14 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── push ───────────────────────────────────────────────────
   if (sub === "push") {
-    return "shell_destructive" // any push → destructive
+    const hasForce =
+      hasExact("--force") ||
+      hasExact("-f") ||
+      hasExact("--mirror") ||
+      flags.some((f) => f.startsWith("--force-with-lease"))
+    const hasDelete = hasExact("--delete")
+    if (hasForce || hasDelete) return "shell_destructive"
+    return "shell_remote_write" // normal push → remote write, Smart allow eligible
   }
 
   // ── reset ──────────────────────────────────────────────────
@@ -198,6 +206,142 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── fall-through to taxonomy map ───────────────────────────
   return GIT_TAXONOMY.get(sub) ?? null
+}
+
+/** Classify GitHub CLI (gh) commands into BashRisk categories.
+ *  gh pr view/list/status/checks/diff → shell_read
+ *  gh pr create/edit/ready → shell_remote_write
+ *  gh pr comment/review/merge/close → shell_remote_write
+ *  gh issue view/list/status → shell_read
+ *  gh issue create/edit/comment/close/reopen → shell_remote_write */
+function classifyGitHubCommand(words: string[]): BashRisk | null {
+  let idx = 0
+  while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+  if (words[idx] !== "gh") return null
+
+  const sub = words[idx + 1]
+  if (!sub) return null
+
+  // ── gh pr ──────────────────────────────────────────────────
+  if (sub === "pr") {
+    const subsub = words[idx + 2]
+    // Read-only PR operations
+    if (subsub === "view" || subsub === "list" || subsub === "status" || subsub === "checks" || subsub === "diff") {
+      return "shell_read"
+    }
+    // PR creation/update — remote write
+    if (subsub === "create" || subsub === "edit" || subsub === "ready") {
+      return "shell_remote_write"
+    }
+    // PR communication — remote write (crosses identity boundary)
+    if (subsub === "comment" || subsub === "review") {
+      return "shell_remote_write"
+    }
+    // PR merge/close — remote write (dangerous side effects)
+    if (subsub === "merge" || subsub === "close" || subsub === "reopen") {
+      return "shell_remote_write"
+    }
+    // Default: gh pr <unknown> → shell_remote_write
+    return "shell_remote_write"
+  }
+
+  // ── gh issue ───────────────────────────────────────────────
+  if (sub === "issue") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "status") {
+      return "shell_read"
+    }
+    if (subsub === "create" || subsub === "edit" || subsub === "comment" || subsub === "close" || subsub === "reopen") {
+      return "shell_remote_write"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh repo ────────────────────────────────────────────────
+  if (sub === "repo") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "browse") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh release ─────────────────────────────────────────────
+  if (sub === "release") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "download") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh auth ────────────────────────────────────────────────
+  if (sub === "auth") {
+    const subsub = words[idx + 2]
+    if (subsub === "status" || subsub === "token") {
+      return "shell_read"
+    }
+    return "shell_remote_write" // auth login, logout, etc
+  }
+
+  // ── gh workflow ────────────────────────────────────────────
+  if (sub === "workflow") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "run") {
+      if (subsub === "run" && words[idx + 3] === "list") return "shell_read"
+      if (subsub === "run" && words[idx + 3] === "view") return "shell_read"
+      return "shell_read"
+    }
+    return "shell_remote_write" // workflow enable/disable/run/dispatch
+  }
+
+  // ── gh run ─────────────────────────────────────────────────
+  if (sub === "run") {
+    const subsub = words[idx + 2]
+    if (subsub === "list" || subsub === "view" || subsub === "watch") {
+      return "shell_read"
+    }
+    if (subsub === "rerun" || subsub === "cancel") {
+      return "shell_remote_write"
+    }
+    return "shell_read" // default: read
+  }
+
+  // ── gh gist ────────────────────────────────────────────────
+  if (sub === "gist") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "clone") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh search ──────────────────────────────────────────────
+  if (sub === "search") {
+    return "shell_read"
+  }
+
+  // ── gh alias ──────────────────────────────────────────────────
+  if (sub === "alias") {
+    const subsub = words[idx + 2]
+    if (subsub === "list") return "shell_read"
+    return "shell" // alias set/delete → local write
+  }
+
+  // ── gh completion / gh help / gh version ───────────────────
+  if (sub === "completion" || sub === "help" || sub === "version" || sub === "codespace") {
+    const codespaceSub = words[idx + 2]
+    if (sub === "codespace" && codespaceSub) {
+      if (codespaceSub === "list" || codespaceSub === "logs" || codespaceSub === "view" || codespaceSub === "ports") {
+        return "shell_read"
+      }
+      return "shell_remote_write"
+    }
+    return "shell_read"
+  }
+
+  // Default: unknown gh command → shell_remote_write
+  return "shell_remote_write"
 }
 
 const UNSAFE_SHELL_TOKENS = [
@@ -413,7 +557,7 @@ function checkHardline(command: string): boolean {
   return false
 }
 
-export type BashRisk = "shell_read" | "shell" | "shell_destructive" | "shell_hardline"
+export type BashRisk = "shell_read" | "shell" | "shell_remote_write" | "shell_destructive" | "shell_hardline"
 
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
@@ -440,8 +584,9 @@ export namespace ShellSafety {
   const RISK_ORDER: Record<BashRisk, number> = {
     shell_read: 0,
     shell: 1,
-    shell_destructive: 2,
-    shell_hardline: 3,
+    shell_remote_write: 2,
+    shell_destructive: 3,
+    shell_hardline: 4,
   }
 
   function maxRisk(a: BashRisk, b: BashRisk): BashRisk {
@@ -558,6 +703,9 @@ export namespace ShellSafety {
     const words = shellWords(normalized)
     const gitRisk = classifyGitCommand(words)
     if (gitRisk !== null) return gitRisk
+
+    const ghRisk = classifyGitHubCommand(words)
+    if (ghRisk !== null) return ghRisk
 
     if (isReadOnly(command)) return "shell_read"
     return "shell"
