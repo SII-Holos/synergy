@@ -900,20 +900,43 @@ function createGlobalSync() {
         const parts = store.part[part.messageID]
         if (!parts) {
           setStore("part", part.messageID, [part])
-          break
+        } else {
+          const result = Binary.search(parts, part.id, (p) => p.id)
+          if (result.found) {
+            setStore("part", part.messageID, result.index, part)
+          } else {
+            setStore(
+              "part",
+              part.messageID,
+              produce((draft) => {
+                draft.splice(result.index, 0, part)
+              }),
+            )
+          }
         }
-        const result = Binary.search(parts, part.id, (p) => p.id)
-        if (result.found) {
-          setStore("part", part.messageID, result.index, part)
-          break
+
+        // Optimistic workspace update for worktree tools
+        if (part.type === "tool" && part.state.status === "completed") {
+          if (part.tool === "worktree_enter" && part.state.metadata?.action === "entered") {
+            const ws = part.state.metadata?.workspace as Record<string, unknown> | undefined
+            if (ws) {
+              const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+              if (idx.found) setStore("session", idx.index, "workspace", ws)
+            }
+          } else if (part.tool === "worktree_leave" && part.state.metadata?.action === "left") {
+            const restored = part.state.metadata?.restored as { type?: string; path?: string } | undefined
+            if (restored) {
+              const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+              if (idx.found) {
+                setStore("session", idx.index, "workspace", {
+                  type: restored.type ?? "main",
+                  path: restored.path,
+                  scopeID: (store.session[idx.index] as { scope?: { id?: string } })?.scope?.id ?? "",
+                })
+              }
+            }
+          }
         }
-        setStore(
-          "part",
-          part.messageID,
-          produce((draft) => {
-            draft.splice(result.index, 0, part)
-          }),
-        )
         break
       }
       case "message.part.removed": {
