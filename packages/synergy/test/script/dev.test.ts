@@ -41,6 +41,7 @@ describe("dev orchestrator planner", () => {
     expect(plan.kind).toBe("run")
     expect(plan.processes.map((process) => process.label)).toEqual(["server", "app", "desktop"])
     expect(plan.processes[2]?.env).toMatchObject({
+      BUN_BIN: "/bun",
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "external",
       SYNERGY_DESKTOP_APP_URL: "http://127.0.0.1:3000",
@@ -54,6 +55,7 @@ describe("dev orchestrator planner", () => {
     expect(plan.mode).toBe("serial")
     expect(plan.processes.map((process) => process.label)).toEqual(["install", "build", "desktop"])
     expect(plan.processes[2]?.env).toMatchObject({
+      BUN_BIN: "/bun",
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "managed",
     })
@@ -75,6 +77,7 @@ describe("dev orchestrator planner", () => {
       expect(plan.processes[0]?.command).toEqual(["/bun", "run", "build"])
       expect(plan.processes[0]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
       expect(plan.processes[1]?.env).toMatchObject({
+        BUN_BIN: "/bun",
         SYNERGY_DESKTOP_CHANNEL: "dev",
         SYNERGY_DESKTOP_SERVER_MODE: "managed",
       })
