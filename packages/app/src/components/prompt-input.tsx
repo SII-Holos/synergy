@@ -262,12 +262,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const displayedLoopID = untrack(sessionLoop)?.id
     if (loop.id !== activeLoopID && loop.id !== displayedLoopID) return
 
-    if (loop.id !== activeLoopID || isTerminalBlueprintLoopStatus(loop.status)) {
+    // Terminal: clear whichever reference matched
+    if (isTerminalBlueprintLoopStatus(loop.status)) {
       if (loop.id === activeLoopID) clearVisibleSessionLoop(params.id, loop.id)
-      else mutateSessionLoop(null)
+      else if (loop.id === displayedLoopID) mutateSessionLoop(null)
       return
     }
 
+    // Non-terminal: always update the display. Don't clear first — the
+    // session binding (activeLoopID) may arrive after the loop event,
+    // and clearing would cause a visible flicker.
     mutateSessionLoop(loop)
   }
 
