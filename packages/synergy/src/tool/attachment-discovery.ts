@@ -32,6 +32,16 @@ const EXTENSION_PATTERN = Object.keys(MIME_BY_EXT)
   .sort((a, b) => b.length - a.length)
   .join("|")
 
+/**
+ * Commands whose shell output is informational — file paths in the output
+ * are incidental metadata, not user-facing file artifacts worth previewing.
+ *
+ * Expanding entries for npm, yarn, pip, docker, kubectl, and common listing
+ * commands should be low risk; start conservatively.
+ */
+const INFORMATIONAL_COMMAND_PREFIX = /^(git|gh)\s/
+const INFORMATIONAL_COMMAND_EXACT = new Set(["git", "gh"])
+
 export namespace AttachmentDiscovery {
   export interface Candidate {
     value: string
@@ -46,6 +56,16 @@ export namespace AttachmentDiscovery {
     tool: string
     maxAttachments?: number
     maxTotalBytes?: number
+  }
+
+  /**
+   * Returns true when attachment discovery should be skipped because the
+   * tool command is informational — file paths in its output are not meant
+   * for preview.
+   */
+  export function shouldSkip(command: string | undefined): boolean {
+    if (!command) return false
+    return INFORMATIONAL_COMMAND_EXACT.has(command) || INFORMATIONAL_COMMAND_PREFIX.test(command)
   }
 
   export function extractCandidates(output: string): Candidate[] {
