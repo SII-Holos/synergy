@@ -241,6 +241,12 @@ export namespace SessionManager {
 
     if (runtime.mailbox.length > 0 && mailboxHandler) {
       await run(sessionID, () => mailboxHandler!(sessionID))
+      return
+    }
+
+    const inboxItems = await SessionInbox.peekReady(sessionID)
+    if (inboxItems.length > 0 && mailboxHandler) {
+      await run(sessionID, () => mailboxHandler!(sessionID))
     }
   }
 

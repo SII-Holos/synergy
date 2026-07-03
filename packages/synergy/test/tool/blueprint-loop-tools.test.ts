@@ -11,16 +11,22 @@ import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
 let originalLaunch: typeof Cortex.launch
+let originalCancelAll: typeof Cortex.cancelAll
 let originalDeliver: typeof SessionManager.deliver
+let originalSignalAbort: typeof SessionManager.signalAbort
 
 beforeEach(() => {
   originalLaunch = Cortex.launch
+  originalCancelAll = Cortex.cancelAll
   originalDeliver = SessionManager.deliver
+  originalSignalAbort = SessionManager.signalAbort
 })
 
 afterEach(() => {
   ;(Cortex.launch as any) = originalLaunch
+  ;(Cortex.cancelAll as any) = originalCancelAll
   ;(SessionManager.deliver as any) = originalDeliver
+  ;(SessionManager.signalAbort as any) = originalSignalAbort
 })
 
 function ctx(sessionID: string, agent: string): Tool.Context {
@@ -149,6 +155,115 @@ describe("BlueprintLoop tools", () => {
         expect(restarted.auditSessionID).toBeUndefined()
         const clearedAuditSession = await Session.get(auditSession.id)
         expect(clearedAuditSession.blueprint?.loopID).toBeUndefined()
+      },
+    })
+  })
+
+  test("finish with status=failed calls cancelAll and signalAbort", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        let cancelAllCalls: string[] = []
+        let signalAbortCalls: string[] = []
+        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
+          cancelAllCalls.push(sessionID)
+          return 0
+        })
+        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
+          signalAbortCalls.push(sessionID)
+        })
+
+        const tool = await BlueprintLoopFinishTool.init()
+        await tool.execute({ loopID: loop.id, status: "failed", summary: "task failed" }, ctx(session.id, "synergy"))
+
+        expect(cancelAllCalls).toEqual([session.id])
+        expect(signalAbortCalls).toEqual([session.id])
+
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(updated.status).toBe("failed")
+      },
+    })
+  })
+
+  test("finish with status=completed calls cancelAll and signalAbort", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        const auditSession = await Session.create({})
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: auditSession.id,
+        })
+        await Session.update(auditSession.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+        let cancelAllCalls: string[] = []
+        let signalAbortCalls: string[] = []
+        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
+          cancelAllCalls.push(sessionID)
+          return 0
+        })
+        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
+          signalAbortCalls.push(sessionID)
+        })
+
+        const tool = await BlueprintLoopFinishTool.init()
+        await tool.execute(
+          { loopID: loop.id, status: "completed", summary: "all done" },
+          ctx(auditSession.id, "synergy"),
+        )
+
+        expect(cancelAllCalls).toEqual([auditSession.id])
+        expect(signalAbortCalls).toEqual([auditSession.id])
+
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(updated.status).toBe("completed")
+      },
+    })
+  })
+
+  test("finish with status=auditing does not call cancelAll or signalAbort", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        let cancelAllCalls: string[] = []
+        let signalAbortCalls: string[] = []
+        ;(Cortex.launch as any) = mock(async () => {
+          const auditSession = await Session.create({})
+          return {
+            id: Identifier.short("cortex"),
+            sessionID: auditSession.id,
+            parentSessionID: session.id,
+            parentMessageID: Identifier.ascending("message"),
+            description: "audit",
+            prompt: "audit",
+            agent: "synergy",
+            executionRole: "delegated_subagent",
+            category: "general",
+            status: "running",
+            startedAt: Date.now(),
+            notifyParentOnComplete: false,
+          }
+        })
+        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
+          cancelAllCalls.push(sessionID)
+          return 0
+        })
+        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
+          signalAbortCalls.push(sessionID)
+        })
+
+        const tool = await BlueprintLoopFinishTool.init()
+        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+
+        expect(cancelAllCalls).toEqual([])
+        expect(signalAbortCalls).toEqual([])
       },
     })
   })
