@@ -17,6 +17,7 @@ import type { MessageV2 } from "@/session/message-v2"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
 import { ToolTimeout } from "../timeout"
+import { GitHubProvider } from "@/provider/github"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -66,6 +67,18 @@ const parser = lazy(async () => {
   p.setLanguage(bashLanguage)
   return p
 })
+
+function isGitHubCliCommand(pattern: string) {
+  const [command] = pattern.trim().split(/\s+/)
+  if (!command) return false
+  const normalized = command.replace(/^["']|["']$/g, "")
+  return normalized === "gh" || normalized.endsWith("/gh") || normalized.endsWith("\\gh.exe")
+}
+
+function canInjectGitHubCliToken(patterns: Set<string>) {
+  if (patterns.size === 0) return false
+  return Array.from(patterns).every(isGitHubCliCommand)
+}
 
 export const LocalBashBackend: BashBackend = {
   async execute(params, ctx) {
@@ -207,6 +220,16 @@ export const LocalBashBackend: BashBackend = {
       const val = process.env[key]
       if (val !== undefined) {
         sandboxEnv[key] = val
+      }
+    }
+    if (canInjectGitHubCliToken(patterns) && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
+      const github = await GitHubProvider.resolveToken()
+      if (github?.token) {
+        sandboxEnv.GH_TOKEN = github.token
+        await trace("bash.github.token.injected", {
+          source: github.source,
+          authKind: github.authKind,
+        })
       }
     }
     // ── ProcessRegistry setup (shared across both paths) ──────────

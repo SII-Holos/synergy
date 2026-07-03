@@ -11,6 +11,7 @@ import { CodexProvider } from "./codex"
 import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
+import { GitHubProvider } from "./github"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 
@@ -93,6 +94,20 @@ export namespace ProviderAuth {
           {
             type: "api" as const,
             label: "GitHub token",
+          },
+        ],
+      },
+      [GitHubProvider.PROVIDER_ID]: {
+        provider: GitHubProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "api" as const,
+            label: "GitHub token",
+          },
+          {
+            type: "oauth" as const,
+            label: "Sign in with GitHub",
+            authorize: () => GitHubProvider.authorizeDeviceCode(),
           },
         ],
       },

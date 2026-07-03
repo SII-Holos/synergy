@@ -18,10 +18,16 @@ import { ProviderRecommendation } from "@/provider/recommendation"
 import { AnthropicOAuthProvider } from "@/provider/anthropic-oauth"
 import { CopilotProvider } from "@/provider/copilot"
 import { MiniMaxProvider } from "@/provider/minimax"
+import { GitHubProvider } from "@/provider/github"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { ProviderUsage } from "@/provider/usage-service"
 
 type PluginAuth = NonNullable<PluginHooks["auth"]>
+
+function providerDisplayName(database: Record<string, { name?: string }>, providerID: string) {
+  if (providerID === GitHubProvider.PROVIDER_ID) return "GitHub"
+  return database[providerID]?.name || providerID
+}
 
 /**
  * Handle plugin-based authentication flow.
@@ -347,6 +353,35 @@ async function handleBuiltinAuth(provider: string): Promise<boolean> {
     return runOauthResult(provider, await CopilotProvider.authorizeDeviceCode(provider))
   }
 
+  if (provider === GitHubProvider.PROVIDER_ID) {
+    const options = [
+      ...(GitHubProvider.hasOAuthClient()
+        ? [{ label: "GitHub device login", value: "oauth", hint: "Stores a Synergy-managed GitHub token" }]
+        : []),
+      { label: "Import GitHub CLI token", value: "import", hint: "Reads the token from gh auth token" },
+      { label: "GitHub token", value: "api", hint: "Stores an existing GitHub token" },
+    ]
+    const method = await prompts.select({
+      message: "Login method",
+      options,
+    })
+    if (prompts.isCancel(method)) throw new UI.CancelledError()
+    if (method === "api") return false
+    if (method === "import") {
+      const result = await GitHubProvider.importCliToken()
+      if (result.type === "failed") {
+        prompts.log.error(result.message ?? "Failed to import GitHub CLI token")
+        prompts.outro("Done")
+        return true
+      }
+      await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: result.key }, { source: "import" })
+      prompts.log.success("GitHub credentials imported")
+      prompts.outro("Done")
+      return true
+    }
+    return runOauthResult(provider, await GitHubProvider.authorizeDeviceCode())
+  }
+
   if (provider === MiniMaxProvider.PROVIDER_ID) {
     return runOauthResult(provider, await MiniMaxProvider.authorizeOAuth())
   }
@@ -419,7 +454,7 @@ export const AuthListCommand = cmd({
     const database = await ProviderCatalog.resolve()
 
     for (const [providerID, result] of results) {
-      const name = database[providerID]?.name || providerID
+      const name = providerDisplayName(database, providerID)
       prompts.log.info(`${name} ${UI.Style.TEXT_DIM}${result.type}`)
     }
 
@@ -436,6 +471,11 @@ export const AuthListCommand = cmd({
             envVar,
           })
         }
+      }
+    }
+    for (const envVar of ["GH_TOKEN", "GITHUB_TOKEN"]) {
+      if (process.env[envVar]) {
+        activeEnvVars.push({ provider: "GitHub", envVar })
       }
     }
 
@@ -544,6 +584,11 @@ export const AuthLoginCommand = cmd({
               })),
             ),
             {
+              value: GitHubProvider.PROVIDER_ID,
+              label: "GitHub",
+              hint: "Issues, pull requests, releases",
+            },
+            {
               value: "other",
               label: "Other",
             },
@@ -561,7 +606,8 @@ export const AuthLoginCommand = cmd({
           provider === AnthropicOAuthProvider.PROVIDER_ID ||
           provider === CopilotProvider.PROVIDER_ID ||
           provider === CopilotProvider.ENTERPRISE_PROVIDER_ID ||
-          provider === MiniMaxProvider.PROVIDER_ID
+          provider === MiniMaxProvider.PROVIDER_ID ||
+          provider === GitHubProvider.PROVIDER_ID
         ) {
           const handled = await handleBuiltinAuth(provider)
           if (handled) return
@@ -652,7 +698,7 @@ export const AuthLogoutCommand = cmd({
     const providerID = await prompts.select({
       message: "Select provider",
       options: credentials.map(([key, value]) => ({
-        label: (database[key]?.name || key) + UI.Style.TEXT_DIM + " (" + value.type + ")",
+        label: providerDisplayName(database, key) + UI.Style.TEXT_DIM + " (" + value.type + ")",
         value: key,
       })),
     })

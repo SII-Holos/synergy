@@ -7821,6 +7821,98 @@
         ]
       }
     },
+    "/provider/auth/github/status": {
+      "get": {
+        "operationId": "provider.auth.githubStatus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get GitHub auth status",
+        "description": "Get the managed GitHub account status used for GitHub CLI-backed actions.",
+        "responses": {
+          "200": {
+            "description": "GitHub auth status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAuthStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubStatus({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/auth/github": {
+      "delete": {
+        "operationId": "provider.auth.githubLogout",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove GitHub auth credentials",
+        "description": "Remove the managed GitHub credential used for GitHub CLI-backed actions.",
+        "responses": {
+          "200": {
+            "description": "GitHub credentials removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubLogout({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/{providerID}/oauth/authorize": {
       "post": {
         "operationId": "provider.oauth.authorize",
@@ -25019,6 +25111,52 @@
           }
         },
         "required": ["type", "label"]
+      },
+      "GitHubAccount": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "id": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": ["login"]
+      },
+      "GitHubAuthStatus": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string",
+            "const": "github"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "not_configured", "invalid", "unverified"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["env", "store"]
+          },
+          "authKind": {
+            "type": "string",
+            "enum": ["api_key", "oauth"]
+          },
+          "account": {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          "failureCode": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "status"]
       },
       "ProviderAuthAuthorization": {
         "type": "object",
