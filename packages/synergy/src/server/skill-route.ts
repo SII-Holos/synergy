@@ -13,6 +13,7 @@ import { RuntimeReload } from "../runtime/reload"
 
 function resolveScope(skill: Skill.Info): Skill.Scope {
   if (skill.scope) return skill.scope
+  if (skill.source === "plugin") return "external"
   if (skill.builtin) return "builtin"
   const projectDir = ScopeContext.current.directory
   if (skill.location.startsWith(projectDir + path.sep)) return "project"
@@ -96,6 +97,8 @@ export const SkillRoute = new Hono()
                         compatibility: Skill.Compatibility.optional(),
                         entryFile: z.string().optional(),
                         baseDir: z.string().optional(),
+                        pluginId: z.string().optional(),
+                        pluginName: z.string().optional(),
                         references: z.array(z.string()).optional(),
                         scripts: z.array(z.string()).optional(),
                       }),
@@ -122,6 +125,8 @@ export const SkillRoute = new Hono()
           compatibility: s.compatibility,
           entryFile: s.entryFile,
           baseDir: s.baseDir,
+          pluginId: s.pluginId,
+          pluginName: s.pluginName,
           references: s.references ? Object.keys(s.references) : undefined,
           scripts: s.scripts ? Object.keys(s.scripts) : undefined,
         })),
@@ -180,6 +185,9 @@ export const SkillRoute = new Hono()
       }
       if (skill.builtin) {
         return c.json({ error: "Cannot delete builtin skills", name }, 400)
+      }
+      if (skill.source === "plugin") {
+        return c.json({ error: "Cannot delete plugin skills", name, pluginId: skill.pluginId }, 400)
       }
       const skillDir = path.dirname(skill.location)
       await fs.rm(skillDir, { recursive: true, force: true })
