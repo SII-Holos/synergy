@@ -78,7 +78,7 @@ Session turns should render as one persisted message-part timeline. Text, reason
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.
 
-When the current running assistant step has no visible message part yet, the timeline may show a transient provider-waiting status using the backend session status text verbatim. Its start time may appear as quiet inline metadata after a middle dot, without badge, chip, capsule, or button chrome. Once any real text, reasoning, tool, media, or attachment part appears for that step, the persisted part timeline takes over and the transient status disappears.
+When the current running assistant step has no visible message part yet, the timeline may show a transient provider-waiting status using the backend session status text verbatim. Its current turn runtime may appear as quiet inline elapsed-time metadata after a middle dot, updating once per second without badge, chip, capsule, or button chrome. Once any real text, reasoning, tool, media, or attachment part appears for that step, the persisted part timeline takes over and the transient status disappears.
 
 Tool audit icons are a quiet exception rail, not a status badge on every tool card. Show them for pending user approval, user decisions, denials, sandbox blocks, and notable autonomous or smart auto-approvals. Hide ordinary low-risk and Guarded baseline auto-approvals so read/search/tool plumbing does not compete with the work itself. The server approval metadata is the source of truth for audit visibility; the UI should not infer visibility from risk or mode.
 
