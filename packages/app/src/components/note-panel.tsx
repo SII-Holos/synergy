@@ -373,7 +373,8 @@ function RunMenu(props: {
     return modelOptions().find((o) => o.value === selectedModelValue()) ?? modelOptions()[0]
   })
 
-  function selectModelOption(option: ModelOption) {
+  function selectModelOption(option: ModelOption | undefined) {
+    if (!option) return
     setSelectedModelValue(option.value)
     setPickerOpen(false)
   }
