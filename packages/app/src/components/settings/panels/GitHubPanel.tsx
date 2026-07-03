@@ -96,7 +96,6 @@ export function GitHubPanel() {
           providerID="github"
           providerName="GitHub"
           connectedOverride={connected()}
-          compact
           skipAutoAdvance
           completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
           onComplete={refreshStatus}

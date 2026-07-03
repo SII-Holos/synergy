@@ -348,6 +348,7 @@ export function ProviderConnectionFlow(props: {
                   })
 
                   onMount(async () => {
+                    if (store.authorization?.url) platform.openLink(store.authorization.url)
                     const result = await globalSDK.client.provider.oauth.callback({
                       providerID: props.providerID,
                       method: store.methodIndex,
