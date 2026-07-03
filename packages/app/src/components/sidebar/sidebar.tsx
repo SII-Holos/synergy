@@ -57,7 +57,6 @@ function SbSessionRow(props: { entry: NavEntry; isActive: boolean; onClick: () =
       classList={{
         "sb-session-row": true,
         "sb-session-active": props.isActive,
-        "group/row": true,
       }}
       data-session-id={props.entry.id}
       onClick={handleRowClick}

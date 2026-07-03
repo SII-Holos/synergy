@@ -514,12 +514,8 @@
 
 .sb-session-actions {
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 100ms;
-}
-
-.group\/row:hover .sb-session-actions {
-  opacity: 1;
+  display: flex;
+  align-items: center;
 }
 
 .sb-session-action-btn {
