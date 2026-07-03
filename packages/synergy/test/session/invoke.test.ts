@@ -7,6 +7,15 @@ import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { Provider } from "../../src/provider/provider"
+import { Agent } from "../../src/agent/agent"
+import { Config } from "../../src/config/config"
+import { ToolResolver } from "../../src/session/tool-resolver"
+import { PromptBudgeter } from "../../src/session/prompt-budgeter"
+import { SessionProcessor } from "../../src/session/processor"
+import { Identifier } from "../../src/id/id"
+import { Cortex } from "../../src/cortex/manager"
+import { Embedding } from "../../src/vector/embedding"
 
 const sessionID = "ses_test"
 
@@ -88,6 +97,137 @@ describe("SessionInvoke.selectResultMessage", () => {
     const result = SessionInvoke.selectResultMessage([user, assistant])
 
     expect(result?.info.id).toBe("msg_assistant")
+  })
+})
+
+describe("SessionInvoke system prompt assembly", () => {
+  test("injects the git coauthor reminder into model system prompts", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const originalGetModel = Provider.getModel
+    const originalGetAgent = Agent.get
+    const originalConfigCurrent = Config.current
+    const originalDefinitions = ToolResolver.definitions
+    const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
+    const originalBuildPlan = PromptBudgeter.buildPlan
+    const originalDecide = PromptBudgeter.decide
+    const originalProcessorCreate = SessionProcessor.create
+    const originalCortexList = Cortex.list
+    const originalCortexGetRunningTasks = Cortex.getRunningTasks
+    const originalEmbeddingGenerate = Embedding.generate
+
+    let capturedSystem: string[] | undefined
+
+    try {
+      ;(Provider.getModel as any) = mock(async () => ({
+        id: "test-model",
+        providerID: "test-provider",
+        name: "Test Model",
+        limit: { context: 100_000, output: 8_192 },
+        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        capabilities: {
+          toolcall: true,
+          attachment: false,
+          reasoning: false,
+          temperature: true,
+          input: { text: true, image: false, audio: false, video: false },
+          output: { text: true, image: false, audio: false, video: false },
+        },
+        api: { npm: "@ai-sdk/openai" },
+        options: {},
+      }))
+      ;(Agent.get as any) = mock(async () => ({
+        name: "synergy",
+        mode: "primary",
+        permission: PermissionNext.fromConfig({ "*": "allow" }),
+        options: {},
+      }))
+      ;(Config.current as any) = mock(async () => ({
+        ...(await originalConfigCurrent()),
+        compaction: { auto: true, maxHistoryImages: 8 },
+        library: { memory: { enabled: false }, experience: { retrieve: false } },
+      }))
+      ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
+        capturedSystem = input.system
+        return {
+          system: input.system,
+          systemCacheBreakpoint: input.systemCacheBreakpoint,
+          messages: [{ role: "user", content: "stub message" }],
+          toolDefinitions: [],
+        }
+      })
+      ;(PromptBudgeter.decide as any) = mock(async () => ({
+        budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
+        measure: { system: 10, messages: 10, tools: 0, total: 20 },
+        shouldCompact: false,
+      }))
+      ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
+        message: input.assistantMessage,
+        partFromToolCall: () => undefined,
+        trackExecution: () => {},
+        process: mock(async () => "stop" as const),
+      }))
+      ;(Cortex.list as any) = mock(() => [])
+      ;(Cortex.getRunningTasks as any) = mock(() => [])
+      ;(Embedding.generate as any) = mock(async (input: Parameters<typeof Embedding.generate>[0]) => ({
+        id: input.id,
+        vector: [],
+        model: "test-embedding",
+      }))
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const promptSessionID = session.id
+
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: promptSessionID,
+            agent: "synergy",
+            model: {
+              providerID: "test-provider",
+              modelID: "test-model",
+            },
+            time: {
+              created: Date.now(),
+            },
+          })
+
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: promptSessionID,
+            type: "text",
+            text: "Please commit the changes.",
+          })
+
+          await SessionInvoke.loop.force(promptSessionID)
+
+          const systemPrompt = capturedSystem?.join("\n") ?? ""
+          expect(systemPrompt).toContain("<coauthor-reminder>")
+          expect(systemPrompt).toContain(
+            "Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>",
+          )
+          expect(systemPrompt).toContain("</coauthor-reminder>")
+        },
+      })
+    } finally {
+      ;(Provider.getModel as any) = originalGetModel
+      ;(Agent.get as any) = originalGetAgent
+      ;(Config.current as any) = originalConfigCurrent
+      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
+      ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
+      ;(PromptBudgeter.decide as any) = originalDecide
+      ;(SessionProcessor.create as any) = originalProcessorCreate
+      ;(Cortex.list as any) = originalCortexList
+      ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
+      ;(Embedding.generate as any) = originalEmbeddingGenerate
+    }
   })
 })
 

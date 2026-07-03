@@ -1,0 +1,2 @@
+When creating git commits, always include this footer in the commit message:
+Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>

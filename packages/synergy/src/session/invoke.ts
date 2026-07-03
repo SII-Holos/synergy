@@ -19,6 +19,7 @@ import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
 import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
 import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
+import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
 import { $ } from "bun"
@@ -652,6 +653,9 @@ export namespace SessionInvoke {
         // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
         const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
         if (gitHealthBlock) systemParts.push(gitHealthBlock)
+
+        // Layer 4.55: Always-on — git commit coauthor footer reminder
+        systemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
         if (agendaReminder) systemParts.push(agendaReminder)
