@@ -21,6 +21,11 @@ export namespace DesktopInstallation {
     isCurrent: boolean
   }
 
+  export interface PathCandidateFilesystem {
+    access(path: string): Promise<void>
+    realpath(path: string): Promise<string>
+  }
+
   export interface DesktopPackageVersionStatus {
     status: "matching" | "mismatch" | "unavailable" | "not-applicable"
     runtimeVersion: string
@@ -313,7 +318,10 @@ export namespace DesktopInstallation {
     }
   }
 
-  export async function pathCandidates(context: Context): Promise<PathCandidate[]> {
+  export async function pathCandidates(
+    context: Context,
+    filesystem: PathCandidateFilesystem = fs,
+  ): Promise<PathCandidate[]> {
     const commandNames = context.platform === "win32" ? ["synergy.cmd", "synergy.exe", "synergy.bat"] : ["synergy"]
     const candidates: PathCandidate[] = []
     const seen = new Set<string>()
@@ -323,16 +331,30 @@ export namespace DesktopInstallation {
         const key = normalizePath(candidate)
         if (seen.has(key)) continue
         seen.add(key)
-        const exists = await fs
+        const exists = await filesystem
           .access(candidate)
           .then(() => true)
           .catch(() => false)
         if (!exists) continue
-        const realCandidate = await fs.realpath(candidate).catch(() => candidate)
-        candidates.push({ path: candidate, isCurrent: samePath(realCandidate, context.realExecPath, context.platform) })
+        const isCurrent = await isCurrentPathCandidate(context, candidate, filesystem)
+        candidates.push({ path: candidate, isCurrent })
       }
     }
     return candidates
+  }
+
+  async function isCurrentPathCandidate(context: Context, candidate: string, filesystem: PathCandidateFilesystem) {
+    if (isDesktopWindowsLauncherCandidate(context, candidate)) return true
+    const realCandidate = await filesystem.realpath(candidate).catch(() => candidate)
+    return samePath(realCandidate, context.realExecPath, context.platform)
+  }
+
+  function isDesktopWindowsLauncherCandidate(context: Context, candidate: string) {
+    if (context.platform !== "win32") return false
+    if (!detectDesktopInstall(context)) return false
+    const expectedLink = linkPath(context)
+    if (!expectedLink) return false
+    return samePath(candidate, expectedLink, "win32")
   }
 
   export function samePath(a: string, b: string, platform: NodeJS.Platform) {

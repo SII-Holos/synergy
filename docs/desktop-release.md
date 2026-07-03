@@ -104,7 +104,7 @@ Product release keeps the existing candidate/finalize model:
 
 - `bun run --cwd packages/desktop desktop:test`
 - `bun run --cwd packages/desktop desktop:build`
-- `electron-builder --dir --publish=never` with `SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1` for config-only CI validation
+- `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
 - Confirm Windows does not expose internal runtime helper binaries through PATH
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
