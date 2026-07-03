@@ -342,6 +342,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       const processes: DevProcessSpec[] = appDistExists
         ? [desktopProcess({ repoRoot, bunPath, mode: "managed" })]
         : [
+            { label: "install", command: [bunPath, "install"], cwd: repoRoot },
             { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
             desktopProcess({ repoRoot, bunPath, mode: "managed" }),
           ]
