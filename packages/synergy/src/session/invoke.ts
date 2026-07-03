@@ -84,24 +84,21 @@ export namespace SessionInvoke {
   })
 
   export const assertIdle = SessionManager.assertIdle
-  export async function cancel(sessionID: string) {
+  export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-
-    // Clean up all pending PermissionNext entries for this session before
-    // releasing the runtime. Otherwise the promises block forever and the
-    // entries remain in the pending map as orphans.
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
-
     SessionManager.signalAbort(sessionID)
+  }
 
-    // Repair the persisted incomplete assistant message and clear pendingReply.
-    // signalAbort fires the AbortController and emits idle status, but the
-    // processor may still be stuck in a provider stream or tool execution.
-    // This ensures the session state is always repaired regardless of whether
-    // the processor observes the abort signal.
+  /**
+   * Repair the persisted incomplete assistant message and clear pendingReply
+   * for a session after abort. This is safe to call from the HTTP abort handler
+   * or anywhere with a valid sessionID.
+   */
+  export async function repairAfterAbort(sessionID: string): Promise<void> {
     await repairIncompleteAssistant(sessionID).catch((err) => {
       log.error("assistant repair after abort failed", { sessionID, error: err })
     })

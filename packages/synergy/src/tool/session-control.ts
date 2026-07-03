@@ -209,7 +209,7 @@ async function handleCompact(sessionID: string) {
 }
 
 async function handleAbort(sessionID: string) {
-  await SessionInvoke.cancel(sessionID)
+  SessionInvoke.cancel(sessionID)
   const { Cortex } = await import("../cortex")
   await Cortex.cancelAll(sessionID)
   return {
