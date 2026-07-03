@@ -88,7 +88,7 @@ jobs:
           - os: macos-latest
             platform: darwin
             runtime_targets: darwin-x64,darwin-arm64
-            builder_args: --mac dmg zip --x64 --arm64
+            builder_args: --mac pkg dmg zip --x64 --arm64
           - os: windows-latest
             platform: win32
             runtime_targets: win32-x64,win32-arm64
@@ -168,6 +168,7 @@ jobs:
             packages/desktop/release/*.blockmap
             packages/desktop/release/*.deb
             packages/desktop/release/*.dmg
+            packages/desktop/release/*.pkg
             packages/desktop/release/*.exe
             packages/desktop/release/*.tar.gz
             packages/desktop/release/*.yml

@@ -45,6 +45,10 @@
     "icon": "build/icon.icns",
     "target": [
       {
+        "target": "pkg",
+        "arch": ["x64", "arm64"]
+      },
+      {
         "target": "dmg",
         "arch": ["x64", "arm64"]
       },
@@ -82,9 +86,14 @@
       }
     ]
   },
+  "pkg": {
+    "scripts": "build/pkg-scripts",
+    "installLocation": "/Applications",
+    "mustClose": ["io.holosai.synergy"]
+  },
   "win": {
     "artifactName": "Synergy-win32-${arch}-${version}.${ext}",
-    "executableName": "synergy",
+    "executableName": "synergy-desktop",
     "icon": "build/icon.ico",
     "target": [
       {
@@ -104,7 +113,8 @@
     "createStartMenuShortcut": true,
     "oneClick": false,
     "perMachine": false,
-    "shortcutName": "Synergy"
+    "shortcutName": "Synergy",
+    "include": "build/installer.nsh"
   },
   "linux": {
     "artifactName": "Synergy-linux-${arch}-${version}.${ext}",
@@ -116,7 +126,7 @@
         "StartupWMClass": "synergy"
       }
     },
-    "executableName": "synergy",
+    "executableName": "synergy-desktop",
     "icon": "build/icons",
     "target": [
       {
@@ -132,6 +142,10 @@
         "arch": ["x64", "arm64"]
       }
     ]
+  },
+  "deb": {
+    "afterInstall": "build/linux/deb-after-install.sh",
+    "afterRemove": "build/linux/deb-after-remove.sh"
   },
   "electronFuses": {
     "runAsNode": false,
