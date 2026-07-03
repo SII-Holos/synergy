@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
 import type { BrowserNativeAttachRequest, BrowserNativeBounds, BrowserNativeViewEvent } from "./browser-native-view.js"
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
+import { mapSelectDirectoryDialogResponse, type SelectDirectoryDialogBridgeResponse } from "./directory-picker.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -36,6 +37,13 @@ const server = {
   restart() {
     return ipcRenderer.invoke("desktop.server.restart")
   },
+}
+
+function openDirectoryPickerDialog(opts?: { title?: string; multiple?: boolean }): Promise<string | string[] | null> {
+  const multiple = opts?.multiple ?? false
+  return ipcRenderer
+    .invoke("dialog:select-directory", { title: opts?.title, multiple })
+    .then((response: SelectDirectoryDialogBridgeResponse) => mapSelectDirectoryDialogResponse(response, multiple))
 }
 
 const update = {
@@ -103,6 +111,7 @@ const desktopWindow = {
 
 contextBridge.exposeInMainWorld("synergyDesktop", {
   platform: "desktop",
+  openDirectoryPickerDialog,
   server,
   update,
   shell: desktopShell,

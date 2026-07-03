@@ -66,6 +66,8 @@ Large browser diagnostics such as console, network, snapshots, assets, and downl
 
 Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. Managed server failures show a desktop error page. Source-checkout desktop development uses `bun dev desktop`, which defaults to external mode against the local Vite app and Synergy server.
 
+In managed desktop mode, Add/Open Project uses the operating system's native folder picker because the app and managed Synergy server share the same local filesystem. Web clients, remote servers, and desktop external-server mode use Synergy's server-directory browser so project paths always come from the server filesystem.
+
 On Windows and Linux, closing the desktop window hides it to the Synergy system tray icon so the local server and session shell remain reopenable. Use the tray menu to reopen Synergy or quit the desktop process. macOS keeps the standard Dock activation behavior.
 
 Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds show product updates as disabled and never check the release feed.
