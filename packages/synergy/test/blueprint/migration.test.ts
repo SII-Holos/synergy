@@ -200,4 +200,82 @@ describe("blueprint migrations", () => {
     expect(newer.status).toBe("auditing")
     expect((note.blueprint as { activeLoopID?: string }).activeLoopID).toBe(newerLoopID)
   })
+
+  test("backfills BlueprintLoop userPrompt from start message metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const loopID = Identifier.ascending("blueprint_loop")
+    const sessionID = Identifier.ascending("session")
+    const messageID = Identifier.ascending("message")
+    const now = Date.now()
+
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, loopID),
+      blueprintLoop({
+        id: loopID,
+        noteID: Identifier.ascending("note"),
+        sessionID,
+        scopeID,
+        status: "running",
+        updated: now,
+      }),
+    )
+    await Storage.write(StoragePath.messageInfo(scopeID, Identifier.asSessionID(sessionID), messageID), {
+      id: messageID,
+      sessionID,
+      role: "user",
+      metadata: {
+        source: "blueprint_loop_start",
+        loopID,
+        userPrompt: "  Critical constraint  ",
+      },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260704-blueprint-loop-user-prompt")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const migrated = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, loopID))
+    expect(migrated.userPrompt).toBe("Critical constraint")
+  })
+
+  test("leaves BlueprintLoop userPrompt unchanged when start metadata is blank", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const loopID = Identifier.ascending("blueprint_loop")
+    const sessionID = Identifier.ascending("session")
+    const messageID = Identifier.ascending("message")
+    const now = Date.now()
+
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, loopID),
+      blueprintLoop({
+        id: loopID,
+        noteID: Identifier.ascending("note"),
+        sessionID,
+        scopeID,
+        status: "running",
+        updated: now,
+      }),
+    )
+    await Storage.write(StoragePath.messageInfo(scopeID, Identifier.asSessionID(sessionID), messageID), {
+      id: messageID,
+      sessionID,
+      role: "user",
+      metadata: {
+        source: "blueprint_loop_start",
+        loopID,
+        userPrompt: "  ",
+      },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260704-blueprint-loop-user-prompt")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const migrated = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, loopID))
+    expect(migrated.userPrompt).toBeUndefined()
+  })
 })

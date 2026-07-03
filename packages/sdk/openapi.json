@@ -26729,6 +26729,9 @@
           "firstPrompt": {
             "type": "string"
           },
+          "userPrompt": {
+            "type": "string"
+          },
           "error": {
             "type": "string"
           },

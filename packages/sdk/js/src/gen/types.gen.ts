@@ -4271,6 +4271,7 @@ export type BlueprintLoopInfo = {
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
+  userPrompt?: string
   error?: string
   loopIndex?: number
   audit?: {
