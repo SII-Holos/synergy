@@ -4,12 +4,13 @@ import { synergyTheme } from "./default-themes"
 import { resolveThemeVariant, themeToCss } from "./resolve"
 import { createSimpleContext } from "../context/helper"
 import { getPluginTheme, listThemeChoices, subscribePluginThemes } from "./plugin-theme-registry"
-
-export type ColorScheme = "light" | "dark" | "system"
-
-const STORAGE_KEYS = {
-  COLOR_SCHEME: "synergy-color-scheme",
-} as const
+import {
+  COLOR_SCHEME_STORAGE_KEY,
+  getSavedColorScheme,
+  getSystemMode,
+  resolveColorSchemeMode,
+  type ColorScheme,
+} from "./color-scheme"
 
 const THEME_STYLE_ID = "synergy-theme"
 const PLUGIN_THEME_LINK_ID = "synergy-plugin-theme"
@@ -31,29 +32,6 @@ function ensurePluginThemeLinkElement(): HTMLLinkElement {
   element.rel = "stylesheet"
   document.head.appendChild(element)
   return element
-}
-
-function getSystemMode(): "light" | "dark" {
-  if (typeof window === "undefined" || !window.matchMedia) return "light"
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-}
-
-function isColorScheme(value: string | null): value is ColorScheme {
-  return value === "light" || value === "dark" || value === "system"
-}
-
-function getSavedColorScheme(): ColorScheme | null {
-  try {
-    if (typeof localStorage === "undefined") return null
-    const value = localStorage.getItem(STORAGE_KEYS.COLOR_SCHEME)
-    return isColorScheme(value) ? value : null
-  } catch {
-    return null
-  }
-}
-
-function resolveColorSchemeMode(scheme: ColorScheme): "light" | "dark" {
-  return scheme === "system" ? getSystemMode() : scheme
 }
 
 function applyThemeCss(mode: "light" | "dark") {
@@ -95,6 +73,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mode: resolveColorSchemeMode(initialColorScheme),
       themeId: synergyTheme.id,
     })
+    applyThemeCss(resolveColorSchemeMode(initialColorScheme))
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
 
     onMount(() => {
@@ -106,12 +85,6 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       }
       mediaQuery.addEventListener("change", handler)
       onCleanup(() => mediaQuery.removeEventListener("change", handler))
-
-      const savedScheme = getSavedColorScheme()
-      if (savedScheme) {
-        setStore("colorScheme", savedScheme)
-        setStore("mode", resolveColorSchemeMode(savedScheme))
-      }
 
       const unsubscribe = subscribePluginThemes(() => setThemeRegistryVersion((version) => version + 1))
       onCleanup(unsubscribe)
@@ -133,7 +106,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     const setColorScheme = (scheme: ColorScheme) => {
       setStore("colorScheme", scheme)
-      localStorage.setItem(STORAGE_KEYS.COLOR_SCHEME, scheme)
+      localStorage.setItem(COLOR_SCHEME_STORAGE_KEY, scheme)
       setStore("mode", scheme === "system" ? getSystemMode() : scheme)
     }
 

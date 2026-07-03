@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   shell,
   Tray,
   type BrowserWindowConstructorOptions,
@@ -39,6 +40,15 @@ import { enforceProductionLoading, installSessionSecurity, installWindowSecurity
 import { DesktopStartupOverlay } from "./startup-overlay.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
+import {
+  applyDesktopThemeToWindow,
+  desktopThemeBackground,
+  desktopThemeSnapshot,
+  loadDesktopThemeSource,
+  parseDesktopThemeSource,
+  saveDesktopThemeSource,
+  type DesktopThemeSnapshot,
+} from "./theme.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 import {
   desktopDevDockIconPath,
@@ -65,6 +75,7 @@ let shouldStart = true
 let isQuitting = false
 let isUpdateQuit = false
 let pendingCreateWindow: Promise<void> | null = null
+let currentDesktopTheme: DesktopThemeSnapshot | null = null
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -123,12 +134,6 @@ async function createWindow() {
   }
 
   const windowState = await loadWindowState(app.getPath("userData"))
-  const iconPath = desktopIconPath({
-    platform: process.platform,
-    dirname,
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-  })
   const startupIconDataUrl = await loadStartupIconDataURL(
     desktopStartupIconPath({
       platform: process.platform,
@@ -138,12 +143,13 @@ async function createWindow() {
     }),
   )
   const preloadPath = path.join(dirname, "preload.cjs")
+  const theme = getDesktopThemeSnapshot()
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
     width: windowState.width,
     height: windowState.height,
     title: desktopWindowTitle(channel),
-    backgroundColor: "#111214",
+    backgroundColor: desktopThemeBackground(theme.effective),
     ...desktopWindowChromeOptions({
       platform: process.platform,
       dirname,
@@ -181,6 +187,7 @@ async function createWindow() {
     preloadPath,
     chrome: process.platform === "darwin" ? "native" : "custom",
     iconDataUrl: startupIconDataUrl,
+    theme: theme.effective,
   })
   await startupOverlay.load()
   startupOverlay.attach()
@@ -221,6 +228,52 @@ async function createWindow() {
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
 }
 
+async function initializeDesktopTheme(): Promise<void> {
+  const source = await loadDesktopThemeSource(app.getPath("userData"))
+  updateDesktopThemeSnapshot(snapshotDesktopTheme(source), { broadcast: false })
+}
+
+function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
+  currentDesktopTheme ??= snapshotDesktopTheme("system")
+  return currentDesktopTheme
+}
+
+function updateDesktopThemeSnapshot(
+  snapshot: DesktopThemeSnapshot,
+  options: { broadcast?: boolean } = {},
+): DesktopThemeSnapshot {
+  currentDesktopTheme = snapshot
+  nativeTheme.themeSource = snapshot.source
+  if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
+  startupOverlay?.setTheme(snapshot.effective)
+  browserHost?.setTheme(snapshot)
+  if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
+  return snapshot
+}
+
+function broadcastDesktopTheme(snapshot: DesktopThemeSnapshot): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send("desktop-theme:event", { type: "theme", snapshot })
+}
+
+async function setDesktopThemeSource(input: unknown): Promise<DesktopThemeSnapshot> {
+  const source = parseDesktopThemeSource(input)
+  await saveDesktopThemeSource(app.getPath("userData"), source)
+  return updateDesktopThemeSnapshot(snapshotDesktopTheme(source))
+}
+
+function installDesktopThemeNativeListener(): void {
+  nativeTheme.on("updated", () => {
+    const snapshot = getDesktopThemeSnapshot()
+    if (snapshot.source !== "system") return
+    updateDesktopThemeSnapshot(snapshotDesktopTheme(snapshot.source))
+  })
+}
+
+function snapshotDesktopTheme(source: DesktopThemeSnapshot["source"]): DesktopThemeSnapshot {
+  return desktopThemeSnapshot(source, nativeTheme.shouldUseDarkColors)
+}
+
 async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
   await startupOverlay?.setStatus(status)
 }
@@ -249,7 +302,7 @@ async function resolveAppURL(): Promise<string> {
   } catch (error) {
     currentAppURL = null
     const details = error instanceof Error ? error.stack || error.message : String(error)
-    return desktopErrorPage("Synergy server failed to start", details)
+    return desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot().effective)
   }
 }
 
@@ -280,6 +333,7 @@ async function createBrowserHost() {
     width: Number(process.env.SYNERGY_BROWSER_HOST_WIDTH ?? 1280),
     height: Number(process.env.SYNERGY_BROWSER_HOST_HEIGHT ?? 720),
     traceId: process.env.SYNERGY_BROWSER_HOST_TRACE_ID,
+    theme: getDesktopThemeSnapshot(),
   })
   await browserHost.start()
 }
@@ -346,6 +400,8 @@ function registerIpcHandlers() {
     await dismissStartupOverlay()
     return true
   })
+  ipcMain.handle("desktop.theme.get", () => getDesktopThemeSnapshot())
+  ipcMain.handle("desktop.theme.set", (_event, input: unknown) => setDesktopThemeSource(input))
   ipcMain.handle("desktop.window.minimize", () => {
     mainWindow?.minimize()
   })
@@ -530,6 +586,8 @@ app.on("before-quit", (event) => {
 async function start() {
   if (!shouldStart) return
   await app.whenReady()
+  await initializeDesktopTheme()
+  installDesktopThemeNativeListener()
   runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })
   if (isBrowserHostMode) {
     configureBrowserHostVisibility()

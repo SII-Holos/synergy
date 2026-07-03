@@ -1,11 +1,18 @@
 import { WebContentsView, type BrowserWindow } from "electron"
-import { desktopStartupPage, startupStatusScript, type DesktopStartupStatus } from "./startup-page.js"
+import {
+  desktopStartupPage,
+  startupStatusScript,
+  startupThemeScript,
+  type DesktopStartupStatus,
+} from "./startup-page.js"
+import type { DesktopThemeEffective } from "./theme.js"
 
 export interface DesktopStartupOverlayOptions {
   window: BrowserWindow
   preloadPath: string
   chrome: "custom" | "native"
   iconDataUrl?: string
+  theme: DesktopThemeEffective
 }
 
 const boundsEvents = ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"] as const
@@ -39,6 +46,7 @@ export class DesktopStartupOverlay {
       desktopStartupPage({
         chrome: this.options.chrome,
         iconDataUrl: this.options.iconDataUrl,
+        theme: this.options.theme,
       }),
     )
   }
@@ -59,6 +67,12 @@ export class DesktopStartupOverlay {
     const view = this.view
     if (!view || this.dismissed || view.webContents.isDestroyed()) return
     await view.webContents.executeJavaScript(startupStatusScript(status)).catch(() => {})
+  }
+
+  setTheme(theme: DesktopThemeEffective): void {
+    const view = this.view
+    if (!view || this.dismissed || view.webContents.isDestroyed()) return
+    view.webContents.executeJavaScript(startupThemeScript(theme)).catch(() => {})
   }
 
   async dismiss(): Promise<void> {
