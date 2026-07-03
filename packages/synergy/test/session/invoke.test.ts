@@ -206,7 +206,34 @@ describe("SessionProgress.pendingReply", () => {
     const queuedUser = userMessage("msg_user_2")
     const unrelatedLaterAssistant = assistantMessage("msg_user_3", "msg_user_1", "old reply")
 
+    // Key scenario: the reverse scan finds msg_user_3 (assistant, parentID=msg_user_1),
+    // then msg_user_2 (user, no reply). Old id < id logic would see
+    // lastTerminalAssistant.id (msg_user_3) > lastReplyRequiredUser.id (msg_user_2)
+    // and incorrectly conclude a reply exists. ParentID check correctly returns true.
     expect(SessionProgress.pendingReply([oldUser, queuedUser, unrelatedLaterAssistant])).toBe(true)
+  })
+
+  test("materialized user with larger messageID than old assistant has no false reply", () => {
+    // After queued input is materialized, its messageID is generated later and
+    // is therefore alphabetically larger than the old assistant's messageID.
+    // Old code using id < id ordering would see oldAssistant.id < queuedUser.id
+    // and incorrectly conclude a reply exists (return false).
+    //
+    // Messages in reverse scan order:
+    //   msg_3 (queuedUser) → lastReplyRequiredUser
+    //   msg_2 (oldAssistant, parentID=msg_1) → lastTerminalAssistant
+    //   msg_1 (oldUser)
+    //
+    // Old logic: lastTerminalAssistant.id (msg_2) < lastReplyRequiredUser.id (msg_3)
+    // → returns false (no pending reply) ← WRONG
+    //
+    // New logic: hasTerminalReply(userID=msg_3) → no assistant with parentID=msg_3
+    // → returns true (has pending reply) ← CORRECT
+    const oldUser = userMessage("msg_1")
+    const oldAssistant = assistantMessage("msg_2", "msg_1", "reply to old user")
+    const queuedUser = userMessage("msg_3")
+
+    expect(SessionProgress.pendingReply([oldUser, oldAssistant, queuedUser])).toBe(true)
   })
 })
 
