@@ -302,7 +302,7 @@ async function resolveAppURL(): Promise<string> {
   } catch (error) {
     currentAppURL = null
     const details = error instanceof Error ? error.stack || error.message : String(error)
-    return desktopErrorPage("Synergy server failed to start", details)
+    return desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot().effective)
   }
 }
 

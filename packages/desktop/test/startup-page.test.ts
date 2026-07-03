@@ -69,9 +69,15 @@ describe("desktop startup page", () => {
     expect(html).not.toContain('<header class="startup-chrome">')
   })
 
-  test("allows local startup and diagnostic pages before an app origin exists", () => {
+  test("allows themed local startup and diagnostic pages before an app origin exists", () => {
+    const errorHtml = decodeDesktopHtml(desktopErrorPage("Failed", "details", "light"))
+
     expect(isAllowedAppNavigation(desktopStartupPage({ chrome: "custom", theme: "light" }), null)).toBe(true)
-    expect(isAllowedAppNavigation(desktopErrorPage("Failed", "details"), null)).toBe(true)
+    expect(isAllowedAppNavigation(desktopErrorPage("Failed", "details", "light"), null)).toBe(true)
+    expect(errorHtml).toContain('data-error-theme="light"')
+    expect(errorHtml).toContain("--error-bg: #FAFAFA")
+    expect(errorHtml).toContain("background: var(--error-bg)")
+    expect(errorHtml).not.toContain("background: #111214")
   })
 
   test("serializes status and theme updates for the loaded startup page", () => {

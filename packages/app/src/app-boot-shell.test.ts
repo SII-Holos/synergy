@@ -49,7 +49,8 @@ describe("app boot shell", () => {
     expect(html).toContain('localStorage.getItem("synergy-color-scheme")')
     expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
     expect(html).toContain('var isDark = scheme === "dark" || (scheme === "system" && systemDark)')
-    expect(html).toContain("window.synergyDesktop?.theme?.set?.(scheme)")
+    expect(html).toContain("window.synergyDesktop?.theme?.set")
+    expect(html).toContain("Promise.resolve(desktopThemeSet(scheme)).catch")
   })
 
   test("renders a minimal animated icon splash instead of an app skeleton", () => {
