@@ -62,19 +62,6 @@ export function GitHubPanel() {
             {statusLabel()}
           </span>
         </div>
-
-        <div class="providers-detail-meta">
-          <span>github</span>
-          <Show when={status()?.source}>
-            <span>{status()!.source === "env" ? "Environment token" : "Stored credential"}</span>
-          </Show>
-          <Show when={status()?.authKind}>
-            <span>{status()!.authKind === "oauth" ? "OAuth" : "Token"}</span>
-          </Show>
-          <Show when={status()?.failureCode}>
-            <span>{status()!.failureCode}</span>
-          </Show>
-        </div>
       </SettingsSection>
 
       <Show when={status()?.account}>
