@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
+import { BlueprintLoopStore } from "../../src/blueprint"
 import { NoteStore } from "../../src/note"
 import { BlueprintRoute } from "../../src/server/blueprint"
 import { Session } from "../../src/session"
@@ -46,7 +47,7 @@ async function createLoop(noteID: string, sessionID: string) {
     }),
   })
   expect(response.status).toBe(200)
-  return response.json() as Promise<{ id: string; executionAgent?: string; auditAgent: string }>
+  return response.json() as Promise<{ id: string; noteID: string; executionAgent?: string; auditAgent: string }>
 }
 
 describe("BlueprintRoute start prompt", () => {
@@ -129,6 +130,62 @@ describe("BlueprintRoute start prompt", () => {
           sessionID: firstSession.id,
           status: "armed",
         })
+      },
+    })
+  })
+
+  test("start persists user prompt as durable loop context", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy-max")
+        const loop = await createLoop(note.id, session.id)
+        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          deliveries.push(input)
+        })
+
+        const response = await app().request(`/blueprint/loop/${loop.id}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userPrompt: "  Treat API compatibility as a hard requirement.  " }),
+        })
+
+        expect(response.status).toBe(200)
+        const stored = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(stored.userPrompt).toBe("Treat API compatibility as a hard requirement.")
+        expect(deliveries).toHaveLength(1)
+        const mail = deliveries[0].mail
+        expect(mail.type).toBe("user")
+        if (mail.type !== "user") throw new Error("expected user mail")
+        const text = (mail.parts[0] as MessageV2.TextPart).text
+        expect(text).toContain("User instruction:")
+        expect(text).toContain("Treat API compatibility as a hard requirement.")
+      },
+    })
+  })
+
+  test("start does not persist blank user prompt context", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy")
+        const loop = await createLoop(note.id, session.id)
+        ;(SessionManager.deliver as any) = mock(async () => {})
+
+        const response = await app().request(`/blueprint/loop/${loop.id}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userPrompt: "   \n\t  " }),
+        })
+
+        expect(response.status).toBe(200)
+        const stored = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(stored.userPrompt).toBeUndefined()
       },
     })
   })

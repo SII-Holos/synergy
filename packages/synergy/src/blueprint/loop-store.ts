@@ -120,6 +120,7 @@ export namespace BlueprintLoopStore {
       error?: string
       audit?: Info["audit"]
       auditSessionID?: string | null
+      userPrompt?: string | null
     },
   ): Promise<Info> {
     const sid = Identifier.asScopeID(scopeID)
@@ -148,6 +149,7 @@ export namespace BlueprintLoopStore {
       }
       if (patch.audit) draft.audit = patch.audit
       if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
+      if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
       if (patch.error !== undefined) draft.error = patch.error
     })
 
