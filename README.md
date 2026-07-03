@@ -416,7 +416,9 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 }
 ```
 
-**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
+**Precedence:** explicit session control profile resolved from the session parent chain > agent config `controlProfile` > top-level config `controlProfile` > source default. Channel-backed and agenda automation root sessions default to `autonomous`; ordinary interactive/manual sessions default to `guarded`.
+
+Explicit configuration is always honored. For example, a top-level `controlProfile: "full_access"` remains `full_access` for Feishu/channel sessions instead of being downgraded by unattended metadata.
 
 Blueprint runs started from the Notes side panel use the current session's control profile when running in the current session. New-session and worktree Blueprint runs create an execution session with at least `autonomous`; a top-level `full_access` profile remains `full_access`.
 
@@ -426,13 +428,11 @@ Risk levels follow the operation's effect. Ordinary reads, including non-protect
 
 Built-in profiles:
 
-| Config value  | UI label    | Behavior                                                                                                                                                                               |
-| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Guarded     | Default protected mode. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
-| `autonomous`  | Autonomous  | Unattended mode. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
-| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing.                                                                                                             |
-
-`full_access` is blocked in unattended execution mode. It is only available in attended sessions.
+| Config value  | UI label    | Behavior                                                                                                                                                                                           |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Guarded     | Protected mode for manual sessions. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
+| `autonomous`  | Autonomous  | Automation-oriented profile. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
+| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing. Explicit `full_access` remains valid for channel and automation sessions.                                               |
 
 ### Sandbox
 

@@ -393,9 +393,7 @@ export namespace SessionProcessor {
                       metadata: {
                         tool: value.toolName,
                         input: toolInput,
-                        ...PermissionNext.requestMetadata(session),
                       },
-
                       ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
                       signal: input.abort,
                     })

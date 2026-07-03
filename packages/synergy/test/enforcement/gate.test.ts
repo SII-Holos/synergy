@@ -618,7 +618,6 @@ describe("EnforcementGate profile integration", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "full_access",
-      interactionMode: "attended",
     })
 
     const envelope = gate.evaluate("read", {
@@ -629,16 +628,18 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("gate rejects full_access in unattended mode", async () => {
-    // Creating a gate with full_access + unattended must fail
-    expect(() =>
-      EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-        profileId: "full_access",
-        interactionMode: "unattended",
-      }),
-    ).toThrow()
+  test("gate allows full_access without interaction-mode restrictions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/private/channel-context.txt",
+    })
+
+    expect(envelope.decision).toBe("allow")
   })
 
   test("autonomous denies git push as shell_destructive", async () => {

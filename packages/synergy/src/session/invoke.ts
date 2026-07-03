@@ -398,11 +398,10 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveSessionControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -579,17 +578,13 @@ export namespace SessionInvoke {
         try {
           const workspace = ScopeContext.current.directory
           const workspaceInfo = ScopeContext.current.workspace
-          const interaction = session?.interaction
-          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveSessionControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            interactionMode,
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
