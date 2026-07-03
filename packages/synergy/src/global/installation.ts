@@ -2,6 +2,8 @@ import { BusEvent } from "@/bus/bus-event"
 import { $ } from "bun"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import fs from "fs/promises"
+import { DesktopInstallation } from "./desktop-installation"
 import { Log } from "../util/log"
 import { Flag } from "../flag/flag"
 
@@ -14,7 +16,7 @@ export namespace Installation {
   const log = Log.create({ service: "installation" })
   const NPM_REGISTRY = "https://registry.npmjs.org"
 
-  export type Method = Awaited<ReturnType<typeof method>>
+  export type Method = "npm" | "yarn" | "pnpm" | "bun" | "brew" | "desktop" | "unknown"
 
   export const Event = {
     Updated: BusEvent.define(
@@ -56,9 +58,16 @@ export namespace Installation {
     return CHANNEL === "local"
   }
 
-  export async function method() {
-    const exec = process.execPath.toLowerCase()
+  export const detectDesktopInstall = DesktopInstallation.detectDesktopInstall
 
+  export async function method(): Promise<Method> {
+    const execPath = process.execPath
+    const realExecPath = await fs.realpath(execPath).catch(() => execPath)
+    if (DesktopInstallation.isRuntimePath(process.platform, realExecPath)) {
+      return "desktop"
+    }
+
+    const exec = execPath.toLowerCase()
     const checks = [
       {
         name: "npm" as const,
@@ -107,6 +116,13 @@ export namespace Installation {
     }),
   )
 
+  export const DesktopManagedUpdateError = NamedError.create(
+    "DesktopManagedUpdateError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
   async function getBrewFormula() {
     // Homebrew not supported for private repo
     return "synergy"
@@ -135,6 +151,11 @@ export namespace Installation {
         })
         break
       }
+      case "desktop":
+        throw new DesktopManagedUpdateError({
+          message:
+            "Synergy is installed with the Desktop app. Desktop updates are managed from the Synergy app. Open Synergy and use Settings → Updates.",
+        })
       default:
         throw new Error(`Unknown method: ${method}`)
     }

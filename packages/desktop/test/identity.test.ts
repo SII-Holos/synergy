@@ -12,7 +12,7 @@ import {
 describe("desktop identity", () => {
   test("uses the production app identity", () => {
     expect(DESKTOP_APP_ID).toBe("io.holosai.synergy")
-    expect(DESKTOP_EXECUTABLE_NAME).toBe("synergy")
+    expect(DESKTOP_EXECUTABLE_NAME).toBe("synergy-desktop")
     expect(DESKTOP_PROTOCOL).toBe("synergy")
   })
 

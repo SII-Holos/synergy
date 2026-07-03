@@ -1,6 +1,6 @@
 export const DESKTOP_APP_ID = "io.holosai.synergy"
 export const DESKTOP_PRODUCT_NAME = "Synergy"
-export const DESKTOP_EXECUTABLE_NAME = "synergy"
+export const DESKTOP_EXECUTABLE_NAME = "synergy-desktop"
 export const DESKTOP_PROTOCOL = "synergy"
 
 export type DesktopChannel = "dev" | "stable"

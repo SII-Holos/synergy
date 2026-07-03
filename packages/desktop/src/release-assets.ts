@@ -9,9 +9,20 @@ export function desktopPrimaryArtifactName(
   platform: DesktopReleasePlatform,
   arch: DesktopReleaseArch,
 ): string {
-  const extension = platform === "darwin" ? "dmg" : platform === "win32" ? "exe" : "AppImage"
+  const extension = platform === "darwin" ? "pkg" : platform === "win32" ? "exe" : "deb"
   const artifactArch = platform === "linux" && arch === "x64" ? "x86_64" : arch
   return `Synergy-${platform}-${artifactArch}-${version}.${extension}`
+}
+
+export function desktopPortableArtifactNames(version: string): string[] {
+  return DESKTOP_RELEASE_PLATFORMS.flatMap((platform) =>
+    DESKTOP_RELEASE_ARCHES.flatMap((arch) => {
+      const artifactArch = platform === "linux" && arch === "x64" ? "x86_64" : arch
+      const extensions =
+        platform === "darwin" ? ["dmg", "zip"] : platform === "win32" ? ["zip"] : ["AppImage", "tar.gz"]
+      return extensions.map((extension) => `Synergy-${platform}-${artifactArch}-${version}.${extension}`)
+    }),
+  )
 }
 
 export function expectedDesktopPrimaryArtifacts(version: string): string[] {

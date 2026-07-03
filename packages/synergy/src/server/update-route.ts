@@ -9,6 +9,7 @@ import { Installation } from "../global/installation"
 
 const NPM_PACKAGE = "@ericsanchezok/synergy"
 const NPM_REGISTRY = "https://registry.npmjs.org"
+const DESKTOP_UPDATE_MESSAGE = "This service uses the Synergy Desktop runtime. Update it from the Desktop app."
 
 const ServerUpdateCapability = z.enum(["managed", "not-managed", "remote"])
 const ServerUpdatePhase = z.enum(["idle", "checking", "available", "updating", "restarting", "error"])
@@ -165,10 +166,13 @@ async function statusForRequest(url: string, host: string | undefined, check: bo
   try {
     const latest = await workerControls.latestVersion()
     const updateAvailable = isNewerVersion(latest, Installation.VERSION)
-    const unsupportedInstallMethod =
-      updateAvailable && !updateInstallCommand(await workerControls.installMethod(), latest)
+    const installMethod = await workerControls.installMethod()
+    const unsupportedInstallMethod = updateAvailable && !updateInstallCommand(installMethod, latest)
     if (unsupportedInstallMethod) {
-      const error = "Managed service install method cannot be updated from Web."
+      const error =
+        installMethod === "desktop"
+          ? DESKTOP_UPDATE_MESSAGE
+          : "Managed service install method cannot be updated from Web."
       return {
         ...managedStatus("error", latest, error, null),
         updateAvailable: true,
@@ -254,9 +258,16 @@ async function startWorker(
   if (!controlCommand) {
     return { ok: false, error: "Managed service command cannot be safely updated from Web." }
   }
-  const installCommand = updateInstallCommand(await workerControls.installMethod(), version)
+  const installMethod = await workerControls.installMethod()
+  const installCommand = updateInstallCommand(installMethod, version)
   if (!installCommand) {
-    return { ok: false, error: "Managed service install method cannot be updated from Web." }
+    return {
+      ok: false,
+      error:
+        installMethod === "desktop"
+          ? DESKTOP_UPDATE_MESSAGE
+          : "Managed service install method cannot be updated from Web.",
+    }
   }
 
   await writePersistedStatus({

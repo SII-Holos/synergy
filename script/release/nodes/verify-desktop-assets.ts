@@ -1,4 +1,8 @@
-import { desktopChecksumsName, expectedDesktopPrimaryArtifacts } from "../../../packages/desktop/src/release-assets"
+import {
+  desktopChecksumsName,
+  desktopPortableArtifactNames,
+  expectedDesktopPrimaryArtifacts,
+} from "../../../packages/desktop/src/release-assets"
 import { viewRelease } from "../shared/github"
 import type { ReleaseState } from "../shared/packages"
 
@@ -15,6 +19,11 @@ export async function verifyDesktopDraftAssets(state: ReleaseState) {
   for (const assetName of expectedDesktopPrimaryArtifacts(state.version)) {
     if (!names.has(assetName)) {
       throw new Error(`missing desktop release asset ${assetName}`)
+    }
+  }
+  for (const assetName of desktopPortableArtifactNames(state.version)) {
+    if (!names.has(assetName)) {
+      throw new Error(`missing desktop portable asset ${assetName}`)
     }
   }
   const checksums = desktopChecksumsName(state.version)
