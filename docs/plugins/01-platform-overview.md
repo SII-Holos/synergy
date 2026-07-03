@@ -36,6 +36,8 @@ Runtime contributions:
 - MCP declarations
 - config/auth/cache stores
 
+Plugin-provided skills are marked with `source: "plugin"` and keep their `pluginId` in the skill catalog. Explicit project, workspace, and global skills take precedence over plugin skills; plugin skills take precedence over built-in skills. Duplicate skill names remain resolvable, and the catalog records diagnostics describing which source was ignored or overridden.
+
 Web contributions:
 
 - tool renderers

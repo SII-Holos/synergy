@@ -25066,7 +25066,7 @@
                 },
                 "source": {
                   "type": "string",
-                  "enum": ["builtin", "synergy", "claude", "openclaw", "codex", "generic"]
+                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
                 },
                 "scope": {
                   "type": "string",
@@ -25100,6 +25100,12 @@
                   "type": "string"
                 },
                 "baseDir": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "pluginName": {
                   "type": "string"
                 },
                 "references": {
