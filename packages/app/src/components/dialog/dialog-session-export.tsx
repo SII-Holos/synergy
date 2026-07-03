@@ -91,7 +91,7 @@ export function DialogSessionExport() {
   }
 
   return (
-    <Dialog title="Export Session Data" size="wide" class="dialog-session-export">
+    <Dialog title="Export session data" size="wide" class="dialog-session-export">
       <div class="session-export-body">
         <Show when={currentSession()}>
           {(session) => (
@@ -147,7 +147,7 @@ export function DialogSessionExport() {
         </section>
       </div>
 
-      <div class="session-export-footer">
+      <div data-slot="dialog-actions" class="session-export-footer">
         <span class="session-export-hint">Save session data as .json.gz</span>
         <Button
           type="button"
@@ -157,7 +157,7 @@ export function DialogSessionExport() {
           disabled={exporting()}
           onClick={handleExport}
         >
-          {exporting() ? "Downloading..." : "Download Export"}
+          {exporting() ? "Downloading..." : "Download export"}
         </Button>
       </div>
     </Dialog>

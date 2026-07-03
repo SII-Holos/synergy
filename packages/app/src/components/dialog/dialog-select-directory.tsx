@@ -17,7 +17,6 @@ import {
   directoryBrowserCanSubmit,
   directoryBrowserClearDraft,
   directoryBrowserSetDraft,
-  directoryBrowserStatusCopy,
   directoryBrowserSubmitError,
   directoryBrowserSubmitStart,
   directoryBrowserSubmitSuccess,
@@ -41,14 +40,22 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
 
   const home = createMemo(() => sync.data.paths.home)
   const [state, setState] = createStore(createInitialDirectoryBrowserState(home() ?? "/"))
-  const statusCopy = createMemo(() => directoryBrowserStatusCopy(state))
   const canSubmit = createMemo(() => directoryBrowserCanSubmit(state, home()))
-  const stateLabel = createMemo(() => {
-    if (state.status === "loading") return "Searching"
-    if (state.status === "ready") return `${state.results.length} found`
-    if (state.status === "empty") return "No matches"
-    if (state.status === "error") return "Needs retry"
-    return "Ready"
+  const stateTitle = createMemo(() => {
+    if (state.status === "loading") return "Searching..."
+    if (state.status === "empty") return "No matching folders"
+    if (state.status === "error") return "Search failed"
+    return "Search to choose a folder"
+  })
+  const stateDescription = createMemo(() => {
+    if (state.status === "empty") return "Try a fuller folder path or a different project name."
+    if (state.status === "error") return state.error ?? "Check the path and try again."
+    return undefined
+  })
+  const stateIcon = createMemo(() => {
+    if (state.status === "error") return "state.error"
+    if (state.status === "empty") return "state.empty"
+    return "action.search"
   })
 
   function display(abs: string) {
@@ -110,7 +117,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           <span>{props.title ?? "Open project"}</span>
         </div>
       }
-      description="Search folders on the connected Synergy server."
+      description="Choose a folder to show in the sidebar."
     >
       <div class="project-directory-body">
         <form class="project-directory-search-card" onSubmit={submitSearch}>
@@ -120,13 +127,14 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
               autofocus
               variant="ghost"
               type="text"
-              label="Folder or project name"
+              label="Project folder"
+              hideLabel
               value={state.draft}
               onChange={(value: string) => setState(directoryBrowserSetDraft({ ...state }, value))}
               onKeyDown={(event: KeyboardEvent) => {
                 if (event.key === "Enter") void submitSearch(event as unknown as SubmitEvent)
               }}
-              placeholder="~/projects/synergy or focus"
+              placeholder="Search folders or paste a path"
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
@@ -149,18 +157,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           </Button>
         </form>
 
-        <div class="project-directory-path-rail" aria-live="polite">
-          <div class="project-directory-rail-item">
-            <span>Base</span>
-            <code title={state.resolved.path}>{state.resolved.path}</code>
-          </div>
-          <div class="project-directory-rail-item">
-            <span>Query</span>
-            <code title={state.resolved.query || "All folders"}>{state.resolved.query || "All folders"}</code>
-          </div>
-          <div class="project-directory-rail-state">{stateLabel()}</div>
-        </div>
-
         <div class="project-directory-results" data-status={state.status}>
           <Show
             when={state.status === "ready"}
@@ -169,14 +165,16 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                 <div class="project-directory-state-icon" data-status={state.status}>
                   <Show
                     when={state.status === "loading"}
-                    fallback={<Icon name={getSemanticIcon(statusCopy().icon)} size="normal" />}
+                    fallback={<Icon name={getSemanticIcon(stateIcon())} size="normal" />}
                   >
                     <Spinner class="project-directory-spinner" />
                   </Show>
                 </div>
                 <div class="project-directory-state-copy">
-                  <h3>{statusCopy().title}</h3>
-                  <p>{statusCopy().description}</p>
+                  <h3>{stateTitle()}</h3>
+                  <Show when={stateDescription()}>
+                    <p>{stateDescription()}</p>
+                  </Show>
                   <Show when={state.status === "error"}>
                     <Button type="button" variant="secondary" size="small" onClick={retry} disabled={!canSubmit()}>
                       Retry

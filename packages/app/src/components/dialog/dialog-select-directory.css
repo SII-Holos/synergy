@@ -1,3 +1,9 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(.project-directory-dialog) {
+  width: min(calc(100vw - 40px), 640px);
+  height: auto;
+  max-height: min(calc(100dvh - 56px), 560px);
+}
+
 .project-directory-dialog {
   --project-directory-shell: var(--surface-raised-stronger-non-alpha);
   --project-directory-card: var(--surface-raised-base);
@@ -9,8 +15,10 @@
     0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
     0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 
-  width: min(calc(100vw - 32px), 760px);
-  min-height: min(680px, calc(100dvh - 48px));
+  width: 100%;
+  height: auto;
+  max-height: min(calc(100dvh - 56px), 560px);
+  min-height: 0;
   background: var(--project-directory-shell);
   border-color: var(--project-directory-border);
   border-radius: 14px;
@@ -20,7 +28,10 @@
 }
 
 .project-directory-dialog [data-slot="dialog-body"] {
+  flex: 0 1 auto;
   min-height: 0;
+  padding: 0 24px 24px;
+  overflow: hidden;
 }
 
 .project-directory-title {
@@ -38,30 +49,25 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
   color: var(--icon-base);
-  background: var(--project-directory-control);
-  border: 1px solid var(--project-directory-border);
 }
 
 .project-directory-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  gap: 12px;
-  padding: 14px;
+  gap: 16px;
+  flex: 1;
 }
 
 .project-directory-search-card {
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--project-directory-border);
-  border-radius: 12px;
-  background: var(--project-directory-card);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .project-directory-search-field {
@@ -70,11 +76,11 @@
   gap: 8px;
   flex: 1;
   min-width: 0;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 9px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
   background: var(--project-directory-control);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--project-directory-border) 72%, transparent);
   transition:
     background-color 140ms ease,
     border-color 140ms ease,
@@ -82,8 +88,8 @@
 }
 
 .project-directory-search-field:focus-within {
-  background: var(--project-directory-control-hover);
-  border-color: color-mix(in srgb, var(--border-base) 60%, transparent);
+  background: color-mix(in srgb, var(--project-directory-control-hover) 72%, transparent);
+  border-color: color-mix(in srgb, var(--border-base) 58%, transparent);
   box-shadow: var(--project-directory-focus-ring);
 }
 
@@ -99,7 +105,9 @@
   line-height: var(--type-ui-control-line-height);
 }
 
-.project-directory-search-button {
+.project-directory-dialog .project-directory-search-button[data-component="button"] {
+  height: 42px;
+  padding: 0 16px;
   transition:
     transform 140ms cubic-bezier(0.2, 0, 0, 1),
     background-color 140ms ease;
@@ -109,55 +117,21 @@
   transform: translateY(1px) scale(0.99);
 }
 
-.project-directory-path-rail {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  min-height: 40px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--project-directory-row) 86%, transparent);
-  border: 1px solid var(--project-directory-border);
-}
-
-.project-directory-rail-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text-weak);
-  font-size: var(--type-ui-caption-size);
-  line-height: var(--type-ui-caption-line-height);
-}
-
-.project-directory-rail-item code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-strong);
-  font-family: var(--font-family-mono);
-  font-size: var(--type-ui-caption-size);
-}
-
-.project-directory-rail-state {
-  justify-self: end;
-  white-space: nowrap;
-  color: var(--text-weak);
-  font-size: var(--type-ui-caption-size);
-  line-height: var(--type-ui-caption-line-height);
-  font-weight: var(--font-weight-medium);
-}
-
 .project-directory-results {
   position: relative;
-  flex: 1;
-  min-height: 320px;
+  flex: 0 1 auto;
+  min-height: 150px;
+  max-height: min(300px, calc(100dvh - 260px));
   overflow: hidden;
   border-radius: 12px;
-  border: 1px solid var(--project-directory-border);
-  background: var(--project-directory-card);
+  border: 0;
+  background: transparent;
+}
+
+.project-directory-results[data-status="ready"] {
+  min-height: 180px;
+  border: 1px solid color-mix(in srgb, var(--project-directory-border) 74%, transparent);
+  background: color-mix(in srgb, var(--project-directory-card) 78%, transparent);
 }
 
 .project-directory-results[data-status="loading"]::before {
@@ -170,12 +144,12 @@
 }
 
 .project-directory-state {
-  min-height: 320px;
+  min-height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: 32px;
+  gap: 12px;
+  padding: 24px;
   color: var(--text-weak);
 }
 
@@ -183,11 +157,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--project-directory-control);
-  border: 1px solid var(--project-directory-border);
+  width: 24px;
+  height: 24px;
   color: var(--icon-base);
 }
 
@@ -220,10 +191,10 @@
 }
 
 .project-directory-result-list {
-  height: 100%;
+  max-height: min(300px, calc(100dvh - 260px));
   min-height: 0;
   overflow-y: auto;
-  padding: 6px;
+  padding: 8px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-base) 46%, transparent) transparent;
 }
@@ -311,13 +282,18 @@
 }
 
 @media (max-width: 720px) {
-  .project-directory-dialog {
+  [data-component="dialog"] [data-slot="dialog-container"]:has(.project-directory-dialog) {
     width: min(calc(100vw - 16px), 100vw);
-    min-height: min(680px, calc(100dvh - 16px));
+    height: auto;
+    max-height: min(calc(100dvh - 16px), 100dvh);
   }
 
-  .project-directory-path-rail {
-    grid-template-columns: 1fr;
+  .project-directory-dialog {
+    width: min(calc(100vw - 16px), 100vw);
+  }
+
+  .project-directory-dialog [data-slot="dialog-body"] {
+    padding: 0 16px 16px;
   }
 
   .project-directory-search-card {
@@ -327,10 +303,6 @@
 
   .project-directory-search-field {
     flex-basis: 100%;
-  }
-
-  .project-directory-rail-state {
-    justify-self: start;
   }
 }
 
