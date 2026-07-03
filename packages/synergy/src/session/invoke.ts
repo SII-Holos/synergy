@@ -30,6 +30,7 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
+import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -447,10 +448,12 @@ export namespace SessionInvoke {
             buildCortexExecutionContext(sessionID),
           ])
 
+          const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
+
           const context: ExternalAgent.TurnContext = {
             sessionID,
             prompt: MessageV2.extractText(lastUserParts!),
-            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
