@@ -17,7 +17,7 @@ import { Plugin } from "../plugin"
 export namespace Skill {
   const log = Log.create({ service: "skill" })
 
-  export const Source = z.enum(["builtin", "synergy", "claude", "openclaw", "codex", "generic"])
+  export const Source = z.enum(["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"])
   export type Source = z.infer<typeof Source>
 
   export const Scope = z.enum(["builtin", "project", "global", "workspace", "external"])
@@ -39,6 +39,8 @@ export namespace Skill {
     scope: Scope.optional(),
     entryFile: z.string().optional(),
     baseDir: z.string().optional(),
+    pluginId: z.string().optional(),
+    pluginName: z.string().optional(),
     content: z.string().optional(),
     references: z.record(z.string(), z.string()).optional(),
     scripts: z.record(z.string(), z.string()).optional(),
@@ -93,6 +95,8 @@ export namespace Skill {
     switch (source) {
       case "synergy":
         return 100
+      case "plugin":
+        return 90
       case "openclaw":
         return 80
       case "claude":
@@ -126,7 +130,7 @@ export namespace Skill {
   }
 
   function analyzeCompatibility(source: Source, frontmatter: Record<string, unknown>): Compatibility {
-    if (source === "builtin" || source === "synergy") {
+    if (source === "builtin" || source === "plugin" || source === "synergy") {
       return {
         level: "native",
         warnings: [],
@@ -246,7 +250,11 @@ export namespace Skill {
   const SKILL_CONTENT_FILES = ["SKILL.md", "Skill.md", "content.txt", "content.md"]
   const SKILL_REF_GLOB = new Bun.Glob("*")
 
-  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & { pluginDir: string }
+  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & {
+    pluginId: string
+    pluginName?: string
+    pluginDir: string
+  }
 
   async function resolvePluginSkill(skill: PluginSkillInput, pluginDir: string): Promise<Info> {
     let content = skill.content
@@ -300,10 +308,12 @@ export namespace Skill {
       description: skill.description,
       location: baseDir,
       builtin: false,
-      source: "builtin",
-      scope: "global",
+      source: "plugin",
+      scope: "external",
       entryFile: "plugin",
       baseDir,
+      pluginId: skill.pluginId,
+      pluginName: skill.pluginName,
       content,
       references,
       scripts,
@@ -325,37 +335,73 @@ export namespace Skill {
       })
     }
 
+    const skillLabel = (skill: Info) => {
+      if (skill.source === "plugin" && skill.pluginId) return `plugin ${skill.pluginId}`
+      if (skill.builtin) return "builtin"
+      return skill.location
+    }
+
+    const registerSkill = (entry: Info, priority: number) => {
+      const existing = skills[entry.name]
+      const existingPriority = priorities[entry.name] ?? -1
+      if (existing && priority < existingPriority) {
+        recordDiagnostic({
+          path: entry.location,
+          name: entry.name,
+          message: `Duplicate skill name ignored due to lower precedence than ${skillLabel(existing)}`,
+        })
+        return
+      }
+
+      if (existing) {
+        log.warn("duplicate skill name", {
+          name: entry.name,
+          existing: existing.location,
+          duplicate: entry.location,
+        })
+        recordDiagnostic({
+          path: entry.location,
+          name: entry.name,
+          message: `Duplicate skill name overrides ${skillLabel(existing)}`,
+        })
+      }
+
+      skills[entry.name] = entry
+      priorities[entry.name] = priority
+    }
+
     for (const builtin of BUILTIN_SKILLS) {
       if (builtin.condition) {
         const ok = await builtin.condition()
         if (!ok) continue
       }
-      skills[builtin.name] = {
-        name: builtin.name,
-        description: builtin.description,
-        location: "builtin",
-        builtin: true,
-        source: "builtin",
-        scope: "builtin",
-        entryFile: "builtin",
-        baseDir: "builtin",
-        content: builtin.content,
-        references: builtin.references,
-        scripts: builtin.scripts,
-        rawFrontmatter: {},
-        compatibility: {
-          level: "native",
-          warnings: [],
-          unsupported: [],
+      registerSkill(
+        {
+          name: builtin.name,
+          description: builtin.description,
+          location: "builtin",
+          builtin: true,
+          source: "builtin",
+          scope: "builtin",
+          entryFile: "builtin",
+          baseDir: "builtin",
+          content: builtin.content,
+          references: builtin.references,
+          scripts: builtin.scripts,
+          rawFrontmatter: {},
+          compatibility: {
+            level: "native",
+            warnings: [],
+            unsupported: [],
+          },
         },
-      }
-      priorities[builtin.name] = computePriority("builtin", "builtin")
+        computePriority("builtin", "builtin"),
+      )
     }
 
     for (const pluginSkill of await Plugin.skillEntries()) {
       const resolved = await resolvePluginSkill(pluginSkill, pluginSkill.pluginDir)
-      skills[resolved.name] = resolved
-      priorities[resolved.name] = computePriority("builtin", "builtin")
+      registerSkill(resolved, computePriority("plugin", "external"))
     }
 
     const addCandidate = async (candidate: SkillCandidate) => {
@@ -401,33 +447,7 @@ export namespace Skill {
         compatibility,
       } satisfies Info
 
-      const existing = skills[name]
-      const existingPriority = priorities[name] ?? -1
-      if (existing && priority < existingPriority) {
-        recordDiagnostic({
-          path: candidate.location,
-          name,
-          message: `Duplicate skill name ignored due to lower precedence than ${existing.location}`,
-        })
-        return
-      }
-
-      if (existing) {
-        const label = existing.builtin ? "builtin" : existing.location
-        log.warn("duplicate skill name", {
-          name,
-          existing: existing.location,
-          duplicate: candidate.location,
-        })
-        recordDiagnostic({
-          path: candidate.location,
-          name,
-          message: `Duplicate skill name overrides ${label}`,
-        })
-      }
-
-      skills[name] = entry
-      priorities[name] = priority
+      registerSkill(entry, priority)
     }
 
     const candidates = [] as SkillCandidate[]

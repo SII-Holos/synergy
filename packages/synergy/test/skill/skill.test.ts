@@ -1,5 +1,6 @@
-import { describe, test, expect } from "bun:test"
+import { describe, test, expect, mock } from "bun:test"
 import { Skill } from "../../src/skill"
+import { Plugin } from "../../src/plugin"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -489,5 +490,111 @@ description: Synergy version.
         expect(diagnostics.some((item) => item.name === "shared-name")).toBe(true)
       },
     })
+  })
+
+  test("plugin skill duplicates are resolved with diagnostics", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalSkillEntries = Plugin.skillEntries
+    ;(Plugin as any).skillEntries = mock(async () => [
+      {
+        name: "plugin-shared",
+        description: "First plugin skill.",
+        content: "# First Plugin Skill",
+        pluginId: "plugin-one",
+        pluginName: "Plugin One",
+        pluginDir: path.join(tmp.path, "plugin-one"),
+      },
+      {
+        name: "plugin-shared",
+        description: "Second plugin skill.",
+        content: "# Second Plugin Skill",
+        pluginId: "plugin-two",
+        pluginName: "Plugin Two",
+        pluginDir: path.join(tmp.path, "plugin-two"),
+      },
+    ])
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Skill.reload()
+          const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
+          const skill = skills.find((s) => s.name === "plugin-shared")
+          expect(skill).toBeDefined()
+          expect(skill!.source).toBe("plugin")
+          expect(skill!.scope).toBe("external")
+          expect(skill!.pluginId).toBe("plugin-two")
+          expect(skill!.description).toBe("Second plugin skill.")
+          expect(
+            diagnostics.some((item) => item.name === "plugin-shared" && item.message.includes("plugin plugin-one")),
+          ).toBe(true)
+        },
+      })
+    } finally {
+      ;(Plugin as any).skillEntries = originalSkillEntries
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Skill.reload()
+        },
+      })
+    }
+  })
+
+  test("project skills override plugin skill duplicates with diagnostics", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await createSkill(
+          dir,
+          ".synergy/skill/plugin-shared",
+          `---
+name: plugin-shared
+description: Project version.
+---
+
+# Project Version
+`,
+        )
+      },
+    })
+    const originalSkillEntries = Plugin.skillEntries
+    ;(Plugin as any).skillEntries = mock(async () => [
+      {
+        name: "plugin-shared",
+        description: "Plugin version.",
+        content: "# Plugin Version",
+        pluginId: "plugin-one",
+        pluginName: "Plugin One",
+        pluginDir: path.join(tmp.path, "plugin-one"),
+      },
+    ])
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Skill.reload()
+          const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
+          const skill = skills.find((s) => s.name === "plugin-shared")
+          expect(skill).toBeDefined()
+          expect(skill!.source).toBe("synergy")
+          expect(skill!.scope).toBe("project")
+          expect(skill!.description).toBe("Project version.")
+          expect(
+            diagnostics.some((item) => item.name === "plugin-shared" && item.message.includes("plugin plugin-one")),
+          ).toBe(true)
+        },
+      })
+    } finally {
+      ;(Plugin as any).skillEntries = originalSkillEntries
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Skill.reload()
+        },
+      })
+    }
   })
 })

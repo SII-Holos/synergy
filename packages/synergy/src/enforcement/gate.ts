@@ -124,7 +124,7 @@ const DESTRUCTIVE_PATTERNS = [
   "vgremove ",
   // Privilege escalation
   "sudo ",
-  // Git destructive operations (force/delete/hard-reset only — normal push is shell_remote_write)
+  // Git destructive operations (force/delete/hard-reset only — ordinary feature-branch push is shell_remote_publish)
   "git reset --hard",
   "git clean -f",
   "git clean -x",
@@ -613,11 +613,11 @@ export namespace EnforcementGate {
         }
         // shell_destructive is high-risk by definition; it must always be a hard
         // boundary so Smart allow can never bypass a profile deny on it.
-        // shell_remote_write is medium-risk and is Smart allow eligible.
+        // shell_remote_publish covers ordinary branch push and PR creation.
+        // shell_remote_write is broader remote mutation and stays Smart allow eligible.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
 
         // Defense-in-depth: secondary destructive pattern checks.
-        // For shell_remote_write, only flag if a force/delete pattern is matched.
         if (risk !== "shell_destructive") {
           const resilient = analyzeDestructiveCommand(command)
           if (resilient.matched) {

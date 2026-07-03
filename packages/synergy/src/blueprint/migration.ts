@@ -17,6 +17,11 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
+function trimmedString(value: unknown): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : ""
+  return trimmed ? trimmed : undefined
+}
+
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
@@ -97,6 +102,23 @@ async function cancelDuplicateActiveLoop(loop: BlueprintLoopInfo) {
   if (await clearSessionLoop(loop)) clearedSessions++
   if (loop.auditSessionID && (await clearSessionLoop(loop, loop.auditSessionID))) clearedSessions++
   return clearedSessions
+}
+
+async function userPromptFromStartMessage(loop: BlueprintLoopInfo): Promise<string | undefined> {
+  const scope = Identifier.asScopeID(loop.scopeID)
+  const session = Identifier.asSessionID(loop.sessionID)
+  const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, session)).catch(() => [])
+  for (const messageID of messageIDs) {
+    const message = await Storage.read<Record<string, unknown>>(
+      StoragePath.messageInfo(scope, session, Identifier.asMessageID(messageID)),
+    ).catch(() => undefined)
+    const metadata = asRecord(message?.metadata)
+    if (message?.role !== "user") continue
+    if (metadata?.source !== "blueprint_loop_start") continue
+    if (metadata?.loopID !== loop.id) continue
+    const userPrompt = trimmedString(metadata.userPrompt)
+    if (userPrompt) return userPrompt
+  }
 }
 
 export const migrations: Migration[] = [
@@ -273,6 +295,60 @@ export const migrations: Migration[] = [
         clearedSessions,
         normalizedNotes,
       })
+    },
+  },
+  {
+    id: "20260704-blueprint-loop-user-prompt",
+    description: "Backfill BlueprintLoop start userPrompt from execution session start messages",
+    domain: "blueprint_loop",
+    dependsOn: ["20260703-blueprint-single-active-loop"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["blueprint_loops"])
+      const loops: BlueprintLoopInfo[] = []
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+        for (const loopID of loopIDs) {
+          try {
+            loops.push(await Storage.read<BlueprintLoopInfo>(StoragePath.blueprintLoop(scope, loopID)))
+          } catch (err) {
+            log.warn("failed to read BlueprintLoop for userPrompt migration", {
+              scopeID,
+              loopID,
+              error: String(err),
+            })
+          }
+        }
+      }
+
+      let done = 0
+      let changed = 0
+      for (const loop of loops) {
+        try {
+          if (!trimmedString(loop.userPrompt)) {
+            const userPrompt = await userPromptFromStartMessage(loop)
+            if (userPrompt) {
+              loop.userPrompt = userPrompt
+              await Storage.write(StoragePath.blueprintLoop(Identifier.asScopeID(loop.scopeID), loop.id), loop)
+              changed++
+            }
+          }
+        } catch (err) {
+          log.warn("failed to migrate BlueprintLoop userPrompt", {
+            scopeID: loop.scopeID,
+            loopID: loop.id,
+            error: String(err),
+          })
+        }
+
+        done++
+        if (done % 10 === 0 || done === loops.length) {
+          progress(done, loops.length)
+        }
+      }
+
+      log.info("BlueprintLoop userPrompt migration complete", { totalLoops: loops.length, changed })
     },
   },
 ]

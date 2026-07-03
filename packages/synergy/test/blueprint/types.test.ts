@@ -61,6 +61,28 @@ describe("Blueprint types", () => {
       expect(result.success).toBe(true)
     })
 
+    test("validates loop with durable user prompt context", () => {
+      const now = Date.now()
+      const loop = {
+        id: "bll_prompt1",
+        noteID: "note_abc",
+        title: "Prompted Blueprint",
+        sessionID: "ses_xyz",
+        auditAgent: "supervisor",
+        scopeID: "scp_test",
+        status: "running",
+        userPrompt: "Only change the CLI behavior; do not touch desktop.",
+        time: {
+          created: now,
+          started: now,
+          updated: now,
+        },
+      }
+
+      const result = BlueprintLoopInfo.safeParse(loop)
+      expect(result.success).toBe(true)
+    })
+
     test("validates loop in running status with started time", () => {
       const now = Date.now()
       const loop = {

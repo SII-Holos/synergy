@@ -131,9 +131,20 @@ describe("checkPathContainment (path traversal guard)", () => {
     expect(checkPathContainment(base, outside)).toBeNull()
   })
 
+  test("rejects absolute sibling-prefix paths", () => {
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    const sibling = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a-other", "dist", "ui.js")
+    expect(checkPathContainment(base, sibling)).toBeNull()
+  })
+
   test("allows contained relative paths within base", () => {
     const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
     expect(checkPathContainment(base, "dist/ui.js")).toBe(path.join(base, "dist", "ui.js"))
+  })
+
+  test("allows the base directory itself", () => {
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    expect(checkPathContainment(base, ".")).toBe(base)
   })
 
   test("allows nested subdirectories within base", () => {
@@ -141,6 +152,11 @@ describe("checkPathContainment (path traversal guard)", () => {
     expect(checkPathContainment(base, "dist/nested/deep/ui.js")).toBe(
       path.join(base, "dist", "nested", "deep", "ui.js"),
     )
+  })
+
+  test("rejects Windows cross-drive paths", () => {
+    if (process.platform !== "win32") return
+    expect(checkPathContainment("C:\\plugins\\plugin-a", "D:\\plugins\\plugin-a\\dist\\ui.js")).toBeNull()
   })
 })
 
