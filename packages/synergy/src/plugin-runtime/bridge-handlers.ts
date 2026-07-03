@@ -13,6 +13,7 @@ import { analyzeDestructiveCommand } from "../enforcement/gate.js"
 import { Config } from "../config/config.js"
 import * as ManifestReader from "../plugin/manifest-reader.js"
 import { resolveRuntimeLimits } from "./health.js"
+import { isPathContained } from "../util/path-contain.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,11 +42,35 @@ function resolveWorkspacePath(context: PluginHostRuntimeContext, requestedPath: 
   const normalizedWorkspace = path.resolve(workspace)
   const resolved = path.resolve(normalizedWorkspace, requestedPath)
 
-  if (resolved !== normalizedWorkspace && !resolved.startsWith(normalizedWorkspace + path.sep)) {
+  if (!isPathContained(normalizedWorkspace, resolved)) {
     throw new Error(`Path traversal detected: "${requestedPath}" escapes workspace directory`)
   }
 
   return resolved
+}
+
+async function assertWorkspaceRealpath(
+  context: PluginHostRuntimeContext,
+  resolvedPath: string,
+  requestedPath: string,
+): Promise<void> {
+  const workspace = context.directory
+  if (!workspace) throw new Error("Plugin tool context is missing a workspace directory")
+  const realWorkspace = await fs.realpath(path.resolve(workspace)).catch(() => path.resolve(workspace))
+  let current = resolvedPath
+
+  while (true) {
+    const real = await fs.realpath(current).catch(() => undefined)
+    if (real) {
+      if (!isPathContained(realWorkspace, real)) {
+        throw new Error(`Path traversal detected: "${requestedPath}" escapes workspace directory`)
+      }
+      return
+    }
+    const parent = path.dirname(current)
+    if (parent === current) return
+    current = parent
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +161,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
       const context = requireToolContext(bridgeContext, "file.read")
       const resolved = resolveWorkspacePath(context, requestedPath)
+      await assertWorkspaceRealpath(context, resolved, requestedPath)
       await authorizeBridgeCapability(context, "file_read", requestedPath)
       return Bun.file(resolved).text()
     }
@@ -150,6 +176,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
       const context = requireToolContext(bridgeContext, "file.write")
       const resolved = resolveWorkspacePath(context, requestedPath)
+      await assertWorkspaceRealpath(context, resolved, requestedPath)
       await authorizeBridgeCapability(context, "file_write", requestedPath)
       await fs.mkdir(path.dirname(resolved), { recursive: true })
       await Bun.write(resolved, data)
@@ -205,7 +232,12 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
       const context = requireToolContext(bridgeContext, "shell.run")
       const cwdParam = (params as any)?.cwd
-      const cwd = typeof cwdParam === "string" && cwdParam ? resolveWorkspacePath(context, cwdParam) : context.directory
+      let cwd = context.directory
+      if (!cwd) throw new Error("Plugin tool context is missing a workspace directory")
+      if (typeof cwdParam === "string" && cwdParam) {
+        cwd = resolveWorkspacePath(context, cwdParam)
+        await assertWorkspaceRealpath(context, cwd, cwdParam)
+      }
       const destructive = analyzeDestructiveCommand(cmd)
       await authorizeBridgeCapability(
         context,

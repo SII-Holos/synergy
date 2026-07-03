@@ -41,6 +41,12 @@ describe("derivePluginSource", () => {
     expect(derivePluginSource(pluginDir)).toBe("local")
   })
 
+  test("does not treat plugin-archives sibling prefixes as archive cache entries", () => {
+    const pluginDir = path.join(Global.Path.cache, "plugin-archives-other", "demo-plugin")
+
+    expect(derivePluginSource(pluginDir)).toBe("url")
+  })
+
   test("does not guess npm when cached plugin source is unknown", () => {
     const pluginDir = path.join(Global.Path.cache, "node_modules", "demo-plugin")
 

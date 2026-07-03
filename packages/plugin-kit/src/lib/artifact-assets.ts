@@ -14,6 +14,13 @@ function isExternalPath(value: string): boolean {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) || value.startsWith("//")
 }
 
+function isPathContained(parent: string, child: string): boolean {
+  const resolvedParent = path.resolve(parent)
+  const resolvedChild = path.resolve(child)
+  const relative = path.relative(resolvedParent, resolvedChild)
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+}
+
 export function isLocalManifestPath(value: string | undefined): value is string {
   return Boolean(value && !isExternalPath(value))
 }
@@ -137,8 +144,7 @@ export function rewritePackagedManifestPaths(manifest: PluginManifest): PluginMa
 export function resolveUnder(root: string, relativePath: string): string {
   const normalized = normalizeManifestPath(relativePath)
   const resolved = path.resolve(root, normalized)
-  const relative = path.relative(root, resolved)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (!isPathContained(root, resolved)) {
     throw new Error(`Manifest path cannot escape ${root}: ${relativePath}`)
   }
   return resolved
