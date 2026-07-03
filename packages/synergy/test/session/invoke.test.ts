@@ -2,6 +2,8 @@ import { describe, expect, test, mock } from "bun:test"
 import { SessionManager } from "../../src/session/manager"
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionProgress } from "../../src/session/progress"
 import { PermissionNext } from "../../src/permission/next"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
@@ -68,6 +70,104 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
   }
 }
 
+function installBasicLoopMocks(options?: {
+  onBuildPlan?: (input: any) => void
+  onProcess?: (input: any, assistant: MessageV2.Assistant, callIndex: number) => Promise<void> | void
+}) {
+  const originalGetModel = Provider.getModel
+  const originalGetAgent = Agent.get
+  const originalConfigCurrent = Config.current
+  const originalDefinitions = ToolResolver.definitions
+  const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
+  const originalBuildPlan = PromptBudgeter.buildPlan
+  const originalDecide = PromptBudgeter.decide
+  const originalProcessorCreate = SessionProcessor.create
+  const originalCortexList = Cortex.list
+  const originalCortexGetRunningTasks = Cortex.getRunningTasks
+  const originalEmbeddingGenerate = Embedding.generate
+
+  let callIndex = 0
+
+  ;(Provider.getModel as any) = mock(async () => ({
+    id: "test-model",
+    providerID: "test-provider",
+    name: "Test Model",
+    limit: { context: 100_000, output: 8_192 },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    capabilities: {
+      toolcall: true,
+      attachment: false,
+      reasoning: false,
+      temperature: true,
+      input: { text: true, image: false, audio: false, video: false },
+      output: { text: true, image: false, audio: false, video: false },
+    },
+    api: { npm: "@ai-sdk/openai" },
+    options: {},
+  }))
+  ;(Agent.get as any) = mock(async (name: string) => ({
+    name,
+    mode: "primary",
+    permission: PermissionNext.fromConfig({ "*": "allow" }),
+    options: {},
+  }))
+  ;(Config.current as any) = mock(async () => ({
+    ...(await originalConfigCurrent()),
+    compaction: { auto: true, maxHistoryImages: 8 },
+    library: { memory: { enabled: false }, experience: { retrieve: false } },
+  }))
+  ;(ToolResolver.definitions as any) = mock(async () => [])
+  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+  ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
+    options?.onBuildPlan?.(input)
+    return {
+      system: input.system,
+      systemCacheBreakpoint: input.systemCacheBreakpoint,
+      messages: input.messages,
+      toolDefinitions: input.toolDefinitions,
+    }
+  })
+  ;(PromptBudgeter.decide as any) = mock(async () => ({
+    budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
+    measure: { system: 10, messages: 10, tools: 0, total: 20 },
+    shouldCompact: false,
+  }))
+  ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
+    message: input.assistantMessage,
+    partFromToolCall: () => undefined,
+    trackExecution: () => {},
+    process: mock(async (processInput: any) => {
+      callIndex++
+      await options?.onProcess?.(processInput, input.assistantMessage, callIndex)
+      input.assistantMessage.finish = "stop"
+      input.assistantMessage.time.completed = Date.now()
+      await Session.updateMessage(input.assistantMessage)
+      return "stop" as const
+    }),
+  }))
+  ;(Cortex.list as any) = mock(() => [])
+  ;(Cortex.getRunningTasks as any) = mock(() => [])
+  ;(Embedding.generate as any) = mock(async (input: Parameters<typeof Embedding.generate>[0]) => ({
+    id: input.id,
+    vector: [],
+    model: "test-embedding",
+  }))
+
+  return () => {
+    ;(Provider.getModel as any) = originalGetModel
+    ;(Agent.get as any) = originalGetAgent
+    ;(Config.current as any) = originalConfigCurrent
+    ;(ToolResolver.definitions as any) = originalDefinitions
+    ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
+    ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
+    ;(PromptBudgeter.decide as any) = originalDecide
+    ;(SessionProcessor.create as any) = originalProcessorCreate
+    ;(Cortex.list as any) = originalCortexList
+    ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
+    ;(Embedding.generate as any) = originalEmbeddingGenerate
+  }
+}
+
 describe("SessionInvoke.selectResultMessage", () => {
   test("selects the last assistant for the latest reply-required user turn", () => {
     const user = userMessage("msg_user")
@@ -97,6 +197,16 @@ describe("SessionInvoke.selectResultMessage", () => {
     const result = SessionInvoke.selectResultMessage([user, assistant])
 
     expect(result?.info.id).toBe("msg_assistant")
+  })
+})
+
+describe("SessionProgress.pendingReply", () => {
+  test("uses assistant parent links instead of message id ordering", () => {
+    const oldUser = userMessage("msg_user_1")
+    const queuedUser = userMessage("msg_user_2")
+    const unrelatedLaterAssistant = assistantMessage("msg_user_3", "msg_user_1", "old reply")
+
+    expect(SessionProgress.pendingReply([oldUser, queuedUser, unrelatedLaterAssistant])).toBe(true)
   })
 })
 
@@ -227,6 +337,150 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(Cortex.list as any) = originalCortexList
       ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
       ;(Embedding.generate as any) = originalEmbeddingGenerate
+    }
+  })
+})
+
+describe("SessionInvoke inbox boundaries", () => {
+  test("queued user input waits for after-turn and receives a materialization-time message id", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let activeSessionID = ""
+    let staleMessageID = ""
+    const processedUsers: string[] = []
+    const promptPayloads: string[] = []
+
+    const restore = installBasicLoopMocks({
+      onProcess: async (input, _assistant, callIndex) => {
+        processedUsers.push(input.user.id)
+        promptPayloads.push(JSON.stringify(input.messages))
+        if (callIndex !== 1) return
+        await SessionInbox.enqueueUser({
+          sessionID: activeSessionID,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          messageID: staleMessageID,
+          parts: [{ type: "text", text: "queued while running" }],
+        })
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: session.id,
+            type: "text",
+            text: "initial prompt",
+          })
+          staleMessageID = Identifier.ascending("message")
+
+          await SessionInvoke.loop.force(session.id)
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const queued = messages.find(
+            (msg): msg is MessageV2.WithParts & { info: MessageV2.User } =>
+              msg.info.role === "user" && MessageV2.extractText(msg.parts).includes("queued while running"),
+          )
+          const firstReply = messages.find(
+            (msg): msg is MessageV2.WithParts & { info: MessageV2.Assistant } =>
+              msg.info.role === "assistant" && (msg.info as MessageV2.Assistant).parentID === user.id,
+          )
+
+          expect(processedUsers).toHaveLength(2)
+          expect(processedUsers[0]).toBe(user.id)
+          expect(queued).toBeDefined()
+          expect(firstReply).toBeDefined()
+          expect(processedUsers[1]).toBe(queued!.info.id)
+          expect(queued!.info.id).not.toBe(staleMessageID)
+          expect(queued!.info.id > firstReply!.info.id).toBe(true)
+          expect(promptPayloads[0]).not.toContain("queued while running")
+          expect(promptPayloads[1]).toContain("queued while running")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("guided inbox input steers the next model call without scheduling another turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let activeSessionID = ""
+    const processedUsers: string[] = []
+    const promptPayloads: string[] = []
+
+    const restore = installBasicLoopMocks({
+      onProcess: (input) => {
+        processedUsers.push(input.user.id)
+        promptPayloads.push(JSON.stringify(input.messages))
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: session.id,
+            type: "text",
+            text: "initial prompt",
+          })
+          const staleMessageID = Identifier.ascending("message")
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            messageID: staleMessageID,
+            parts: [{ type: "text", text: "steer sooner" }],
+          })
+          await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
+
+          await SessionInvoke.loop.force(session.id)
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const guided = messages.find(
+            (msg): msg is MessageV2.WithParts & { info: MessageV2.User } =>
+              msg.info.role === "user" && MessageV2.extractText(msg.parts).includes("steer sooner"),
+          )
+
+          expect(processedUsers).toEqual([user.id])
+          expect(promptPayloads[0]).toContain("steer sooner")
+          expect(guided).toBeDefined()
+          expect(guided!.info.id).not.toBe(staleMessageID)
+          expect(guided!.info.metadata?.noReply).toBe(true)
+          expect(guided!.info.metadata?.guided).toBe(true)
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }
   })
 })
