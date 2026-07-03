@@ -152,7 +152,7 @@ Options:
   --attach <url>          Reuse an existing server instead of starting one
   --open                  Open the browser for bun dev app
   --no-open               Do not open the browser for bun dev web
-  --managed               Start desktop in managed-server mode
+  --managed               Start desktop in managed-server mode after rebuilding the app
   --print-logs            Print server logs to stderr
 `
 }
@@ -337,13 +337,19 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   if (command === "desktop") {
     const managed = boolFlag(parsed.flags, "managed")
     if (managed) {
+      const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
+      const processes: DevProcessSpec[] = [
+        ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
+        { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
+        desktopProcess({ repoRoot, bunPath, mode: "managed" }),
+      ]
       return {
         kind: "run",
-        mode: "parallel",
+        mode: "serial",
         command,
         help,
         exitCode: 0,
-        processes: [desktopProcess({ repoRoot, bunPath, mode: "managed" })],
+        processes,
         requiredPorts: [],
         requiredServers: [],
       }

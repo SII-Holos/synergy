@@ -1,3 +1,5 @@
-Fuzzy file and directory search for discovering paths in the current workspace.
+Hybrid workspace search that combines fuzzy file path matching, literal file-content search, and LSP workspace symbol lookup.
 
-Use this when you roughly know a filename, directory name, module name, or path fragment. Use scan_files for searching file contents, parse_code for AST structure, and view_file before anchored edits.
+Run all three modes concurrently and merge results with path matches first, then content hits, then symbols. Use this when you roughly know a filename, directory name, module name, path fragment, code symbol, or a literal text snippet in file contents. Empty queries fall back to path-only listing. The content search is literal (not regex), and symbol search requires an active language server.
+
+For regex content search with anchored editable results, use scan_files. For syntax-aware queries, use parse_code. For file reading, use view_file.

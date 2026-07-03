@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { createDevPlan } from "../../../../script/dev"
 
 const options = { repoRoot: "/repo", cwd: "/workspace", bunPath: "/bun" }
@@ -44,16 +47,41 @@ describe("dev orchestrator planner", () => {
     })
   })
 
-  test("plans managed desktop without server or app processes", () => {
+  test("plans managed desktop with install and app build when dependencies are missing", () => {
     const plan = createDevPlan(["desktop", "--managed"], options)
 
     expect(plan.kind).toBe("run")
-    expect(plan.processes.map((process) => process.label)).toEqual(["desktop"])
-    expect(plan.processes[0]?.env).toMatchObject({
+    expect(plan.mode).toBe("serial")
+    expect(plan.processes.map((process) => process.label)).toEqual(["install", "build", "desktop"])
+    expect(plan.processes[2]?.env).toMatchObject({
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "managed",
     })
-    expect(plan.processes[0]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+    expect(plan.processes[2]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+  })
+
+  test("plans managed desktop with app build even when app/dist already exists", async () => {
+    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-plan-"))
+    try {
+      await mkdir(path.join(repoRoot, "node_modules"), { recursive: true })
+      await mkdir(path.join(repoRoot, "packages", "app", "dist"), { recursive: true })
+      await writeFile(path.join(repoRoot, "packages", "app", "dist", "index.html"), "<!doctype html>")
+
+      const plan = createDevPlan(["desktop", "--managed"], { ...options, repoRoot })
+
+      expect(plan.kind).toBe("run")
+      expect(plan.mode).toBe("serial")
+      expect(plan.processes.map((process) => process.label)).toEqual(["build", "desktop"])
+      expect(plan.processes[0]?.command).toEqual(["/bun", "run", "build"])
+      expect(plan.processes[0]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
+      expect(plan.processes[1]?.env).toMatchObject({
+        SYNERGY_DESKTOP_CHANNEL: "dev",
+        SYNERGY_DESKTOP_SERVER_MODE: "managed",
+      })
+      expect(plan.processes[1]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true })
+    }
   })
 
   test("requires an explicit build target", () => {

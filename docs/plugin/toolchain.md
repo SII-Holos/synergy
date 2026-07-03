@@ -227,7 +227,7 @@ synergy-plugin entry <tarball> \
   --write-entry ../synergy-plugins/plugins/<name>.json
 ```
 
-`entry` does not upload assets or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`. The generated entry includes the Ed25519 signer public key from `<tarball>.sig`; the official registry CI verifies that signer before the plugin is installable from the Official source. Synergy version requirements stay in packaged `plugin.json` as `engines.synergy`.
+`entry` does not upload assets or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`. The generated entry includes the Ed25519 signer public key from `<tarball>.sig` and copies `plugin.json` `engines.synergy` into `compatibility.synergy`; the official registry CI verifies the signer before the plugin is installable from the Official source.
 
 ## local publish
 

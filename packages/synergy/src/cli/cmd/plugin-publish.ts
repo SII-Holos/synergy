@@ -37,6 +37,7 @@ interface PublishInput {
   verified: boolean
   official: boolean
   keywords: string[]
+  compatibility?: { synergy: string }
   versions: RegistryPluginVersion[]
   risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import" | "sandbox"
@@ -153,6 +154,7 @@ export const PluginPublishCommand = cmd({
         verified: false,
         official: false,
         keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])],
+        ...(manifest.engines?.synergy ? { compatibility: { synergy: manifest.engines.synergy } } : {}),
         risk,
         trustTier: policy.trust.tier,
         runtimeMode: policy.runtimeMode,

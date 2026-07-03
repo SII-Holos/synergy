@@ -101,7 +101,7 @@ bun dev server                # server only, fixed development port
 bun dev app --open            # Vite web app against an existing server
 bun dev web                   # server + Vite web app
 bun dev desktop               # server + Vite web app + Electron desktop shell
-bun dev desktop --managed     # Electron desktop shell with managed server mode
+bun dev desktop --managed     # rebuild Web app dist + Electron desktop shell with managed server mode
 ```
 
 One-off CLI execution from source:
@@ -117,7 +117,7 @@ bun dev build app
 bun dev build desktop
 ```
 
-`packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server.
+`packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server. Use `bun dev desktop --managed` when validating the production-style managed server path; it rebuilds the Web app dist before launching Electron so stale frontend assets do not mix with current desktop/server code.
 
 ### Type checking and formatting
 

@@ -191,7 +191,7 @@ export const NoteWriteTool = Tool.define("note_write", {
           `Scope: ${scopeID}`,
           ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
         ].join("\n"),
-        metadata: { id: note.id, action: "create", title: note.title, kind } as Record<string, any>,
+        metadata: { id: note.id, action: "create", title: note.title, kind, scopeID } as Record<string, any>,
       }
     }
 

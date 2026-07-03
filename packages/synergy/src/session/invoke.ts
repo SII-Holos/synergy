@@ -174,14 +174,15 @@ export namespace SessionInvoke {
 
     for (const item of items) {
       if (item.input) {
+        const { messageID: _queuedMessageID, ...queuedInput } = item.input
         const noReply = options?.guiding ? true : item.input.noReply
         const created = await createUserMessage({
-          ...item.input,
+          ...queuedInput,
           sessionID,
           noReply,
           metadata: {
             ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
-            ...item.input.metadata,
+            ...queuedInput.metadata,
           },
         })
         userMessages.push(created)
@@ -338,7 +339,7 @@ export namespace SessionInvoke {
         if (!lastUser) {
           break
         }
-        if (lastFinished && lastUser.id < lastFinished.id) {
+        if (SessionProgress.hasTerminalReply({ messages: msgs, userID: lastUser.id })) {
           break
         }
 
@@ -931,14 +932,8 @@ export namespace SessionInvoke {
     }
 
     if (lastReplyRequiredUser) {
-      for (let index = messages.length - 1; index >= 0; index--) {
-        const msg = messages[index]
-        if (msg.info.role !== "assistant") continue
-        const assistant = msg.info as MessageV2.Assistant
-        if (assistant.parentID === lastReplyRequiredUser.id) {
-          return msg
-        }
-      }
+      const reply = SessionProgress.findTerminalReply(messages, lastReplyRequiredUser.id)
+      if (reply) return reply
     }
 
     for (let index = messages.length - 1; index >= 0; index--) {

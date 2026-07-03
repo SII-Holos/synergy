@@ -61,7 +61,7 @@ Model settings should keep role routing and quick-switcher visibility together i
 
 Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, and login flows together in the Providers page; provider quota, billing, and account-health details belong in Usage. The provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
 
-Usage settings should read as compact account summaries, not a wide report. Keep refresh controls inside the content flow, label quota windows with user-facing durations such as a 5-hour window, and avoid stretching quota rows across the full modal width.
+Usage settings should read as compact account summaries, not a wide report. Keep refresh controls inside the content flow, label quota windows with user-facing durations such as a 5-hour window, show provider reset timing inline with each quota row when available, and avoid stretching quota rows across the full modal width.
 
 Integration settings such as MCP and Email should present connection management, not protocol debugging. Use compact status rows, plain task labels, and grouped connection fields that explain what Synergy will do with the connection. Keep local command, remote endpoint, SMTP, and IMAP details secondary to the user's intent: add tools, send mail, or read mail.
 

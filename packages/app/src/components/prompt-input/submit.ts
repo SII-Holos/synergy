@@ -610,7 +610,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       },
     }))
 
-    const messageID = Identifier.ascending("message")
+    const queueing = input.working()
+    const messageID = queueing ? undefined : Identifier.ascending("message")
     const textPart = {
       id: Identifier.ascending("part"),
       type: "text" as const,
@@ -625,26 +626,31 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       ...sessionAttachmentParts,
     ]
 
-    const optimisticParts = requestParts.map((part) => ({
-      ...part,
-      sessionID: activeSession.id,
-      messageID,
-    })) as unknown as Part[]
+    const optimisticParts = messageID
+      ? (requestParts.map((part) => ({
+          ...part,
+          sessionID: activeSession.id,
+          messageID,
+        })) as unknown as Part[])
+      : []
 
-    const optimisticMessage: Message = {
-      id: messageID,
-      sessionID: activeSession.id,
-      role: "user",
-      time: { created: Date.now() },
-      agent,
-      model,
-      ...(optimisticPlanModeMetadata ? { metadata: optimisticPlanModeMetadata } : {}),
-    }
+    const optimisticMessage: Message | undefined = messageID
+      ? {
+          id: messageID,
+          sessionID: activeSession.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent,
+          model,
+          ...(optimisticPlanModeMetadata ? { metadata: optimisticPlanModeMetadata } : {}),
+        }
+      : undefined
 
     const setSyncStore =
       sessionScopeKey === currentScopeKey ? sync.set : globalSync.ensureScopeState(sessionScopeKey)[1]
 
     const addOptimisticMessage = () => {
+      if (!messageID || !optimisticMessage) return
       setSyncStore(
         produce((draft) => {
           const messages = draft.message[activeSession.id]
@@ -663,6 +669,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const removeOptimisticMessage = () => {
+      if (!messageID) return
       setSyncStore(
         produce((draft) => {
           const messages = draft.message[activeSession.id]
@@ -677,7 +684,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     clearInput()
     let optimisticAdded = false
-    if (!input.working()) {
+    if (!queueing) {
       addOptimisticMessage()
       optimisticAdded = true
     }
@@ -689,7 +696,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         sessionID: activeSession.id,
         agent,
         model,
-        messageID,
+        ...(messageID ? { messageID } : {}),
         parts: requestParts,
         variant,
       })
