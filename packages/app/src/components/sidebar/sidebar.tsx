@@ -1092,6 +1092,9 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     if (showHolosStatus()) {
       setHolosStatusOpen((value) => !value)
       setAgentSwitcherOpen(false)
+    } else if (holos.state.identity.loggedIn) {
+      setAgentSwitcherOpen((value) => !value)
+      setHolosStatusOpen(false)
     } else {
       setAgentSwitcherOpen((value) => !value)
       setHolosStatusOpen(false)
@@ -1150,7 +1153,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 <span class="sidebar-account-card-description">{displayDescription()}</span>
                 <span class="sidebar-account-card-meta">{activeAgentShortID() ?? "No agent"}</span>
               </span>
-              <Icon name={agentSwitcherOpen() ? "chevron-up" : "chevron-down"} size="small" />
+              <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>
           </div>
 
@@ -1235,15 +1238,17 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 <Show when={holos.state.connection.error}>
                   <div class="sidebar-holos-status-error">{holos.state.connection.error}</div>
                 </Show>
-                <button
-                  type="button"
-                  class="sidebar-account-menuItem sidebar-holos-reconnect-btn"
-                  role="menuitem"
-                  onClick={handleReconnect}
-                >
-                  <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                  <span>Reconnect</span>
-                </button>
+                <Show when={showHolosStatus()}>
+                  <button
+                    type="button"
+                    class="sidebar-account-menuItem sidebar-holos-reconnect-btn"
+                    role="menuitem"
+                    onClick={handleReconnect}
+                  >
+                    <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                    <span>Reconnect</span>
+                  </button>
+                </Show>
               </div>
             </div>
           </Show>
