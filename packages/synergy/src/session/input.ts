@@ -130,10 +130,27 @@ export async function lastModel(sessionID: string) {
   const messages = await effectiveMessages(sessionID)
   for (let i = messages.length - 1; i >= 0; i--) {
     const item = messages[i]
-    if (item.info.role === "user" && item.info.model) return item.info.model
+    if (isSessionIdentityAnchor(item) && item.info.model) return item.info.model
   }
   const { Provider } = await import("@/provider/provider")
   return Provider.defaultModel()
+}
+
+export function isSessionIdentityAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
+  info: MessageV2.User
+} {
+  if (item.info.role !== "user") return false
+  const metadata = item.info.metadata
+  if (!metadata) return true
+
+  const source = metadata.source
+  if (metadata.guided === true && metadata.noReply === true) return false
+  if (metadata.mailbox === true || metadata.channelPush === true) return false
+  if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
+  if (source === "cortex" || source === "mailbox" || source === "agenda") return false
+  if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
+
+  return true
 }
 
 export async function createUserMessage(input: InvokeInput) {
@@ -148,7 +165,7 @@ export async function createUserMessage(input: InvokeInput) {
     const messages = await effectiveMessages(input.sessionID)
     for (let i = messages.length - 1; i >= 0; i--) {
       const item = messages[i]
-      if (item.info.role === "user") {
+      if (isSessionIdentityAnchor(item)) {
         agentName = item.info.agent
         break
       }

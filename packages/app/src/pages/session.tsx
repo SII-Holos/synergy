@@ -219,13 +219,28 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
+  const isSessionIdentityAnchor = (message: UserMessage) => {
+    const metadata = message.metadata
+    if (!metadata) return true
+    const source = metadata.source
+    if (metadata.guided === true && metadata.noReply === true) return false
+    if (metadata.mailbox === true || metadata.channelPush === true) return false
+    if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
+    if (source === "cortex" || source === "mailbox" || source === "agenda") return false
+    if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
+    return true
+  }
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () =>
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
-        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user)
+        return (
+          !user.metadata?.synthetic &&
+          !isGuidedContextUserMessage(user) &&
+          isSessionIdentityAnchor(user)
+        )
       }) as UserMessage[],
     emptyUserMessages,
   )
