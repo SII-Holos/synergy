@@ -153,3 +153,163 @@ describe("SessionInbox", () => {
     })
   })
 })
+
+describe("inbox peek / commit", () => {
+  test("peekReady returns queued items without deleting them", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "first" }],
+        })
+        await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "second" }],
+        })
+
+        // First peek — should return both items
+        const firstPeek = await SessionInbox.peekReady(session.id)
+        expect(firstPeek).toHaveLength(2)
+
+        // Items should still be in the inbox (peek is non-destructive)
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(2)
+
+        // Second peek should return the same items
+        const secondPeek = await SessionInbox.peekReady(session.id)
+        expect(secondPeek).toHaveLength(2)
+        expect(secondPeek.map((i) => i.id).sort()).toEqual(firstPeek.map((i) => i.id).sort())
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("commitReady deletes specified items and leaves others intact", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const first = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "keep" }],
+        })
+        const second = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "delete" }],
+        })
+
+        await SessionInbox.commitReady(session.id, [second.id])
+
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(1)
+        expect(items[0].id).toBe(first.id)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("peek-then-commit pattern preserves items when commit is skipped", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const item = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "do not lose me" }],
+        })
+
+        // Peek — but simulate processing failure: never call commit
+        const peeked = await SessionInbox.peekReady(session.id)
+        expect(peeked).toHaveLength(1)
+        expect(peeked[0].id).toBe(item.id)
+
+        // Still in the inbox because commit was never called
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(1)
+
+        // Can be re-peeked (survives failed processing cycles)
+        const rePeeked = await SessionInbox.peekReady(session.id)
+        expect(rePeeked).toHaveLength(1)
+        expect(rePeeked[0].id).toBe(item.id)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("drainReady deletes items (existing destructive behaviour)", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "gone" }],
+        })
+
+        const drained = await SessionInbox.drainReady(session.id)
+        expect(drained).toHaveLength(1)
+
+        // drainReady is destructive — items should be gone
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(0)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("peekReady with excludeIDs skips already-committed items", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const first = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "first" }],
+        })
+        const second = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "second" }],
+        })
+
+        // Committed items excluded, still-queued returned
+        const peeked = await SessionInbox.peekReady(session.id, new Set([first.id]))
+        expect(peeked).toHaveLength(1)
+        expect(peeked[0].id).toBe(second.id)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+})
