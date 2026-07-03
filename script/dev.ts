@@ -337,13 +337,21 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   if (command === "desktop") {
     const managed = boolFlag(parsed.flags, "managed")
     if (managed) {
+      const dirs = directories(repoRoot)
+      const appDistExists = fs.existsSync(path.join(dirs.app, "dist", "index.html"))
+      const processes: DevProcessSpec[] = appDistExists
+        ? [desktopProcess({ repoRoot, bunPath, mode: "managed" })]
+        : [
+            { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
+            desktopProcess({ repoRoot, bunPath, mode: "managed" }),
+          ]
       return {
         kind: "run",
-        mode: "parallel",
+        mode: "serial",
         command,
         help,
         exitCode: 0,
-        processes: [desktopProcess({ repoRoot, bunPath, mode: "managed" })],
+        processes,
         requiredPorts: [],
         requiredServers: [],
       }
