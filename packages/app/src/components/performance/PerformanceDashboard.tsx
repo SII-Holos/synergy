@@ -11,6 +11,7 @@ import {
   type ChartData,
   type ChartOptions,
 } from "chart.js"
+import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -573,68 +574,92 @@ function TraceDrawer(props: {
   onClose: () => void
 }) {
   return (
-    <Show when={props.trace}>
-      {(trace) => (
-        <div class="fixed inset-y-0 right-0 z-[80] w-[min(480px,100vw)] overflow-y-auto border-l border-border-weaker-base bg-surface-raised-stronger-non-alpha p-5 shadow-2xl">
-          <div class="mb-4 flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <h3 class="truncate text-16-semibold text-text-strong">{trace().name}</h3>
-              <p class="mt-1 truncate text-11-regular text-text-weaker">{trace().traceId}</p>
-            </div>
-            <button
-              type="button"
-              class="rounded-lg p-1.5 text-icon-weak hover:bg-surface-hover-base"
-              onClick={props.onClose}
-            >
-              <Icon name={getSemanticIcon("action.close")} size="small" />
-            </button>
-          </div>
-          <div class="flex flex-col gap-3 text-12-regular">
-            <DetailRow label="Status" value={trace().status ?? "unknown"} />
-            <DetailRow label="Duration" value={formatDuration(trace().durationMs)} />
-            <DetailRow label="Module" value={trace().module ?? "—"} />
-            <DetailRow label="Session" value={trace().sessionID ?? "—"} />
-            <DetailRow label="Start" value={formatTime(trace().startedAt)} />
-            <DetailRow label="End" value={formatTime(trace().endedAt)} />
-            <Show when={trace().errorCode}>
-              <div class="rounded-lg bg-surface-inset-base/70 p-3 text-icon-warning-base">{trace().errorCode}</div>
-            </Show>
-            <Show when={props.detail?.spans.length}>
-              <div>
-                <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Spans</div>
-                <div class="flex flex-col gap-1.5">
-                  <For each={props.detail?.spans ?? []}>
-                    {(span) => (
-                      <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
-                        <div class="truncate text-12-medium text-text-strong">{span.name}</div>
-                        <div class="mt-1 text-11-regular text-text-weaker">
-                          {[span.module, span.status, formatDuration(span.durationMs)].filter(Boolean).join(" · ")}
+    <KobalteDialog open={props.trace !== null} onOpenChange={(open) => !open && props.onClose()}>
+      <KobalteDialog.Portal>
+        <KobalteDialog.Overlay data-component="dialog-overlay" />
+        <div data-component="dialog" data-size="content" data-placement="center">
+          <div data-slot="dialog-container">
+            <KobalteDialog.Content data-slot="dialog-content">
+              <div data-slot="dialog-header">
+                <div class="min-w-0">
+                  <Show
+                    when={props.trace}
+                    fallback={<KobalteDialog.Title data-slot="dialog-title">Trace Detail</KobalteDialog.Title>}
+                  >
+                    {(trace) => <KobalteDialog.Title data-slot="dialog-title">{trace().name}</KobalteDialog.Title>}
+                  </Show>
+                </div>
+                <KobalteDialog.CloseButton
+                  data-slot="dialog-close-button"
+                  data-component="icon-button"
+                  data-variant="ghost"
+                >
+                  <Icon name={getSemanticIcon("action.close")} size="small" />
+                </KobalteDialog.CloseButton>
+              </div>
+              <KobalteDialog.Description data-slot="dialog-description">
+                {props.trace?.traceId}
+              </KobalteDialog.Description>
+              <div data-slot="dialog-body">
+                <Show when={props.trace}>
+                  {(trace) => (
+                    <div class="flex flex-col gap-3 text-12-regular">
+                      <DetailRow label="Status" value={trace().status ?? "unknown"} />
+                      <DetailRow label="Duration" value={formatDuration(trace().durationMs)} />
+                      <DetailRow label="Module" value={trace().module ?? "—"} />
+                      <DetailRow label="Session" value={trace().sessionID ?? "—"} />
+                      <DetailRow label="Start" value={formatTime(trace().startedAt)} />
+                      <DetailRow label="End" value={formatTime(trace().endedAt)} />
+                      <Show when={trace().errorCode}>
+                        <div class="rounded-lg bg-surface-inset-base/70 p-3 text-icon-warning-base">
+                          {trace().errorCode}
                         </div>
-                      </div>
-                    )}
-                  </For>
-                </div>
+                      </Show>
+                      <Show when={props.detail?.spans.length}>
+                        <div>
+                          <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Spans</div>
+                          <div class="flex flex-col gap-1.5">
+                            <For each={props.detail?.spans ?? []}>
+                              {(span) => (
+                                <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                                  <div class="truncate text-12-medium text-text-strong">{span.name}</div>
+                                  <div class="mt-1 text-11-regular text-text-weaker">
+                                    {[span.module, span.status, formatDuration(span.durationMs)]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        </div>
+                      </Show>
+                      <Show when={props.detail?.events.length}>
+                        <div>
+                          <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Events</div>
+                          <div class="flex flex-col gap-1.5">
+                            <For each={(props.detail?.events ?? []).slice(0, 20)}>
+                              {(event) => (
+                                <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                                  <div class="truncate text-12-medium text-text-strong">{event.type}</div>
+                                  <div class="mt-1 text-11-regular text-text-weaker">
+                                    {formatTime(event.iso ?? event.time)}
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        </div>
+                      </Show>
+                    </div>
+                  )}
+                </Show>
               </div>
-            </Show>
-            <Show when={props.detail?.events.length}>
-              <div>
-                <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Events</div>
-                <div class="flex flex-col gap-1.5">
-                  <For each={(props.detail?.events ?? []).slice(0, 20)}>
-                    {(event) => (
-                      <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
-                        <div class="truncate text-12-medium text-text-strong">{event.type}</div>
-                        <div class="mt-1 text-11-regular text-text-weaker">{formatTime(event.iso ?? event.time)}</div>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </div>
-            </Show>
+            </KobalteDialog.Content>
           </div>
         </div>
-      )}
-    </Show>
+      </KobalteDialog.Portal>
+    </KobalteDialog>
   )
 }
 
