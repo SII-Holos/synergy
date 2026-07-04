@@ -250,7 +250,7 @@ describe("SessionNav.buildNavIndex", () => {
     })
   })
 
-  test("keeps nav activity stable while a session reply is pending", async () => {
+  test("updates nav activity at reply start and finish while keeping in-flight updates stable", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -264,13 +264,23 @@ describe("SessionNav.buildNavIndex", () => {
         await Bun.sleep(5)
         const pending = await Session.update(session.id, (draft) => {
           draft.pendingReply = true
+          draft.title = "Running Session Started"
+        })
+        const started = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        expect(started).toBeDefined()
+        expect(pending.time.updated).toBeGreaterThan(initial!.lastActivityAt)
+        expect(started!.title).toBe("Running Session Started")
+        expect(started!.lastActivityAt).toBeGreaterThan(initial!.lastActivityAt)
+
+        await Bun.sleep(5)
+        const midRun = await Session.update(session.id, (draft) => {
           draft.title = "Running Session Updated"
         })
         const duringRun = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
         expect(duringRun).toBeDefined()
-        expect(pending.time.updated).toBeGreaterThan(initial!.lastActivityAt)
+        expect(midRun.time.updated).toBeGreaterThan(started!.lastActivityAt)
         expect(duringRun!.title).toBe("Running Session Updated")
-        expect(duringRun!.lastActivityAt).toBe(initial!.lastActivityAt)
+        expect(duringRun!.lastActivityAt).toBe(started!.lastActivityAt)
 
         await Bun.sleep(5)
         await Session.update(session.id, (draft) => {
