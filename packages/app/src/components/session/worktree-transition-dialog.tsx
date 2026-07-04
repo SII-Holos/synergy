@@ -147,7 +147,7 @@ export function WorktreeTransitionContent(props: {
         ? `This session now runs in ${result.data.name}.`
         : "This session now runs in the new worktree."
       setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "succeed", message: desc }))
-      showToast({ type: "info", title: "Moved to worktree", desc })
+      showToast({ type: "info", title: "Moved to worktree", description: desc })
     } catch (error) {
       setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "fail", message: errorDescription(error) }))
       showToast({
