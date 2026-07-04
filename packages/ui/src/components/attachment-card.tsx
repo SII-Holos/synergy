@@ -8,13 +8,14 @@ import {
   attachmentColumns,
   attachmentMeta,
   isHtmlAttachment,
-  isImageAttachment,
   isPdfAttachment,
   resolveAttachmentPresentation,
   resolveAttachmentThumbnailUrl,
   resolveAttachmentUrl,
+  resolveImagePreviewImage,
   type AttachmentFile,
 } from "./attachment-card-utils"
+import type { ImagePreviewImage } from "./image-preview-model"
 export type { AttachmentFile } from "./attachment-card-utils"
 export {
   attachmentColumnCount,
@@ -25,9 +26,14 @@ export {
   joinServerUrl,
   resolveAttachmentPresentation,
   resolveAttachmentUrl,
+  resolveImagePreviewImage,
 } from "./attachment-card-utils"
 
-export function AttachmentCard(props: { file: AttachmentFile; serverUrl: string }) {
+export function AttachmentCard(props: {
+  file: AttachmentFile
+  serverUrl: string
+  imagePreview?: { images: ImagePreviewImage[]; index: number }
+}) {
   const dialog = useDialog()
   const resourceOpen = useResourceOpen()
   const [imageFailed, setImageFailed] = createSignal(false)
@@ -37,13 +43,14 @@ export function AttachmentCard(props: { file: AttachmentFile; serverUrl: string 
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() => attachmentMeta(props.file))
   const openAttachment = () => {
+    const preview = props.imagePreview
+    if (preview) {
+      dialog.show(() => <ImagePreview images={preview.images} initialIndex={preview.index} />)
+      return
+    }
     if (resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
     const href = url()
     if (!href) return
-    if (isImageAttachment(props.file)) {
-      dialog.show(() => <ImagePreview src={href} alt={filename()} />)
-      return
-    }
     window.open(href, "_blank", "noopener,noreferrer")
   }
 
@@ -202,10 +209,28 @@ function DynamicAttachmentLink(props: {
   )
 }
 
+interface AttachmentGalleryEntry {
+  file: AttachmentFile
+  imagePreview?: ImagePreviewImage
+  imagePreviewIndex?: number
+}
+
 export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string }) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
-  const columns = createMemo(() => attachmentColumns(visibleFiles()))
-
+  const entries = createMemo<AttachmentGalleryEntry[]>(() => {
+    let previewIndex = 0
+    return visibleFiles().map((file, index) => {
+      const imagePreview = resolveImagePreviewImage(props.serverUrl, file, index)
+      if (!imagePreview) return { file }
+      return { file, imagePreview, imagePreviewIndex: previewIndex++ }
+    })
+  })
+  const previewImages = createMemo(() =>
+    entries()
+      .map((entry) => entry.imagePreview)
+      .filter((image): image is ImagePreviewImage => Boolean(image)),
+  )
+  const columns = createMemo(() => attachmentColumns(entries()))
   return (
     <Show when={columns().length > 0}>
       <div data-component="attachment-gallery" data-columns={columns().length}>
@@ -213,7 +238,19 @@ export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: s
           <For each={columns()}>
             {(column) => (
               <div data-slot="attachment-column">
-                <For each={column}>{(file) => <AttachmentCard file={file} serverUrl={props.serverUrl} />}</For>
+                <For each={column}>
+                  {(entry) => (
+                    <AttachmentCard
+                      file={entry.file}
+                      serverUrl={props.serverUrl}
+                      imagePreview={
+                        entry.imagePreviewIndex !== undefined
+                          ? { images: previewImages(), index: entry.imagePreviewIndex }
+                          : undefined
+                      }
+                    />
+                  )}
+                </For>
               </div>
             )}
           </For>

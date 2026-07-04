@@ -5,8 +5,13 @@ import {
   type OpenableResource,
   type ResourceOpenOptions,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
-import { ImagePreview } from "@ericsanchezok/synergy-ui/image-preview"
-import { isImageAttachment, resolveAttachmentUrl, type AttachmentFile } from "@ericsanchezok/synergy-ui/attachment-card"
+import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
+import {
+  isImageAttachment,
+  resolveAttachmentUrl,
+  resolveImagePreviewImage,
+  type AttachmentFile,
+} from "@ericsanchezok/synergy-ui/attachment-card"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
@@ -47,6 +52,32 @@ function filenameFor(resource: { filename?: string; url?: string; path?: string 
   return stripQueryAndHash(value).split("/").filter(Boolean).at(-1) ?? "file"
 }
 
+function previewableImageUrl(input: { url: string; mime?: string }): string | undefined {
+  if (input.url.startsWith("data:")) return input.url.startsWith("data:image/") ? input.url : undefined
+  if (input.url.startsWith("blob:")) return input.url
+  try {
+    const url = new URL(input.url)
+    return url.protocol === "http:" || url.protocol === "https:" ? input.url : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function previewImageForUrl(input: { url: string; mime?: string; filename?: string }): ImagePreviewImage | undefined {
+  const src = previewableImageUrl(input)
+  if (!src) return undefined
+  const filename = filenameFor(input)
+  return {
+    id: src,
+    src,
+    filename,
+    mime: input.mime ?? "image/*",
+    alt: filename,
+    downloadUrl: src,
+    externalUrl: src,
+  }
+}
+
 export function ResourceOpenProvider(props: ParentProps) {
   const dialog = useDialog()
   const file = useFile()
@@ -67,8 +98,12 @@ export function ResourceOpenProvider(props: ParentProps) {
   const openUrl = (input: { url: string; mime?: string; filename?: string }) => {
     if (!input.url) return false
     if (input.mime?.startsWith("image/")) {
-      dialog.show(() => <ImagePreview src={input.url} alt={filenameFor(input)} />)
-      return true
+      const image = previewImageForUrl(input)
+      if (image) {
+        dialog.show(() => <ImagePreview images={[image]} />)
+        return true
+      }
+      return false
     }
     window.open(input.url, "_blank", "noopener,noreferrer")
     return true
@@ -80,7 +115,9 @@ export function ResourceOpenProvider(props: ParentProps) {
 
     const url = resolveAttachmentUrl(options?.serverUrl ?? sdk.url, attachment)
     if (isImageAttachment(attachment) && url && options?.prefer !== "workspace") {
-      dialog.show(() => <ImagePreview src={url} alt={filenameFor({ filename: attachment.filename, url })} />)
+      const image = resolveImagePreviewImage(options?.serverUrl ?? sdk.url, attachment, 0)
+      if (!image) return false
+      dialog.show(() => <ImagePreview images={[image]} />)
       return true
     }
 
