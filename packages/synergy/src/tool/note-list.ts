@@ -16,6 +16,10 @@ const parameters = z.object({
     .enum(["all", "note", "blueprint"])
     .default("all")
     .describe("Filter by document kind. Blueprints are executable notes."),
+  archived: z
+    .enum(["active", "archived", "all"])
+    .default("active")
+    .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
   since: z
     .string()
     .optional()
@@ -35,10 +39,10 @@ export const NoteListTool = Tool.define("note_list", {
 
     let notes =
       params.scope === "all"
-        ? await NoteStore.listMetaWithGlobal(currentScopeID)
+        ? await NoteStore.listMetaWithGlobal(currentScopeID, params.archived)
         : params.scope === "global"
-          ? await NoteStore.listMeta("global")
-          : await NoteStore.listMeta(currentScopeID)
+          ? await NoteStore.listMeta("global", params.archived)
+          : await NoteStore.listMeta(currentScopeID, params.archived)
 
     const sinceMs = params.since ? new Date(params.since).getTime() : undefined
     const beforeMs = params.before ? new Date(params.before).getTime() : undefined

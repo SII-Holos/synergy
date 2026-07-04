@@ -69,6 +69,45 @@ export function deleteNoteConfirm(title: string | undefined): ConfirmCopy {
   }
 }
 
+export function archiveNoteConfirm(count: number): ConfirmCopy {
+  return {
+    title: count === 1 ? "Archive note?" : `Archive ${count} notes?`,
+    description:
+      count === 1
+        ? "This note will be hidden from the active list. You can restore it from the Archived view."
+        : `These ${count} notes will be hidden from the active list. You can restore them from the Archived view.`,
+    confirmLabel: count === 1 ? "Archive" : `Archive ${count}`,
+    cancelLabel: "Cancel",
+    tone: "warning",
+  }
+}
+
+export function unarchiveNoteConfirm(count: number): ConfirmCopy {
+  return {
+    title: count === 1 ? "Restore note?" : `Restore ${count} notes?`,
+    description:
+      count === 1
+        ? "This note will be moved back to the active list."
+        : `These ${count} notes will be moved back to the active list.`,
+    confirmLabel: count === 1 ? "Restore" : `Restore ${count}`,
+    cancelLabel: "Cancel",
+    tone: "neutral",
+  }
+}
+
+export function deleteArchivedNoteConfirm(count: number): ConfirmCopy {
+  return {
+    title: count === 1 ? "Delete archived note?" : `Delete ${count} archived notes?`,
+    description:
+      count === 1
+        ? "This note will be removed permanently. This cannot be undone."
+        : `These ${count} notes will be removed permanently. This cannot be undone.`,
+    confirmLabel: count === 1 ? "Delete" : `Delete ${count}`,
+    cancelLabel: "Cancel",
+    tone: "danger",
+  }
+}
+
 export function overwriteImportConfirm(conflictCount: number): ConfirmCopy {
   return {
     title: `Overwrite ${conflictCount} conflicting ${plural(conflictCount, "key")}?`,

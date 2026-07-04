@@ -2107,6 +2107,10 @@ export type ChannelFeishuAccountConfig = {
    */
   inboundDebounceMs?: number
   /**
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   */
+  model?: string
+  /**
    * Resolve sender display names via Feishu contact API
    */
   resolveSenderNames?: boolean
@@ -3214,6 +3218,13 @@ export type Session = {
     activatedTools?: Array<string>
   }
   completionNotice?: SessionCompletionNotice
+  /**
+   * Per-session model override set by /model command
+   */
+  modelOverride?: {
+    providerID: string
+    modelID: string
+  }
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -3927,6 +3938,7 @@ export type NoteInfo = {
     runCount?: number
     lastRunAt?: number
   }
+  archived: boolean
   version: number
   time: {
     created: number
@@ -4663,6 +4675,7 @@ export type NoteMetaInfo = {
   pinned: boolean
   global: boolean
   originScope?: string
+  archived?: boolean
   tags: Array<string>
   kind?: "note" | "blueprint"
   version: number
@@ -4714,6 +4727,7 @@ export type NotePatchInput = {
   content?: unknown
   pinned?: boolean
   global?: boolean
+  archived?: boolean
   tags?: Array<string>
   kind?: "note" | "blueprint"
   blueprint?: {
@@ -5765,6 +5779,22 @@ export type EventNoteDeleted = {
   }
 }
 
+export type EventNoteArchived = {
+  type: "note.archived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+  }
+}
+
 export type EventBlueprintLoopCreated = {
   type: "blueprint_loop.created"
   properties: {
@@ -6053,6 +6083,8 @@ export type Event =
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -11075,6 +11107,10 @@ export type NoteListMetaData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note/meta"
 }
@@ -11103,6 +11139,10 @@ export type NoteListAllData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note/all"
 }
@@ -11170,6 +11210,10 @@ export type NoteListData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note"
 }
@@ -11240,6 +11284,14 @@ export type NoteRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
 }
 
 export type NoteRemoveError = NoteRemoveErrors[keyof NoteRemoveErrors]
@@ -11330,6 +11382,46 @@ export type NoteUpdateResponses = {
 }
 
 export type NoteUpdateResponse = NoteUpdateResponses[keyof NoteUpdateResponses]
+
+export type NoteBatchData = {
+  body?: {
+    /**
+     * Note IDs to act on
+     */
+    ids: Array<string>
+    /**
+     * Action: archive, unarchive, or delete
+     */
+    action: "archive" | "unarchive" | "delete"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note/batch"
+}
+
+export type NoteBatchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type NoteBatchError = NoteBatchErrors[keyof NoteBatchErrors]
+
+export type NoteBatchResponses = {
+  /**
+   * Batch operation result
+   */
+  200: {
+    archived?: Array<string>
+    deleted?: Array<string>
+  }
+}
+
+export type NoteBatchResponse = NoteBatchResponses[keyof NoteBatchResponses]
 
 export type BlueprintLoopListData = {
   body?: never

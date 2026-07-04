@@ -817,6 +817,24 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Edit Note",
         subtitle: input.title || input.id,
       }
+    case "note_archive": {
+      const unarchive = input.unarchive as boolean | undefined
+      return {
+        icon: "archive",
+        title: unarchive ? "Unarchive Note" : "Archive Note",
+        subtitle: Array.isArray(input.ids)
+          ? input.ids.length === 1
+            ? input.ids[0]
+            : `${input.ids.length} notes`
+          : undefined,
+      }
+    }
+    case "note_delete":
+      return {
+        icon: "trash-2",
+        title: "Delete Note",
+        subtitle: input.id,
+      }
     case "blueprint_loop_finish":
       return {
         icon: BLUEPRINT_ICON,
