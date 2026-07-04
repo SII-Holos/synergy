@@ -4818,6 +4818,10 @@ export type BlueprintLoopCreateInput = {
    */
   loopIndex?: number
   /**
+   * Explicit agent override for the Blueprint Run
+   */
+  executionAgent?: string
+  /**
    * Explicit model override for the Blueprint Run
    */
   model?: {

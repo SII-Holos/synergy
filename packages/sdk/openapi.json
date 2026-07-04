@@ -28832,6 +28832,10 @@
             "description": "Zero-based loop index",
             "type": "number"
           },
+          "executionAgent": {
+            "description": "Explicit agent override for the Blueprint Run",
+            "type": "string"
+          },
           "model": {
             "description": "Explicit model override for the Blueprint Run",
             "type": "object",
