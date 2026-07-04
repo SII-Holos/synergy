@@ -30,6 +30,7 @@ export type PerformanceTraceSpan = PerfTraceListItem
 export type PerformanceIssue = PerfIssue
 export type PerformanceRankedItem = PerfDashboardSummary["top"]["slowRoutes"][number]
 export type PerformanceSummary = Omit<PerfDashboardSummary, "resources" | "top"> & {
+  quality?: PerformanceTimeline["quality"]
   resources: PerfDashboardSummary["resources"] & {
     appReadOps?: number
     appWriteOps?: number

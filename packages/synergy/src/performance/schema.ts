@@ -180,10 +180,21 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfRankedItem" })
   export type RankedItem = z.infer<typeof RankedItem>
 
+  export const TimelineQuality = z
+    .object({
+      truncated: z.boolean().optional(),
+      sampled: z.boolean().optional(),
+      partial: z.boolean().optional(),
+      retentionLimited: z.boolean().optional(),
+      unavailableReason: z.string().optional(),
+    })
+    .meta({ ref: "PerfTimelineQuality" })
+
   export const DashboardSummary = z
     .object({
       generatedAt: z.string(),
       windowMs: z.number(),
+      quality: TimelineQuality.optional(),
       health: z.object({
         status: z.enum(["healthy", "degraded", "critical", "unknown"]),
         score: z.number(),
@@ -271,16 +282,6 @@ export namespace PerformanceSchema {
   export const MetricKind = z
     .enum(["duration", "gauge", "counter", "rate", "size", "ratio"])
     .meta({ ref: "PerfMetricKind" })
-  export const TimelineQuality = z
-    .object({
-      truncated: z.boolean().optional(),
-      sampled: z.boolean().optional(),
-      partial: z.boolean().optional(),
-      retentionLimited: z.boolean().optional(),
-      unavailableReason: z.string().optional(),
-    })
-    .meta({ ref: "PerfTimelineQuality" })
-
   export const TimelinePoint = z
     .object({ time: z.number(), value: z.number().nullable(), sampleCount: z.number().int().optional() })
     .meta({ ref: "PerfTimelinePoint" })

@@ -253,6 +253,7 @@ export namespace PerformanceStore {
 
   export function queryMetrics(opts: {
     since: number
+    until?: number
     names?: string[]
     module?: string
     scopeID?: string
@@ -260,12 +261,17 @@ export namespace PerformanceStore {
     tool?: string
     providerID?: string
     limit?: number
+    newestFirst?: boolean
   }) {
     flush()
     const conn = open()
     if (!conn) return [] as StoredMetric[]
     const filters = ["time >= ?"]
     const params: Array<string | number> = [opts.since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
     if (opts.names?.length) {
       filters.push(`name IN (${opts.names.map(() => "?").join(",")})`)
       params.push(...opts.names)
@@ -290,10 +296,14 @@ export namespace PerformanceStore {
       filters.push("(json_extract(labels_json, '$.providerID') = ? OR json_extract(labels_json, '$.provider') = ?)")
       params.push(opts.providerID, opts.providerID)
     }
-    params.push(opts.limit ?? 10_000)
-    return conn
-      .prepare(`SELECT * FROM perf_metrics WHERE ${filters.join(" AND ")} ORDER BY time ASC LIMIT ?`)
+    const limit = opts.limit ?? 10_000
+    params.push(limit)
+    const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
+    const rows = conn
+      .prepare(`SELECT * FROM perf_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`)
       .all(...params) as StoredMetric[]
+    if (!opts.newestFirst) return rows
+    return rows.sort((a, b) => a.time - b.time || a.metric_id.localeCompare(b.metric_id))
   }
 
   export function querySpans(opts: {

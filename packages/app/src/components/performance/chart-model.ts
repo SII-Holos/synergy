@@ -175,6 +175,12 @@ export function pointsFromTimeline(
   return [...byTime.values()].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0))
 }
 
+export function summaryQualityMessage(summary: PerformanceSummary | null | undefined) {
+  if (summary?.quality?.truncated || summary?.quality?.partial)
+    return "Summary is partial because the metric volume exceeded the dashboard cap."
+  return undefined
+}
+
 export function formatMetricValue(value: number | undefined, unit: string): string {
   if (value === undefined) return "—"
   if (unit === "ms") return formatDuration(value)

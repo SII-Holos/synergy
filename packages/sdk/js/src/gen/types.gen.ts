@@ -183,6 +183,14 @@ export type DiagnosticsSummary = {
   [key: string]: unknown
 }
 
+export type PerfTimelineQuality = {
+  truncated?: boolean
+  sampled?: boolean
+  partial?: boolean
+  retentionLimited?: boolean
+  unavailableReason?: string
+}
+
 export type PerfModule =
   | "server"
   | "session"
@@ -249,6 +257,7 @@ export type PerfIssue = {
 export type PerfDashboardSummary = {
   generatedAt: string
   windowMs: number
+  quality?: PerfTimelineQuality
   health: {
     status: "healthy" | "degraded" | "critical" | "unknown"
     score: number
@@ -309,14 +318,6 @@ export type PerfDashboardSummary = {
     slowFrontend: Array<PerfRankedItem>
   }
   issues: Array<PerfIssue>
-}
-
-export type PerfTimelineQuality = {
-  truncated?: boolean
-  sampled?: boolean
-  partial?: boolean
-  retentionLimited?: boolean
-  unavailableReason?: string
 }
 
 export type PerfMetricKind = "duration" | "gauge" | "counter" | "rate" | "size" | "ratio"

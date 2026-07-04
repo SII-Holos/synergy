@@ -5,6 +5,7 @@ import {
   memoryPoints,
   requestPoints,
   resourcePressurePoints,
+  summaryQualityMessage,
   type ChartDatasetSpec,
 } from "./chart-model"
 import { runtimeSupportItems } from "./runtime-support"
@@ -169,6 +170,14 @@ describe("performance chart model", () => {
       datasets: [datasetSpecs[0]],
     })
     expect(model.data.datasets[0].data).toEqual([null, null, null])
+  })
+
+  test("summary quality warning uses quiet partial copy", () => {
+    const baseSummary = summary({ traceFiles: 0, recentErrors: 0, pendingSessions: 0 })
+    expect(summaryQualityMessage({ ...baseSummary, quality: { partial: true, truncated: true } })).toBe(
+      "Summary is partial because the metric volume exceeded the dashboard cap.",
+    )
+    expect(summaryQualityMessage(baseSummary)).toBeUndefined()
   })
 })
 

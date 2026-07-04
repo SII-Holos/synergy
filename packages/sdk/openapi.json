@@ -17990,6 +17990,26 @@
         },
         "additionalProperties": {}
       },
+      "PerfTimelineQuality": {
+        "type": "object",
+        "properties": {
+          "truncated": {
+            "type": "boolean"
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "retentionLimited": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        }
+      },
       "PerfModule": {
         "type": "string",
         "enum": [
@@ -18174,6 +18194,9 @@
           },
           "windowMs": {
             "type": "number"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/PerfTimelineQuality"
           },
           "health": {
             "type": "object",
@@ -18430,26 +18453,6 @@
           "top",
           "issues"
         ]
-      },
-      "PerfTimelineQuality": {
-        "type": "object",
-        "properties": {
-          "truncated": {
-            "type": "boolean"
-          },
-          "sampled": {
-            "type": "boolean"
-          },
-          "partial": {
-            "type": "boolean"
-          },
-          "retentionLimited": {
-            "type": "boolean"
-          },
-          "unavailableReason": {
-            "type": "string"
-          }
-        }
       },
       "PerfMetricKind": {
         "type": "string",

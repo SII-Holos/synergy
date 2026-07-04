@@ -18,6 +18,7 @@ import {
   ratioToPercent,
   sessionPoints,
   storagePoints,
+  summaryQualityMessage,
   type ChartDatasetSpec,
 } from "./chart-model"
 import { usePerformance } from "./use-performance"
@@ -128,6 +129,7 @@ export function PerformanceDashboard() {
         </div>
       </Show>
 
+      <SummaryQualityNotice summary={summary()} />
       <SummaryCards summary={summary()} issues={issues()} />
       <RuntimeSupport summary={summary()} />
 
@@ -253,6 +255,16 @@ function TimeRangeControl(props: { value: number; onChange: (value: number) => v
         )}
       </For>
     </div>
+  )
+}
+
+function SummaryQualityNotice(props: { summary: PerformanceSummary | null | undefined }) {
+  return (
+    <Show when={summaryQualityMessage(props.summary)}>
+      {(message) => (
+        <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">{message()}</div>
+      )}
+    </Show>
   )
 }
 

@@ -94,6 +94,44 @@ describe("performance routes", () => {
     expect((await tooManyBuckets.json()).code).toBe("PERF_TOO_MANY_BUCKETS")
   })
 
+  test("capped metric queries preserve newest rows and summary exposes partial quality", async () => {
+    const now = Date.now()
+    const conn = PerformanceStore.open()
+    expect(conn).toBeDefined()
+    const insert = conn!.prepare(
+      `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,labels_json,sample_rate)
+       VALUES (?1,?2,?3,'http.request.duration',?4,'ms','backend','server',?5,1)`,
+    )
+    const insertMetrics = conn!.transaction(() => {
+      for (let index = 0; index < 50_002; index++) {
+        const time = now - 50_001 + index
+        insert.run(
+          `met-cap-${index.toString().padStart(5, "0")}`,
+          time,
+          new Date(time).toISOString(),
+          index,
+          JSON.stringify({ path: `/route-${index}` }),
+        )
+      }
+    })
+    insertMetrics()
+
+    const newest = PerformanceStore.queryMetrics({
+      since: now - 60_000,
+      names: ["http.request.duration"],
+      limit: 3,
+      newestFirst: true,
+    })
+    expect(newest.map((row) => row.value)).toEqual([49_999, 50_000, 50_001])
+
+    const summary = await Server.App().request("/global/performance/summary?windowMs=86400000")
+    expect(summary.status).toBe(200)
+    const body = await summary.json()
+    expect(body.quality).toMatchObject({ truncated: true, partial: true })
+    expect(body.top.slowRoutes.some((item: { label: string }) => item.label === "/route-50001")).toBe(true)
+    expect(body.top.slowRoutes.every((item: { label: string }) => item.label !== "/route-0")).toBe(true)
+  })
+
   test("timeline returns chart metrics with aggregation metadata", async () => {
     const now = Date.now()
     PerformanceMetrics.record({ name: "http.request.duration", value: 10, unit: "ms", module: "server" })

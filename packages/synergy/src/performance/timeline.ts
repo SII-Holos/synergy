@@ -28,6 +28,7 @@ export namespace PerformanceTimeline {
     const storageNames = [...new Set(metrics.flatMap((name) => PerformanceCatalog.storageNamesFor(name)))]
     const rows = PerformanceStore.queryMetrics({
       since: from,
+      until: to,
       names: storageNames,
       module: query.module,
       scopeID: query.scopeID,
@@ -35,7 +36,8 @@ export namespace PerformanceTimeline {
       tool: query.tool,
       providerID: query.providerID,
       limit: ROW_LIMIT + 1,
-    }).filter((row) => row.time < to)
+      newestFirst: true,
+    })
     const truncated = rows.length > ROW_LIMIT
     const usableRows = truncated ? rows.slice(-ROW_LIMIT) : rows
     const buckets = bucketStarts(from, to, bucketMs)

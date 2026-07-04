@@ -12,9 +12,12 @@ export namespace PerformanceDashboard {
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
     const since = Date.now() - windowMs
-    const metrics = PerformanceStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001 })
-      .slice(-50_000)
-      .map((row) => ({ ...row, labels: parseLabels(row.labels_json) }))
+    const rows = PerformanceStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
+    const truncated = rows.length > 50_000
+    const metrics = (truncated ? rows.slice(-50_000) : rows).map((row) => ({
+      ...row,
+      labels: parseLabels(row.labels_json),
+    }))
     const resources = PerformanceStore.latestResource({ scopeID: input.scopeID })
     const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
@@ -45,6 +48,7 @@ export namespace PerformanceDashboard {
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
+      quality: truncated ? { truncated: true, partial: true } : undefined,
       health: { status, score, openIssueCount: issues.length, criticalIssueCount },
       backend: {
         requestCount: http.length,
