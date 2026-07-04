@@ -1,6 +1,5 @@
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { Portal } from "solid-js/web"
 import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
@@ -516,7 +515,7 @@ function RunMenu(props: {
               <Icon name="chevron-left" size="small" class="size-3.5" />
             </button>
             <div class="min-w-0 flex-1">
-              <h3 class="text-13-medium text-text-strong">Choose model</h3>
+              <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
               <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">
                 {modeLabel()} &middot; {props.title || "Untitled"}
               </p>
@@ -533,11 +532,15 @@ function RunMenu(props: {
           </div>
         </div>
         <div class="note-run-model-body">
+          <div class="note-run-model-copy">
+            <span class="note-run-model-label">Model</span>
+            <span class="note-run-model-description">Choose a specific model, or keep automatic fallback.</span>
+          </div>
           <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
             <KobaltePopover.Trigger
               type="button"
               class="settings-model-trigger note-run-model-trigger"
-              aria-label="Select model"
+              aria-label="Choose model for Blueprint run"
             >
               <span class="settings-model-trigger-text">
                 <span class="settings-model-trigger-title">{currentModelOption()?.label}</span>
@@ -545,7 +548,7 @@ function RunMenu(props: {
               </span>
               <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
             </KobaltePopover.Trigger>
-            <Portal>
+            <KobaltePopover.Portal>
               <KobaltePopover.Content class="settings-model-picker-popover note-run-model-picker flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
                 <KobaltePopover.Title class="sr-only">Select model</KobaltePopover.Title>
                 <List<ModelOption>
@@ -568,7 +571,7 @@ function RunMenu(props: {
                   )}
                 </List>
               </KobaltePopover.Content>
-            </Portal>
+            </KobaltePopover.Portal>
           </KobaltePopover>
           <button type="button" class="note-run-model-run" onClick={handleRun}>
             <Icon name="zap" size="small" class="size-3.5" />

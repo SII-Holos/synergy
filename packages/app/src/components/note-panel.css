@@ -439,25 +439,27 @@
 }
 
 .note-run-menu {
-  border: 1px solid var(--border-weak-base);
-  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border-weak-base) 78%, transparent);
+  border-radius: 1.05rem;
   background: var(--surface-raised-stronger-non-alpha);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.16),
+    0 1px 0 color-mix(in srgb, var(--border-weaker-base) 54%, transparent) inset;
   overflow: hidden;
 }
 
 .note-run-menu-header {
-  padding: 0.875rem 0.875rem 0.75rem;
+  padding: 1rem 1rem 0.9rem;
 }
 
 .note-run-menu-close {
   display: inline-flex;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   color: var(--icon-weak);
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
@@ -470,24 +472,21 @@
 }
 
 .note-run-option-list {
-  padding: 0.25rem 0;
-  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 74%, transparent);
+  padding: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 64%, transparent);
 }
 
 .note-run-option {
   display: flex;
   width: 100%;
   align-items: flex-start;
-  gap: 0.625rem;
-  padding: 0.625rem 0.875rem;
+  gap: 0.65rem;
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.75rem;
   text-align: left;
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     opacity var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.note-run-option + .note-run-option {
-  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 52%, transparent);
 }
 
 .note-run-option:hover:not(:disabled),
@@ -518,12 +517,12 @@
 
 .note-run-menu-back {
   display: inline-flex;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   color: var(--icon-weak);
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
@@ -536,19 +535,41 @@
 }
 
 .note-run-model-body {
-  padding: 0.75rem 0.875rem;
-  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 74%, transparent);
+  padding: 0.9rem 1rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 64%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.7rem;
+}
+
+.note-run-model-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.note-run-model-label {
+  color: var(--text-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.note-run-model-description {
+  color: var(--text-weak);
+  font-size: 0.6875rem;
+  line-height: 1.35;
 }
 
 .note-run-model-trigger {
   width: 100%;
+  max-width: none;
+  justify-self: stretch;
 }
 
 .note-run-model-picker {
-  z-index: 75;
+  z-index: 120;
+  max-height: min(22rem, calc(100vh - 2rem));
 }
 
 .note-run-model-run {
@@ -557,16 +578,17 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.625rem 0.875rem;
-  border-radius: 0.625rem;
+  padding: 0.72rem 0.875rem;
+  border-radius: 0.75rem;
   background: var(--surface-accent-base);
   color: var(--text-on-accent);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.25;
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .note-run-model-run:hover {
@@ -575,6 +597,11 @@
 
 .note-run-model-run:active {
   background: var(--surface-accent-active);
+}
+
+.note-run-model-run:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 38%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .note-card {
