@@ -6,9 +6,15 @@ import { PerformanceConfig } from "./config"
 import { PerformanceSchema } from "./schema"
 
 export namespace PerformanceStore {
-  const DIR = path.join(Global.Path.state, "observability", "performance")
-  const DB_PATH = path.join(DIR, "performance.sqlite")
   const SCHEMA_VERSION = "1"
+
+  function dbDir() {
+    return path.join(Global.Path.state, "observability", "performance")
+  }
+
+  function dbPath() {
+    return path.join(dbDir(), "performance.sqlite")
+  }
   let db: Database | undefined
   let checkpointTimer: ReturnType<typeof setInterval> | undefined
   let retentionTimer: ReturnType<typeof setInterval> | undefined
@@ -18,19 +24,19 @@ export namespace PerformanceStore {
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
   export function dir() {
-    return DIR
+    return dbDir()
   }
 
   export function pathName() {
-    return DB_PATH
+    return dbPath()
   }
 
   export function open(): Database | undefined {
     const config = PerformanceConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) return undefined
     if (db) return db
-    fsSync.mkdirSync(DIR, { recursive: true })
-    const conn = new Database(DB_PATH, { create: true })
+    fsSync.mkdirSync(dbDir(), { recursive: true })
+    const conn = new Database(dbPath(), { create: true })
     conn.exec("PRAGMA journal_mode=WAL")
     conn.exec("PRAGMA busy_timeout=5000")
     conn.exec("PRAGMA foreign_keys=ON")
@@ -468,7 +474,8 @@ export namespace PerformanceStore {
   }
 
   function sqliteFootprint() {
-    return [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`].reduce((total, file) => {
+    const filepath = dbPath()
+    return [filepath, `${filepath}-wal`, `${filepath}-shm`].reduce((total, file) => {
       try {
         return total + fsSync.statSync(file).size
       } catch {
