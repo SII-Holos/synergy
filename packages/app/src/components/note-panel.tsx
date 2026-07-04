@@ -164,7 +164,7 @@ function NoteCard(props: {
   onClick: () => void
   selecting?: boolean
   selected?: boolean
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, shiftKey?: boolean) => void
 }) {
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
@@ -190,9 +190,9 @@ function NoteCard(props: {
       onDragStart={(e) => {
         if (!props.selecting) attachNoteDragData(e, props.note)
       }}
-      onClick={() => {
+      onClick={(e) => {
         if (props.selecting && props.onToggleSelect) {
-          props.onToggleSelect(props.note.id)
+          props.onToggleSelect(props.note.id, e.shiftKey)
         } else {
           props.onClick()
         }
@@ -597,7 +597,7 @@ function ScopeSection(props: {
   scopeLookup: Map<string, { name: string; directory: string }>
   selecting?: boolean
   selectedNotes?: Set<string>
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, shiftKey?: boolean) => void
 }) {
   const [columns, setColumns] = createSignal(2)
   const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
@@ -758,6 +758,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const [expandedState, setExpandedState] = createSignal<Record<string, boolean>>({})
   const [selecting, setSelecting] = createSignal(false)
   const [selectedNotes, setSelectedNotes] = createSignal<Set<string>>(new Set())
+  const [lastClickedID, setLastClickedID] = createSignal<string | null>(null)
   const [batchBusy, setBatchBusy] = createSignal(false)
   const [showArchived, setShowArchived] = createSignal(false)
 
@@ -976,7 +977,39 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     })
   }
 
-  function toggleSelect(id: string) {
+  function getVisibleNoteIDs(): string[] {
+    const ids: string[] = []
+    for (const g of displayGroups()) {
+      for (const n of g.notes) ids.push(n.id)
+    }
+    return ids
+  }
+
+  function toggleSelect(id: string, shiftKey?: boolean) {
+    if (shiftKey) {
+      const last = lastClickedID()
+      if (last) {
+        const visible = getVisibleNoteIDs()
+        const lastIdx = visible.indexOf(last)
+        const currIdx = visible.indexOf(id)
+        if (lastIdx >= 0 && currIdx >= 0) {
+          const [start, end] = lastIdx <= currIdx ? [lastIdx, currIdx] : [currIdx, lastIdx]
+          const rangeIDs = visible.slice(start, end + 1)
+          setSelectedNotes((prev) => {
+            const next = new Set(prev)
+            const allAlready = rangeIDs.every((rid) => next.has(rid))
+            if (allAlready) {
+              for (const rid of rangeIDs) next.delete(rid)
+            } else {
+              for (const rid of rangeIDs) next.add(rid)
+            }
+            return next
+          })
+          return
+        }
+      }
+    }
+    setLastClickedID(id)
     setSelectedNotes((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -1023,28 +1056,10 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     })
   }
 
-  async function batchDelete() {
-    const ids = [...selectedNotes()]
-    confirm.show({
-      ...deleteArchivedNoteConfirm(ids.length),
-      onConfirm: async () => {
-        setBatchBusy(true)
-        try {
-          await sdk.client.note.batch({ ids, action: "delete", directory: directory() })
-        } catch (e) {
-          console.error("Batch delete failed", e)
-        }
-        setSelectedNotes(new Set<string>())
-        setSelecting(false)
-        await refetch()
-        setBatchBusy(false)
-      },
-    })
-  }
-
   function cancelSelecting() {
     setSelecting(false)
     setSelectedNotes(new Set<string>())
+    setLastClickedID(null)
   }
 
   createEffect(() => {
@@ -1183,14 +1198,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       disabled={batchBusy()}
                     >
                       Restore ({selectedNotes().size})
-                    </button>
-                    <button
-                      type="button"
-                      class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
-                      onClick={batchDelete}
-                      disabled={batchBusy()}
-                    >
-                      Delete ({selectedNotes().size})
                     </button>
                   </Show>
                 </Show>
@@ -1854,6 +1861,13 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function archiveNote() {
     const dir = directory()
     if (!dir) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before archiving this note.",
+      })
+      return
+    }
     confirm.show({
       ...archiveNoteConfirm(1),
       onConfirm: async () => {
@@ -1866,6 +1880,13 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function restoreNote() {
     const dir = directory()
     if (!dir) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before restoring this note.",
+      })
+      return
+    }
     await sdk.client.note.batch({ ids: [props.id], action: "unarchive", directory: dir })
     void refetch()
   }
