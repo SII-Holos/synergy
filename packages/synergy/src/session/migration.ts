@@ -1647,5 +1647,134 @@ export const migrations: Migration[] = [
       await migrateSessionCompletionNotice(progress)
     },
   },
+  {
+    id: "20260704-message-v2-origin-fields",
+    description: "Backfill message origin, rootID, isRoot, visible fields and TextPart.origin for existing messages",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+      const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+        for (const sessionID of sessionIDs) {
+          tasks.push({ scopeID, sessionID })
+        }
+      }
+
+      if (tasks.length === 0) return
+
+      let done = 0
+      for (const { scopeID, sessionID } of tasks) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sid = Identifier.asSessionID(sessionID)
+        const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+
+        // Build a map of messageID -> info for parent chain walking
+        const infoByID = new Map<string, any>()
+        for (const messageID of messageIDs) {
+          const mid = Identifier.asMessageID(messageID)
+          const info = await Storage.read<any>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
+          if (info) infoByID.set(mid, info)
+        }
+
+        for (const messageID of messageIDs) {
+          const mid = Identifier.asMessageID(messageID)
+          const info = infoByID.get(mid)
+          if (!info) continue
+
+          const next = { ...info }
+          let changed = false
+
+          if (info.role === "user") {
+            // Derive origin
+            if (!next.origin) {
+              const metadata = asRecord(info.metadata)
+              const source = metadata?.source
+              if (source === "cortex") {
+                next.origin = { type: "cortex", sessionID: metadata!.sourceSessionID }
+              } else if (source === "mailbox" || source === "agenda") {
+                next.origin = { type: "agenda", sessionID: metadata!.sourceSessionID }
+              } else if (typeof source === "string" && source.startsWith("blueprint_loop_")) {
+                next.origin = { type: "blueprint", detail: source }
+              } else if (metadata?.channelPush) {
+                next.origin = { type: "channel" }
+              } else if (typeof metadata?.sourceSessionID === "string" && metadata!.sourceSessionID.trim()) {
+                next.origin = { type: "forward", sessionID: metadata!.sourceSessionID }
+              } else {
+                next.origin = { type: "user" }
+              }
+              changed = true
+            }
+
+            // Derive isRoot
+            if (next.isRoot === undefined) {
+              const metadata = asRecord(info.metadata)
+              next.isRoot = metadata?.noReply !== true
+              changed = true
+            }
+
+            // Derive rootID (self for user messages)
+            if (!next.rootID) {
+              next.rootID = mid
+              changed = true
+            }
+
+            // Derive visible
+            if (next.visible === undefined) {
+              const metadata = asRecord(info.metadata)
+              next.visible = metadata?.synthetic !== true
+              changed = true
+            }
+          }
+
+          if (info.role === "assistant") {
+            // Derive rootID by walking parentID chain
+            if (!next.rootID) {
+              let walkID = info.parentID
+              while (walkID) {
+                const walkInfo = infoByID.get(walkID)
+                if (!walkInfo) break
+                if (walkInfo.role === "user") {
+                  next.rootID = walkID
+                  break
+                }
+                walkID = walkInfo.parentID
+              }
+              if (!next.rootID) next.rootID = mid
+              changed = true
+            }
+
+            // Derive visible
+            if (next.visible === undefined) {
+              next.visible = true
+              changed = true
+            }
+          }
+
+          if (changed) {
+            await Storage.write(StoragePath.messageInfo(scope, sid, mid), next)
+          }
+
+          // Migrate TextPart.origin
+          const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
+          for (const partID of partIDs) {
+            const pid = Identifier.asPartID(partID)
+            const partKey = StoragePath.messagePart(scope, sid, mid, pid)
+            const part = await Storage.read<any>(partKey).catch(() => undefined)
+            if (!part || part.type !== "text") continue
+            if (part.origin) continue
+            part.origin = part.synthetic ? "system" : "user"
+            await Storage.write(partKey, part)
+          }
+        }
+
+        done++
+        progress(done, tasks.length)
+      }
+
+      log.info("message origin fields backfill complete", { total: tasks.length })
+    },
+  },
 ]
 MigrationRegistry.register("session", migrations)
