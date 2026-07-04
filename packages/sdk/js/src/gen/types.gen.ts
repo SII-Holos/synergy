@@ -6057,16 +6057,6 @@ export type Event =
   | EventServerConnected
   | EventGlobalDisposed
 
-export type PerformanceSummaryQuery = number
-
-export type PerfTimelineQuery = string
-
-export type PerfTraceListQuery = string
-
-export type PerformanceTraceDetailQuery = boolean
-
-export type PerformanceIssuesQuery = PerfIssueStatus
-
 export type GlobalHealthData = {
   body?: never
   path?: never
@@ -6446,6 +6436,8 @@ export type PerformanceSummaryData = {
   path?: never
   query?: {
     windowMs?: number
+    includeInactive?: boolean
+    scopeID?: string
   }
   url: "/global/performance/summary"
 }
@@ -6464,6 +6456,15 @@ export type PerformanceTimelineData = {
   path?: never
   query?: {
     from?: string
+    to?: string
+    bucketMs?: number
+    metric?: string | Array<string>
+    scopeID?: string
+    sessionID?: string
+    tool?: string
+    providerID?: string
+    module?: PerfModule
+    windowMs?: number
   }
   url: "/global/performance/timeline"
 }
@@ -6482,6 +6483,14 @@ export type PerformanceTracesListData = {
   path?: never
   query?: {
     from?: string
+    to?: string
+    limit?: number
+    cursor?: string
+    kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+    status?: PerfSpanStatus
+    minDurationMs?: number
+    scopeID?: string
+    sessionID?: string
   }
   url: "/global/performance/traces"
 }
@@ -6502,6 +6511,8 @@ export type PerformanceTracesDetailData = {
   }
   query?: {
     includeEvents?: boolean
+    includeAttributes?: boolean
+    maxEvents?: number
   }
   url: "/global/performance/traces/{traceId}"
 }
@@ -6520,6 +6531,9 @@ export type PerformanceIssuesListData = {
   path?: never
   query?: {
     status?: PerfIssueStatus
+    severity?: PerfIssueSeverity
+    module?: PerfModule
+    limit?: number
   }
   url: "/global/performance/issues"
 }

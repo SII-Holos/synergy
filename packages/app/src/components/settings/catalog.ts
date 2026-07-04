@@ -270,8 +270,8 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "Runtime",
     60,
     "settings.observability",
-    "Logs, traces, and diagnostics.",
-    ["log", "trace", "diagnostics"],
+    "Raw logs, traces, telemetry collection, and runtime configuration.",
+    ["log", "trace", "telemetry", "collection"],
     ["general", "runtime"],
   ),
   section(

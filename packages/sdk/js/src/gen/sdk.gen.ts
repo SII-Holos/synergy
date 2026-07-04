@@ -275,7 +275,9 @@ import type {
   PartUpdateResponses,
   PathGetResponses,
   PerfBrowserMetricBatch,
+  PerfIssueSeverity,
   PerfIssueStatus,
+  PerfModule,
   PerformanceBrowserMetricsIngestResponses,
   PerformanceConfigPatch,
   PerformanceEventsStreamResponses,
@@ -286,6 +288,7 @@ import type {
   PerformanceTimelineResponses,
   PerformanceTracesDetailResponses,
   PerformanceTracesListResponses,
+  PerfSpanStatus,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
@@ -2798,10 +2801,35 @@ export class Traces extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       from?: string
+      to?: string
+      limit?: number
+      cursor?: string
+      kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+      status?: PerfSpanStatus
+      minDurationMs?: number
+      scopeID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "from" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "status" },
+            { in: "query", key: "minDurationMs" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PerformanceTracesListResponses, unknown, ThrowOnError>({
       url: "/global/performance/traces",
       ...options,
@@ -2818,6 +2846,8 @@ export class Traces extends HeyApiClient {
     parameters: {
       traceId: string
       includeEvents?: boolean
+      includeAttributes?: boolean
+      maxEvents?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2828,6 +2858,8 @@ export class Traces extends HeyApiClient {
           args: [
             { in: "path", key: "traceId" },
             { in: "query", key: "includeEvents" },
+            { in: "query", key: "includeAttributes" },
+            { in: "query", key: "maxEvents" },
           ],
         },
       ],
@@ -2849,10 +2881,25 @@ export class Issues extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       status?: PerfIssueStatus
+      severity?: PerfIssueSeverity
+      module?: PerfModule
+      limit?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "status" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "status" },
+            { in: "query", key: "severity" },
+            { in: "query", key: "module" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PerformanceIssuesListResponses, unknown, ThrowOnError>({
       url: "/global/performance/issues",
       ...options,
@@ -2972,10 +3019,23 @@ export class Performance extends HeyApiClient {
   public summary<ThrowOnError extends boolean = false>(
     parameters?: {
       windowMs?: number
+      includeInactive?: boolean
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "windowMs" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "windowMs" },
+            { in: "query", key: "includeInactive" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PerformanceSummaryResponses, unknown, ThrowOnError>({
       url: "/global/performance/summary",
       ...options,
@@ -2991,10 +3051,37 @@ export class Performance extends HeyApiClient {
   public timeline<ThrowOnError extends boolean = false>(
     parameters?: {
       from?: string
+      to?: string
+      bucketMs?: number
+      metric?: string | Array<string>
+      scopeID?: string
+      sessionID?: string
+      tool?: string
+      providerID?: string
+      module?: PerfModule
+      windowMs?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "from" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "bucketMs" },
+            { in: "query", key: "metric" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "tool" },
+            { in: "query", key: "providerID" },
+            { in: "query", key: "module" },
+            { in: "query", key: "windowMs" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PerformanceTimelineResponses, unknown, ThrowOnError>({
       url: "/global/performance/timeline",
       ...options,
