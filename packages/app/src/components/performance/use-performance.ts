@@ -5,6 +5,8 @@ import type {
   PerformanceEvent,
   PerformanceIssue,
   PerformanceSummary,
+  PerformanceTimeline,
+  PerformanceTraceDetail,
   PerformanceTraceSpan,
 } from "./types"
 
@@ -38,17 +40,24 @@ export function usePerformance() {
   const [browserSamples, setBrowserSamples] = createSignal<BrowserMetricSample[]>([])
   const [eventIssues, setEventIssues] = createSignal<PerformanceIssue[]>([])
   const [eventTraces, setEventTraces] = createSignal<PerformanceTraceSpan[]>([])
+  const [windowMs, setWindowMs] = createSignal(900_000)
+  const [timeline, setTimeline] = createSignal<PerformanceTimeline | null>(null)
+  const [traceDetail, setTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
 
-  const [summary, { refetch, mutate }] = createResource(async (): Promise<PerformanceSummary | null> => {
-    try {
-      setError(null)
-      const result = await sdk.client.performance.summary({ windowMs: 900_000 }, { throwOnError: true })
-      return result.data ?? null
-    } catch (err) {
-      setError(getErrorMessage(err))
-      return null
-    }
-  })
+  const [summary, { refetch, mutate }] = createResource(
+    windowMs,
+    async (rangeMs): Promise<PerformanceSummary | null> => {
+      try {
+        setError(null)
+        const result = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
+        void loadTimeline(rangeMs)
+        return result.data ?? null
+      } catch (err) {
+        setError(getErrorMessage(err))
+        return null
+      }
+    },
+  )
 
   const stream = new EventSource(`${sdk.url}/global/performance/events`)
 
@@ -100,10 +109,24 @@ export function usePerformance() {
     setBrowserSamples((items: BrowserMetricSample[]) => [...items, readBrowserSample()].slice(-60))
   sampleBrowser()
   const browserTimer = window.setInterval(sampleBrowser, 10_000)
+  const pollTimer = window.setInterval(
+    () => {
+      if (document.hidden) return
+      void refetch()
+    },
+    connected() ? 30_000 : 10_000,
+  )
+
+  const onVisibility = () => {
+    if (!document.hidden) void refetch()
+  }
+  document.addEventListener("visibilitychange", onVisibility)
 
   onCleanup(() => {
     stream.close()
     window.clearInterval(browserTimer)
+    window.clearInterval(pollTimer)
+    document.removeEventListener("visibilitychange", onVisibility)
   })
 
   return {
@@ -112,10 +135,31 @@ export function usePerformance() {
     error,
     streamError,
     connected,
+    windowMs,
+    setWindowMs,
+    timeline,
+    traceDetail,
     browserSamples,
     eventIssues,
     eventTraces,
     refresh: () => refetch(),
+    loadTrace,
+    loadTimeline,
+  }
+
+  async function loadTimeline(rangeMs = windowMs()) {
+    const now = Date.now()
+    const result = await sdk.client.performance.timeline(
+      { from: new Date(now - rangeMs).toISOString() },
+      { throwOnError: true },
+    )
+    setTimeline(result.data ?? null)
+  }
+
+  async function loadTrace(traceId: string) {
+    const result = await sdk.client.performance.traces.detail({ traceId }, { throwOnError: true })
+    setTraceDetail(result.data ?? null)
+    return result.data ?? null
   }
 
   function parsePerformanceEvent(event: MessageEvent): PerformanceEvent | undefined {

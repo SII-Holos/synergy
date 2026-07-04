@@ -24,6 +24,10 @@ export namespace PerformanceDashboard {
     const tools = metrics.filter(
       (row) => row.name === "tool.execution.duration" || row.name === "session.tool_call.duration",
     )
+    const storage = metrics.filter((row) => row.name === "storage.operation.duration")
+    const library = metrics.filter((row) => row.name === "library.sqlite.query.duration")
+    const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
+    const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>
       last(metrics.filter((row) => row.name === "frontend.web_vital" && parseLabels(row.labels_json).name === name))
         ?.value
@@ -46,7 +50,7 @@ export namespace PerformanceDashboard {
         p50RequestMs: PerformanceMetrics.percentile(httpDurations, 50),
         p95RequestMs: PerformanceMetrics.percentile(httpDurations, 95),
         p99RequestMs: PerformanceMetrics.percentile(httpDurations, 99),
-        activeSessions: 0,
+        activeSessions: activeSessionCount(metrics),
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
       },
       resources: {
@@ -60,6 +64,8 @@ export namespace PerformanceDashboard {
         ),
         appReadBytes: resources?.app_read_bytes ?? undefined,
         appWrittenBytes: resources?.app_written_bytes ?? undefined,
+        appReadOps: resources?.app_read_ops ?? undefined,
+        appWriteOps: resources?.app_write_ops ?? undefined,
       },
       sessions: {
         turnCount: turns.length,
@@ -76,9 +82,9 @@ export namespace PerformanceDashboard {
         cls: frontendVital("CLS"),
         fcpMs: frontendVital("FCP"),
         ttfbMs: frontendVital("TTFB"),
-        longTaskCount: metrics.filter((row) => row.name === "frontend.long_task.duration").length,
+        longTaskCount: frontendLongTasks.length,
         resourceP95Ms: PerformanceMetrics.percentile(
-          metrics.filter((row) => row.name === "frontend.resource.duration").map((row) => row.value),
+          frontendResources.map((row) => row.value),
           95,
         ),
       },
@@ -96,10 +102,9 @@ export namespace PerformanceDashboard {
         slowSessions: rank(turns, "session_id"),
         slowTools: rank(tools, "tool"),
         slowProviders: rank(llm, "provider"),
-        slowStorage: rank(
-          metrics.filter((row) => row.name === "storage.operation.duration"),
-          "operation",
-        ),
+        slowStorage: rank(storage, "operation"),
+        slowLibrary: rank(library, "operation"),
+        slowFrontend: rank([...frontendResources, ...frontendLongTasks], "route"),
       },
       issues,
     })
@@ -123,6 +128,16 @@ export namespace PerformanceDashboard {
           tool: row.tool ?? undefined,
         }
       })
+  }
+
+  function activeSessionCount(rows: PerformanceStore.StoredMetric[]) {
+    const active = new Set<string>()
+    const recentCutoff = Date.now() - 5 * 60_000
+    for (const row of rows) {
+      if (!row.session_id || row.time < recentCutoff) continue
+      active.add(row.session_id)
+    }
+    return active.size
   }
 
   function parseLabels(text: string) {

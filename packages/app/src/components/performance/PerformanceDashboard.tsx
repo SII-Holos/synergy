@@ -20,6 +20,8 @@ import type {
   PerformanceIssue,
   PerformanceMetricPoint,
   PerformanceSummary,
+  PerformanceTimeline,
+  PerformanceTraceDetail,
   PerformanceTraceSpan,
 } from "./types"
 
@@ -31,17 +33,62 @@ const CPU_COLOR = "rgba(56, 88, 182, 0.92)"
 const MEMORY_COLOR = "rgba(39, 143, 116, 0.92)"
 const REQUEST_COLOR = "rgba(196, 132, 36, 0.88)"
 const BROWSER_COLOR = "rgba(112, 92, 196, 0.86)"
+const DISK_COLOR = "rgba(172, 92, 48, 0.88)"
+
+const TIME_RANGES = [
+  { label: "15m", value: 15 * 60_000 },
+  { label: "1h", value: 60 * 60_000 },
+  { label: "6h", value: 6 * 60 * 60_000 },
+  { label: "24h", value: 24 * 60 * 60_000 },
+]
+
+type RankedItem = PerformanceSummary["top"]["slowRoutes"][number]
 
 export function PerformanceDashboard() {
   const perf = usePerformance()
   const [selectedTrace, setSelectedTrace] = createSignal<PerformanceTraceSpan | null>(null)
+  const [selectedTraceDetail, setSelectedTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
   const summary = () => perf.summary()
   const issues = createMemo(() => [...perf.eventIssues(), ...(summary()?.issues ?? [])].slice(0, 12))
   const traces = createMemo(() => perf.eventTraces().slice(0, 24))
 
+  const selectTrace = async (traceId: string, fallback?: Partial<PerformanceTraceSpan>) => {
+    const detail = await perf.loadTrace(traceId).catch(() => null)
+    setSelectedTraceDetail(detail ?? null)
+    const root = detail?.root
+    setSelectedTrace(
+      root
+        ? ({
+            traceId,
+            kind: "runtime",
+            name: root.name,
+            status: root.status,
+            startedAt: root.startTime
+              ? new Date(root.startTime).toISOString()
+              : (fallback?.startedAt ?? new Date().toISOString()),
+            endedAt: root.endTime ? new Date(root.endTime).toISOString() : fallback?.endedAt,
+            durationMs: root.durationMs,
+            module: root.module,
+            sessionID: root.sessionID,
+            redactionApplied: true,
+          } as PerformanceTraceSpan)
+        : ({
+            traceId,
+            kind: "runtime",
+            name: fallback?.name ?? traceId,
+            status: fallback?.status ?? "ok",
+            startedAt: fallback?.startedAt ?? new Date().toISOString(),
+            durationMs: fallback?.durationMs,
+            module: fallback?.module,
+            sessionID: fallback?.sessionID,
+            redactionApplied: fallback?.redactionApplied ?? true,
+          } as PerformanceTraceSpan),
+    )
+  }
+
   return (
     <div class="flex flex-col gap-4">
-      <div class="flex items-center justify-between gap-3 rounded-xl border border-border-weaker-base bg-surface-base px-4 py-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-weaker-base bg-surface-base px-4 py-3">
         <div class="flex items-center gap-2 text-12-medium text-text-weak">
           <span
             classList={{
@@ -50,18 +97,24 @@ export function PerformanceDashboard() {
               "bg-icon-warning-base": !perf.connected(),
             }}
           />
-          {perf.connected() ? "Live performance stream connected" : "Waiting for performance stream"}
+          {perf.connected() ? "Live performance stream connected" : "Polling performance data while stream reconnects"}
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="small"
-          icon={getSemanticIcon("action.refresh")}
-          disabled={perf.loading}
-          onClick={() => void perf.refresh()}
-        >
-          Refresh
-        </Button>
+        <div class="flex items-center gap-2">
+          <TimeRangeControl value={perf.windowMs()} onChange={(value) => perf.setWindowMs(value)} />
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            icon={getSemanticIcon("action.refresh")}
+            disabled={perf.loading}
+            onClick={() => {
+              void perf.refresh()
+              void perf.loadTimeline(perf.windowMs())
+            }}
+          >
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <Show when={perf.error() || perf.streamError()}>
@@ -74,59 +127,109 @@ export function PerformanceDashboard() {
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ResourceChart
-          title="CPU and memory"
-          description="Runtime resource pressure over recent samples"
-          points={mergeResourceSeries(summary())}
+          title="CPU, memory, and event loop"
+          description="Runtime pressure from resource samples and timeline aggregates"
+          points={resourcePoints(perf.timeline(), summary())}
           datasets={[
             { label: "CPU %", field: "cpu", color: CPU_COLOR },
             { label: "Memory MB", field: "memory", color: MEMORY_COLOR },
+            { label: "Event loop p95 ms", field: "eventLoopLag", color: REQUEST_COLOR },
           ]}
         />
         <ResourceChart
-          title="Requests and sessions"
-          description="Throughput, latency, and active session movement"
-          points={requestPoints(summary())}
+          title="Requests, sessions, and disk IO"
+          description="Request latency with session activity and app-owned disk counters"
+          points={requestPoints(perf.timeline(), summary())}
           datasets={[
-            { label: "Requests", field: "requests", color: REQUEST_COLOR },
             { label: "Latency ms", field: "latency", color: CPU_COLOR },
             { label: "Sessions", field: "activeSessions", color: MEMORY_COLOR },
+            { label: "Disk ops", field: "diskOps", color: DISK_COLOR },
           ]}
         />
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Timeline traces={traces()} onSelect={setSelectedTrace} />
-        <IssueList issues={issues()} />
+        <Timeline traces={traces()} onSelect={(trace) => void selectTrace(trace.traceId, trace)} />
+        <IssueList
+          issues={issues()}
+          onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
+        />
       </div>
 
-      <BrowserMetrics samples={perf.browserSamples()} />
-      <TraceDrawer trace={selectedTrace()} onClose={() => setSelectedTrace(null)} />
+      <TopRankings
+        summary={summary()}
+        onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
+      />
+      <BrowserMetrics samples={perf.browserSamples()} summary={summary()} />
+      <TraceDrawer
+        trace={selectedTrace()}
+        detail={selectedTraceDetail()}
+        onClose={() => {
+          setSelectedTrace(null)
+          setSelectedTraceDetail(null)
+        }}
+      />
+    </div>
+  )
+}
+
+function TimeRangeControl(props: { value: number; onChange: (value: number) => void }) {
+  return (
+    <div class="flex items-center rounded-lg bg-surface-inset-base p-1">
+      <For each={TIME_RANGES}>
+        {(range) => (
+          <button
+            type="button"
+            classList={{
+              "rounded-md px-2.5 py-1 text-11-medium transition-colors": true,
+              "bg-surface-raised-base text-text-strong shadow-sm": props.value === range.value,
+              "text-text-weak hover:text-text-base": props.value !== range.value,
+            }}
+            onClick={() => props.onChange(range.value)}
+          >
+            {range.label}
+          </button>
+        )}
+      </For>
     </div>
   )
 }
 
 function SummaryCards(props: { summary: PerformanceSummary | null | undefined; issues: PerformanceIssue[] }) {
   const summary = () => props.summary
-  const health = () => summary()?.health.status
+  const resources = () => summary()?.resources
+  const frontend = () => summary()?.frontend
   return (
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <MetricCard label="Health" value={health() ?? "Unknown"} icon="perf.health" />
+      <MetricCard label="Health" value={summary()?.health.status ?? "Unknown"} icon="perf.health" />
       <MetricCard label="HTTP p95" value={formatDuration(summary()?.backend.p95RequestMs)} icon="perf.latency" />
       <MetricCard
-        label="CPU"
-        value={formatPercent(ratioToPercent(summary()?.resources.cpuUtilizationRatio))}
-        icon="perf.cpu"
+        label="Sessions"
+        value={`${summary()?.backend.activeSessions ?? 0} active · ${summary()?.backend.pendingSessions ?? 0} pending`}
+        icon="perf.trace"
       />
-      <MetricCard label="Memory" value={formatBytes(summary()?.resources.rssBytes)} icon="perf.memory" />
       <MetricCard
         label="Issues"
         value={String(props.issues.length)}
         icon="perf.issue"
         tone={props.issues.length > 0 ? "warning" : "default"}
       />
-      <MetricCard label="Sessions" value={String(summary()?.backend.activeSessions ?? 0)} icon="perf.trace" />
+      <MetricCard label="CPU" value={formatPercent(ratioToPercent(resources()?.cpuUtilizationRatio))} icon="perf.cpu" />
+      <MetricCard label="Memory" value={formatBytes(resources()?.rssBytes)} icon="perf.memory" />
+      <MetricCard label="Event loop p95" value={formatDuration(resources()?.eventLoopLagP95Ms)} icon="perf.latency" />
+      <MetricCard
+        label="Disk IO"
+        value={`${formatBytes(resources()?.appReadBytes)} read · ${formatBytes(resources()?.appWrittenBytes)} write`}
+        icon="perf.disk"
+      />
+      <MetricCard
+        label="Disk ops"
+        value={`${resources()?.appReadOps ?? 0} read · ${resources()?.appWriteOps ?? 0} write`}
+        icon="perf.disk"
+      />
       <MetricCard label="LLM calls" value={String(summary()?.sessions?.llmCallCount ?? 0)} icon="perf.network" />
-      <MetricCard label="Tool calls" value={String(summary()?.sessions?.toolCallCount ?? 0)} icon="perf.disk" />
+      <MetricCard label="Tool calls" value={String(summary()?.sessions?.toolCallCount ?? 0)} icon="perf.trace" />
+      <MetricCard label="Long tasks" value={String(frontend()?.longTaskCount ?? 0)} icon="perf.frontend" />
     </div>
   )
 }
@@ -194,7 +297,7 @@ function ResourceChart(props: {
         <h3 class="text-14-semibold text-text-strong">{props.title}</h3>
         <p class="mt-1 text-11-regular text-text-weak">{props.description}</p>
       </div>
-      <Show when={props.points.length > 0} fallback={<EmptyState label="No resource samples yet" />}>
+      <Show when={props.points.length > 0} fallback={<EmptyState label="No samples yet" />}>
         <div class="h-56">
           <Line data={chartData()} options={chartOptions()} />
         </div>
@@ -222,7 +325,9 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
                 <div class="h-2 w-2 shrink-0 rounded-full bg-icon-accent-base" />
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-12-medium text-text-strong">{trace.name}</div>
-                  <div class="truncate text-11-regular text-text-weaker">{trace.traceId}</div>
+                  <div class="truncate text-11-regular text-text-weaker">
+                    {[trace.kind, trace.module, trace.traceId].filter(Boolean).join(" · ")}
+                  </div>
                 </div>
                 <div class="text-11-medium text-text-weak tabular-nums">{formatDuration(trace.durationMs)}</div>
               </button>
@@ -234,7 +339,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
   )
 }
 
-function IssueList(props: { issues: PerformanceIssue[] }) {
+function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: PerformanceIssue) => void }) {
   return (
     <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
       <div class="mb-3 flex items-center gap-2">
@@ -244,20 +349,35 @@ function IssueList(props: { issues: PerformanceIssue[] }) {
       <Show when={props.issues.length > 0} fallback={<EmptyState label="No active performance issues" />}>
         <div class="flex flex-col gap-2">
           <For each={props.issues}>
-            {(issue) => (
-              <div class="rounded-lg bg-surface-inset-base/70 p-3">
-                <div class="flex items-center justify-between gap-3">
-                  <div class="truncate text-12-medium text-text-strong">
-                    {issue.title ?? issue.message ?? "Performance issue"}
+            {(issue) => {
+              const content = (
+                <>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="truncate text-12-medium text-text-strong">
+                      {issue.title ?? issue.message ?? "Performance issue"}
+                    </div>
+                    <span class={severityClass(issue.severity)}>{issue.severity ?? "info"}</span>
                   </div>
-                  <span class={severityClass(issue.severity)}>{issue.severity ?? "info"}</span>
-                </div>
-                <div class="mt-1 line-clamp-2 text-11-regular text-text-weak">{issue.message}</div>
-                <div class="mt-1 text-11-regular text-text-weaker">
-                  {[issue.module, formatTime(issue.iso)].filter(Boolean).join(" · ")}
-                </div>
-              </div>
-            )}
+                  <div class="mt-1 line-clamp-2 text-11-regular text-text-weak">{issue.message}</div>
+                  <div class="mt-1 text-11-regular text-text-weaker">
+                    {[issue.module, formatTime(issue.lastSeenTime), issue.traceId ? "trace available" : undefined]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </>
+              )
+              return issue.traceId ? (
+                <button
+                  type="button"
+                  class="rounded-lg bg-surface-inset-base/70 p-3 text-left transition-colors hover:bg-surface-hover-base"
+                  onClick={() => props.onTrace(issue)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <div class="rounded-lg bg-surface-inset-base/70 p-3">{content}</div>
+              )
+            }}
           </For>
         </div>
       </Show>
@@ -265,7 +385,61 @@ function IssueList(props: { issues: PerformanceIssue[] }) {
   )
 }
 
-function BrowserMetrics(props: { samples: BrowserMetricSample[] }) {
+function TopRankings(props: { summary: PerformanceSummary | null | undefined; onTrace: (item: RankedItem) => void }) {
+  const groups = createMemo(() => {
+    const top = props.summary?.top
+    return [
+      { title: "Slow routes", items: top?.slowRoutes ?? [] },
+      { title: "Slow sessions", items: top?.slowSessions ?? [] },
+      { title: "Slow tools", items: top?.slowTools ?? [] },
+      { title: "Slow providers", items: top?.slowProviders ?? [] },
+      { title: "Slow storage", items: top?.slowStorage ?? [] },
+      { title: "Slow library", items: top?.slowLibrary ?? [] },
+      { title: "Slow frontend", items: top?.slowFrontend ?? [] },
+    ]
+  })
+  return (
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <For each={groups()}>
+        {(group) => (
+          <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+            <div class="mb-3 flex items-center gap-2">
+              <Icon name={getSemanticIcon("perf.latency")} size="small" class="text-icon-weak" />
+              <h3 class="text-14-semibold text-text-strong">{group.title}</h3>
+            </div>
+            <Show when={group.items.length > 0} fallback={<EmptyState label="No slow items in this range" />}>
+              <div class="flex flex-col gap-1.5">
+                <For each={group.items}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      class="flex items-center gap-3 rounded-lg bg-surface-inset-base/70 px-3 py-2 text-left transition-colors hover:bg-surface-hover-base disabled:cursor-default disabled:hover:bg-surface-inset-base/70"
+                      disabled={!item.traceId}
+                      onClick={() => props.onTrace(item)}
+                    >
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-12-medium text-text-strong">{item.label}</div>
+                        <div class="truncate text-11-regular text-text-weaker">
+                          {[item.module, item.sessionID, item.tool].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                      <div class="text-11-medium text-text-weak tabular-nums">
+                        {formatMetricValue(item.value, item.unit)}
+                      </div>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        )}
+      </For>
+    </div>
+  )
+}
+
+function BrowserMetrics(props: { samples: BrowserMetricSample[]; summary: PerformanceSummary | null | undefined }) {
+  const frontend = () => props.summary?.frontend
   return (
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.85fr]">
       <ResourceChart
@@ -289,18 +463,37 @@ function BrowserMetrics(props: { samples: BrowserMetricSample[] }) {
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">
-          <EmptyState label="Vitals are ingested in the background and appear once the browser reports them." />
+          <Vital label="INP" value={formatDuration(frontend()?.inpMs)} />
+          <Vital label="LCP" value={formatDuration(frontend()?.lcpMs)} />
+          <Vital label="CLS" value={formatDecimal(frontend()?.cls)} />
+          <Vital label="FCP" value={formatDuration(frontend()?.fcpMs)} />
+          <Vital label="TTFB" value={formatDuration(frontend()?.ttfbMs)} />
+          <Vital label="Resource p95" value={formatDuration(frontend()?.resourceP95Ms)} />
+          <Vital label="Long tasks" value={String(frontend()?.longTaskCount ?? 0)} />
         </div>
       </div>
     </div>
   )
 }
 
-function TraceDrawer(props: { trace: PerformanceTraceSpan | null; onClose: () => void }) {
+function Vital(props: { label: string; value: string }) {
+  return (
+    <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+      <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{props.label}</div>
+      <div class="mt-1 text-13-medium text-text-strong tabular-nums">{props.value}</div>
+    </div>
+  )
+}
+
+function TraceDrawer(props: {
+  trace: PerformanceTraceSpan | null
+  detail: PerformanceTraceDetail | null
+  onClose: () => void
+}) {
   return (
     <Show when={props.trace}>
       {(trace) => (
-        <div class="fixed inset-y-0 right-0 z-[80] w-[min(420px,100vw)] border-l border-border-weaker-base bg-surface-raised-stronger-non-alpha p-5 shadow-2xl">
+        <div class="fixed inset-y-0 right-0 z-[80] w-[min(480px,100vw)] overflow-y-auto border-l border-border-weaker-base bg-surface-raised-stronger-non-alpha p-5 shadow-2xl">
           <div class="mb-4 flex items-start justify-between gap-3">
             <div class="min-w-0">
               <h3 class="truncate text-16-semibold text-text-strong">{trace().name}</h3>
@@ -317,10 +510,44 @@ function TraceDrawer(props: { trace: PerformanceTraceSpan | null; onClose: () =>
           <div class="flex flex-col gap-3 text-12-regular">
             <DetailRow label="Status" value={trace().status ?? "unknown"} />
             <DetailRow label="Duration" value={formatDuration(trace().durationMs)} />
+            <DetailRow label="Module" value={trace().module ?? "—"} />
+            <DetailRow label="Session" value={trace().sessionID ?? "—"} />
             <DetailRow label="Start" value={formatTime(trace().startedAt)} />
             <DetailRow label="End" value={formatTime(trace().endedAt)} />
             <Show when={trace().errorCode}>
               <div class="rounded-lg bg-surface-inset-base/70 p-3 text-icon-warning-base">{trace().errorCode}</div>
+            </Show>
+            <Show when={props.detail?.spans.length}>
+              <div>
+                <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Spans</div>
+                <div class="flex flex-col gap-1.5">
+                  <For each={props.detail?.spans ?? []}>
+                    {(span) => (
+                      <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                        <div class="truncate text-12-medium text-text-strong">{span.name}</div>
+                        <div class="mt-1 text-11-regular text-text-weaker">
+                          {[span.module, span.status, formatDuration(span.durationMs)].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+            <Show when={props.detail?.events.length}>
+              <div>
+                <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">Events</div>
+                <div class="flex flex-col gap-1.5">
+                  <For each={(props.detail?.events ?? []).slice(0, 20)}>
+                    {(event) => (
+                      <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                        <div class="truncate text-12-medium text-text-strong">{event.type}</div>
+                        <div class="mt-1 text-11-regular text-text-weaker">{formatTime(event.iso ?? event.time)}</div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
             </Show>
           </div>
         </div>
@@ -346,18 +573,38 @@ function EmptyState(props: { label: string }) {
   )
 }
 
-function mergeResourceSeries(summary?: PerformanceSummary | null): PerformanceMetricPoint[] {
+function resourcePoints(
+  timeline: PerformanceTimeline | null | undefined,
+  summary?: PerformanceSummary | null,
+): PerformanceMetricPoint[] {
+  const points = pointsFromTimeline(timeline, {
+    "process.cpu.utilization": (value, point) => ({ ...point, cpu: ratioToPercent(value) }),
+    "process.memory.rss": (value, point) => ({ ...point, memory: value / 1024 / 1024 }),
+    "process.event_loop.lag": (value, point) => ({ ...point, eventLoopLag: value }),
+  })
+  if (points.length > 0) return points
   if (!summary?.resources) return []
   return [
     {
       timestamp: summary.generatedAt,
       cpu: ratioToPercent(summary.resources.cpuUtilizationRatio),
       memory: summary.resources.rssBytes ? summary.resources.rssBytes / 1024 / 1024 : undefined,
+      eventLoopLag: summary.resources.eventLoopLagP95Ms,
     },
   ]
 }
 
-function requestPoints(summary?: PerformanceSummary | null): PerformanceMetricPoint[] {
+function requestPoints(
+  timeline: PerformanceTimeline | null | undefined,
+  summary?: PerformanceSummary | null,
+): PerformanceMetricPoint[] {
+  const points = pointsFromTimeline(timeline, {
+    "http.request.duration": (value, point) => ({ ...point, latency: value }),
+  })
+  const diskOps = (summary?.resources.appReadOps ?? 0) + (summary?.resources.appWriteOps ?? 0)
+  if (points.length > 0) {
+    return points.map((point) => ({ ...point, activeSessions: summary?.backend.activeSessions, diskOps }))
+  }
   if (!summary?.backend) return []
   return [
     {
@@ -365,8 +612,50 @@ function requestPoints(summary?: PerformanceSummary | null): PerformanceMetricPo
       requests: summary.backend.requestCount,
       latency: summary.backend.p95RequestMs,
       activeSessions: summary.backend.activeSessions,
+      diskOps,
     },
   ]
+}
+
+function pointsFromTimeline(
+  timeline: PerformanceTimeline | null | undefined,
+  mappers: Record<string, (value: number, point: PerformanceMetricPoint) => PerformanceMetricPoint>,
+): PerformanceMetricPoint[] {
+  if (!timeline?.series.length) return []
+  const byTime = new Map<number, PerformanceMetricPoint>()
+  for (const series of timeline.series) {
+    const mapValue = mappers[series.name]
+    if (!mapValue) continue
+    for (const item of series.points) {
+      if (item.value === null) continue
+      const current = byTime.get(item.time) ?? { timestamp: item.time }
+      byTime.set(item.time, mapValue(item.value, current))
+    }
+  }
+  return [...byTime.values()].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0))
+}
+
+function issueTraceFallback(issue: PerformanceIssue): Partial<PerformanceTraceSpan> {
+  return {
+    name: issue.title ?? issue.message ?? "Performance issue",
+    status: issue.severity === "critical" || issue.severity === "error" ? "error" : "ok",
+    startedAt: new Date(issue.firstSeenTime).toISOString(),
+    durationMs: Math.max(0, issue.lastSeenTime - issue.firstSeenTime),
+    module: issue.module,
+    sessionID: issue.sessionID,
+    redactionApplied: true,
+  }
+}
+
+function rankedTraceFallback(item: RankedItem): Partial<PerformanceTraceSpan> {
+  return {
+    name: item.label,
+    status: item.status === "error" || item.status === "cancelled" || item.status === "timeout" ? item.status : "ok",
+    durationMs: item.unit === "ms" ? item.value : undefined,
+    module: item.module,
+    sessionID: item.sessionID,
+    redactionApplied: true,
+  }
 }
 
 function formatPointLabel(point: PerformanceMetricPoint, index: number): string {
@@ -397,13 +686,26 @@ function formatBytes(value?: number): string {
   if (value === undefined) return "—"
   const bytes = value > 10_000_000 ? value : value * 1024 * 1024
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
-  return `${(bytes / 1024 / 1024).toFixed(0)} MB`
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`
+  return `${bytes.toFixed(0)} B`
 }
 
 function formatDuration(value?: number): string {
   if (value === undefined) return "—"
   if (value >= 1000) return `${(value / 1000).toFixed(1)}s`
   return `${value.toFixed(0)}ms`
+}
+
+function formatDecimal(value?: number): string {
+  if (value === undefined) return "—"
+  return value.toFixed(value >= 1 ? 2 : 3)
+}
+
+function formatMetricValue(value: number, unit: string): string {
+  if (unit === "ms") return formatDuration(value)
+  if (unit === "bytes") return formatBytes(value)
+  if (unit === "ratio") return formatPercent(ratioToPercent(value))
+  return value.toFixed(value >= 10 ? 0 : 1)
 }
 
 function formatTime(value?: number | string): string {

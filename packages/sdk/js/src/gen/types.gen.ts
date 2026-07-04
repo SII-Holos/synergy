@@ -272,6 +272,8 @@ export type PerfDashboardSummary = {
     eventLoopLagP95Ms?: number
     appReadBytes?: number
     appWrittenBytes?: number
+    appReadOps?: number
+    appWriteOps?: number
   }
   sessions: {
     turnCount: number
@@ -303,6 +305,8 @@ export type PerfDashboardSummary = {
     slowTools: Array<PerfRankedItem>
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
+    slowLibrary: Array<PerfRankedItem>
+    slowFrontend: Array<PerfRankedItem>
   }
   issues: Array<PerfIssue>
 }
@@ -450,7 +454,7 @@ export type PerformanceConfigResponse = {
   sources: Array<string>
 }
 
-export type PerformanceConfigPatch = {
+export type PerformanceRuntimeConfigPatch = {
   enabled?: boolean
   samplingRate?: number
   metricRetentionMs?: number
@@ -6529,37 +6533,37 @@ export type PerformanceIssuesListResponses = {
 
 export type PerformanceIssuesListResponse = PerformanceIssuesListResponses[keyof PerformanceIssuesListResponses]
 
-export type PerformanceGetConfigData = {
+export type PerformanceConfigGetData = {
   body?: never
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceGetConfigResponses = {
+export type PerformanceConfigGetResponses = {
   /**
    * Performance config
    */
   200: PerformanceConfigResponse
 }
 
-export type PerformanceGetConfigResponse = PerformanceGetConfigResponses[keyof PerformanceGetConfigResponses]
+export type PerformanceConfigGetResponse = PerformanceConfigGetResponses[keyof PerformanceConfigGetResponses]
 
-export type PerformanceUpdateConfigData = {
-  body?: PerformanceConfigPatch
+export type PerformanceConfigUpdateData = {
+  body?: PerformanceRuntimeConfigPatch
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceUpdateConfigResponses = {
+export type PerformanceConfigUpdateResponses = {
   /**
    * Validated performance config
    */
   200: PerfConfig
 }
 
-export type PerformanceUpdateConfigResponse = PerformanceUpdateConfigResponses[keyof PerformanceUpdateConfigResponses]
+export type PerformanceConfigUpdateResponse = PerformanceConfigUpdateResponses[keyof PerformanceConfigUpdateResponses]
 
 export type PerformanceBrowserMetricsIngestData = {
   body?: PerfBrowserMetricBatch

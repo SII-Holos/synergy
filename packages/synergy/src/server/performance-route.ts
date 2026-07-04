@@ -38,6 +38,11 @@ const TraceDetailQuery = z
   .meta({ ref: "PerformanceTraceDetailQuery" })
 
 const ConfigPatch = PerformanceSchema.Config.partial().meta({ ref: "PerformanceConfigPatch" })
+const RuntimeMutableConfigPatch = ConfigPatch.refine((patch) => isRuntimeMutablePatch(patch), {
+  message: "Some performance config fields require a restart.",
+}).meta({ ref: "PerformanceRuntimeConfigPatch" })
+
+const restartRequiredFields = new Set(["storage.sqliteEnabled"])
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
@@ -68,6 +73,35 @@ function rejectLargePayload(c: Context, maxBytes: number) {
   const length = Number(c.req.header("content-length") ?? 0)
   if (!Number.isFinite(length) || length <= maxBytes) return undefined
   return c.json({ code: "PERF_INVALID_METRIC_BATCH", message: "Performance metric batch is too large." }, 413)
+}
+
+function isRuntimeMutablePatch(patch: Partial<PerformanceSchema.Config>) {
+  return requiredRestartFields(patch).length === 0
+}
+
+function requiredRestartFields(patch: Partial<PerformanceSchema.Config>) {
+  const fields: string[] = []
+  if (patch.storage && Object.hasOwn(patch.storage, "sqliteEnabled")) fields.push("storage.sqliteEnabled")
+  return fields.filter((field) => restartRequiredFields.has(field))
+}
+
+function mergePerformanceConfigPatch(
+  current: Awaited<ReturnType<typeof Config.current>>,
+  patch: Partial<PerformanceSchema.Config>,
+) {
+  const raw = (current.observability?.performance ?? {}) as PerformanceConfig.Raw
+  return PerformanceConfig.effective({
+    observability: {
+      ...current.observability,
+      performance: {
+        ...raw,
+        ...patch,
+        rateLimits: { ...(raw.rateLimits ?? {}), ...(patch.rateLimits ?? {}) },
+        storage: { ...(raw.storage ?? {}), ...(patch.storage ?? {}) },
+        thresholds: { ...(raw.thresholds ?? {}), ...(patch.thresholds ?? {}) },
+      },
+    },
+  })
 }
 
 export const PerformanceRoute = new Hono()
@@ -175,7 +209,7 @@ export const PerformanceRoute = new Hono()
     describeRoute({
       summary: "Get performance config",
       description: "Get effective performance observability configuration and default metadata.",
-      operationId: "performance.getConfig",
+      operationId: "performance.config.get",
       responses: {
         200: {
           description: "Performance config",
@@ -210,7 +244,7 @@ export const PerformanceRoute = new Hono()
       summary: "Patch performance config",
       description:
         "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
-      operationId: "performance.updateConfig",
+      operationId: "performance.config.update",
       responses: {
         200: {
           description: "Validated performance config",
@@ -218,10 +252,29 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("json", ConfigPatch),
+    validator("json", RuntimeMutableConfigPatch),
     async (c) => {
-      const current = await Config.current()
-      return c.json(PerformanceSchema.Config.parse({ ...PerformanceConfig.effective(current), ...c.req.valid("json") }))
+      const limited = rateLimit(c, "config-patch", PerformanceConfig.current().rateLimits.configPatchPerMinute)
+      if (limited) return limited
+      const patch = c.req.valid("json")
+      const restartFields = requiredRestartFields(patch)
+      if (restartFields.length) {
+        return c.json({ code: "PERF_CONFIG_RESTART_REQUIRED", fields: restartFields }, 409)
+      }
+      try {
+        const current = await Config.current()
+        const nextPerformance = mergePerformanceConfigPatch(current, patch)
+        await Config.domainUpdate("runtime", {
+          observability: { ...(current.observability ?? {}), performance: nextPerformance },
+        })
+        PerformanceConfig.refresh(await Config.current())
+        return c.json(PerformanceConfig.current())
+      } catch (error) {
+        return c.json(
+          { code: "PERF_CONFIG_CONFLICT", message: error instanceof Error ? error.message : String(error) },
+          409,
+        )
+      }
     },
   )
   .post(

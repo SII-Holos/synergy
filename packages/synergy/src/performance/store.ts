@@ -58,6 +58,9 @@ export namespace PerformanceStore {
 
   export async function checkpoint() {
     open()?.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    open()
+      ?.prepare("INSERT OR REPLACE INTO perf_meta (key,value) VALUES ('lastWalCheckpointAt', ?)")
+      .run(String(Date.now()))
   }
 
   function insertMetricSync(metric: PerformanceSchema.Metric) {
@@ -475,9 +478,12 @@ export namespace PerformanceStore {
   }
 
   function initialize(conn: Database) {
+    const now = Date.now()
     conn.exec(SQL)
     conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION)
-    conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('createdAt', ?)").run(new Date().toISOString())
+    conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
+    conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
+    conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))
   }
 
   export interface StoredMetric {
@@ -535,6 +541,17 @@ export namespace PerformanceStore {
     app_written_bytes?: number | null
     app_read_ops?: number | null
     app_write_ops?: number | null
+  }
+
+  export interface PerfMetaRow {
+    key: string
+    value: string
+  }
+
+  export function meta() {
+    return (
+      (open()?.prepare("SELECT key,value FROM perf_meta ORDER BY key ASC").all() as PerfMetaRow[] | undefined) ?? []
+    )
   }
 
   export interface StoredIssue {

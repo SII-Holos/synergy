@@ -207,6 +207,8 @@ export namespace PerformanceSchema {
         eventLoopLagP95Ms: z.number().optional(),
         appReadBytes: z.number().optional(),
         appWrittenBytes: z.number().optional(),
+        appReadOps: z.number().int().optional(),
+        appWriteOps: z.number().int().optional(),
       }),
       sessions: z.object({
         turnCount: z.number().int(),
@@ -238,6 +240,8 @@ export namespace PerformanceSchema {
         slowTools: z.array(RankedItem),
         slowProviders: z.array(RankedItem),
         slowStorage: z.array(RankedItem),
+        slowLibrary: z.array(RankedItem),
+        slowFrontend: z.array(RankedItem),
       }),
       issues: z.array(Issue),
     })

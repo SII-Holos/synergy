@@ -1088,7 +1088,7 @@
     },
     "/global/performance/config": {
       "get": {
-        "operationId": "performance.getConfig",
+        "operationId": "performance.config.get",
         "summary": "Get performance config",
         "description": "Get effective performance observability configuration and default metadata.",
         "responses": {
@@ -1106,12 +1106,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.getConfig({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.get({\n  ...\n})"
           }
         ]
       },
       "patch": {
-        "operationId": "performance.updateConfig",
+        "operationId": "performance.config.update",
         "summary": "Patch performance config",
         "description": "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
         "responses": {
@@ -1130,7 +1130,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PerformanceConfigPatch"
+                "$ref": "#/components/schemas/PerformanceRuntimeConfigPatch"
               }
             }
           }
@@ -1138,7 +1138,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.updateConfig({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.update({\n  ...\n})"
           }
         ]
       }
@@ -18113,6 +18113,16 @@
               },
               "appWrittenBytes": {
                 "type": "number"
+              },
+              "appReadOps": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "appWriteOps": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               }
             }
           },
@@ -18236,9 +18246,29 @@
                 "items": {
                   "$ref": "#/components/schemas/PerfRankedItem"
                 }
+              },
+              "slowLibrary": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowFrontend": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
               }
             },
-            "required": ["slowRoutes", "slowSessions", "slowTools", "slowProviders", "slowStorage"]
+            "required": [
+              "slowRoutes",
+              "slowSessions",
+              "slowTools",
+              "slowProviders",
+              "slowStorage",
+              "slowLibrary",
+              "slowFrontend"
+            ]
           },
           "issues": {
             "type": "array",
@@ -18713,7 +18743,7 @@
         },
         "required": ["config", "defaults", "sources"]
       },
-      "PerformanceConfigPatch": {
+      "PerformanceRuntimeConfigPatch": {
         "type": "object",
         "properties": {
           "enabled": {

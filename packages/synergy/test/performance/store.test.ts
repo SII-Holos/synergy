@@ -31,9 +31,13 @@ describe("performance observability store", () => {
       rid: "rid_test",
       labels: { method: "GET", path: "/global/performance/summary", status: 200 },
     })
+    PerformanceStore.flush()
 
     const rows = PerformanceStore.queryMetrics({ since: Date.now() - 60_000, names: ["http.request.duration"] })
     expect(rows.some((row) => row.module === "server" && row.rid === "rid_test")).toBe(true)
+    expect(new Set(PerformanceStore.meta().map((row) => row.key))).toEqual(
+      new Set(["createdAt", "lastRetentionRunAt", "lastWalCheckpointAt", "schemaVersion"]),
+    )
   })
 
   test("ingests safe browser batches and rejects unsafe resource entries", () => {
@@ -48,6 +52,7 @@ describe("performance observability store", () => {
       ],
       longTasks: [{ startTime: 2, duration: 55, attribution: "longtask" }],
     })
+    PerformanceStore.flush()
 
     expect(result.accepted).toBe(3)
     expect(result.rejected).toBe(1)
@@ -70,6 +75,7 @@ describe("performance observability store", () => {
       page: {},
       metrics: [{ name: "frontend.web_vital", value: 80, unit: "ms", labels: { name: "INP" } }],
     })
+    PerformanceStore.flush()
 
     const summary = await PerformanceDashboard.summary({ windowMs: 60_000 })
     expect(summary.backend.requestCount).toBeGreaterThanOrEqual(1)

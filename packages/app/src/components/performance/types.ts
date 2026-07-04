@@ -1,4 +1,10 @@
-import type { PerfDashboardSummary, PerfIssue, PerfTraceListItem } from "@ericsanchezok/synergy-sdk"
+import type {
+  PerfDashboardSummary,
+  PerfIssue,
+  PerfTraceDetail,
+  PerfTraceListItem,
+  PerfTimeline,
+} from "@ericsanchezok/synergy-sdk"
 
 export type PerformanceMetricPoint = {
   timestamp?: number | string
@@ -9,11 +15,27 @@ export type PerformanceMetricPoint = {
   requests?: number
   latency?: number
   activeSessions?: number
+  diskReadOps?: number
+  diskWriteOps?: number
+  diskOps?: number
+  eventLoopLag?: number
 }
 
 export type PerformanceTraceSpan = PerfTraceListItem
 export type PerformanceIssue = PerfIssue
-export type PerformanceSummary = PerfDashboardSummary
+export type PerformanceRankedItem = PerfDashboardSummary["top"]["slowRoutes"][number]
+export type PerformanceSummary = Omit<PerfDashboardSummary, "resources" | "top"> & {
+  resources: PerfDashboardSummary["resources"] & {
+    appReadOps?: number
+    appWriteOps?: number
+  }
+  top: PerfDashboardSummary["top"] & {
+    slowLibrary?: PerformanceRankedItem[]
+    slowFrontend?: PerformanceRankedItem[]
+  }
+}
+export type PerformanceTraceDetail = PerfTraceDetail
+export type PerformanceTimeline = PerfTimeline
 
 export type BrowserMetricSample = {
   timestamp: number
