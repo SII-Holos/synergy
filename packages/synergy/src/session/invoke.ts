@@ -281,6 +281,30 @@ export namespace SessionInvoke {
     return undefined
   }
 
+  async function createAutoCompactionBoundary(input: { sessionID: string; lastUser: MessageV2.User }) {
+    const boundary = await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      role: "user",
+      sessionID: input.sessionID,
+      time: { created: Date.now() },
+      agent: input.lastUser.agent,
+      model: input.lastUser.model,
+      summary: { title: "Compaction requested", diffs: [] },
+      metadata: {
+        synthetic: true,
+        compactionBoundary: true,
+        compactionParentID: input.lastUser.id,
+      },
+    })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: boundary.id,
+      sessionID: input.sessionID,
+      type: "compaction",
+      auto: true,
+    })
+  }
+
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
     BlueprintContinuation.init()
     SessionManager.registerRuntime(sessionID)
@@ -763,13 +787,7 @@ export namespace SessionInvoke {
             soft: promptDecision.budget.soft,
             usable: promptDecision.budget.usable,
           })
-          await Session.updatePart({
-            id: Identifier.ascending("part"),
-            messageID: lastUser.id,
-            sessionID,
-            type: "compaction",
-            auto: true,
-          })
+          await createAutoCompactionBoundary({ sessionID, lastUser })
           continue
         }
 
