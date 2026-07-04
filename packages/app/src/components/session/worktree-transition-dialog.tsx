@@ -1,9 +1,7 @@
-import { For, Match, Show, Switch, createMemo, createSignal, onMount } from "solid-js"
+import { Match, Show, Switch, createMemo, createSignal, onMount } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -12,15 +10,12 @@ import {
   reduceWorkspaceTransitionProgress,
   type WorkspaceTransitionProgressState,
 } from "@/components/session/worktree-session"
+import type { SessionStartProgress, SessionStartProgressStepState } from "./worktree-progress-components"
+import { StepList } from "./worktree-progress-components"
+
+export type { SessionStartProgress, SessionStartProgressStepState }
+export { StepList, StepIcon } from "./worktree-progress-components"
 import "./worktree-transition-dialog.css"
-
-export type SessionStartProgressStepState = "pending" | "active" | "complete"
-
-export type SessionStartProgress = {
-  title: string
-  description: string
-  steps: Array<{ id: string; label: string; detail?: string; state: SessionStartProgressStepState }>
-}
 
 type WorktreeDialogOperation = "enter" | "leave"
 
@@ -31,24 +26,6 @@ function errorDescription(error: unknown) {
   }
   if (error instanceof Error && error.message) return error.message
   return "Request failed"
-}
-
-function DialogCloseButton(props: { disabled?: boolean }) {
-  const dialog = useDialog()
-  return (
-    <button
-      type="button"
-      data-slot="dialog-close-button"
-      data-component="icon-button"
-      data-variant="ghost"
-      disabled={props.disabled}
-      onClick={() => {
-        if (!props.disabled) dialog.close()
-      }}
-    >
-      <Icon name="x" size="small" />
-    </button>
-  )
 }
 
 function operationIcon(operation: WorktreeDialogOperation) {
@@ -82,49 +59,6 @@ function operationResultDescription(operation: WorktreeDialogOperation) {
     : "Future commands use the isolated checkout."
 }
 
-function StepIcon(props: { state: SessionStartProgressStepState }) {
-  return (
-    <span class="wtd-step-icon" data-state={props.state}>
-      <Switch>
-        <Match when={props.state === "active"}>
-          <Spinner class="wtd-step-spinner" />
-        </Match>
-        <Match when={props.state === "complete"}>
-          <Icon name={getSemanticIcon("state.success")} size="small" />
-        </Match>
-        <Match when={true}>
-          <span class="wtd-step-dot" />
-        </Match>
-      </Switch>
-    </span>
-  )
-}
-
-function StepList(props: { steps: SessionStartProgress["steps"] }) {
-  return (
-    <div class="wtd-step-list">
-      <For each={props.steps}>
-        {(step) => (
-          <div class="wtd-step-row" data-state={step.state}>
-            <StepIcon state={step.state} />
-            <div class="wtd-step-copy">
-              <span class="wtd-step-title">{step.label}</span>
-              <Show when={step.detail}>{(detail) => <span class="wtd-step-detail">{detail()}</span>}</Show>
-            </div>
-            <span class="wtd-step-status">
-              <Switch>
-                <Match when={step.state === "active"}>In progress</Match>
-                <Match when={step.state === "complete"}>Done</Match>
-                <Match when={true}>Pending</Match>
-              </Switch>
-            </span>
-          </div>
-        )}
-      </For>
-    </div>
-  )
-}
-
 export function SessionStartProgressDialog(props: { progress: () => SessionStartProgress }) {
   const progress = () => props.progress()
   return (
@@ -142,13 +76,12 @@ export function SessionStartProgressDialog(props: { progress: () => SessionStart
   )
 }
 
-export function WorktreeTransitionDialog(props: {
+export function WorktreeTransitionContent(props: {
   mode: "enter" | "leave"
   sessionID: string
   directory: string
-  onPendingChange?: (pending: boolean) => void
+  onClose: () => void
 }) {
-  const dialog = useDialog()
   const globalSDK = useGlobalSDK()
   const [name, setName] = createSignal("")
   const [state, setState] = createSignal<WorkspaceTransitionProgressState>(
@@ -182,16 +115,14 @@ export function WorktreeTransitionDialog(props: {
           id: "leave",
           label: "Return to main checkout",
           detail: "Updating this session workspace.",
-          state: "active",
+          state: "active" as const,
         },
       ]
     return [
-      { id: "create", label: "Create checkout", detail: "Preparing a new git worktree.", state: "active" },
-      { id: "prepare", label: "Bind session", detail: "Updating the session workspace.", state: "pending" },
+      { id: "create", label: "Create checkout", detail: "Preparing a new git worktree.", state: "active" as const },
+      { id: "prepare", label: "Bind session", detail: "Updating the session workspace.", state: "pending" as const },
     ]
   })
-
-  const setPending = (pending: boolean) => props.onPendingChange?.(pending)
 
   const submit = async () => {
     if (loading()) return
@@ -203,7 +134,6 @@ export function WorktreeTransitionDialog(props: {
         step: operation === "leave" ? "Leaving worktree" : "Creating worktree",
       }),
     )
-    setPending(true)
     try {
       if (props.mode === "leave") {
         await globalSDK.client.worktree.leave({ directory: props.directory, sessionID: props.sessionID })
@@ -226,11 +156,11 @@ export function WorktreeTransitionDialog(props: {
           name: trimmed.length > 0 ? trimmed : undefined,
         },
       })
-      const description = result.data?.name
+      const desc = result.data?.name
         ? `This session now runs in ${result.data.name}.`
         : "This session now runs in the new worktree."
-      setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "succeed", message: description }))
-      showToast({ type: "info", title: "Moved to worktree", description })
+      setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "succeed", message: desc }))
+      showToast({ type: "info", title: "Moved to worktree", description: desc })
     } catch (error) {
       setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "fail", message: errorDescription(error) }))
       showToast({
@@ -238,8 +168,6 @@ export function WorktreeTransitionDialog(props: {
         title: props.mode === "leave" ? "Leave worktree failed" : "Move to worktree failed",
         description: errorDescription(error),
       })
-    } finally {
-      setPending(false)
     }
   }
 
@@ -248,79 +176,99 @@ export function WorktreeTransitionDialog(props: {
   })
 
   return (
-    <Dialog
-      title={title()}
-      description={description()}
-      class="workspace-transition-dialog"
-      dismissible={!loading()}
-      action={<DialogCloseButton disabled={loading()} />}
-    >
-      <Show when={state().phase !== "success"}>
-        <div class="wtd-operation-banner" data-operation={currentOperation()}>
-          <span class="wtd-operation-icon">
-            <Icon name={operationIcon(currentOperation())} size="normal" />
-          </span>
-          <div class="wtd-operation-copy">
-            <span class="wtd-operation-label">
-              {currentOperation() === "leave" ? "Main checkout" : "Session worktree"}
-            </span>
-            <span class="wtd-operation-detail">{operationBannerDetail(currentOperation(), state().phase)}</span>
-          </div>
+    <div class="session-worktree-transition relative flex flex-col h-full">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border-weak-base">
+        <div>
+          <div class="text-text-strong text-base font-semibold">{title()}</div>
+          <div class="text-text-weak text-sm mt-0.5">{description()}</div>
         </div>
-      </Show>
-      <Switch>
-        <Match when={state().phase === "form"}>
-          <form
-            class="wtd-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void submit()
-            }}
-          >
-            <TextField autofocus label="Worktree name" placeholder="Auto-generated" value={name()} onChange={setName} />
+        <button
+          type="button"
+          data-slot="dialog-close-button"
+          data-component="icon-button"
+          data-variant="ghost"
+          disabled={loading()}
+          onClick={() => {
+            if (!loading()) props.onClose()
+          }}
+        >
+          <Icon name="x" size="small" />
+        </button>
+      </div>
+      <div class="flex-1 overflow-auto px-6 py-4">
+        <Show when={state().phase !== "success"}>
+          <div class="wtd-operation-banner" data-operation={currentOperation()}>
+            <span class="wtd-operation-icon">
+              <Icon name={operationIcon(currentOperation())} size="normal" />
+            </span>
+            <div class="wtd-operation-copy">
+              <span class="wtd-operation-label">
+                {currentOperation() === "leave" ? "Main checkout" : "Session worktree"}
+              </span>
+              <span class="wtd-operation-detail">{operationBannerDetail(currentOperation(), state().phase)}</span>
+            </div>
+          </div>
+        </Show>
+        <Switch>
+          <Match when={state().phase === "form"}>
+            <form
+              class="wtd-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submit()
+              }}
+            >
+              <TextField
+                autofocus
+                label="Worktree name"
+                placeholder="Auto-generated"
+                value={name()}
+                onChange={setName}
+              />
+              <div class="wtd-actions">
+                <Button type="button" variant="ghost" size="small" onClick={props.onClose}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" size="small">
+                  Create worktree
+                </Button>
+              </div>
+            </form>
+          </Match>
+          <Match when={state().phase === "loading"}>
+            <div class="wtd-progress-shell">
+              <StepList steps={steps()} />
+            </div>
+          </Match>
+          <Match when={state().phase === "success"}>
+            <div class="wtd-result">
+              <span class="wtd-result-icon" data-state="success">
+                <Icon name={getSemanticIcon("state.success")} size="normal" />
+              </span>
+              <div class="wtd-result-copy">
+                <div class="wtd-result-title">{operationResultTitle(currentOperation())}</div>
+                <div class="wtd-result-description">{operationResultDescription(currentOperation())}</div>
+              </div>
+            </div>
             <div class="wtd-actions">
-              <Button type="button" variant="ghost" size="small" onClick={() => dialog.close()}>
+              <Button type="button" variant="primary" size="small" onClick={props.onClose}>
+                Done
+              </Button>
+            </div>
+          </Match>
+          <Match when={state().phase === "error"}>
+            <div class="wtd-error">{description()}</div>
+            <div class="wtd-actions">
+              <Button type="button" variant="ghost" size="small" onClick={props.onClose}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="small">
-                Create worktree
+              <Button type="button" variant="primary" size="small" onClick={() => void submit()}>
+                Try again
               </Button>
             </div>
-          </form>
-        </Match>
-        <Match when={state().phase === "loading"}>
-          <div class="wtd-progress-shell">
-            <StepList steps={steps()} />
-          </div>
-        </Match>
-        <Match when={state().phase === "success"}>
-          <div class="wtd-result">
-            <span class="wtd-result-icon" data-state="success">
-              <Icon name={getSemanticIcon("state.success")} size="normal" />
-            </span>
-            <div class="wtd-result-copy">
-              <div class="wtd-result-title">{operationResultTitle(currentOperation())}</div>
-              <div class="wtd-result-description">{operationResultDescription(currentOperation())}</div>
-            </div>
-          </div>
-          <div class="wtd-actions">
-            <Button type="button" variant="primary" size="small" onClick={() => dialog.close()}>
-              Done
-            </Button>
-          </div>
-        </Match>
-        <Match when={state().phase === "error"}>
-          <div class="wtd-error">{description()}</div>
-          <div class="wtd-actions">
-            <Button type="button" variant="ghost" size="small" onClick={() => dialog.close()}>
-              Cancel
-            </Button>
-            <Button type="button" variant="primary" size="small" onClick={() => void submit()}>
-              Try again
-            </Button>
-          </div>
-        </Match>
-      </Switch>
-    </Dialog>
+          </Match>
+        </Switch>
+      </div>
+    </div>
   )
 }
