@@ -1,4 +1,4 @@
-import { SectionLabel } from "../components/SectionLabel"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { AccountToggleCard } from "../components/AccountToggleCard"
 import type { ChannelSettings, ProviderGroup } from "../types"
 
@@ -9,10 +9,8 @@ export function ChannelsPanel(props: {
   onChannelModelChange: (index: number, model: string) => void
 }) {
   return (
-    <div class="ds-content-inner">
-      <h1 class="ds-content-title">Channels</h1>
-      <div class="ds-setting-section">
-        <SectionLabel title="Feishu" />
+    <SettingsPage title="Channels" description="External messaging channel accounts.">
+      <SettingsSection title="Feishu">
         <AccountToggleCard
           title="Feishu accounts"
           description="Enable or disable existing Feishu channel accounts. Optionally override the model for each account."
@@ -22,7 +20,7 @@ export function ChannelsPanel(props: {
           onToggle={props.onChannelToggle}
           onModelChange={props.onChannelModelChange}
         />
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

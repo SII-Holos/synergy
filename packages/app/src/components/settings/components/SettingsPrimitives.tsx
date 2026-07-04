@@ -142,3 +142,17 @@ export function SettingsPathRow(props: {
     </div>
   )
 }
+
+export function SettingsSubsection(props: { title?: string; description?: string; children: JSX.Element }) {
+  return (
+    <div class="ds-setting-subsection">
+      <Show when={props.title}>
+        <h3 class="ds-subsection-title">{props.title}</h3>
+      </Show>
+      <Show when={props.description}>
+        <p class="ds-section-hint">{props.description}</p>
+      </Show>
+      {props.children}
+    </div>
+  )
+}

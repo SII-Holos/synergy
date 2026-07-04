@@ -1,177 +1,178 @@
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { PasswordField } from "../components/PasswordField"
-import { SettingsPage } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingRow"
 import type { EmailSettings } from "../types"
 
 export function EmailPanel(props: {
   email: EmailSettings
   onEmailChange: (key: keyof EmailSettings, value: string | boolean) => void
 }) {
+  const { email, onEmailChange } = props
+
   return (
     <SettingsPage title="Email" description="Choose the mail account Synergy can use for email tools.">
-      <div class="settings-integration-shell settings-email-shell">
-        <section class="settings-integration-section">
-          <div class="settings-integration-row settings-integration-row-compact">
-            <div class="settings-integration-row-copy">
-              <span class="settings-integration-row-icon">
-                <Icon name={getSemanticIcon("settings.email")} size="small" />
-              </span>
-              <div>
-                <div class="settings-integration-row-title">Mail tools</div>
-                <div class="settings-integration-row-description">
-                  Allow Synergy to send messages and read inbox mail when a tool asks for it.
-                </div>
-              </div>
-            </div>
-            <div class="settings-integration-row-control">
-              <span class="settings-integration-state">{props.email.enabled ? "Enabled" : "Paused"}</span>
-              <Switch
-                checked={props.email.enabled}
-                hideLabel
-                onChange={(value) => props.onEmailChange("enabled", value)}
-              >
-                Mail tools
-              </Switch>
-            </div>
-          </div>
-        </section>
+      <SettingsSection title="Mail tools">
+        <SettingRow
+          title="Mail tools"
+          description="Allow Synergy to send messages and read inbox mail when a tool asks for it."
+          stateLabel={email.enabled ? "Enabled" : "Paused"}
+          trailing={
+            <Switch checked={email.enabled} hideLabel onChange={(v) => onEmailChange("enabled", v)}>
+              Mail tools
+            </Switch>
+          }
+        />
+      </SettingsSection>
 
-        <section class="settings-integration-section">
-          <div class="settings-integration-section-heading">
-            <h2>Sending</h2>
-            <p>Set the identity and SMTP connection used for outgoing messages.</p>
-          </div>
-          <div class="settings-integration-form-grid settings-integration-form-grid-two">
-            <TextField
-              label="From address"
-              type="text"
-              placeholder="agent@example.com"
-              value={props.email.fromAddress}
-              onChange={(value) => props.onEmailChange("fromAddress", value)}
-            />
-            <TextField
-              label="Display name"
-              type="text"
-              placeholder="Synergy"
-              value={props.email.fromName}
-              onChange={(value) => props.onEmailChange("fromName", value)}
-            />
-          </div>
-
-          <div class="settings-email-connection-block">
-            <div class="settings-email-connection-heading">
-              <span>SMTP connection</span>
-              <p>Used only when Synergy sends email.</p>
-            </div>
-            <div class="settings-integration-form-grid settings-integration-form-grid-two">
+      <SettingsSection title="Sending" description="Set the identity and SMTP connection used for outgoing messages.">
+        <SettingsSubsection title="SMTP connection" description="Used only when Synergy sends email.">
+          <SettingRow
+            title="Host"
+            description="SMTP server hostname."
+            trailing={
               <TextField
-                label="Host"
                 type="text"
                 placeholder="smtp.example.com"
-                value={props.email.smtpHost}
-                onChange={(value) => props.onEmailChange("smtpHost", value)}
+                value={email.smtpHost}
+                onChange={(v) => onEmailChange("smtpHost", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Port"
+            description="SMTP server port."
+            trailing={
               <TextField
-                label="Port"
                 type="number"
                 placeholder="465"
-                value={props.email.smtpPort}
-                onChange={(value) => props.onEmailChange("smtpPort", value)}
+                value={email.smtpPort}
+                onChange={(v) => onEmailChange("smtpPort", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Username"
+            description="SMTP authentication username."
+            trailing={
               <TextField
-                label="Username"
                 type="text"
                 placeholder="agent@example.com"
-                value={props.email.smtpUsername}
-                onChange={(value) => props.onEmailChange("smtpUsername", value)}
+                value={email.smtpUsername}
+                onChange={(v) => onEmailChange("smtpUsername", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Password"
+            description="SMTP authentication password."
+            trailing={
               <PasswordField
                 label="Password"
-                value={props.email.smtpPassword}
-                onChange={(value) => props.onEmailChange("smtpPassword", value)}
+                value={email.smtpPassword}
+                onChange={(v) => onEmailChange("smtpPassword", v)}
               />
-            </div>
-            <EmailSecureRow
-              title="Encrypted SMTP"
-              description="Use TLS or SSL for outgoing mail."
-              checked={props.email.smtpSecure}
-              onChange={(value) => props.onEmailChange("smtpSecure", value)}
-            />
-          </div>
-        </section>
-
-        <section class="settings-integration-section">
-          <div class="settings-integration-section-heading">
-            <h2>Reading</h2>
-            <p>Optional IMAP access for inbox-reading tools. Leave the host empty to keep reading off.</p>
-          </div>
-          <div class="settings-email-connection-block">
-            <div class="settings-email-connection-heading">
-              <span>IMAP connection</span>
-              <p>Used only when Synergy reads email.</p>
-            </div>
-            <div class="settings-integration-form-grid settings-integration-form-grid-two">
+            }
+          />
+          <SettingRow
+            title="From address"
+            description="Email address shown as the sender."
+            trailing={
               <TextField
-                label="Host"
+                type="text"
+                placeholder="agent@example.com"
+                value={email.fromAddress}
+                onChange={(v) => onEmailChange("fromAddress", v)}
+              />
+            }
+          />
+          <SettingRow
+            title="Display name"
+            description="Name shown as the sender."
+            trailing={
+              <TextField
+                type="text"
+                placeholder="Synergy"
+                value={email.fromName}
+                onChange={(v) => onEmailChange("fromName", v)}
+              />
+            }
+          />
+          <SettingRow
+            title="Encrypted SMTP"
+            description="Use TLS or SSL for outgoing mail."
+            stateLabel={email.smtpSecure ? "On" : "Off"}
+            trailing={
+              <Switch checked={email.smtpSecure} hideLabel onChange={(v) => onEmailChange("smtpSecure", v)}>
+                Encrypted SMTP
+              </Switch>
+            }
+          />
+        </SettingsSubsection>
+      </SettingsSection>
+
+      <SettingsSection title="Reading" description="Optional IMAP access for inbox-reading tools.">
+        <SettingsSubsection title="IMAP connection" description="Used only when Synergy reads email.">
+          <SettingRow
+            title="Host"
+            description="IMAP server hostname."
+            trailing={
+              <TextField
                 type="text"
                 placeholder="imap.example.com"
-                value={props.email.imapHost}
-                onChange={(value) => props.onEmailChange("imapHost", value)}
+                value={email.imapHost}
+                onChange={(v) => onEmailChange("imapHost", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Port"
+            description="IMAP server port."
+            trailing={
               <TextField
-                label="Port"
                 type="number"
                 placeholder="993"
-                value={props.email.imapPort}
-                onChange={(value) => props.onEmailChange("imapPort", value)}
+                value={email.imapPort}
+                onChange={(v) => onEmailChange("imapPort", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Username"
+            description="IMAP authentication username."
+            trailing={
               <TextField
-                label="Username"
                 type="text"
                 placeholder="agent@example.com"
-                value={props.email.imapUsername}
-                onChange={(value) => props.onEmailChange("imapUsername", value)}
+                value={email.imapUsername}
+                onChange={(v) => onEmailChange("imapUsername", v)}
               />
+            }
+          />
+          <SettingRow
+            title="Password"
+            description="IMAP authentication password."
+            trailing={
               <PasswordField
                 label="Password"
-                value={props.email.imapPassword}
-                onChange={(value) => props.onEmailChange("imapPassword", value)}
+                value={email.imapPassword}
+                onChange={(v) => onEmailChange("imapPassword", v)}
               />
-            </div>
-            <EmailSecureRow
-              title="Encrypted IMAP"
-              description="Use TLS or SSL for inbox access."
-              checked={props.email.imapSecure}
-              onChange={(value) => props.onEmailChange("imapSecure", value)}
-            />
-          </div>
-        </section>
-      </div>
+            }
+          />
+          <SettingRow
+            title="Encrypted IMAP"
+            description="Use TLS or SSL for inbox access."
+            stateLabel={email.imapSecure ? "On" : "Off"}
+            trailing={
+              <Switch checked={email.imapSecure} hideLabel onChange={(v) => onEmailChange("imapSecure", v)}>
+                Encrypted IMAP
+              </Switch>
+            }
+          />
+        </SettingsSubsection>
+      </SettingsSection>
     </SettingsPage>
-  )
-}
-
-function EmailSecureRow(props: {
-  title: string
-  description: string
-  checked: boolean
-  onChange: (value: boolean) => void
-}) {
-  return (
-    <div class="settings-integration-row settings-email-secure-row">
-      <div>
-        <div class="settings-integration-row-title">{props.title}</div>
-        <div class="settings-integration-row-description">{props.description}</div>
-      </div>
-      <div class="settings-integration-row-control">
-        <span class="settings-integration-state">{props.checked ? "On" : "Off"}</span>
-        <Switch checked={props.checked} hideLabel onChange={props.onChange}>
-          {props.title}
-        </Switch>
-      </div>
-    </div>
   )
 }

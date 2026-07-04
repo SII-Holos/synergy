@@ -52,6 +52,7 @@ export type SettingsCatalogSection = {
   keywords: string[]
   domainIds: string[]
   rowLabels?: string[]
+  visibility?: "standard" | "developer"
 }
 
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
@@ -98,16 +99,6 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     ["providers"],
   ),
   section(
-    "github",
-    "GitHub",
-    "Integrations",
-    5,
-    "settings.github",
-    "GitHub credentials for issues, pull requests, releases, and GitHub CLI actions.",
-    ["github", "gh", "issue", "pull request", "release", "token"],
-    ["providers"],
-  ),
-  section(
     "usage",
     "Usage",
     "Core",
@@ -115,6 +106,16 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "settings.usage",
     "Provider usage, quota windows, credits, and account health.",
     ["usage", "quota", "credits", "billing", "codex", "claude"],
+    ["providers"],
+  ),
+  section(
+    "github",
+    "GitHub",
+    "Integrations",
+    5,
+    "settings.github",
+    "GitHub credentials for issues, pull requests, releases, and GitHub CLI actions.",
+    ["github", "gh", "issue", "pull request", "release", "token"],
     ["providers"],
   ),
   section(
@@ -251,7 +252,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "settings.formatter",
     "Formatter configuration file access.",
     ["formatter", "format"],
-    ["runtime"],
+    { visibility: "developer" },
   ),
   section(
     "lsp",
@@ -261,7 +262,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "settings.lsp",
     "Language server configuration file access.",
     ["lsp", "language server"],
-    ["runtime"],
+    { visibility: "developer" },
   ),
   section(
     "observability",
@@ -271,7 +272,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "settings.observability",
     "Raw logs, traces, telemetry collection, and runtime configuration.",
     ["log", "trace", "telemetry", "collection"],
-    ["general", "runtime"],
+    { domainIds: ["general", "runtime"], visibility: "developer" },
   ),
   section("import", "Import", "System", 10, "settings.import", "Import selected config domains.", ["import", "config"]),
   section("config-files", "Config Files", "System", 20, "settings.configFiles", "Open canonical config domain files.", [
@@ -290,10 +291,33 @@ function section(
   iconToken: SemanticIconTokenName,
   description: string,
   keywords: string[],
-  domainIds: string[] = [],
-  rowLabels: string[] = [],
+  domainIdsOrOpts?: string[] | { domainIds?: string[]; rowLabels?: string[]; visibility?: "standard" | "developer" },
+  rowLabels?: string[],
 ): SettingsCatalogSection {
-  return { id, label, group, order, iconToken, description, keywords, domainIds, rowLabels }
+  let domainIds: string[] = []
+  let visibility: "standard" | "developer" | undefined
+  let actualRowLabels: string[] = rowLabels ?? []
+
+  if (Array.isArray(domainIdsOrOpts)) {
+    domainIds = domainIdsOrOpts
+  } else if (domainIdsOrOpts) {
+    domainIds = domainIdsOrOpts.domainIds ?? []
+    actualRowLabels = domainIdsOrOpts.rowLabels ?? actualRowLabels
+    visibility = domainIdsOrOpts.visibility
+  }
+
+  return {
+    id,
+    label,
+    group,
+    order,
+    iconToken,
+    description,
+    keywords,
+    domainIds,
+    rowLabels: actualRowLabels,
+    visibility,
+  }
 }
 
 export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {

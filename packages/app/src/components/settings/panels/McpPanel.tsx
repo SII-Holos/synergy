@@ -4,7 +4,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
 import { McpCard } from "../components/McpCard"
-import { SettingsPage } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
 export function McpPanel(props: {
   entries: McpEntry[]
@@ -28,12 +28,10 @@ export function McpPanel(props: {
         </Button>
       }
     >
-      <div class="settings-integration-shell settings-mcp-shell">
-        <div class="settings-integration-section-heading">
-          <h2>Servers</h2>
-          <p>Each server adds tools or prompts from a trusted local command or remote endpoint.</p>
-        </div>
-
+      <SettingsSection
+        title="Servers"
+        description="Each server adds tools or prompts from a trusted local command or remote endpoint."
+      >
         <Show
           when={props.entries.length > 0}
           fallback={
@@ -58,7 +56,7 @@ export function McpPanel(props: {
             </For>
           </div>
         </Show>
-      </div>
+      </SettingsSection>
     </SettingsPage>
   )
 }

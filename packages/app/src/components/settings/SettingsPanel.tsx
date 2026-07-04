@@ -55,6 +55,8 @@ import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPane
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
+import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
+import { SaveIndicator } from "./components/SaveIndicator"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -92,6 +94,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [refreshing, setRefreshing] = createSignal(false)
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
   const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
+  const [developerMode, setDeveloperMode] = createSignal(readDeveloperMode())
 
   const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
 
@@ -274,10 +277,41 @@ export function SettingsPanel(props: SettingsPanelProps) {
     }
   }
 
+  function readDeveloperMode(): boolean {
+    try {
+      return localStorage.getItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY) === "true"
+    } catch {
+      return false
+    }
+  }
+
+  function persistDeveloperMode(value: boolean) {
+    try {
+      if (value) {
+        localStorage.setItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY, "true")
+      } else {
+        localStorage.removeItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY)
+      }
+    } catch {
+      // localStorage unavailable — in-memory state only
+    }
+  }
+
+  function toggleDeveloperMode() {
+    const next = !developerMode()
+    setDeveloperMode(next)
+    persistDeveloperMode(next)
+  }
+
+  const saveFooterStatus = createMemo<"idle" | "saving" | "saved" | "error" | "dirty">(() => {
+    if (save.autoStatus() === "error" || save.bgStatus() === "error") return "error"
+    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving()) return "saving"
+    if (save.autoStatus() === "saved" || save.bgStatus() === "saved") return "saved"
+    if (save.explicitDirty()) return "dirty"
+    return "idle"
+  })
   const settingsSections = createMemo(() =>
-    getSettingsSections()
-      .filter((section) => !section.hidden)
-      .sort(compareSections),
+    filterSettingsSections(getSettingsSections(), developerMode()).sort(compareSections),
   )
 
   const pluginSections = createMemo(() => settingsSections().filter((section) => !isBuiltinSettingsId(section.id)))
@@ -323,7 +357,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (!ready()) return
     const current = activeTab()
     if (settingsSections().some((section) => section.id === current)) return
-    setActiveTab(BUILTIN_SETTINGS_IDS[0])
+    setActiveTab("general")
   })
 
   return (
@@ -338,11 +372,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <div>
                 <div class="settings-nav-title truncate">Global Config</div>
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <Show when={save.explicitDirty()}>
+                  <Show when={saveFooterStatus() === "error"}>
+                    <span class="settings-nav-badge settings-nav-badge-error">Error</span>
+                  </Show>
+                  <Show when={saveFooterStatus() === "dirty"}>
                     <span class="settings-nav-badge settings-nav-badge-dirty">Unsaved</span>
                   </Show>
-                  <Show when={save.autoStatus() === "saved"}>
+                  <Show when={saveFooterStatus() === "saving"}>
+                    <span class="settings-nav-badge settings-nav-badge-saving">Saving</span>
+                  </Show>
+                  <Show when={saveFooterStatus() === "saved"}>
                     <span class="settings-nav-badge settings-nav-badge-saved">Saved</span>
+                  </Show>
+                  <Show when={developerMode()}>
+                    <span class="settings-nav-badge settings-nav-badge-dev">Dev</span>
                   </Show>
                 </div>
               </div>
@@ -383,19 +426,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
 
             <AppPanel.Footer>
-              <div class="flex-1 flex items-center gap-2">
-                <Show when={save.bgStatus() === "saving"}>
-                  <span class="settings-footer-status">Saving...</span>
-                </Show>
-                <Show when={save.bgStatus() === "saved"}>
-                  <span class="settings-footer-status flex items-center gap-1">
-                    <Icon name={getSemanticIcon("state.success")} size="small" />
-                    Saved
-                  </span>
-                </Show>
-                <Show when={save.autoStatus() === "error" || save.bgStatus() === "error"}>
-                  <span class="settings-footer-status settings-footer-status-error">Save failed</span>
-                </Show>
+              <div class="flex-1 flex items-center gap-3">
+                <SaveIndicator status={saveFooterStatus()} />
+                <button
+                  type="button"
+                  class="settings-dev-toggle"
+                  onClick={toggleDeveloperMode}
+                  aria-pressed={developerMode()}
+                >
+                  <Icon name={getSemanticIcon("settings.diagnostics")} size="small" />
+                  <span>Developer mode</span>
+                </button>
               </div>
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
                 Cancel
