@@ -383,12 +383,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
   onCleanup(cancelLongPress)
 
+  let lastDisplayedLoop: BlueprintSlotDisplay | null = null
   const displayedBlueprintLoop = createMemo<BlueprintSlotDisplay | null>(() => {
-    return resolveBlueprintSlotDisplay({
+    const result = resolveBlueprintSlotDisplay({
       localSlot: localArmedLoop(),
       sessionLoop: sessionLoop(),
       activeLoopID: effectiveActiveLoopID(),
     })
+    if (result) {
+      lastDisplayedLoop = result
+      return result
+    }
+    // Hold the last non-null display while the effective loop is still
+    // known to be active — prevents one-frame slot disappearance during
+    // resource re-fetch or mutation→stabilize gaps.
+    return effectiveActiveLoopID() ? lastDisplayedLoop : null
   })
 
   const submitWorking = createMemo(() => {
