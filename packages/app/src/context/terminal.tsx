@@ -30,7 +30,7 @@ function createTerminalSession(
   sdk: ReturnType<typeof useSDK>,
   dir: string,
   id: string | undefined,
-  getWorkspaceCwd: () => string | undefined,
+  cwdSignal: () => string | undefined,
 ) {
   const legacy = `${dir}/terminal${id ? "/" + id : ""}.v1`
 
@@ -50,7 +50,7 @@ function createTerminalSession(
     active: createMemo(() => store.active),
     async new() {
       try {
-        const cwd = getWorkspaceCwd()
+        const cwd = cwdSignal()
         const pty = await sdk.client.pty.create({
           title: `Terminal ${store.all.length + 1}`,
           ...(cwd ? { cwd } : {}),
@@ -85,7 +85,7 @@ function createTerminalSession(
       const index = store.all.findIndex((x) => x.id === id)
       const pty = store.all[index]
       if (!pty) return
-      const cwd = getWorkspaceCwd()
+      const cwd = cwdSignal()
       const clone = await sdk.client.pty
         .create({
           title: pty.title,
@@ -140,13 +140,13 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
     const params = useParams()
     const globalSync = useGlobalSync()
 
-    const getWorkspaceCwd = (): string | undefined => {
+    const workspaceCwd = createMemo<string | undefined>(() => {
       const sessionID = params.id
       if (!sessionID || !params.dir) return undefined
       const [store] = globalSync.ensureScopeState(params.dir)
       const session = store.session.find((s) => s.id === sessionID)
       return resolveTerminalCwd(session)
-    }
+    })
     const cache = new Map<string, TerminalCacheEntry>()
 
     const disposeAll = () => {
@@ -178,7 +178,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createTerminalSession(sdk, dir, id, getWorkspaceCwd),
+        value: createTerminalSession(sdk, dir, id, () => workspaceCwd()),
         dispose,
       }))
 
