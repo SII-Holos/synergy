@@ -34,12 +34,10 @@ import {
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
-import {
-  SessionStartProgressDialog,
-  type SessionStartProgress,
-  type SessionStartProgressStepState,
-} from "@/components/session/worktree-transition-dialog"
+import type { SessionStartProgress } from "@/components/session/worktree-progress-components"
+import type { SessionStartProgressStepState } from "@/components/session/worktree-progress-components"
 import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
+import { setNewSessionProgress, clearNewSessionProgress } from "@/components/session/worktree-progress-signals"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -129,13 +127,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     updateStartProgress(selection, selection.mode === "current" ? "session" : "workspace")
     if (startProgressOpen) return
     startProgressOpen = true
-    dialog.push(() => SessionStartProgressDialog({ progress: startProgress }))
+    setNewSessionProgress(startProgress())
   }
 
   const closeStartProgress = () => {
     if (!startProgressOpen) return
     startProgressOpen = false
-    dialog.close()
+    clearNewSessionProgress()
   }
 
   return async (event: Event) => {

@@ -50,6 +50,13 @@ import {
   normalizePathForCompare,
   type NewSessionWorkspaceSelection,
 } from "@/components/session/worktree-session"
+import { StepList } from "@/components/session/worktree-progress-components"
+import { WorktreeTransitionContent } from "@/components/session/worktree-transition-dialog"
+import {
+  newSessionProgress,
+  worktreeTransition,
+  clearWorktreeTransition,
+} from "@/components/session/worktree-progress-signals"
 
 const handoff = {
   prompt: "",
@@ -898,6 +905,18 @@ function SessionPageContent() {
             }}
           >
             <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+              <Show when={!isNewSession() && worktreeTransition()}>
+                {(transition) => (
+                  <div class="absolute inset-0 z-40 flex flex-col bg-background-base">
+                    <WorktreeTransitionContent
+                      mode={transition().mode}
+                      sessionID={transition().sessionID}
+                      directory={transition().directory}
+                      onClose={clearWorktreeTransition}
+                    />
+                  </div>
+                )}
+              </Show>
               <SessionTopBar />
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
@@ -982,7 +1001,22 @@ function SessionPageContent() {
                       </Show>
                     </Show>
                   </Match>
-                  <Match when={true}>{null}</Match>
+                  <Match when={true}>
+                    <Show when={newSessionProgress()}>
+                      {(progress) => (
+                        <div class="flex h-full flex-col items-center justify-center px-8 py-12 gap-4">
+                          <div class="w-full max-w-sm">
+                            <div class="text-text-strong text-base font-semibold text-center mb-1">
+                              {progress().title}
+                            </div>
+                            <div class="text-text-weak text-sm text-center mb-6">{progress().description}</div>
+                            <StepList steps={progress().steps} />
+                          </div>
+                        </div>
+                      )}
+                    </Show>
+                    <Show when={!newSessionProgress()}>{null}</Show>
+                  </Match>
                 </Switch>
               </div>
             </div>
