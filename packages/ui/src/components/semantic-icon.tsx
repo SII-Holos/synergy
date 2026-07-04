@@ -16,6 +16,7 @@ export const SemanticIconToken = {
 
   // Session runtime
   "session.idle": "circle",
+  "session.new": "square-pen",
   "session.running": "loader-circle",
   "session.retry": "octagon-alert",
   "session.waiting": "help-circle",

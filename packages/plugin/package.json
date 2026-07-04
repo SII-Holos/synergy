@@ -92,13 +92,13 @@
     "dist"
   ],
   "dependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*"
   },
   "peerDependencies": {
     "zod": ">=4.0.0"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
     "solid-js": "catalog:",
