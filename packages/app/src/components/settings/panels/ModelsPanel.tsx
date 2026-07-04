@@ -5,6 +5,7 @@ import { ConnectedModelManager } from "@/components/model-manager"
 import { groupByProvider } from "../types"
 import { ModelRoleRow } from "../components/ModelRoleRow"
 import type { ModelKey, ModelsStore, ProviderModel } from "../types"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
 export function ModelsPanel(props: {
   models: ModelsStore
@@ -18,26 +19,16 @@ export function ModelsPanel(props: {
   const providerGroups = () => groupByProvider(props.providerModels())
 
   return (
-    <div class="ds-content-inner">
-      <div class="ds-content-header">
-        <div>
-          <h1 class="ds-content-title">Models</h1>
-          <p class="ds-section-hint">
-            Choose specialist role models and decide which connected models appear in quick switcher.
-          </p>
-        </div>
-      </div>
-
-      <section class="settings-model-section">
-        <div class="settings-model-section-heading">
-          <div>
-            <h2 class="settings-model-section-title">Model roles</h2>
-            <p class="settings-model-section-description">
-              Leave a role on fallback to inherit the next available model.
-            </p>
-          </div>
-        </div>
-
+    <SettingsPage
+      title="Models"
+      description="Choose specialist role models and decide which connected models appear in quick switcher."
+      actions={
+        <Button type="button" variant="ghost" size="small" icon="plus" onClick={props.onConnectProvider}>
+          Connect provider
+        </Button>
+      }
+    >
+      <SettingsSection title="Model roles" description="Leave a role on fallback to inherit the next available model.">
         <Show
           when={props.modelRoleSummaries().length > 0}
           fallback={
@@ -67,23 +58,14 @@ export function ModelsPanel(props: {
             </div>
           </Show>
         </Show>
-      </section>
+      </SettingsSection>
 
-      <section class="settings-model-section settings-connected-models-section">
-        <div class="settings-model-section-heading">
-          <div>
-            <h2 class="settings-model-section-title">Quick switcher models</h2>
-            <p class="settings-model-section-description">
-              Pick the connected models that appear in model switchers and command shortcuts.
-            </p>
-          </div>
-          <Button type="button" variant="ghost" size="small" icon="plus" onClick={props.onConnectProvider}>
-            Connect provider
-          </Button>
-        </div>
-
+      <SettingsSection
+        title="Quick switcher models"
+        description="Pick the connected models that appear in model switchers and command shortcuts."
+      >
         <ConnectedModelManager class="settings-connected-model-list" searchAutofocus={false} selectable={false} />
-      </section>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

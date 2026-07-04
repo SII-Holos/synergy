@@ -2,6 +2,8 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -130,17 +132,11 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
   }
 
   return (
-    <div class="ds-content-inner">
-      <div class="ds-content-header">
-        <div>
-          <h2 class="ds-content-title">Import</h2>
-        </div>
-      </div>
-
-      <div class="ds-setting-section">
+    <SettingsPage title="Import" description="Import selected config domains.">
+      <SettingsSection title="Source">
         <div class="ds-import-source-row">
           <label class="ds-import-file-button">
-            <Icon name="upload" size="small" />
+            <Icon name={getSemanticIcon("settings.import")} size="small" />
             File
             <input
               type="file"
@@ -158,10 +154,10 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
             Load URL
           </Button>
         </div>
-      </div>
+      </SettingsSection>
 
       <Show when={plan()}>
-        <div class="ds-setting-section">
+        <SettingsSection title="Plan">
           <div class="ds-import-plan-header">
             <div>
               <div class="settings-import-source-title">{sourceLabel()}</div>
@@ -220,8 +216,8 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
               )}
             </For>
           </div>
-        </div>
+        </SettingsSection>
       </Show>
-    </div>
+    </SettingsPage>
   )
 }
