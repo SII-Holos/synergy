@@ -87,6 +87,28 @@ describe("performance observability store", () => {
     expect(summary.frontend.inpMs).toBe(80)
   })
 
+  test("dashboard summary ranks provider and library durations from recorded metrics", async () => {
+    PerformanceMetrics.record({
+      name: "llm.stream.initialization.duration",
+      value: 120,
+      unit: "ms",
+      module: "llm",
+      labels: { provider: "openai", model: "gpt-test" },
+    })
+    PerformanceMetrics.record({
+      name: "library.sqlite.query.duration",
+      value: 30,
+      unit: "ms",
+      module: "library",
+      labels: { operation: "select", method: "all" },
+    })
+    PerformanceStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+    expect(summary.top.slowProviders[0]?.label).toBe("openai")
+    expect(summary.top.slowLibrary[0]?.label).toBe("select")
+  })
+
   test("trace detail projects observability events without raw event data", async () => {
     const traceId = "perf_trace_safe_projection"
     await Observability.emit("tool.start", {
