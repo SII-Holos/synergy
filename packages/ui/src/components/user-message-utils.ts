@@ -16,3 +16,8 @@ export function visibleUserMessageText(parts: readonly PartType[] | undefined) {
   const textPart = parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined
   return textPart?.text || ""
 }
+
+export function hasVisibleUserMessageContent(parts: readonly PartType[] | undefined) {
+  if (visibleUserMessageText(parts)) return true
+  return parts?.some((part) => part.type === "attachment") ?? false
+}

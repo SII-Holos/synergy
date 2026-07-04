@@ -35,6 +35,8 @@ import { Button } from "./button"
 import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
+import { CompactionCard } from "./compaction-card"
+import { hasVisibleUserMessageContent } from "./user-message-utils"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
@@ -47,7 +49,7 @@ export type SessionTurnTimelineItem =
   | {
       kind: "part"
       message: AssistantMessage
-      part: TextPart | ToolPart | AttachmentPart
+      part: TextPart | ToolPart | AttachmentPart | PartType
     }
   | {
       kind: "reasoning"
@@ -65,6 +67,11 @@ export type SessionTurnTimelineItem =
       part: ToolPart
       files: AttachmentPart[]
     }
+  | {
+      kind: "compaction"
+      message: MessageType
+      part?: PartType
+    }
 
 export type SessionTurnTimelineVisualKind =
   | "text"
@@ -73,6 +80,7 @@ export type SessionTurnTimelineVisualKind =
   | "attachment"
   | "media-pending"
   | "tool-attachments"
+  | "compaction"
 
 const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
 
@@ -95,6 +103,45 @@ function visibleAttachmentParts(files: AttachmentPart[] | undefined): Attachment
   return (files ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
 }
 
+function isCompactionAssistant(message: AssistantMessage): boolean {
+  return message.mode === "compaction" || message.agent === "compaction"
+}
+
+export function isCompactionBoundaryUser(message: Pick<UserMessage, "metadata">): boolean {
+  return message.metadata?.compactionBoundary === true
+}
+
+export function collectUserCompactionTimelineItems(
+  message: UserMessage,
+  parts: readonly PartType[],
+): SessionTurnTimelineItem[] {
+  const compactionRecovery = parts.find((part) => part.type === "compaction_recovery")
+  if (!compactionRecovery) return []
+  return [{ kind: "compaction", message, part: compactionRecovery }]
+}
+
+export function shouldShowTurnDiffs(
+  message: Pick<UserMessage, "metadata" | "summary"> | undefined,
+  options: { hasCompactionEvent?: boolean } = {},
+): boolean {
+  if (!message) return false
+  if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return false
+  return (message.summary?.diffs?.length ?? 0) > 0
+}
+
+export function shouldShowTurnUserChrome(
+  message: Pick<UserMessage, "metadata"> | undefined,
+  parts: readonly PartType[] | undefined,
+  hasCompactionEvent: boolean,
+): boolean {
+  if (!message) return false
+  if (isCompactionBoundaryUser(message)) return false
+  if (!hasCompactionEvent) return true
+  if (message.metadata?.synthetic === true) return false
+
+  return hasVisibleUserMessageContent(parts)
+}
+
 export function timelineKindForPart(part: PartType, working: boolean): SessionTurnTimelineItem["kind"] | undefined {
   if (part.type === "text") return part.text.trim() ? "part" : undefined
   if (part.type === "attachment") return resolveAttachmentPresentation(part).hidden ? undefined : "part"
@@ -110,13 +157,16 @@ export function timelineKindForPart(part: PartType, working: boolean): SessionTu
 }
 
 export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTimelineVisualKind {
+  if (item.kind === "compaction") return "compaction"
   if (item.kind !== "part") return item.kind
   if (item.part.type === "tool") return "tool"
   if (item.part.type === "attachment") return "attachment"
+  if (item.part.type === "compaction_recovery") return "compaction"
   return "text"
 }
 
 export function timelineItemStableKey(item: SessionTurnTimelineItem): string {
+  if (item.kind === "compaction") return `compaction:${item.message.id}`
   return `${timelineVisualKind(item)}:${item.message.id}:${item.part.id}`
 }
 
@@ -129,7 +179,13 @@ export function collectSessionTurnTimelineItems(
 
   for (const message of messages) {
     const parts = partsByMessage[message.id] ?? []
-    const hasCompactionRecovery = parts.some((p) => p.type === "compaction_recovery")
+    const compactionRecovery = parts.find((part) => part.type === "compaction_recovery")
+    if (isCompactionAssistant(message)) {
+      items.push({ kind: "compaction", message, part: compactionRecovery })
+      continue
+    }
+
+    const hasCompactionRecovery = !!compactionRecovery
     for (const part of parts) {
       const kind = timelineKindForPart(part, working)
       if (!kind) continue
@@ -232,6 +288,9 @@ export function shouldShowProviderPrelude(input: {
 }
 
 function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string }) {
+  if (props.item.kind === "compaction") {
+    return <CompactionCard part={props.item.part} message={props.item.message} />
+  }
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
   }
@@ -438,10 +497,11 @@ export function SessionTurn(
     return false
   })
 
-  const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
   const timelineItems = createMemo(
     () => {
       const result: SessionTurnDisplayItem[] = []
+      const msg = message()
+      if (msg) result.push(...collectUserCompactionTimelineItems(msg, parts()))
       for (const item of displayMessages()) {
         if (item.role === "user") {
           result.push({
@@ -458,6 +518,11 @@ export function SessionTurn(
     emptyDisplayItems,
     { equals: same },
   )
+  const hasCompactionEvent = createMemo(() =>
+    timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
+  )
+  const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
+  const hasDiffs = createMemo(() => shouldShowTurnDiffs(message(), { hasCompactionEvent: hasCompactionEvent() }))
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
     if (!latest) return []
@@ -565,18 +630,20 @@ export function SessionTurn(
                     <Part part={shellModePart()!} message={msg()} defaultOpen />
                   </Match>
                   <Match when={true}>
-                    {/* Mailbox source annotation */}
-                    <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
-                      <MailboxSourceBadge message={msg() as UserMessage} />
-                    </Show>
-                    {/* User message */}
-                    <Show
-                      when={specialUserMessageRenderer()}
-                      fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
-                    >
-                      {(SpecialUserMessage) => (
-                        <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
-                      )}
+                    <Show when={showUserChrome()}>
+                      {/* Mailbox source annotation */}
+                      <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
+                        <MailboxSourceBadge message={msg() as UserMessage} />
+                      </Show>
+                      {/* User message */}
+                      <Show
+                        when={specialUserMessageRenderer()}
+                        fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                      >
+                        {(SpecialUserMessage) => (
+                          <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
+                        )}
+                      </Show>
                     </Show>
                     <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
