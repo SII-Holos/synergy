@@ -42,6 +42,7 @@ export namespace BlueprintLoopStore {
     parentSessionID?: string
     firstPrompt?: string
     loopIndex?: number
+    model?: { providerID: string; modelID: string }
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
@@ -74,6 +75,7 @@ export namespace BlueprintLoopStore {
       parentSessionID: input.parentSessionID,
       firstPrompt: input.firstPrompt,
       loopIndex: input.loopIndex,
+      model: input.model,
       time: { created: now, updated: now },
     }
     await Storage.write(StoragePath.blueprintLoop(sid, id), loop)

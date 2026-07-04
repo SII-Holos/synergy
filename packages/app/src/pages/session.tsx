@@ -267,6 +267,30 @@ function SessionPageContent() {
     ),
   )
 
+  // Blueprint loop start messages carry a model override but are excluded from
+  // userMessages by isSessionIdentityAnchor (source starts with "blueprint_loop_").
+  // Track their model separately so the stb-root model display stays current.
+  const lastBlueprintStartModel = createMemo(() => {
+    const msgs = messages()
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.role !== "user") continue
+      const meta = m.metadata as Record<string, unknown> | undefined
+      if (typeof meta?.source === "string" && meta.source === "blueprint_loop_start") {
+        return m.model
+      }
+    }
+    return undefined
+  })
+  createEffect(
+    on(
+      () => lastBlueprintStartModel(),
+      (model) => {
+        if (model) local.model.set(model)
+      },
+    ),
+  )
+
   const renderedUserMessages = createMemo(() => {
     const msgs = visibleUserMessages()
     if (!msgs) return emptyUserMessages
@@ -884,14 +908,14 @@ function SessionPageContent() {
                         <Show
                           when={messagesReady()}
                           fallback={
-                            <div class="flex flex-col items-center justify-center h-full gap-3">
-                              <Spinner class="text-text-weak size-10" />
-                              <span class="text-text-weak text-sm">Loading conversation…</span>
+                            <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
+                              <Spinner class="size-10 text-text-weak" />
+                              <span class="text-sm text-text-weak">Loading conversation…</span>
                             </div>
                           }
                         >
-                          <div class="flex items-center justify-center h-full">
-                            <span class="text-text-weak text-sm">No messages yet</span>
+                          <div class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger">
+                            <span class="text-sm text-text-weak">No messages yet</span>
                           </div>
                         </Show>
                       }
@@ -899,7 +923,7 @@ function SessionPageContent() {
                       <Show
                         when={!mobileReview()}
                         fallback={
-                          <div class="relative h-full overflow-hidden">
+                          <div class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger">
                             <Show
                               when={diffsReady()}
                               fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}
