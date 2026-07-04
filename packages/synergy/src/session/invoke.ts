@@ -1765,7 +1765,10 @@ export namespace SessionInvoke {
       const info = msgs[i].info
       if (info.role !== "assistant") continue
       const assistant = info as MessageV2.Assistant
-      if (assistant.summary) continue
+      if (assistant.summary) {
+        if (assistant.finish) break
+        continue
+      }
       const tokens = assistant.tokens
       if (ModelLimit.actualInput(tokens) > 0) {
         calibrationIdx = i

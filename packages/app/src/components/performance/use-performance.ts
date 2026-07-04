@@ -49,8 +49,9 @@ export function usePerformance() {
     async (rangeMs): Promise<PerformanceSummary | null> => {
       try {
         setError(null)
-        const result = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
-        return result.data ?? null
+        const summaryResult = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
+        void loadTraces(rangeMs)
+        return summaryResult.data ?? null
       } catch (err) {
         setError(getErrorMessage(err))
         return null
@@ -114,7 +115,7 @@ export function usePerformance() {
   const schedulePoll = () => {
     window.clearTimeout(pollTimer)
     pollTimer = window.setTimeout(() => {
-      if (!document.hidden) void refetch()
+      if (!document.hidden) void refreshAll()
       schedulePoll()
     }, performancePollInterval(connected()))
   }
@@ -123,7 +124,7 @@ export function usePerformance() {
   const onVisibility = () => {
     if (document.hidden) return
     sampleBrowser()
-    void refetch()
+    void refreshAll()
     schedulePoll()
   }
   document.addEventListener("visibilitychange", onVisibility)
@@ -148,9 +149,15 @@ export function usePerformance() {
     browserSamples,
     eventIssues,
     eventTraces,
-    refresh: () => refetch(),
+    refresh: refreshAll,
     loadTrace,
     loadTimeline,
+  }
+
+  async function refreshAll() {
+    const result = await refetch()
+    void loadTraces(windowMs())
+    return result
   }
 
   async function loadTimeline(rangeMs = windowMs()) {
@@ -160,6 +167,19 @@ export function usePerformance() {
       { throwOnError: true },
     )
     setTimeline(result.data ?? null)
+  }
+
+  async function loadTraces(rangeMs = windowMs()) {
+    try {
+      const now = Date.now()
+      const result = await sdk.client.performance.traces.list(
+        { from: new Date(now - rangeMs).toISOString(), limit: 24 },
+        { throwOnError: true },
+      )
+      setEventTraces(result.data?.items ?? [])
+    } catch {
+      setEventTraces([])
+    }
   }
 
   async function loadTrace(traceId: string) {

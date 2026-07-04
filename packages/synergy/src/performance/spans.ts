@@ -121,7 +121,7 @@ export namespace PerformanceSpans {
       processId: ctx.processId,
       pid: ctx.pid,
       tool: ctx.tool,
-      labels: { status },
+      labels: { ...PerformanceRedaction.record(opts.attributes), status },
     })
     PerformanceEvents.publish({
       type: "performance.trace.ended",
