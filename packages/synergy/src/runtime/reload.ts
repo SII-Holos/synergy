@@ -34,6 +34,7 @@ export namespace RuntimeReload {
     "long_context_model",
     "creative_model",
     "vision_model",
+    "role_variant",
     "default_agent",
     "username",
     "category",
@@ -372,6 +373,7 @@ export namespace RuntimeReload {
       "long_context_model",
       "creative_model",
       "vision_model",
+      "role_variant",
     ].some((field) => changed.has(field))
     if (roleModelChanged) {
       // Model role changes only affect Config values, not Provider state.
