@@ -878,9 +878,34 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
-.settings-model-trigger-icon {
+.settings-model-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
+}
+
+.settings-model-variant {
+  min-height: 36px;
   flex-shrink: 0;
-  color: var(--icon-weak);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-input-bg);
+  color: var(--text-base);
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  outline: none;
+  appearance: auto;
+}
+
+.settings-model-variant:hover {
+  background: var(--settings-input-bg-hover);
+  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+}
+
+.settings-model-variant:focus {
+  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-model-picker-popover {

@@ -12,11 +12,39 @@ export function ModelsPanel(props: {
   savedModels: ModelsStore
   providerModels: () => ProviderModel[]
   modelRoleSummaries: () => ModelRoleSummary[]
+  roleVariant: Record<string, string>
   popoverLayer?: HTMLElement
   onModelChange: (key: ModelKey, value: string) => void
+  onVariantChange: (roleId: string, variant: string) => void
   onConnectProvider: () => void
 }) {
   const providerGroups = () => groupByProvider(props.providerModels())
+
+  function getAvailableVariants(
+    resolvedModel?: { providerID: string; modelID: string },
+    draftValue?: string,
+  ): string[] {
+    if (draftValue) {
+      const idx = draftValue.indexOf("/")
+      if (idx !== -1) {
+        const providerID = draftValue.slice(0, idx)
+        const modelID = draftValue.slice(idx + 1)
+        for (const group of providerGroups()) {
+          if (group.providerId !== providerID) continue
+          const model = group.models.find((m) => m.id === modelID)
+          if (model) return model.variantKeys
+        }
+      }
+      return []
+    }
+    if (!resolvedModel) return []
+    for (const group of providerGroups()) {
+      if (group.providerId !== resolvedModel.providerID) continue
+      const model = group.models.find((m) => m.id === resolvedModel.modelID)
+      if (model) return model.variantKeys
+    }
+    return []
+  }
 
   return (
     <SettingsPage
@@ -46,8 +74,14 @@ export function ModelsPanel(props: {
                   draftModels={props.models}
                   savedModels={props.savedModels}
                   providers={providerGroups()}
+                  roleVariant={props.roleVariant[summary.id] ?? ""}
+                  availableVariants={getAvailableVariants(
+                    summary.resolvedModel,
+                    props.models[summary.field as ModelKey] || undefined,
+                  )}
                   popoverLayer={props.popoverLayer}
                   onChange={props.onModelChange}
+                  onVariantChange={(variant) => props.onVariantChange(summary.id, variant)}
                 />
               )}
             </For>

@@ -524,6 +524,12 @@ export const Agent = z
     maxSteps: z.number().int().positive().optional().describe("@deprecated Use 'steps' field instead."),
     permission: Permission.optional(),
     controlProfile: ControlProfileId.optional().describe("Control profile for this agent's enforcement gate"),
+    defaultVariant: z
+      .string()
+      .optional()
+      .describe(
+        "Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.",
+      ),
   })
   .catchall(z.any())
   .transform((agent, ctx) => {
@@ -545,6 +551,7 @@ export const Agent = z
       "disable",
       "tools",
       "controlProfile",
+      "defaultVariant",
     ])
 
     // Extract unknown properties into options
@@ -1365,6 +1372,12 @@ export const Info = z
         "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
       )
       .optional(),
+    role_variant: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+      ),
     default_agent: z
       .string()
       .optional()

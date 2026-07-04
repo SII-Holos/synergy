@@ -1483,6 +1483,10 @@ export type AgentConfig = {
   maxSteps?: number
   permission?: PermissionConfig
   controlProfile?: ControlProfileId
+  /**
+   * Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.
+   */
+  defaultVariant?: string
   [key: string]:
     | unknown
     | string
@@ -2547,6 +2551,12 @@ export type Config = {
    * Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.
    */
   vision_model?: string
+  /**
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   */
+  role_variant?: {
+    [key: string]: string
+  }
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
    */
@@ -5293,6 +5303,7 @@ export type Agent = {
   }
   steps?: number
   external?: ExternalAgentInfo
+  defaultVariant?: string
 }
 
 export type ModelRoleUsage = {
@@ -5308,6 +5319,7 @@ export type ModelRoleUsage = {
     providerID: string
     modelID: string
   }
+  defaultVariant?: string
 }
 
 export type ModelRoleSummary = {

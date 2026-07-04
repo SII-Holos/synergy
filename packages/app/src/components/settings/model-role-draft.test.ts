@@ -8,14 +8,14 @@ const providers = [
     providerId: "openai",
     providerName: "OpenAI",
     models: [
-      { id: "gpt-5.5", name: "GPT 5.5" },
-      { id: "gpt-5.5-mini", name: "GPT 5.5 Mini" },
+      { id: "gpt-5.5", name: "GPT 5.5", variantKeys: [] },
+      { id: "gpt-5.5-mini", name: "GPT 5.5 Mini", variantKeys: [] },
     ],
   },
   {
     providerId: "deepseek",
     providerName: "DeepSeek",
-    models: [{ id: "deepseek-v4", name: "DeepSeek V4" }],
+    models: [{ id: "deepseek-v4", name: "DeepSeek V4", variantKeys: [] }],
   },
 ]
 
