@@ -71,10 +71,23 @@
   }
 
   [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
+  [data-slot="session-turn-chip"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--background-weak);
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    line-height: 1;
+  }
+
   [data-slot="session-turn-timeline-item"]:is(
     [data-kind="text"],
     [data-kind="reasoning"],
     [data-kind="guided-user"],
+    [data-kind="non-root-user"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);

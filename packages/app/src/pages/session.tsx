@@ -1,6 +1,5 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { isGuidedContextUserMessage } from "@ericsanchezok/synergy-ui/session-turn"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -194,7 +193,13 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
-  const hiddenMessageIDs = createMemo(() => new Set(rollback()?.droppedMessageIDs ?? []))
+  const hiddenMessageIDs = createMemo(() => {
+    const rb = rollback()
+    if (!rb) return new Set<string>()
+    // Use cutMessageID when available, fallback to droppedMessageIDs
+    if (rb.cutMessageID) return new Set([rb.cutMessageID])
+    return new Set(rb.droppedMessageIDs ?? [])
+  })
   const messages = createMemo(() => {
     const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
     const hidden = hiddenMessageIDs()
@@ -221,80 +226,56 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
-  const isSessionIdentityAnchor = (message: UserMessage) => {
-    const metadata = message.metadata
-    if (!metadata) return true
-    const source = metadata.source
-    if (metadata.guided === true && metadata.noReply === true) return false
-    if (metadata.mailbox === true || metadata.channelPush === true) return false
-    if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
-    if (source === "cortex" || source === "mailbox" || source === "agenda") return false
-    if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
-    return true
-  }
+  // ── Root message derivation layer ───────────────────────────────────
+  // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
+  // heuristics with orthogonal isRoot/visible/rootID/origin fields.
   const emptyUserMessages: UserMessage[] = []
-  const userMessages = createMemo(
+  const rootMessages = createMemo(
     () =>
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
-        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user) && isSessionIdentityAnchor(user)
+        // Use new isRoot field when available; fall back to old metadata heuristics
+        if (user.isRoot !== undefined) return user.isRoot === true
+        return user.metadata?.noReply !== true && !user.metadata?.guided && !user.metadata?.synthetic
       }) as UserMessage[],
     emptyUserMessages,
   )
-  const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
+  const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
+  const lastRoot = createMemo(() => rootMessages().at(-1))
+  // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
+  const visibleUserMessages = visibleRoots
+  // userMessages — kept for commands hook compatibility
+  const userMessages = visibleRoots
+  // renderableUserMessages — kept for compatibility, mirror visibleRoots
   const renderableUserMessages = createMemo(
     () =>
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
-        if (isGuidedContextUserMessage(user)) return false
+        if (user.isRoot !== undefined) return user.isRoot === true && user.visible !== false
         return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
       }) as UserMessage[],
     emptyUserMessages,
   )
-  const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
+  const lastUserMessage = lastRoot
   const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
   const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
+  // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
   createEffect(
     on(
-      () => [lastUserMessage()?.id, selectableAgentNames()] as const,
+      () => [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, selectableAgentNames()] as const,
       () => {
-        const msg = lastUserMessage()
+        const msg = lastRoot()
         if (!msg) return
-        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
-        local.agent.set(msg.agent)
+        if (msg.agent && selectableAgentNames().has(msg.agent)) local.agent.set(msg.agent)
         if (msg.model) local.model.set(msg.model)
       },
     ),
   )
 
-  // Blueprint loop start messages carry a model override but are excluded from
-  // userMessages by isSessionIdentityAnchor (source starts with "blueprint_loop_").
-  // Track their model separately so the stb-root model display stays current.
-  const lastBlueprintStartModel = createMemo(() => {
-    const msgs = messages()
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (m.role !== "user") continue
-      const meta = m.metadata as Record<string, unknown> | undefined
-      if (typeof meta?.source === "string" && meta.source === "blueprint_loop_start") {
-        return m.model
-      }
-    }
-    return undefined
-  })
-  createEffect(
-    on(
-      () => lastBlueprintStartModel(),
-      (model) => {
-        if (model) local.model.set(model)
-      },
-    ),
-  )
-
   const renderedUserMessages = createMemo(() => {
-    const msgs = visibleUserMessages()
+    const msgs = visibleRoots()
     if (!msgs) return emptyUserMessages
     const start = store.turnStart
     if (start <= 0) return msgs
@@ -328,6 +309,16 @@ function SessionPageContent() {
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result
   }
+
+  const pendingTimeline = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return [] as import("@ericsanchezok/synergy-sdk/client").SessionInboxItem[]
+    const inbox = sync.data.inbox[sessionID]
+    if (!inbox || inbox.length === 0) return []
+    return inbox
+      .filter((item) => item.mode === "task" || item.mode === "steer")
+      .filter((item) => item.message?.origin?.type === "user")
+  })
 
   const timeline = createMemo(() => {
     const turns = renderedConversationUserMessages() as Message[]
@@ -967,6 +958,7 @@ function SessionPageContent() {
                           sessionID={params.id!}
                           paramsDir={params.dir!}
                           timeline={timeline}
+                          pendingTimeline={pendingTimeline}
                           visibleUserMessages={visibleUserMessages}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
