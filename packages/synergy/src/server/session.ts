@@ -1116,7 +1116,7 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
       const event = await Session.rollback({ sessionID, ...body })
       return c.json(event)
     },
