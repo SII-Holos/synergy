@@ -16,6 +16,7 @@ import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registri
 import type { WorkbenchSurfaceState } from "./workbench-panels-model"
 import { migrateWorkbenchLayout } from "./workbench-layout-migration"
 import { reconcile } from "solid-js/store"
+import { mergeNavListByID, orderNavEntries } from "./layout-nav"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -94,7 +95,7 @@ export interface ScopeNavEntry {
 const ROOT_NAV_SECTION_LIMIT = 100
 const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
 type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
-type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
+export type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
 function emptyNavList(): NavListState {
   return { items: [], nextCursor: null, total: 0 }
 }
@@ -300,10 +301,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           const merged = [
             ...(existing?.items ?? []),
             ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
-          ]
-          setNavEntries(directory, { items: merged, nextCursor: data.nextCursor, total: data.total })
+          ] as NavEntry[]
+          setNavEntries(
+            directory,
+            mergeNavListByID(existing, { items: merged, nextCursor: data.nextCursor, total: data.total }),
+          )
         } else {
-          setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+          setNavEntries(
+            directory,
+            mergeNavListByID(navEntries[directory], {
+              items: data.items as NavEntry[],
+              nextCursor: data.nextCursor,
+              total: data.total,
+            }),
+          )
         }
       } finally {
         navPending.delete(directory)
@@ -329,14 +340,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           const merged = [
             ...(existing?.items ?? []),
             ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
-          ]
-          setRootNavStore(category, { items: merged, nextCursor: data.nextCursor, total: data.total })
+          ] as NavEntry[]
+          setRootNavStore(
+            category,
+            mergeNavListByID(existing, { items: merged, nextCursor: data.nextCursor, total: data.total }),
+          )
         } else {
-          setRootNavStore(category, {
-            items: data.items as NavEntry[],
-            nextCursor: data.nextCursor,
-            total: data.total,
-          })
+          setRootNavStore(
+            category,
+            mergeNavListByID(rootNavStore[category], {
+              items: data.items as NavEntry[],
+              nextCursor: data.nextCursor,
+              total: data.total,
+            }),
+          )
         }
       } finally {
         navPending.delete(key)
@@ -357,10 +374,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const data = res.data
         if (cursor) {
           const existing = recentEntries.items
-          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))]
-          setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
+          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))] as NavEntry[]
+          setRecentEntries(
+            mergeNavListByID(recentEntries, { items: merged, nextCursor: data.nextCursor, total: data.total }),
+          )
         } else {
-          setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+          setRecentEntries(
+            mergeNavListByID(recentEntries, {
+              items: data.items as NavEntry[],
+              nextCursor: data.nextCursor,
+              total: data.total,
+            }),
+          )
         }
       } finally {
         navPending.delete(key)
@@ -392,7 +417,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
         if (!res.data) return
         const data = res.data
-        setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        setRecentEntries(
+          mergeNavListByID(recentEntries, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          }),
+        )
       } finally {
         navPending.delete(key)
       }
@@ -412,11 +443,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
         if (!res.data) return
         const data = res.data
-        setRootNavStore(category, {
-          items: data.items as NavEntry[],
-          nextCursor: data.nextCursor,
-          total: data.total,
-        })
+        setRootNavStore(
+          category,
+          mergeNavListByID(existing, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          }),
+        )
       } finally {
         navPending.delete(key)
       }
@@ -435,7 +469,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
         if (!res.data) return
         const data = res.data
-        setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        setNavEntries(
+          directory,
+          mergeNavListByID(existing, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          }),
+        )
       } finally {
         navPending.delete(key)
       }
@@ -444,12 +485,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function rootNavEntriesFor(category: RootNavSectionKey): NavEntry[] {
       const entry = rootNavStore[category]
       if (!entry) return []
-      return entry.items.toSorted((a, b) => {
-        if (a.pinned && !b.pinned) return -1
-        if (!a.pinned && b.pinned) return 1
-        if (a.pinned && b.pinned) return b.pinned - a.pinned
-        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
-      })
+      return orderNavEntries(entry.items)
     }
 
     function hasMoreRootNavSection(category: RootNavSectionKey): boolean {
@@ -725,21 +761,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (!scope) return []
       const entry = navEntries[scope.worktree]
       if (!entry) return []
-      return entry.items.toSorted((a, b) => {
-        if (a.pinned && !b.pinned) return -1
-        if (!a.pinned && b.pinned) return 1
-        if (a.pinned && b.pinned) return b.pinned - a.pinned
-        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
-      })
+      return orderNavEntries(entry.items)
     }
 
     function recentNavEntries(): NavEntry[] {
-      return recentEntries.items.toSorted((a, b) => {
-        if (a.pinned && !b.pinned) return -1
-        if (!a.pinned && b.pinned) return 1
-        if (a.pinned && b.pinned) return b.pinned - a.pinned
-        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
-      })
+      return orderNavEntries(recentEntries.items)
     }
 
     function hasMoreRecent(): boolean {
