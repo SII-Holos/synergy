@@ -1,5 +1,6 @@
 import { For, Match, Show, Switch, createMemo, createSignal, onMount } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
@@ -57,6 +58,23 @@ function operationResultDescription(operation: WorktreeDialogOperation) {
   return operation === "leave"
     ? "The worktree remains available for later use."
     : "Future commands use the isolated checkout."
+}
+
+export function SessionStartProgressDialog(props: { progress: () => SessionStartProgress }) {
+  const progress = () => props.progress()
+  return (
+    <Dialog
+      title={progress().title}
+      description={progress().description}
+      class="workspace-transition-dialog"
+      dismissible={false}
+      action={<span class="wtd-dialog-action-placeholder" aria-hidden="true" />}
+    >
+      <div class="wtd-progress-shell">
+        <StepList steps={progress().steps} />
+      </div>
+    </Dialog>
+  )
 }
 
 export function WorktreeTransitionContent(props: {

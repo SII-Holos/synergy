@@ -34,10 +34,12 @@ import {
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
-import type { SessionStartProgress } from "@/components/session/worktree-progress-components"
-import type { SessionStartProgressStepState } from "@/components/session/worktree-progress-components"
+import {
+  SessionStartProgressDialog,
+  type SessionStartProgress,
+  type SessionStartProgressStepState,
+} from "@/components/session/worktree-transition-dialog"
 import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
-import { setNewSessionProgress, clearNewSessionProgress } from "@/components/session/worktree-progress-signals"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -127,13 +129,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     updateStartProgress(selection, selection.mode === "current" ? "session" : "workspace")
     if (startProgressOpen) return
     startProgressOpen = true
-    setNewSessionProgress(startProgress())
+    dialog.push(() => SessionStartProgressDialog({ progress: startProgress }))
   }
 
   const closeStartProgress = () => {
     if (!startProgressOpen) return
     startProgressOpen = false
-    clearNewSessionProgress()
+    dialog.close()
   }
 
   return async (event: Event) => {
@@ -394,60 +396,30 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           closeStartProgress()
           showToast({
             type: "error",
-            title: "Failed to send shell command",
+            title: "Failed to send command",
             description: errorMessage(err),
           })
-          rollbackCreatedSession()
           restoreInput()
         })
       return
     }
 
-    if (text.startsWith("/")) {
-      const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
-      const customCommand = sync.data.command.find((c) => c.name === commandName)
-      if (customCommand) {
+    if (mode === "command") {
+      const [cmd, ...args] = text.split(/\s+/)
+      if (cmd) {
         clearInput()
-        client.session
-          .command({
+        client.command
+          .execute({
             sessionID: activeSession.id,
-            command: commandName,
-            arguments: args.join(" "),
             agent,
-            model: `${model.providerID}/${model.modelID}`,
-            variant,
-            parts: [
-              ...attachments.map(createUploadedAttachmentInputPart),
-              ...notes.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-                filename: `${attachment.title || "Untitled"}.md`,
-                model: { mode: "content" as const, text: formatNoteContent(attachment) },
-                metadata: {
-                  kind: "note",
-                  noteId: attachment.noteId,
-                  title: attachment.title || "Untitled",
-                },
-              })),
-              ...sessions.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
-                filename: `${attachment.title || "session"}.session.txt`,
-                model: { mode: "content" as const, text: formatSessionReference(attachment) },
-                metadata: {
-                  kind: "session",
-                  sessionId: attachment.sessionId,
-                  directory: attachment.directory,
-                  title: attachment.title || "Untitled",
-                  updatedAt: attachment.updatedAt,
-                },
-              })),
-            ],
+            model,
+            command: cmd,
+            args,
+            noteAttachments: notes.map((n) => ({
+              noteId: n.noteId,
+              title: n.title,
+              updatedAt: n.updatedAt,
+            })),
           })
           .then(() => {
             closeStartProgress()
