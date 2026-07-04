@@ -165,7 +165,7 @@ function deriveOrigin(metadata: Record<string, any> | undefined): MessageV2.Orig
   return { type: "user" }
 }
 
-export async function createUserMessage(input: InvokeInput) {
+export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -194,7 +194,7 @@ export async function createUserMessage(input: InvokeInput) {
   const messageID = input.messageID ?? Identifier.ascending("message")
   const origin = deriveOrigin(input.metadata)
   const isRoot = input.noReply !== true
-  const rootID = messageID
+  const rootID = rootIDOverride ?? messageID
 
   const info: MessageV2.Info = {
     id: messageID,

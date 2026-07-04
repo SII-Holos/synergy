@@ -162,7 +162,7 @@ export namespace SessionInvoke {
   async function materializeInboxItems(
     sessionID: string,
     items: SessionInbox.StoredItem[],
-    options?: { guiding?: boolean },
+    options?: { guiding?: boolean; rootID?: string },
   ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
     if (items.length === 0) return { needsReply: false, userMessages: [] }
     SessionManager.discardMails(
@@ -178,15 +178,18 @@ export namespace SessionInvoke {
       if (item.input) {
         const { messageID: _queuedMessageID, ...queuedInput } = item.input
         const noReply = options?.guiding ? true : item.input.noReply
-        const created = await createUserMessage({
-          ...queuedInput,
-          sessionID,
-          noReply,
-          metadata: {
-            ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
-            ...queuedInput.metadata,
+        const created = await createUserMessage(
+          {
+            ...queuedInput,
+            sessionID,
+            noReply,
+            metadata: {
+              ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
+              ...queuedInput.metadata,
+            },
           },
-        })
+          options?.rootID,
+        )
         userMessages.push(created)
         if (noReply !== true) needsReply = true
         continue
@@ -200,15 +203,18 @@ export namespace SessionInvoke {
       }
 
       const noReply = options?.guiding ? true : mail.noReply
-      const created = await createUserMessage({
-        sessionID,
-        agent: mail.agent,
-        model: mail.model ?? fallbackModel,
-        parts: partsFromMail(mail),
-        noReply,
-        summary: mail.summary,
-        metadata: mail.metadata,
-      })
+      const created = await createUserMessage(
+        {
+          sessionID,
+          agent: mail.agent,
+          model: mail.model ?? fallbackModel,
+          parts: partsFromMail(mail),
+          noReply,
+          summary: mail.summary,
+          metadata: mail.metadata,
+        },
+        options?.rootID,
+      )
       userMessages.push(created)
       if (noReply !== true) needsReply = true
     }
@@ -219,6 +225,7 @@ export namespace SessionInvoke {
   async function materializeLegacyMails(
     sessionID: string,
     mails: SessionManager.SessionMail[],
+    rootIDOverride?: string,
   ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
     if (mails.length === 0) return { needsReply: false, userMessages: [] }
 
@@ -231,15 +238,18 @@ export namespace SessionInvoke {
         await writeAssistantMail(sessionID, mail)
         continue
       }
-      const created = await createUserMessage({
-        sessionID,
-        agent: mail.agent,
-        model: mail.model ?? fallbackModel,
-        parts: partsFromMail(mail),
-        noReply: mail.noReply,
-        summary: mail.summary,
-        metadata: mail.metadata,
-      })
+      const created = await createUserMessage(
+        {
+          sessionID,
+          agent: mail.agent,
+          model: mail.model ?? fallbackModel,
+          parts: partsFromMail(mail),
+          noReply: mail.noReply,
+          summary: mail.summary,
+          metadata: mail.metadata,
+        },
+        rootIDOverride,
+      )
       userMessages.push(created)
       if (mail.noReply !== true) needsReply = true
     }
@@ -312,18 +322,23 @@ export namespace SessionInvoke {
         scopeID = (session.scope as Scope).id
         let msgs = await effectiveCompactedMessages(sessionID)
 
-        let lastUser: MessageV2.User | undefined
-        let lastUserParts: MessageV2.Part[] | undefined
+        // Find R: the latest root user message. R is the anchor for the entire
+        // loop: rootID, model, agent, system, and compaction anchor all derive
+        // from R, not from a heuristic "lastUser".
+        let R: MessageV2.User | undefined
+        let RParts: MessageV2.Part[] | undefined
         let lastFinished: MessageV2.Assistant | undefined
         let lastFinishedParts: MessageV2.Part[] | undefined
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
-          if (!lastUser && msg.info.role === "user" && MessageV2.isPromptVisible(msg)) {
+          if (msg.info.role === "user") {
             const user = msg.info as MessageV2.User
-            if (SessionProgress.isReplyRequiredUser(user)) {
-              lastUser = user
-              lastUserParts = msg.parts
+            if (user.isRoot === true || (user.metadata?.noReply !== true && !user.metadata?.guided)) {
+              if (!R) {
+                R = user
+                RParts = msg.parts
+              }
             }
           }
           if (msg.info.role === "assistant") {
@@ -335,13 +350,13 @@ export namespace SessionInvoke {
               lastFinishedParts = msg.parts
             }
           }
-          if (lastUser && lastFinished) break
+          if (R && lastFinished) break
         }
 
-        if (!lastUser) {
+        if (!R) {
           break
         }
-        if (SessionProgress.hasTerminalReply({ messages: msgs, userID: lastUser.id })) {
+        if (!SessionProgress.needsModelCall(msgs, R.id)) {
           break
         }
 
@@ -352,8 +367,8 @@ export namespace SessionInvoke {
           sessionID,
           step,
           messages: msgs,
-          lastUser,
-          lastUserParts: lastUserParts!,
+          lastUser: R,
+          lastUserParts: RParts!,
           lastFinished,
           lastFinishedParts,
           lastAssistant,
@@ -361,12 +376,12 @@ export namespace SessionInvoke {
           compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
           compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
           compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
-          modelID: lastUser.model.modelID,
+          modelID: R.model.modelID,
           modelLimits: await Promise.all([
-            Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+            Provider.getModel(R.model.providerID, R.model.modelID)
               .then((m) => m.limit)
               .catch(() => undefined),
-            Token.warmup(lastUser.model.modelID),
+            Token.warmup(R.model.modelID),
           ]).then(([limits]) => limits),
         }
         const firedSignals = await LoopJob.detectSignals(jobCtx)
@@ -383,7 +398,7 @@ export namespace SessionInvoke {
         // not schedule a second assistant turn after the current response.
         const guidingItems = await SessionInbox.drainGuiding(sessionID)
         if (guidingItems.length > 0) {
-          const guided = await materializeInboxItems(sessionID, guidingItems, { guiding: true })
+          const guided = await materializeInboxItems(sessionID, guidingItems, { guiding: true, rootID: R.id })
           msgs.push(...guided.userMessages)
           log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
         }
@@ -394,20 +409,20 @@ export namespace SessionInvoke {
         // reply cycle — the running turn processes them naturally next step.
         const agentUpdateItems = await SessionInbox.drainAgentUpdates(sessionID)
         if (agentUpdateItems.length > 0) {
-          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true })
+          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true, rootID: R.id })
           msgs.push(...updates.userMessages)
           log.info("drained agent updates into session", { sessionID, count: agentUpdateItems.length })
         }
 
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
         if (legacyUserMails.length > 0) {
-          const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
+          const legacy = await materializeLegacyMails(sessionID, legacyUserMails, R.id)
           msgs.push(...legacy.userMessages)
           log.info("drained legacy user mails into session", { sessionID, count: legacy.userMessages.length })
         }
 
-        const userModel = lastUser.model
-        let agentName = lastUser.agent
+        const userModel = R.model
+        let agentName = R.agent
 
         const agent = await Agent.get(agentName)
 
@@ -443,7 +458,7 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
-          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
+          const override = await resolveExternalModelOverride(R.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
@@ -477,7 +492,7 @@ export namespace SessionInvoke {
 
           const context: ExternalAgent.TurnContext = {
             sessionID,
-            prompt: MessageV2.extractText(lastUserParts!),
+            prompt: MessageV2.extractText(RParts!),
             instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
@@ -488,8 +503,8 @@ export namespace SessionInvoke {
             sessionID,
             agent: agent.name,
             adapter,
-            parentID: lastUser.id,
-            model: lastUser.model,
+            parentID: R.id,
+            model: R.model,
             context,
             approvalDelegate,
             abort,
@@ -500,14 +515,14 @@ export namespace SessionInvoke {
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 
-        const userMetadata = (lastUser.metadata ?? undefined) as Record<string, unknown> | undefined
+        const userMetadata = (R.metadata ?? undefined) as Record<string, unknown> | undefined
         const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
         const toolDisplayByName = new Map<string, ToolDisplay>()
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
-            parentID: lastUser.id,
-            rootID: lastUser.id,
+            parentID: R.id,
+            rootID: R.id,
             visible: true,
             role: "assistant",
             mode: agent.name,
@@ -585,8 +600,8 @@ export namespace SessionInvoke {
             model,
             sessionID,
             session,
-            userTools: lastUser.tools,
-            ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
+            userTools: R.tools,
+            ephemeralTools: ephemeralToolsByMessage.get(R.id),
             includeMCP: true,
           }),
           Promise.all([
@@ -681,13 +696,13 @@ export namespace SessionInvoke {
           systemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
-          if ((injection.memory || injection.experience) && !lastUser.metadata?.injectedContext) {
+          if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
             const updated = await Session.mergeMessageMetadata({
               sessionID,
-              messageID: lastUser.id,
+              messageID: R.id,
               metadata: { injectedContext: injection },
             })
-            if (updated?.role === "user") lastUser = updated
+            if (updated?.role === "user") R = updated
           }
         }
 
@@ -712,7 +727,7 @@ export namespace SessionInvoke {
         if (planningReminder) systemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
-          const elapsed = lastUser.time.created - lastFinished.time.completed
+          const elapsed = R.time.created - lastFinished.time.completed
           if (elapsed > 0) {
             systemParts.push(
               `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
@@ -767,7 +782,7 @@ export namespace SessionInvoke {
           })
           await Session.updatePart({
             id: Identifier.ascending("part"),
-            messageID: lastUser.id,
+            messageID: R.id,
             sessionID,
             type: "compaction",
             auto: true,
@@ -782,8 +797,8 @@ export namespace SessionInvoke {
           sessionID,
           processor,
           session,
-          userTools: lastUser.tools,
-          ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
+          userTools: R.tools,
+          ephemeralTools: ephemeralToolsByMessage.get(R.id),
           includeMCP: true,
         })
         toolResolveTimer.stop()
@@ -813,7 +828,7 @@ export namespace SessionInvoke {
           module: "session",
           scopeID,
           sessionID,
-          messageID: lastUser.id,
+          messageID: R.id,
           attributes: { agent: agent.name, model: model.id, provider: model.providerID },
         })
         let turnSpanEnded = false
@@ -821,7 +836,7 @@ export namespace SessionInvoke {
         try {
           result = await Promise.race([
             processor.process({
-              user: lastUser,
+              user: R,
               agent,
               abort: combinedAbort,
               sessionID,
@@ -893,22 +908,22 @@ export namespace SessionInvoke {
           ) {
             log.warn("context exceeded, injecting emergency compaction", { sessionID })
             emergencyCompactionTriggered = true
-            const emergencyUser = await Session.updateMessage({
+            const emergencySteer = await Session.updateMessage({
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
               time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-              origin: { type: "system" },
+              agent: R.agent,
+              model: R.model,
+              origin: { type: "compaction", detail: "emergency" },
               isRoot: false,
-              rootID: lastUser.id,
-              visible: true,
+              rootID: R.id,
+              visible: false,
               summary: { title: "Emergency compaction", diffs: [] },
             })
             await Session.updatePart({
               id: Identifier.ascending("part"),
-              messageID: emergencyUser.id,
+              messageID: emergencySteer.id,
               sessionID,
               type: "compaction" as const,
               auto: true,
