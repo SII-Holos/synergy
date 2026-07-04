@@ -11,6 +11,7 @@ type ModelPickOption = {
   key: string
   group: string
   label: string
+  description: string
   value: string
 }
 
@@ -24,13 +25,21 @@ export function AccountToggleCard(props: {
   onModelChange: (index: number, model: string) => void
 }) {
   const modelOptions = createMemo<ModelPickOption[]>(() => [
-    { kind: "fallback", key: "fallback", group: "Default", label: "Use default", value: "" },
+    {
+      kind: "fallback",
+      key: "fallback",
+      group: "Default",
+      label: "Use default",
+      description: "Inherit from global model config",
+      value: "",
+    },
     ...props.providers.flatMap((provider) =>
       provider.models.map((model) => ({
         kind: "model" as const,
         key: `${provider.providerId}/${model.id}`,
         group: provider.providerName,
         label: model.name,
+        description: provider.providerName,
         value: `${provider.providerId}/${model.id}`,
       })),
     ),
@@ -60,55 +69,59 @@ export function AccountToggleCard(props: {
             )
 
             return (
-              <SettingRow
-                title={account.key}
-                description={`Account ${account.key}`}
-                trailing={
-                  <div class="flex items-center gap-2">
-                    <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
-                      <KobaltePopover.Trigger
-                        type="button"
-                        class="settings-model-trigger"
-                        aria-label={`Select model for ${account.key}`}
-                      >
-                        <span class="settings-model-trigger-text">
-                          <span class="settings-model-trigger-title">{displayText()}</span>
-                        </span>
-                        <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
-                      </KobaltePopover.Trigger>
-                      <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                        <KobaltePopover.Title class="sr-only">Select model for {account.key}</KobaltePopover.Title>
-                        <List<ModelPickOption>
-                          class="settings-model-picker-list"
-                          search={{ placeholder: "Search models", autofocus: true }}
-                          emptyMessage="No model results"
-                          key={(option) => option.key}
-                          items={modelOptions}
-                          current={currentOption()}
-                          filterKeys={["label", "value"]}
-                          groupBy={(option) => option.group}
-                          sortGroupsBy={sortModelGroups}
-                          onSelect={(option) => {
-                            if (!option) return
-                            props.onModelChange(index(), option.value)
-                            setPickerOpen(false)
-                          }}
-                        >
-                          {(option) => (
-                            <div class="settings-model-option">
-                              <span class="settings-model-option-title">{option.label}</span>
-                              <Show when={option.kind === "model"}>
-                                <span class="settings-model-option-detail">{option.group}</span>
-                              </Show>
-                            </div>
-                          )}
-                        </List>
-                      </KobaltePopover.Content>
-                    </KobaltePopover>
-                    <Switch checked={account.enabled} onChange={(value) => props.onToggle(index(), value)} />
+              <div class="ds-setting-subsection">
+                <SettingRow
+                  title={account.key}
+                  description="Account"
+                  trailing={<Switch checked={account.enabled} onChange={(value) => props.onToggle(index(), value)} />}
+                />
+                <div class="settings-model-row">
+                  <div class="settings-model-copy">
+                    <div class="settings-model-title-line">
+                      <span class="settings-model-title">Model override</span>
+                    </div>
+                    <span class="settings-model-description">Select a model for messages from this account.</span>
                   </div>
-                }
-              />
+                  <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
+                    <KobaltePopover.Trigger
+                      type="button"
+                      class="settings-model-trigger"
+                      aria-label={`Select model for ${account.key}`}
+                    >
+                      <span class="settings-model-trigger-text">
+                        <span class="settings-model-trigger-title">{displayText()}</span>
+                      </span>
+                      <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+                    </KobaltePopover.Trigger>
+                    <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                      <KobaltePopover.Title class="sr-only">Select model for {account.key}</KobaltePopover.Title>
+                      <List<ModelPickOption>
+                        class="settings-model-picker-list"
+                        search={{ placeholder: "Search models", autofocus: true }}
+                        emptyMessage="No model results"
+                        key={(option) => option.key}
+                        items={modelOptions}
+                        current={currentOption()}
+                        filterKeys={["label", "description", "value"]}
+                        groupBy={(option) => option.group}
+                        sortGroupsBy={sortModelGroups}
+                        onSelect={(option) => {
+                          if (!option) return
+                          props.onModelChange(index(), option.value)
+                          setPickerOpen(false)
+                        }}
+                      >
+                        {(option) => (
+                          <div class="settings-model-option">
+                            <span class="settings-model-option-title">{option.label}</span>
+                            <span class="settings-model-option-detail">{option.description}</span>
+                          </div>
+                        )}
+                      </List>
+                    </KobaltePopover.Content>
+                  </KobaltePopover>
+                </div>
+              </div>
             )
           }}
         </For>
