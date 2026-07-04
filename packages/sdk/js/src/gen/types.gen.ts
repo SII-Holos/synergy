@@ -2555,7 +2555,7 @@ export type Config = {
    * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
    */
   role_variant?: {
-    [key in ModelRole]?: string
+    [key: string]: string
   }
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.

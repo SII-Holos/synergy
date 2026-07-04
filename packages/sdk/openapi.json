@@ -22398,7 +22398,7 @@
             "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
             "type": "object",
             "propertyNames": {
-              "$ref": "#/components/schemas/ModelRole"
+              "type": "string"
             },
             "additionalProperties": {
               "type": "string"
