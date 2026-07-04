@@ -152,57 +152,59 @@ export function ModelRoleRow(props: {
         <span class="settings-model-description">{props.summary.summary}</span>
       </div>
 
-      <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
-        <KobaltePopover.Trigger
-          type="button"
-          class="settings-model-trigger"
-          aria-label={`Select ${props.summary.label} model`}
-        >
-          <span class="settings-model-trigger-text">
-            <span class="settings-model-trigger-title">{display().triggerLabel}</span>
-            <span class="settings-model-trigger-detail">{display().triggerDetail}</span>
-          </span>
-          <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
-        </KobaltePopover.Trigger>
-        <Show when={props.popoverLayer}>
-          {(layer) => (
-            <Portal mount={layer()}>
-              <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
-                <List<ModelPickerOption>
-                  class="settings-model-picker-list"
-                  search={{ placeholder: "Search models", autofocus: true }}
-                  emptyMessage="No model results"
-                  key={(option) => option.key}
-                  items={options}
-                  current={currentOption()}
-                  filterKeys={["label", "description", "value"]}
-                  groupBy={(option) => option.group}
-                  sortGroupsBy={sortModelGroups}
-                  onSelect={selectModelRoleOption}
-                >
-                  {(option) => (
-                    <div class="settings-model-option">
-                      <span class="settings-model-option-title">{option.label}</span>
-                      <span class="settings-model-option-detail">{option.description}</span>
-                    </div>
-                  )}
-                </List>
-              </KobaltePopover.Content>
-            </Portal>
-          )}
+      <div class="settings-model-selector">
+        <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
+          <KobaltePopover.Trigger
+            type="button"
+            class="settings-model-trigger"
+            aria-label={`Select ${props.summary.label} model`}
+          >
+            <span class="settings-model-trigger-text">
+              <span class="settings-model-trigger-title">{display().triggerLabel}</span>
+              <span class="settings-model-trigger-detail">{display().triggerDetail}</span>
+            </span>
+            <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+          </KobaltePopover.Trigger>
+          <Show when={props.popoverLayer}>
+            {(layer) => (
+              <Portal mount={layer()}>
+                <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                  <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
+                  <List<ModelPickerOption>
+                    class="settings-model-picker-list"
+                    search={{ placeholder: "Search models", autofocus: true }}
+                    emptyMessage="No model results"
+                    key={(option) => option.key}
+                    items={options}
+                    current={currentOption()}
+                    filterKeys={["label", "description", "value"]}
+                    groupBy={(option) => option.group}
+                    sortGroupsBy={sortModelGroups}
+                    onSelect={selectModelRoleOption}
+                  >
+                    {(option) => (
+                      <div class="settings-model-option">
+                        <span class="settings-model-option-title">{option.label}</span>
+                        <span class="settings-model-option-detail">{option.description}</span>
+                      </div>
+                    )}
+                  </List>
+                </KobaltePopover.Content>
+              </Portal>
+            )}
+          </Show>
+        </KobaltePopover>
+        <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
+          <select
+            class="settings-model-variant"
+            value={props.roleVariant ?? ""}
+            onChange={(e) => props.onVariantChange?.(e.currentTarget.value)}
+          >
+            <option value="">Default</option>
+            <For each={props.availableVariants}>{(variant) => <option value={variant}>{variant}</option>}</For>
+          </select>
         </Show>
-      </KobaltePopover>
-      <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
-        <select
-          class="settings-model-variant"
-          value={props.roleVariant ?? ""}
-          onChange={(e) => props.onVariantChange?.(e.currentTarget.value)}
-        >
-          <option value="">Default</option>
-          <For each={props.availableVariants}>{(variant) => <option value={variant}>{variant}</option>}</For>
-        </select>
-      </Show>
+      </div>
     </div>
   )
 }
