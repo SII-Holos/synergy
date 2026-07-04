@@ -22,6 +22,34 @@
     }
   }
 
+  &[data-variant="ghost"] {
+    display: flex;
+    min-width: 0;
+
+    [data-slot="input-wrapper"] {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    [data-slot="input-input"] {
+      flex: 1;
+      min-width: 0;
+      padding: 0;
+      color: var(--text-strong);
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      appearance: none;
+    }
+
+    textarea[data-slot="input-input"] {
+      resize: none;
+    }
+  }
+
   &[data-variant="normal"] {
     display: flex;
     flex-direction: column;
