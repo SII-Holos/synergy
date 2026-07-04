@@ -52,6 +52,7 @@ import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
 import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
+import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -521,6 +522,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   if (qz) return qz
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
+
+  if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
 
   switch (tool) {
     case "read":
