@@ -504,6 +504,8 @@ export namespace Cortex {
       .filter(Boolean)
       .join("\n")
 
+    // TODO(PR7): Switch to direct SessionInbox.deliver with mode="steer" once
+    // the legacy SessionManager.deliver path is fully deprecated.
     void SessionManager.deliver({
       target: task.parentSessionID,
       mail: {

@@ -35,6 +35,8 @@ export namespace AgendaDelivery {
         return
       }
 
+      // TODO(PR7): Switch to direct SessionInbox.deliver with mode="steer" once
+      // the legacy SessionManager.deliver path is fully deprecated.
       await SessionManager.deliver({
         target: session.id,
         mail: {

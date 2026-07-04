@@ -393,25 +393,30 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
-        // Guiding items are user-authored steering context for the current run.
-        // They enter the next model request, but are marked noReply so they do
-        // not schedule a second assistant turn after the current response.
-        const guidingItems = await SessionInbox.drainGuiding(sessionID)
-        if (guidingItems.length > 0) {
-          const guided = await materializeInboxItems(sessionID, guidingItems, { guiding: true, rootID: R.id })
-          msgs.push(...guided.userMessages)
-          log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
+        // Mode-based mid-turn drain: inject steer items before model call.
+        // Steer items enter the next model request but are marked noReply
+        // so they do not schedule a second assistant turn after the response.
+        const steerItems = await SessionInbox.drainSteer(sessionID)
+        if (steerItems.length > 0) {
+          log.info("drained steer items into session", { sessionID, count: steerItems.length })
+          for (const item of steerItems) {
+            const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+            if (materialized) msgs.push(materialized)
+          }
         }
 
-        // Drain agent-update items (cortex task completions etc.) for mid-turn
-        // injection.  Materialized with guiding: true so they become synthetic
-        // user messages in the conversation without triggering a redundant
-        // reply cycle — the running turn processes them naturally next step.
-        const agentUpdateItems = await SessionInbox.drainAgentUpdates(sessionID)
-        if (agentUpdateItems.length > 0) {
-          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true, rootID: R.id })
+        // Fallback: drain legacy guiding/agent-update items by kind for compat
+        const guidingFallback = await SessionInbox.drainGuiding(sessionID)
+        if (guidingFallback.length > 0) {
+          const guided = await materializeInboxItems(sessionID, guidingFallback, { guiding: true, rootID: R.id })
+          msgs.push(...guided.userMessages)
+          log.info("drained legacy guiding items into session", { sessionID, count: guidingFallback.length })
+        }
+        const agentUpdateFallback = await SessionInbox.drainAgentUpdates(sessionID)
+        if (agentUpdateFallback.length > 0) {
+          const updates = await materializeInboxItems(sessionID, agentUpdateFallback, { guiding: true, rootID: R.id })
           msgs.push(...updates.userMessages)
-          log.info("drained agent updates into session", { sessionID, count: agentUpdateItems.length })
+          log.info("drained legacy agent updates into session", { sessionID, count: agentUpdateFallback.length })
         }
 
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
@@ -935,11 +940,24 @@ export namespace SessionInvoke {
         continue
       }
 
-      // Inner loop finished — use peek-then-commit pattern for inbox items
-      // so items are never deleted before they are successfully materialized
-      // and the reply cycle completes. If needsReply, commit now (they're
-      // already in the session as user messages) and re-enter the loop.
-      // Otherwise, commit after the full loop exits with a final race check.
+      // Inner loop finished — post-turn drain.
+      // Use peek-then-commit pattern so items are never deleted before
+      // they are successfully materialized and the reply cycle completes.
+      if (abort.aborted) {
+        // Abort: discard steer/context, keep task items (no auto-start).
+        await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+        break
+      }
+
+      // First: try mode-based next task (drains and materializes)
+      const taskItem = await SessionInbox.nextTask(sessionID)
+      if (taskItem) {
+        log.info("next task found, materializing", { sessionID, itemID: taskItem.id })
+        await SessionInbox.materializeItem(taskItem)
+        continue outer
+      }
+
+      // Fallback: legacy peek-then-commit for compat
       const readyItems = await SessionInbox.peekReady(sessionID)
       const readyResult = await materializeInboxItems(sessionID, readyItems)
       const committedIDs = new Set(readyItems.map((item) => item.id))
