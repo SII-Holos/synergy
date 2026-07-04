@@ -2,7 +2,7 @@ import { resolveTerminalCwd } from "./terminal-cwd"
 import { useGlobalSync } from "./global-sync"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { createMemo, createRoot, onCleanup } from "solid-js"
+import { createEffect, createMemo, createRoot, createSignal, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { Persist, persisted } from "@/utils/persist"
@@ -140,12 +140,26 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
     const params = useParams()
     const globalSync = useGlobalSync()
 
-    const workspaceCwd = createMemo<string | undefined>(() => {
+    const [workspaceCwd, setWorkspaceCwd] = createSignal<string | undefined>()
+
+    createEffect(() => {
       const sessionID = params.id
-      if (!sessionID || !params.dir) return undefined
+      if (!sessionID || !params.dir) {
+        console.debug("[terminal-cwd] early return", { sessionID, dir: params.dir })
+        setWorkspaceCwd(undefined)
+        return
+      }
       const [store] = globalSync.ensureScopeState(params.dir)
       const session = store.session.find((s) => s.id === sessionID)
-      return resolveTerminalCwd(session)
+      console.debug("[terminal-cwd] resolve", {
+        sessionID,
+        dir: params.dir,
+        sessionCount: store.session.length,
+        found: !!session,
+        workspaceType: session?.workspace?.type,
+        workspacePath: session?.workspace?.path,
+      })
+      setWorkspaceCwd(resolveTerminalCwd(session))
     })
     const cache = new Map<string, TerminalCacheEntry>()
 
