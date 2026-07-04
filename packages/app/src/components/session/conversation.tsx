@@ -39,6 +39,8 @@ export function SessionConversation(props: {
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
+  onRewind?: (message: UserMessage) => void
+  rollbackActive?: boolean
 }) {
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
@@ -144,6 +146,8 @@ export function SessionConversation(props: {
                 sessionID={props.sessionID}
                 messageID={msg.id}
                 lastUserMessageID={props.lastUserMessage()?.id}
+                onRewind={() => props.onRewind?.(msg as UserMessage)}
+                rollbackActive={props.rollbackActive}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",

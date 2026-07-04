@@ -6,6 +6,45 @@
   align-items: flex-start;
   justify-content: flex-start;
 
+  /* ── Rewind button ────────────────────────────── */
+  [data-slot="session-turn-rewind-button"] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: var(--font-size-x-small);
+    color: var(--text-subtle);
+    background: transparent;
+    transition:
+      background var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--background-weak);
+      color: var(--text-interactive-base);
+    }
+
+    &:active {
+      background: var(--background-base);
+    }
+  }
+
+  [data-slot="session-turn-rewind-button"][data-rollback-active="true"] {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
   [data-slot="session-turn-content"] {
     flex-grow: 1;
     width: 100%;
