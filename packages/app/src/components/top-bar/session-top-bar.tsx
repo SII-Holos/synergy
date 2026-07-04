@@ -16,7 +16,7 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { WorktreeTransitionDialog } from "@/components/session/worktree-transition-dialog"
+import { setWorktreeTransition, worktreeTransition } from "@/components/session/worktree-progress-signals"
 import { isSessionRunningForWorkspaceChange } from "@/components/session/worktree-session"
 import "./session-top-bar.css"
 
@@ -103,7 +103,7 @@ export function SessionTopBar() {
   const command = useCommand()
   const sync = useSync()
   const workbench = useWorkbenchPanels()
-  const [worktreePending, setWorktreePending] = createSignal(false)
+  const worktreePending = createMemo(() => !!worktreeTransition())
   const sideSurface = createMemo(() => workbench.surface("side"))
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
@@ -144,14 +144,7 @@ export function SessionTopBar() {
   }
 
   const showWorktreeTransition = (mode: "enter" | "leave", sessionID: string, dir: string) => {
-    dialog.show(() => (
-      <WorktreeTransitionDialog
-        mode={mode}
-        sessionID={sessionID}
-        directory={dir}
-        onPendingChange={setWorktreePending}
-      />
-    ))
+    setWorktreeTransition({ mode, sessionID, directory: dir })
   }
 
   const toggleWorktree = () => {
