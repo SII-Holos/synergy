@@ -10,7 +10,7 @@ import { PerformanceStore } from "@/performance/store"
 import { PerformanceDashboard } from "@/performance/dashboard"
 import { PerformanceIngestion } from "@/performance/ingestion"
 import { PerformanceIssues } from "@/performance/issues"
-import { PerformanceMetrics } from "@/performance/metrics"
+import { ServerSseMetrics } from "./sse-metrics"
 import { PerformanceSchema } from "@/performance/schema"
 import { PerformanceTimeline } from "@/performance/timeline"
 import { PerformanceTraceDetail } from "@/performance/trace-detail"
@@ -305,7 +305,7 @@ export const PerformanceRoute = new Hono()
     describeRoute({
       summary: "Patch performance config",
       description:
-        "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
+        "Validate and persist runtime performance configuration fields in the runtime observability config domain.",
       operationId: "performance.settings.update",
       responses: {
         200: {
@@ -390,13 +390,7 @@ export const PerformanceRoute = new Hono()
       c.header("Cache-Control", "no-cache, no-transform")
       return streamSSE(c, async (stream) => {
         const connectedAt = Date.now()
-        PerformanceMetrics.record({
-          name: "server.sse.connection.open",
-          value: 1,
-          unit: "count",
-          module: "server",
-          labels: { stream: "performance" },
-        })
+        ServerSseMetrics.open("performance")
         await stream.writeSSE({
           event: "performance.summary.updated",
           data: JSON.stringify(await PerformanceDashboard.summary({ scopeID: query.scopeID })),
@@ -405,27 +399,13 @@ export const PerformanceRoute = new Hono()
         const maxPendingWrites = PerformanceConfig.current().perClientSseQueueSize
         const write = (event: string, data: unknown) => {
           if (pendingWrites >= maxPendingWrites) {
-            PerformanceMetrics.record({
-              name: "server.sse.write_dropped",
-              value: 1,
-              unit: "count",
-              module: "server",
-              labels: { stream: "performance", event },
-            })
+            ServerSseMetrics.writeDropped("performance", event)
             return
           }
           pendingWrites++
           void stream
             .writeSSE({ event, data: JSON.stringify(data) })
-            .catch(() =>
-              PerformanceMetrics.record({
-                name: "server.sse.write_failure",
-                value: 1,
-                unit: "count",
-                module: "server",
-                labels: { stream: "performance", event },
-              }),
-            )
+            .catch(() => ServerSseMetrics.writeFailure("performance", event))
             .finally(() => pendingWrites--)
         }
         const unsubscribe = PerformanceEvents.subscribe((event) => {
@@ -447,36 +427,14 @@ export const PerformanceRoute = new Hono()
         const heartbeat = setInterval(() => {
           void stream
             .writeSSE({ event: "heartbeat", data: JSON.stringify({ time: new Date().toISOString() }) })
-            .then(() =>
-              PerformanceMetrics.record({
-                name: "server.sse.heartbeat",
-                value: 1,
-                unit: "count",
-                module: "server",
-                labels: { stream: "performance" },
-              }),
-            )
-            .catch(() =>
-              PerformanceMetrics.record({
-                name: "server.sse.write_failure",
-                value: 1,
-                unit: "count",
-                module: "server",
-                labels: { stream: "performance", event: "heartbeat" },
-              }),
-            )
+            .then(() => ServerSseMetrics.heartbeat("performance"))
+            .catch(() => ServerSseMetrics.writeFailure("performance", "heartbeat"))
         }, query.heartbeatMs)
         await new Promise<void>((resolve) => {
           stream.onAbort(() => {
             unsubscribe()
             clearInterval(heartbeat)
-            PerformanceMetrics.record({
-              name: "server.sse.connection.duration",
-              value: Date.now() - connectedAt,
-              unit: "ms",
-              module: "server",
-              labels: { stream: "performance" },
-            })
+            ServerSseMetrics.duration("performance", connectedAt)
             resolve()
           })
         })

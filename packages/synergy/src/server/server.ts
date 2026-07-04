@@ -73,6 +73,7 @@ import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
 import { Observability } from "@/observability"
 import { PerformanceIssues } from "@/performance/issues"
+import { ServerSseMetrics } from "./sse-metrics"
 import { PerformanceMetrics } from "@/performance/metrics"
 import { PerformanceSpans } from "@/performance/spans"
 import { PerformanceRedaction } from "@/performance/redact"
@@ -1243,13 +1244,7 @@ export namespace Server {
             c.header("Cache-Control", "no-cache, no-transform")
             return streamSSE(c, async (stream) => {
               const connectedAt = Date.now()
-              PerformanceMetrics.record({
-                name: "server.sse.connection.open",
-                value: 1,
-                unit: "count",
-                module: "server",
-                labels: { stream: "events" },
-              })
+              ServerSseMetrics.open("events")
               stream.writeSSE({
                 data: JSON.stringify({
                   type: "server.connected",
@@ -1262,13 +1257,7 @@ export namespace Server {
                     data: JSON.stringify(event),
                   })
                   .catch(() => {
-                    PerformanceMetrics.record({
-                      name: "server.sse.write_failure",
-                      value: 1,
-                      unit: "count",
-                      module: "server",
-                      labels: { stream: "events" },
-                    })
+                    ServerSseMetrics.writeFailure("events")
                   })
                 if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
@@ -1284,36 +1273,14 @@ export namespace Server {
                       properties: {},
                     }),
                   })
-                  .then(() =>
-                    PerformanceMetrics.record({
-                      name: "server.sse.heartbeat",
-                      value: 1,
-                      unit: "count",
-                      module: "server",
-                      labels: { stream: "events" },
-                    }),
-                  )
-                  .catch(() =>
-                    PerformanceMetrics.record({
-                      name: "server.sse.write_failure",
-                      value: 1,
-                      unit: "count",
-                      module: "server",
-                      labels: { stream: "events", event: "heartbeat" },
-                    }),
-                  )
+                  .then(() => ServerSseMetrics.heartbeat("events"))
+                  .catch(() => ServerSseMetrics.writeFailure("events", "heartbeat"))
               }, 30000)
 
               await new Promise<void>((resolve) => {
                 stream.onAbort(() => {
                   clearInterval(heartbeat)
-                  PerformanceMetrics.record({
-                    name: "server.sse.connection.duration",
-                    value: Date.now() - connectedAt,
-                    unit: "ms",
-                    module: "server",
-                    labels: { stream: "events" },
-                  })
+                  ServerSseMetrics.duration("events", connectedAt)
                   unsub()
                   resolve()
                   log.info("event disconnected")

@@ -2877,7 +2877,7 @@ export class Settings extends HeyApiClient {
   /**
    * Patch performance config
    *
-   * Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.
+   * Validate and persist runtime performance configuration fields in the runtime observability config domain.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {

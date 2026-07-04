@@ -1113,7 +1113,7 @@
       "patch": {
         "operationId": "performance.settings.update",
         "summary": "Patch performance config",
-        "description": "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
+        "description": "Validate and persist runtime performance configuration fields in the runtime observability config domain.",
         "responses": {
           "200": {
             "description": "Validated performance config",

@@ -65,7 +65,7 @@ The server exposes local-first endpoints under `/global/performance`:
 - `POST /global/performance/browser-metrics`
 - `GET /global/performance/events`
 
-Stable error codes use the `PERF_*` prefix.
+Stable error codes use the `PERF_*` prefix. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.settings.get()` and `client.performance.settings.update()` for that endpoint.
 
 ## External OSS tooling
 
