@@ -5,6 +5,9 @@ import { PerformanceSchema } from "./schema"
 import { PerformanceStore } from "./store"
 
 export namespace PerformanceIssues {
+  const publishedFingerprints = new Map<string, number>()
+  const PUBLISH_COALESCE_MS = 60_000
+
   export function raise(input: {
     code: string
     severity: PerformanceSchema.IssueSeverity
@@ -46,7 +49,11 @@ export namespace PerformanceIssues {
       fingerprint,
     })
     PerformanceStore.insertIssue(issue)
-    PerformanceEvents.publish({ type: "performance.issue.raised", issue })
+    const lastPublishedAt = publishedFingerprints.get(fingerprint) ?? 0
+    if (time - lastPublishedAt >= PUBLISH_COALESCE_MS) {
+      publishedFingerprints.set(fingerprint, time)
+      PerformanceEvents.publish({ type: "performance.issue.raised", issue })
+    }
     return issue
   }
 

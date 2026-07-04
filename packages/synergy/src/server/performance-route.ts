@@ -5,9 +5,12 @@ import z from "zod"
 import { Config } from "@/config/config"
 import { PerformanceConfig } from "@/performance/config"
 import { PerformanceEvents } from "@/performance/events"
+import { PerformanceError } from "@/performance/error"
+import { PerformanceStore } from "@/performance/store"
 import { PerformanceDashboard } from "@/performance/dashboard"
 import { PerformanceIngestion } from "@/performance/ingestion"
 import { PerformanceIssues } from "@/performance/issues"
+import { PerformanceMetrics } from "@/performance/metrics"
 import { PerformanceSchema } from "@/performance/schema"
 import { PerformanceTimeline } from "@/performance/timeline"
 import { PerformanceTraceDetail } from "@/performance/trace-detail"
@@ -38,9 +41,6 @@ const TraceDetailQuery = z
   .meta({ ref: "PerformanceTraceDetailQuery" })
 
 const ConfigPatch = PerformanceSchema.Config.partial().meta({ ref: "PerformanceConfigPatch" })
-const RuntimeMutableConfigPatch = ConfigPatch.refine((patch) => isRuntimeMutablePatch(patch), {
-  message: "Some performance config fields require a restart.",
-}).meta({ ref: "PerformanceRuntimeConfigPatch" })
 
 const restartRequiredFields = new Set(["storage.sqliteEnabled"])
 
@@ -75,8 +75,45 @@ function rejectLargePayload(c: Context, maxBytes: number) {
   return c.json({ code: "PERF_INVALID_METRIC_BATCH", message: "Performance metric batch is too large." }, 413)
 }
 
-function isRuntimeMutablePatch(patch: Partial<PerformanceSchema.Config>) {
-  return requiredRestartFields(patch).length === 0
+function fail(c: Context, error: PerformanceError) {
+  return c.json(error.toResponse(), error.status as 400)
+}
+
+function performanceValidator<T extends z.ZodTypeAny>(
+  target: "query" | "json" | "param",
+  schema: T,
+  code: PerformanceError.Code,
+) {
+  return validator(target, schema, (result, c) => {
+    if (result.success) return
+    const issues = Array.isArray(result.error)
+      ? result.error
+      : (result.error as { issues?: unknown[] } | undefined)?.issues
+    return c.json({ code, message: "Invalid performance request.", issues }, 400)
+  })
+}
+
+function handlePerformanceError(c: Context, callback: () => Response | Promise<Response>) {
+  try {
+    const result = callback()
+    if (result instanceof Promise) {
+      return result.catch((error) => handleUnknownPerformanceError(c, error))
+    }
+    return result
+  } catch (error) {
+    return handleUnknownPerformanceError(c, error)
+  }
+}
+
+function handleUnknownPerformanceError(c: Context, error: unknown) {
+  if (error instanceof PerformanceError) return fail(c, error)
+  throw error
+}
+
+function ensureStorageAvailable() {
+  if (!PerformanceStore.open()) {
+    throw new PerformanceError("PERF_STORAGE_UNAVAILABLE", "Performance SQLite storage is unavailable.", 503)
+  }
 }
 
 function requiredRestartFields(patch: Partial<PerformanceSchema.Config>) {
@@ -118,10 +155,15 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("query", SummaryQuery),
+    performanceValidator("query", SummaryQuery, "PERF_INVALID_QUERY"),
     async (c) =>
-      rateLimit(c, "summary", PerformanceConfig.current().rateLimits.summaryPerMinute) ??
-      c.json(await PerformanceDashboard.summary(c.req.valid("query"))),
+      handlePerformanceError(c, async () => {
+        ensureStorageAvailable()
+        return (
+          rateLimit(c, "summary", PerformanceConfig.current().rateLimits.summaryPerMinute) ??
+          c.json(await PerformanceDashboard.summary(c.req.valid("query")))
+        )
+      }),
   )
   .get(
     "/performance/timeline",
@@ -136,10 +178,15 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("query", PerformanceSchema.TimelineQuery),
+    performanceValidator("query", PerformanceSchema.TimelineQuery, "PERF_INVALID_QUERY"),
     (c) =>
-      rateLimit(c, "timeline", PerformanceConfig.current().rateLimits.timelinePerMinute) ??
-      c.json(PerformanceTimeline.get(c.req.valid("query"))),
+      handlePerformanceError(c, () => {
+        ensureStorageAvailable()
+        return (
+          rateLimit(c, "timeline", PerformanceConfig.current().rateLimits.timelinePerMinute) ??
+          c.json(PerformanceTimeline.get(c.req.valid("query")))
+        )
+      }),
   )
   .get(
     "/performance/traces",
@@ -154,10 +201,15 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("query", PerformanceSchema.TraceListQuery),
+    performanceValidator("query", PerformanceSchema.TraceListQuery, "PERF_INVALID_QUERY"),
     (c) =>
-      rateLimit(c, "traces", PerformanceConfig.current().rateLimits.traceListPerMinute) ??
-      c.json(PerformanceTraceDetail.list(c.req.valid("query"))),
+      handlePerformanceError(c, () => {
+        ensureStorageAvailable()
+        return (
+          rateLimit(c, "traces", PerformanceConfig.current().rateLimits.traceListPerMinute) ??
+          c.json(PerformanceTraceDetail.list(c.req.valid("query")))
+        )
+      }),
   )
   .get(
     "/performance/traces/:traceId",
@@ -172,11 +224,16 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("param", z.object({ traceId: z.string() })),
-    validator("query", TraceDetailQuery),
+    performanceValidator("param", z.object({ traceId: z.string() }), "PERF_INVALID_QUERY"),
+    performanceValidator("query", TraceDetailQuery, "PERF_INVALID_QUERY"),
     async (c) =>
-      rateLimit(c, "trace-detail", PerformanceConfig.current().rateLimits.traceDetailPerMinute) ??
-      c.json(await PerformanceTraceDetail.detail(c.req.valid("param").traceId, c.req.valid("query"))),
+      handlePerformanceError(c, async () => {
+        ensureStorageAvailable()
+        return (
+          rateLimit(c, "trace-detail", PerformanceConfig.current().rateLimits.traceDetailPerMinute) ??
+          c.json(await PerformanceTraceDetail.detail(c.req.valid("param").traceId, c.req.valid("query")))
+        )
+      }),
   )
   .get(
     "/performance/issues",
@@ -199,17 +256,22 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("query", IssuesQuery),
+    performanceValidator("query", IssuesQuery, "PERF_INVALID_QUERY"),
     (c) =>
-      rateLimit(c, "issues", PerformanceConfig.current().rateLimits.issueListPerMinute) ??
-      c.json({ generatedAt: new Date().toISOString(), issues: PerformanceIssues.list(c.req.valid("query")) }),
+      handlePerformanceError(c, () => {
+        ensureStorageAvailable()
+        return (
+          rateLimit(c, "issues", PerformanceConfig.current().rateLimits.issueListPerMinute) ??
+          c.json({ generatedAt: new Date().toISOString(), issues: PerformanceIssues.list(c.req.valid("query")) })
+        )
+      }),
   )
   .get(
     "/performance/config",
     describeRoute({
       summary: "Get performance config",
       description: "Get effective performance observability configuration and default metadata.",
-      operationId: "performance.config.get",
+      operationId: "performance.settings.get",
       responses: {
         200: {
           description: "Performance config",
@@ -244,7 +306,7 @@ export const PerformanceRoute = new Hono()
       summary: "Patch performance config",
       description:
         "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
-      operationId: "performance.config.update",
+      operationId: "performance.settings.update",
       responses: {
         200: {
           description: "Validated performance config",
@@ -252,7 +314,7 @@ export const PerformanceRoute = new Hono()
         },
       },
     }),
-    validator("json", RuntimeMutableConfigPatch),
+    performanceValidator("json", ConfigPatch, "PERF_INVALID_QUERY"),
     async (c) => {
       const limited = rateLimit(c, "config-patch", PerformanceConfig.current().rateLimits.configPatchPerMinute)
       if (limited) return limited
@@ -297,8 +359,8 @@ export const PerformanceRoute = new Hono()
       if (limited) return limited
       return next()
     },
-    validator("json", PerformanceSchema.BrowserMetricBatch),
-    (c) => c.json(PerformanceIngestion.browserMetrics(c.req.valid("json"))),
+    performanceValidator("json", PerformanceSchema.BrowserMetricBatch, "PERF_INVALID_METRIC_BATCH"),
+    (c) => handlePerformanceError(c, () => c.json(PerformanceIngestion.browserMetrics(c.req.valid("json")))),
   )
   .get(
     "/performance/events",
@@ -308,7 +370,7 @@ export const PerformanceRoute = new Hono()
       operationId: "performance.events.stream",
       responses: { 200: { description: "Performance event stream" } },
     }),
-    validator(
+    performanceValidator(
       "query",
       z.object({
         scopeID: z.string().optional(),
@@ -317,6 +379,7 @@ export const PerformanceRoute = new Hono()
         heartbeatMs: z.coerce.number().int().min(5000).max(60000).default(15000),
         sinceEventId: z.string().optional(),
       }),
+      "PERF_INVALID_QUERY",
     ),
     (c) => {
       const query = c.req.valid("query")
@@ -326,6 +389,14 @@ export const PerformanceRoute = new Hono()
       c.header("X-Accel-Buffering", "no")
       c.header("Cache-Control", "no-cache, no-transform")
       return streamSSE(c, async (stream) => {
+        const connectedAt = Date.now()
+        PerformanceMetrics.record({
+          name: "server.sse.connection.open",
+          value: 1,
+          unit: "count",
+          module: "server",
+          labels: { stream: "performance" },
+        })
         await stream.writeSSE({
           event: "performance.summary.updated",
           data: JSON.stringify(await PerformanceDashboard.summary({ scopeID: query.scopeID })),
@@ -333,11 +404,28 @@ export const PerformanceRoute = new Hono()
         let pendingWrites = 0
         const maxPendingWrites = PerformanceConfig.current().perClientSseQueueSize
         const write = (event: string, data: unknown) => {
-          if (pendingWrites >= maxPendingWrites) return
+          if (pendingWrites >= maxPendingWrites) {
+            PerformanceMetrics.record({
+              name: "server.sse.write_dropped",
+              value: 1,
+              unit: "count",
+              module: "server",
+              labels: { stream: "performance", event },
+            })
+            return
+          }
           pendingWrites++
           void stream
             .writeSSE({ event, data: JSON.stringify(data) })
-            .catch(() => undefined)
+            .catch(() =>
+              PerformanceMetrics.record({
+                name: "server.sse.write_failure",
+                value: 1,
+                unit: "count",
+                module: "server",
+                labels: { stream: "performance", event },
+              }),
+            )
             .finally(() => pendingWrites--)
         }
         const unsubscribe = PerformanceEvents.subscribe((event) => {
@@ -357,12 +445,38 @@ export const PerformanceRoute = new Hono()
           write(event.type, event)
         })
         const heartbeat = setInterval(() => {
-          void stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ time: new Date().toISOString() }) })
+          void stream
+            .writeSSE({ event: "heartbeat", data: JSON.stringify({ time: new Date().toISOString() }) })
+            .then(() =>
+              PerformanceMetrics.record({
+                name: "server.sse.heartbeat",
+                value: 1,
+                unit: "count",
+                module: "server",
+                labels: { stream: "performance" },
+              }),
+            )
+            .catch(() =>
+              PerformanceMetrics.record({
+                name: "server.sse.write_failure",
+                value: 1,
+                unit: "count",
+                module: "server",
+                labels: { stream: "performance", event: "heartbeat" },
+              }),
+            )
         }, query.heartbeatMs)
         await new Promise<void>((resolve) => {
           stream.onAbort(() => {
             unsubscribe()
             clearInterval(heartbeat)
+            PerformanceMetrics.record({
+              name: "server.sse.connection.duration",
+              value: Date.now() - connectedAt,
+              unit: "ms",
+              module: "server",
+              labels: { stream: "performance" },
+            })
             resolve()
           })
         })

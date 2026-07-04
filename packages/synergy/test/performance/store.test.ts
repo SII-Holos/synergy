@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
 import { Observability } from "../../src/observability"
+import { Storage } from "../../src/storage/storage"
+import { PerformanceEvents } from "../../src/performance/events"
+import { PerformanceIssues } from "../../src/performance/issues"
 import { PerformanceDashboard } from "../../src/performance/dashboard"
 import { PerformanceIngestion } from "../../src/performance/ingestion"
 import { PerformanceConfig } from "../../src/performance/config"
@@ -99,6 +102,61 @@ describe("performance observability store", () => {
     expect(detail.events[0].dataKeys).toContain("args")
     expect(JSON.stringify(detail.events)).not.toContain("super-secret")
     expect(JSON.stringify(detail.events)).not.toContain("raw content")
+  })
+
+  test("coalesces repeated issue events while preserving occurrence counts", () => {
+    let published = 0
+    const unsubscribe = PerformanceEvents.subscribe((event) => {
+      if (event.type === "performance.issue.raised") published++
+    })
+
+    PerformanceIssues.raise({
+      code: "PERF_TEST_BACKPRESSURE",
+      severity: "warning",
+      module: "observability",
+      title: "Backpressure",
+      message: "Backpressure",
+    })
+    PerformanceIssues.raise({
+      code: "PERF_TEST_BACKPRESSURE",
+      severity: "warning",
+      module: "observability",
+      title: "Backpressure",
+      message: "Backpressure",
+    })
+    unsubscribe()
+    PerformanceStore.flush()
+
+    const issues = PerformanceIssues.list({ module: "observability" }).filter(
+      (issue) => issue.code === "PERF_TEST_BACKPRESSURE",
+    )
+    expect(published).toBe(1)
+    expect(issues).toHaveLength(1)
+    expect(issues[0].occurrenceCount).toBe(2)
+  })
+
+  test("records storage operation counters for readMany update remove list and scan", async () => {
+    await Storage.write(["perf", "one"], { count: 1 })
+    await Storage.write(["perf", "two"], { count: 2 })
+    await Storage.readMany<{ count: number }>([
+      ["perf", "one"],
+      ["perf", "missing"],
+    ])
+    await Storage.update<{ count: number }>(["perf", "one"], (draft) => {
+      draft.count++
+    })
+    await Storage.scan(["perf"])
+    await Storage.list(["perf"])
+    await Storage.remove(["perf", "two"])
+    PerformanceStore.flush()
+
+    const rows = PerformanceStore.queryMetrics({ since: 0, names: ["storage.operation.count"] })
+    const operations = new Set(rows.map((row) => JSON.parse(row.labels_json).operation))
+    expect(operations).toContain("readMany")
+    expect(operations).toContain("update")
+    expect(operations).toContain("scan")
+    expect(operations).toContain("list")
+    expect(operations).toContain("remove")
   })
 })
 

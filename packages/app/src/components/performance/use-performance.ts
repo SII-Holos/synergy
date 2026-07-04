@@ -50,7 +50,6 @@ export function usePerformance() {
       try {
         setError(null)
         const result = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
-        void loadTimeline(rangeMs)
         return result.data ?? null
       } catch (err) {
         setError(getErrorMessage(err))
@@ -105,27 +104,34 @@ export function usePerformance() {
     setStreamError("Performance event stream disconnected.")
   }
 
-  const sampleBrowser = () =>
+  const sampleBrowser = () => {
+    if (document.hidden) return
     setBrowserSamples((items: BrowserMetricSample[]) => [...items, readBrowserSample()].slice(-60))
+  }
   sampleBrowser()
   const browserTimer = window.setInterval(sampleBrowser, 10_000)
-  const pollTimer = window.setInterval(
-    () => {
-      if (document.hidden) return
-      void refetch()
-    },
-    connected() ? 30_000 : 10_000,
-  )
+  let pollTimer: number | undefined
+  const schedulePoll = () => {
+    window.clearTimeout(pollTimer)
+    pollTimer = window.setTimeout(() => {
+      if (!document.hidden) void refetch()
+      schedulePoll()
+    }, performancePollInterval(connected()))
+  }
+  schedulePoll()
 
   const onVisibility = () => {
-    if (!document.hidden) void refetch()
+    if (document.hidden) return
+    sampleBrowser()
+    void refetch()
+    schedulePoll()
   }
   document.addEventListener("visibilitychange", onVisibility)
 
   onCleanup(() => {
     stream.close()
     window.clearInterval(browserTimer)
-    window.clearInterval(pollTimer)
+    window.clearTimeout(pollTimer)
     document.removeEventListener("visibilitychange", onVisibility)
   })
 
@@ -173,4 +179,8 @@ export function usePerformance() {
       return undefined
     }
   }
+}
+
+export function performancePollInterval(connected: boolean) {
+  return connected ? 30_000 : 10_000
 }

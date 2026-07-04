@@ -46,10 +46,17 @@ export function startBrowserPerformanceMetrics(input: { url: string; client: Syn
   const onVisibilityChange = () => {
     if (document.visibilityState === "hidden") flush()
   }
+  const onLocationChange = () => flush()
   window.addEventListener("visibilitychange", onVisibilityChange)
   window.addEventListener("pagehide", flush)
+  window.addEventListener("popstate", onLocationChange)
+  window.addEventListener("hashchange", onLocationChange)
+  wrapHistoryNavigation("pushState", onLocationChange)
+  wrapHistoryNavigation("replaceState", onLocationChange)
   cleanup.push(() => window.removeEventListener("visibilitychange", onVisibilityChange))
   cleanup.push(() => window.removeEventListener("pagehide", flush))
+  cleanup.push(() => window.removeEventListener("popstate", onLocationChange))
+  cleanup.push(() => window.removeEventListener("hashchange", onLocationChange))
 }
 
 function enqueue(entry: QueueEntry) {
@@ -64,6 +71,10 @@ async function flushBrowserMetrics(input: { url: string; client: SynergyClient }
   if (queue.length === 0 && locallyRejected === 0) return
   const entries = queue.splice(0, MAX_BATCH)
   const metrics = entries.flatMap((entry) => (entry.kind === "metric" ? [entry.value] : []))
+  const rejected = locallyRejected
+  if (rejected > 0) {
+    metrics.push(metricValue("frontend.collector.rejected", rejected, "count", { reason: "local_limit" }))
+  }
   const resourceEntries = entries.flatMap((entry) => (entry.kind === "resource" ? [entry.value] : []))
   const longTasks = entries.flatMap((entry) => (entry.kind === "longTask" ? [entry.value] : []))
   const body = {
@@ -79,7 +90,7 @@ async function flushBrowserMetrics(input: { url: string; client: SynergyClient }
   }
   try {
     await input.client.performance.browserMetrics.ingest({ perfBrowserMetricBatch: body }, { throwOnError: true })
-    locallyRejected = 0
+    locallyRejected = Math.max(0, locallyRejected - rejected)
   } catch {
     queue = [...entries, ...queue].slice(0, MAX_BATCH * 4)
   }
@@ -170,10 +181,32 @@ function metricValue(
   }
 }
 
-function pageContext(): PerfBrowserMetricBatch["page"] {
-  return {
-    pathTemplate: normalizePath(location.pathname),
+export function pageContext(): PerfBrowserMetricBatch["page"] {
+  return pageContextFromUrl(location.pathname, location.search)
+}
+
+export function pageContextFromUrl(pathname: string, search = ""): PerfBrowserMetricBatch["page"] {
+  const params = new URLSearchParams(search)
+  const context: NonNullable<PerfBrowserMetricBatch["page"]> = {
+    routeName: routeName(pathname),
+    pathTemplate: normalizePath(pathname),
   }
+  const sessionID = safeContextID(params.get("sessionID") ?? params.get("session"))
+  const scopeID = safeContextID(params.get("scopeID") ?? params.get("scope"))
+  if (sessionID) context.sessionID = sessionID
+  if (scopeID) context.scopeID = scopeID
+  return context
+}
+
+function routeName(pathname: string) {
+  const [first = "home", second] = pathname.split("/").filter(Boolean)
+  return safeString([first, second].filter(Boolean).join(".") || "home")
+}
+
+function safeContextID(value: string | null) {
+  if (!value) return undefined
+  const cleaned = value.replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 96)
+  return cleaned || undefined
 }
 
 function normalizePath(pathname: string) {
@@ -194,6 +227,18 @@ function stripUrl(value: string) {
 
 function safeString(value: string) {
   return value.replace(/[?#].*$/, "").slice(0, MAX_LABEL_LENGTH)
+}
+
+function wrapHistoryNavigation(method: "pushState" | "replaceState", onNavigate: () => void) {
+  const original = history[method]
+  history[method] = function patchedHistoryNavigation(this: History, ...args: Parameters<History[typeof method]>) {
+    const result = original.apply(this, args)
+    onNavigate()
+    return result
+  }
+  cleanup.push(() => {
+    history[method] = original
+  })
 }
 
 function encodedSize(value: unknown) {

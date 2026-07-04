@@ -6,6 +6,7 @@ import type { Embedding } from "../vector/embedding"
 import { existsSync, realpathSync } from "fs"
 import path from "path"
 
+import { PerformanceIssues } from "@/performance/issues"
 import { PerformanceMetrics } from "@/performance/metrics"
 const log = Log.create({ service: "library.db" })
 
@@ -173,15 +174,34 @@ function instrumentConnection(conn: Database): Database {
       if (!original) continue
       statementRecord[method] = (...bindings: SQLQueryBindings[]) => {
         const start = performance.now()
+        let status = "ok"
         try {
           return original(...bindings)
+        } catch (error) {
+          status = "error"
+          PerformanceMetrics.record({
+            name: "library.sqlite.query.error",
+            value: 1,
+            unit: "count",
+            module: "library",
+            labels: { operation, method, errorName: error instanceof Error ? error.name : "unknown" },
+          })
+          PerformanceIssues.raise({
+            code: "PERF_LIBRARY_QUERY_ERROR",
+            severity: "warning",
+            module: "library",
+            title: "Library query failed",
+            message: `${operation} ${method} failed`,
+            evidence: { operation, method, errorName: error instanceof Error ? error.name : "unknown" },
+          })
+          throw error
         } finally {
           PerformanceMetrics.record({
             name: "library.sqlite.query.duration",
             value: performance.now() - start,
             unit: "ms",
             module: "library",
-            labels: { operation, method },
+            labels: { operation, method, status },
           })
         }
       }

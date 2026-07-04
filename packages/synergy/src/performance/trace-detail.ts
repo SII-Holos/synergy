@@ -1,4 +1,5 @@
 import { Observability } from "../observability"
+import { PerformanceError } from "./error"
 import { PerformanceSchema } from "./schema"
 import { PerformanceStore } from "./store"
 
@@ -45,6 +46,9 @@ export namespace PerformanceTraceDetail {
       opts.includeEvents === false
         ? []
         : (await Observability.query({ traceId, limit: opts.maxEvents ?? 500 })).map(projectEvent)
+    if (!spans.length && !events.length) {
+      throw new PerformanceError("PERF_TRACE_NOT_FOUND", "Performance trace was not found.", 404, { traceId })
+    }
     const parsed = spans.map((row) =>
       PerformanceSchema.Span.parse({
         traceId: row.trace_id,

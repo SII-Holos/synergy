@@ -454,7 +454,7 @@ export type PerformanceConfigResponse = {
   sources: Array<string>
 }
 
-export type PerformanceRuntimeConfigPatch = {
+export type PerformanceConfigPatch = {
   enabled?: boolean
   samplingRate?: number
   metricRetentionMs?: number
@@ -6533,37 +6533,38 @@ export type PerformanceIssuesListResponses = {
 
 export type PerformanceIssuesListResponse = PerformanceIssuesListResponses[keyof PerformanceIssuesListResponses]
 
-export type PerformanceConfigGetData = {
+export type PerformanceSettingsGetData = {
   body?: never
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceConfigGetResponses = {
+export type PerformanceSettingsGetResponses = {
   /**
    * Performance config
    */
   200: PerformanceConfigResponse
 }
 
-export type PerformanceConfigGetResponse = PerformanceConfigGetResponses[keyof PerformanceConfigGetResponses]
+export type PerformanceSettingsGetResponse = PerformanceSettingsGetResponses[keyof PerformanceSettingsGetResponses]
 
-export type PerformanceConfigUpdateData = {
-  body?: PerformanceRuntimeConfigPatch
+export type PerformanceSettingsUpdateData = {
+  body?: PerformanceConfigPatch
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceConfigUpdateResponses = {
+export type PerformanceSettingsUpdateResponses = {
   /**
    * Validated performance config
    */
   200: PerfConfig
 }
 
-export type PerformanceConfigUpdateResponse = PerformanceConfigUpdateResponses[keyof PerformanceConfigUpdateResponses]
+export type PerformanceSettingsUpdateResponse =
+  PerformanceSettingsUpdateResponses[keyof PerformanceSettingsUpdateResponses]
 
 export type PerformanceBrowserMetricsIngestData = {
   body?: PerfBrowserMetricBatch

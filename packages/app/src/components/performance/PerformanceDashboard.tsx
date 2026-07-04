@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { Line } from "solid-chartjs"
 import {
   Chart as ChartJS,
@@ -135,6 +135,7 @@ export function PerformanceDashboard() {
             { label: "Memory MB", field: "memory", color: MEMORY_COLOR },
             { label: "Event loop p95 ms", field: "eventLoopLag", color: REQUEST_COLOR },
           ]}
+          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
         <ResourceChart
           title="Requests, sessions, and disk IO"
@@ -145,6 +146,7 @@ export function PerformanceDashboard() {
             { label: "Sessions", field: "activeSessions", color: MEMORY_COLOR },
             { label: "Disk ops", field: "diskOps", color: DISK_COLOR },
           ]}
+          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
       </div>
 
@@ -260,7 +262,22 @@ function ResourceChart(props: {
   description: string
   points: PerformanceMetricPoint[]
   datasets: Array<{ label: string; field: keyof PerformanceMetricPoint; color: string }>
+  onVisible?: () => void
 }) {
+  let element: HTMLDivElement | undefined
+  let visible = false
+  if (typeof IntersectionObserver !== "undefined") {
+    const observer = new IntersectionObserver((entries) => {
+      if (visible || !entries.some((entry) => entry.isIntersecting)) return
+      visible = true
+      props.onVisible?.()
+      observer.disconnect()
+    })
+    queueMicrotask(() => element && observer.observe(element))
+    onCleanup(() => observer.disconnect())
+  } else {
+    queueMicrotask(() => props.onVisible?.())
+  }
   const chartData = createMemo<ChartData<"line">>(() => ({
     labels: props.points.map((point, index) => formatPointLabel(point, index)),
     datasets: props.datasets.map((dataset) => ({
@@ -292,7 +309,7 @@ function ResourceChart(props: {
   }))
 
   return (
-    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div ref={element} class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
       <div class="mb-3">
         <h3 class="text-14-semibold text-text-strong">{props.title}</h3>
         <p class="mt-1 text-11-regular text-text-weak">{props.description}</p>

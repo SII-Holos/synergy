@@ -4,7 +4,6 @@ import { client } from "./client.gen.js"
 import {
   buildClientParams,
   type Client,
-  type RequestResult,
   formDataBodySerializer,
   type Options as Options2,
   type TDataShape,
@@ -109,9 +108,6 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
-  ConfigGetResponses,
-  ConfigUpdateErrors,
-  ConfigUpdateResponses,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
   ConfigDomainImportPlanInput,
@@ -121,12 +117,15 @@ import type {
   ConfigDomainUpdateErrors,
   ConfigDomainUpdateInput,
   ConfigDomainUpdateResponses,
+  ConfigGetResponses,
   ConfigGlobalResponses,
   ConfigImportApplyErrors,
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
   ConfigProvidersResponses,
+  ConfigUpdateErrors,
+  ConfigUpdateResponses,
   ControlProfileEffectiveErrors,
   ControlProfileEffectiveResponses,
   ControlProfileListResponses,
@@ -278,11 +277,11 @@ import type {
   PerfBrowserMetricBatch,
   PerfIssueStatus,
   PerformanceBrowserMetricsIngestResponses,
-  PerformanceConfigGetResponses,
-  PerformanceConfigUpdateResponses,
+  PerformanceConfigPatch,
   PerformanceEventsStreamResponses,
   PerformanceIssuesListResponses,
-  PerformanceRuntimeConfigPatch,
+  PerformanceSettingsGetResponses,
+  PerformanceSettingsUpdateResponses,
   PerformanceSummaryResponses,
   PerformanceTimelineResponses,
   PerformanceTracesDetailResponses,
@@ -500,11 +499,6 @@ class HeyApiRegistry<T> {
   set(value: T, key?: string): void {
     this.instances.set(key ?? this.defaultKey, value)
   }
-}
-
-function hasConfigQuery(value: unknown): value is { directory?: string; scopeID?: string } {
-  if (!value || typeof value !== "object") return false
-  return "directory" in value || "scopeID" in value
 }
 
 export class Paths extends HeyApiClient {
@@ -2867,332 +2861,33 @@ export class Issues extends HeyApiClient {
   }
 }
 
-export class Domain extends HeyApiClient {
+export class Settings extends HeyApiClient {
   /**
-   * List config domains
+   * Get performance config
    *
-   * List canonical config domains and their current global fragments.
+   * Get effective performance observability configuration and default metadata.
    */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
-      url: "/config/domains",
+  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<PerformanceSettingsGetResponses, unknown, ThrowOnError>({
+      url: "/global/performance/config",
       ...options,
-      ...params,
     })
   }
 
   /**
-   * Get config domain
+   * Patch performance config
    *
-   * Read one canonical global config domain fragment.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      domain:
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "domain" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigDomainGetResponses, ConfigDomainGetErrors, ThrowOnError>({
-      url: "/config/domains/{domain}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update config domain
-   *
-   * Update one canonical global config domain fragment.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters: {
-      domain:
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      directory?: string
-      scopeID?: string
-      configDomainUpdateInput?: ConfigDomainUpdateInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "domain" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "configDomainUpdateInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).patch<ConfigDomainUpdateResponses, ConfigDomainUpdateErrors, ThrowOnError>({
-      url: "/config/domains/{domain}",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Open config domain file
-   *
-   * Materialize and open one canonical global config domain file with the operating system default.
-   */
-  public open<ThrowOnError extends boolean = false>(
-    parameters: {
-      domain:
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "domain" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ConfigDomainOpenResponses, ConfigDomainOpenErrors, ThrowOnError>({
-      url: "/config/domains/{domain}/open",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Import extends HeyApiClient {
-  /**
-   * Plan config import
-   *
-   * Create a dry-run plan for importing selected config domains.
-   */
-  public plan<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      configDomainImportPlanInput?: ConfigDomainImportPlanInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "configDomainImportPlanInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ConfigImportPlanResponses, ConfigImportPlanErrors, ThrowOnError>({
-      url: "/config/import/plan",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Apply config import
-   *
-   * Apply a selected-domain config import plan.
-   */
-  public apply<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      config?: Config2
-      only?: Array<
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      >
-      mode?: "merge" | "replace-domain" | "append"
-      yes?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "config" },
-            { in: "body", key: "only" },
-            { in: "body", key: "mode" },
-            { in: "body", key: "yes" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ConfigImportApplyResponses, ConfigImportApplyErrors, ThrowOnError>({
-      url: "/config/import/apply",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class Config extends HeyApiClient {
-  /**
-   * Get global configuration
-   *
-   * Get config info
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
-      url: "/config",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update global configuration
+   * Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
-      directory?: string
-      scopeID?: string
-      config?: Config2
+      performanceConfigPatch?: PerformanceConfigPatch
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "config", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<ConfigUpdateResponses, ConfigUpdateErrors, ThrowOnError>({
-      url: "/config",
+    const params = buildClientParams([parameters], [{ args: [{ key: "performanceConfigPatch", map: "body" }] }])
+    return (options?.client ?? this.client).patch<PerformanceSettingsUpdateResponses, unknown, ThrowOnError>({
+      url: "/global/performance/config",
       ...options,
       ...params,
       headers: {
@@ -3202,70 +2897,6 @@ export class Config extends HeyApiClient {
       },
     })
   }
-
-  /**
-   * Get global configuration
-   *
-   * Retrieve only the canonical global domain configuration.
-   */
-  public global<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
-      url: "/config/global",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List config providers
-   *
-   * Get a list of all configured AI providers and their default models.
-   */
-  public providers<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
-      url: "/config/providers",
-      ...options,
-      ...params,
-    })
-  }
-
-  domain = new Domain({ client: this.client })
-
-  import = new Import({ client: this.client })
 }
 
 export class BrowserMetrics extends HeyApiClient {
@@ -3283,44 +2914,6 @@ export class BrowserMetrics extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ key: "perfBrowserMetricBatch", map: "body" }] }])
     return (options?.client ?? this.client).post<PerformanceBrowserMetricsIngestResponses, unknown, ThrowOnError>({
       url: "/global/performance/browser-metrics",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class PerformanceConfig extends HeyApiClient {
-  /**
-   * Get performance config
-   *
-   * Get effective performance observability configuration and default metadata.
-   */
-  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<PerformanceConfigGetResponses, unknown, ThrowOnError>({
-      url: "/global/performance/config",
-      ...options,
-    })
-  }
-
-  /**
-   * Patch performance config
-   *
-   * Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters?: {
-      performanceRuntimeConfigPatch?: PerformanceRuntimeConfigPatch
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ key: "performanceRuntimeConfigPatch", map: "body" }] }])
-    return (options?.client ?? this.client).patch<PerformanceConfigUpdateResponses, unknown, ThrowOnError>({
-      url: "/global/performance/config",
       ...options,
       ...params,
       headers: {
@@ -3413,7 +3006,7 @@ export class Performance extends HeyApiClient {
 
   issues = new Issues({ client: this.client })
 
-  config = new PerformanceConfig({ client: this.client })
+  settings = new Settings({ client: this.client })
 
   browserMetrics = new BrowserMetrics({ client: this.client })
 
@@ -4916,6 +4509,409 @@ export class Pty extends HeyApiClient {
       ...params,
     })
   }
+}
+
+export class Domain extends HeyApiClient {
+  /**
+   * List config domains
+   *
+   * List canonical config domains and their current global fragments.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
+      url: "/config/domains",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config domain
+   *
+   * Read one canonical global config domain fragment.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "domain" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigDomainGetResponses, ConfigDomainGetErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update config domain
+   *
+   * Update one canonical global config domain fragment.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      directory?: string
+      scopeID?: string
+      configDomainUpdateInput?: ConfigDomainUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "domain" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "configDomainUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<ConfigDomainUpdateResponses, ConfigDomainUpdateErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Open config domain file
+   *
+   * Materialize and open one canonical global config domain file with the operating system default.
+   */
+  public open<ThrowOnError extends boolean = false>(
+    parameters: {
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "domain" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ConfigDomainOpenResponses, ConfigDomainOpenErrors, ThrowOnError>({
+      url: "/config/domains/{domain}/open",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Import extends HeyApiClient {
+  /**
+   * Plan config import
+   *
+   * Create a dry-run plan for importing selected config domains.
+   */
+  public plan<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      configDomainImportPlanInput?: ConfigDomainImportPlanInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "configDomainImportPlanInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ConfigImportPlanResponses, ConfigImportPlanErrors, ThrowOnError>({
+      url: "/config/import/plan",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Apply config import
+   *
+   * Apply a selected-domain config import plan.
+   */
+  public apply<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      config?: Config2
+      only?: Array<
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      >
+      mode?: "merge" | "replace-domain" | "append"
+      yes?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "config" },
+            { in: "body", key: "only" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "yes" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ConfigImportApplyResponses, ConfigImportApplyErrors, ThrowOnError>({
+      url: "/config/import/apply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Config extends HeyApiClient {
+  /**
+   * Get configuration
+   *
+   * Retrieve the current Synergy configuration settings and preferences.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
+      url: "/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update configuration
+   *
+   * Update Synergy configuration settings and preferences.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      config?: Config2
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "config" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<ConfigUpdateResponses, ConfigUpdateErrors, ThrowOnError>({
+      url: "/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get global configuration
+   *
+   * Retrieve only the canonical global domain configuration.
+   */
+  public global<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
+      url: "/config/global",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List config providers
+   *
+   * Get a list of all configured AI providers and their default models.
+   */
+  public providers<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
+      url: "/config/providers",
+      ...options,
+      ...params,
+    })
+  }
+
+  domain = new Domain({ client: this.client })
+
+  import = new Import({ client: this.client })
 }
 
 export class ControlProfile extends HeyApiClient {

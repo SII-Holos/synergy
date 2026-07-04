@@ -1088,7 +1088,7 @@
     },
     "/global/performance/config": {
       "get": {
-        "operationId": "performance.config.get",
+        "operationId": "performance.settings.get",
         "summary": "Get performance config",
         "description": "Get effective performance observability configuration and default metadata.",
         "responses": {
@@ -1106,12 +1106,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.settings.get({\n  ...\n})"
           }
         ]
       },
       "patch": {
-        "operationId": "performance.config.update",
+        "operationId": "performance.settings.update",
         "summary": "Patch performance config",
         "description": "Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.",
         "responses": {
@@ -1130,7 +1130,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PerformanceRuntimeConfigPatch"
+                "$ref": "#/components/schemas/PerformanceConfigPatch"
               }
             }
           }
@@ -1138,7 +1138,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.settings.update({\n  ...\n})"
           }
         ]
       }
@@ -18743,7 +18743,7 @@
         },
         "required": ["config", "defaults", "sources"]
       },
-      "PerformanceRuntimeConfigPatch": {
+      "PerformanceConfigPatch": {
         "type": "object",
         "properties": {
           "enabled": {

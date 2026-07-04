@@ -172,7 +172,20 @@ export namespace Pty {
           continue
         }
         open = true
-        ws.send(data)
+        try {
+          ws.send(data)
+        } catch {
+          session.subscribers.delete(ws)
+          PerformanceMetrics.record({
+            name: "pty.websocket.write_failure",
+            value: 1,
+            unit: "count",
+            module: "pty",
+            source: "process",
+            processId: id,
+            pid: ptyProcess.pid,
+          })
+        }
       }
       if (open) return
       session.buffer += data
@@ -276,6 +289,16 @@ export namespace Pty {
     }
     log.info("client connected to session", { id })
     session.subscribers.add(ws)
+    const connectedAt = Date.now()
+    PerformanceMetrics.record({
+      name: "pty.websocket.connection.open",
+      value: 1,
+      unit: "count",
+      module: "pty",
+      source: "process",
+      processId: id,
+      pid: session.info.pid,
+    })
     if (session.buffer) {
       const buffer = session.buffer.length <= BUFFER_LIMIT ? session.buffer : session.buffer.slice(-BUFFER_LIMIT)
       session.buffer = ""
@@ -287,6 +310,16 @@ export namespace Pty {
         session.subscribers.delete(ws)
         session.buffer = buffer
         ws.close()
+        PerformanceMetrics.record({
+          name: "pty.websocket.write_failure",
+          value: 1,
+          unit: "count",
+          module: "pty",
+          source: "process",
+          processId: id,
+          pid: session.info.pid,
+          labels: { phase: "buffer_replay" },
+        })
         return
       }
     }
@@ -307,6 +340,15 @@ export namespace Pty {
       onClose: () => {
         log.info("client disconnected from session", { id })
         session.subscribers.delete(ws)
+        PerformanceMetrics.record({
+          name: "pty.websocket.connection.duration",
+          value: Date.now() - connectedAt,
+          unit: "ms",
+          module: "pty",
+          source: "process",
+          processId: id,
+          pid: session.info.pid,
+        })
       },
     }
   }

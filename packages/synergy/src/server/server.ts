@@ -345,6 +345,17 @@ export namespace Server {
                 rid: requestId,
                 attributes: { method: c.req.method, route: routePath },
               })
+          const requestLength = Number(c.req.header("content-length") ?? 0)
+          if (span && Number.isFinite(requestLength) && requestLength > 0) {
+            PerformanceMetrics.record({
+              name: "http.request.size",
+              value: requestLength,
+              unit: "bytes",
+              module: "server",
+              rid: requestId,
+              labels: { method: c.req.method, route: routePath },
+            })
+          }
           try {
             await next()
           } finally {
@@ -354,6 +365,19 @@ export namespace Server {
               PerformanceSpans.end(span, {
                 status: status >= 500 ? "error" : "ok",
                 attributes: { method: c.req.method, route: routePath, status },
+              })
+            }
+            const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+            if (span && Number.isFinite(responseLength) && responseLength > 0) {
+              PerformanceMetrics.record({
+                name: "http.response.size",
+                value: responseLength,
+                unit: "bytes",
+                module: "server",
+                traceId: span.traceId,
+                spanId: span.spanId,
+                rid: requestId,
+                labels: { method: c.req.method, route: routePath, status },
               })
             }
             if (span && (status >= 500 || duration >= 1000)) {
@@ -1218,6 +1242,14 @@ export namespace Server {
             c.header("X-Accel-Buffering", "no")
             c.header("Cache-Control", "no-cache, no-transform")
             return streamSSE(c, async (stream) => {
+              const connectedAt = Date.now()
+              PerformanceMetrics.record({
+                name: "server.sse.connection.open",
+                value: 1,
+                unit: "count",
+                module: "server",
+                labels: { stream: "events" },
+              })
               stream.writeSSE({
                 data: JSON.stringify({
                   type: "server.connected",
@@ -1225,9 +1257,19 @@ export namespace Server {
                 }),
               })
               const unsub = Bus.subscribeAll(async (event) => {
-                await stream.writeSSE({
-                  data: JSON.stringify(event),
-                })
+                await stream
+                  .writeSSE({
+                    data: JSON.stringify(event),
+                  })
+                  .catch(() => {
+                    PerformanceMetrics.record({
+                      name: "server.sse.write_failure",
+                      value: 1,
+                      unit: "count",
+                      module: "server",
+                      labels: { stream: "events" },
+                    })
+                  })
                 if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
                 }
@@ -1235,17 +1277,43 @@ export namespace Server {
 
               // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
               const heartbeat = setInterval(() => {
-                stream.writeSSE({
-                  data: JSON.stringify({
-                    type: "server.heartbeat",
-                    properties: {},
-                  }),
-                })
+                void stream
+                  .writeSSE({
+                    data: JSON.stringify({
+                      type: "server.heartbeat",
+                      properties: {},
+                    }),
+                  })
+                  .then(() =>
+                    PerformanceMetrics.record({
+                      name: "server.sse.heartbeat",
+                      value: 1,
+                      unit: "count",
+                      module: "server",
+                      labels: { stream: "events" },
+                    }),
+                  )
+                  .catch(() =>
+                    PerformanceMetrics.record({
+                      name: "server.sse.write_failure",
+                      value: 1,
+                      unit: "count",
+                      module: "server",
+                      labels: { stream: "events", event: "heartbeat" },
+                    }),
+                  )
               }, 30000)
 
               await new Promise<void>((resolve) => {
                 stream.onAbort(() => {
                   clearInterval(heartbeat)
+                  PerformanceMetrics.record({
+                    name: "server.sse.connection.duration",
+                    value: Date.now() - connectedAt,
+                    unit: "ms",
+                    module: "server",
+                    labels: { stream: "events" },
+                  })
                   unsub()
                   resolve()
                   log.info("event disconnected")

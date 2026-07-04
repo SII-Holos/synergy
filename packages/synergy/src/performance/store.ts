@@ -258,6 +258,7 @@ export namespace PerformanceStore {
     scopeID?: string
     sessionID?: string
     tool?: string
+    providerID?: string
     limit?: number
   }) {
     flush()
@@ -284,6 +285,10 @@ export namespace PerformanceStore {
     if (opts.tool) {
       filters.push("tool = ?")
       params.push(opts.tool)
+    }
+    if (opts.providerID) {
+      filters.push("json_extract(labels_json, '$.providerID') = ?")
+      params.push(opts.providerID)
     }
     params.push(opts.limit ?? 10_000)
     return conn

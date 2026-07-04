@@ -1,4 +1,5 @@
 import fs from "fs/promises"
+import { PerformanceIssues } from "./issues"
 import { PerformanceMetrics } from "./metrics"
 
 export namespace PerformanceWriter {
@@ -26,6 +27,14 @@ export namespace PerformanceWriter {
         unit: "count",
         module: "observability",
         labels: { reason: "queue_full", dropped },
+      })
+      PerformanceIssues.raise({
+        code: "PERF_OBSERVABILITY_WRITER_BACKPRESSURE",
+        severity: "warning",
+        module: "observability",
+        title: "Observability writer queue is dropping entries",
+        message: "Observability writer queue is full and oldest entries are being dropped",
+        evidence: { queueDepth: queue.length, dropped },
       })
     }
     queue.push({ file, line })
@@ -67,6 +76,21 @@ export namespace PerformanceWriter {
         await fs.mkdir(file.replace(/[\\/][^\\/]+$/, ""), { recursive: true }).catch(() => {})
         await fs.appendFile(file, lines.join(""), "utf8").catch(() => {
           dropped += lines.length
+          PerformanceMetrics.record({
+            name: "observability.writer.dropped",
+            value: lines.length,
+            unit: "count",
+            module: "observability",
+            labels: { reason: "append_failed" },
+          })
+          PerformanceIssues.raise({
+            code: "PERF_OBSERVABILITY_WRITER_APPEND_FAILED",
+            severity: "error",
+            module: "observability",
+            title: "Observability writer append failed",
+            message: "Observability writer could not append queued entries",
+            evidence: { dropped: lines.length },
+          })
         })
       }
       PerformanceMetrics.record({

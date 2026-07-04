@@ -21,6 +21,7 @@ import { Observability } from "@/observability"
 import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
+import { PerformanceMetrics } from "@/performance/metrics"
 import { PerformanceSpans } from "@/performance/spans"
 
 export namespace SessionProcessor {
@@ -259,6 +260,8 @@ export namespace SessionProcessor {
               messageID: input.assistantMessage.id,
               attributes: { provider: input.model.providerID, model: input.model.id },
             })
+            const llmStartedAt = Date.now()
+            let firstTokenSeen = false
 
             try {
               for await (const value of stream.fullStream) {
@@ -266,6 +269,15 @@ export namespace SessionProcessor {
                 switch (value.type) {
                   case "start":
                     SessionManager.setStatus(input.sessionID, { type: "busy" })
+                    PerformanceMetrics.record({
+                      name: "llm.stream.start",
+                      value: Date.now() - llmStartedAt,
+                      unit: "ms",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: { provider: input.model.providerID, model: input.model.id },
+                    })
                     break
 
                   case "reasoning-start":
@@ -286,6 +298,29 @@ export namespace SessionProcessor {
                     break
 
                   case "reasoning-delta":
+                    if (!firstTokenSeen) {
+                      firstTokenSeen = true
+                      PerformanceMetrics.record({
+                        name: "llm.stream.first_token",
+                        value: Date.now() - llmStartedAt,
+                        unit: "ms",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id, kind: "reasoning" },
+                      })
+                    }
+                    if (value.text) {
+                      PerformanceMetrics.record({
+                        name: "llm.stream.output_chars",
+                        value: value.text.length,
+                        unit: "count",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { kind: "reasoning" },
+                      })
+                    }
                     if (value.id in reasoningMap) {
                       const part = reasoningMap[value.id]
                       part.text += value.text
@@ -467,6 +502,37 @@ export namespace SessionProcessor {
                       usage: value.usage,
                       metadata: value.providerMetadata,
                     })
+                    PerformanceMetrics.record({
+                      name: "llm.tokens.input",
+                      value: usage.tokens.input,
+                      unit: "tokens",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: { provider: input.model.providerID, model: input.model.id },
+                    })
+                    PerformanceMetrics.record({
+                      name: "llm.tokens.output",
+                      value: usage.tokens.output,
+                      unit: "tokens",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: { provider: input.model.providerID, model: input.model.id },
+                    })
+                    PerformanceMetrics.record({
+                      name: "llm.request.count",
+                      value: 1,
+                      unit: "count",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: {
+                        provider: input.model.providerID,
+                        model: input.model.id,
+                        finishReason: value.finishReason,
+                      },
+                    })
                     input.assistantMessage.finish = value.finishReason
                     input.assistantMessage.cost += usage.cost
                     input.assistantMessage.tokens = usage.tokens
@@ -520,6 +586,29 @@ export namespace SessionProcessor {
                     break
 
                   case "text-delta":
+                    if (!firstTokenSeen) {
+                      firstTokenSeen = true
+                      PerformanceMetrics.record({
+                        name: "llm.stream.first_token",
+                        value: Date.now() - llmStartedAt,
+                        unit: "ms",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id, kind: "text" },
+                      })
+                    }
+                    if (value.text) {
+                      PerformanceMetrics.record({
+                        name: "llm.stream.output_chars",
+                        value: value.text.length,
+                        unit: "count",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { kind: "text" },
+                      })
+                    }
                     if (currentText) {
                       currentText.text += value.text
                       if (value.providerMetadata) currentText.metadata = value.providerMetadata
@@ -582,6 +671,15 @@ export namespace SessionProcessor {
             if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
               attempt++
               const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
+              PerformanceMetrics.record({
+                name: "session.turn.retry",
+                value: 1,
+                unit: "count",
+                module: "session",
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+                labels: { attempt, retry, errorName: error.name },
+              })
               await Observability.emit("session.turn.retry", {
                 traceId: turnTraceId,
                 sessionID: input.sessionID,
@@ -604,6 +702,15 @@ export namespace SessionProcessor {
               continue
             }
             input.assistantMessage.error = error
+            PerformanceMetrics.record({
+              name: "session.turn.error",
+              value: 1,
+              unit: "count",
+              module: "session",
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              labels: { errorName: error.name },
+            })
             await Observability.emit("session.turn.error", {
               traceId: turnTraceId,
               sessionID: input.sessionID,
