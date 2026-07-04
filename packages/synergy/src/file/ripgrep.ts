@@ -35,10 +35,7 @@ export namespace Ripgrep {
         stdout: "ignore",
         stderr: "ignore",
       })
-      await Promise.race([
-        killer.exited.catch(() => undefined),
-        Bun.sleep(TERMINATE_HARD_WAIT_MS),
-      ])
+      await Promise.race([killer.exited.catch(() => undefined), Bun.sleep(TERMINATE_HARD_WAIT_MS)])
     } else {
       proc.kill("SIGKILL")
     }
