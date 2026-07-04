@@ -164,7 +164,8 @@ export function PerformanceDashboard() {
         summary={summary()}
         onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
       />
-      <BrowserMetrics samples={perf.browserSamples()} summary={summary()} />
+      <BrowserMetricsChart samples={perf.browserSamples()} />
+      <FrontendSection summary={summary()} />
       <TraceDrawer
         trace={selectedTrace()}
         detail={selectedTraceDetail()}
@@ -442,13 +443,12 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
   const groups = createMemo(() => {
     const top = props.summary?.top
     return [
-      { title: "Slow routes", items: top?.slowRoutes ?? [] },
-      { title: "Slow sessions", items: top?.slowSessions ?? [] },
-      { title: "Slow tools", items: top?.slowTools ?? [] },
-      { title: "Slow providers", items: top?.slowProviders ?? [] },
-      { title: "Slow storage", items: top?.slowStorage ?? [] },
-      { title: "Slow library", items: top?.slowLibrary ?? [] },
-      { title: "Slow frontend", items: top?.slowFrontend ?? [] },
+      { title: "Slow routes", icon: "perf.routes" as const, items: top?.slowRoutes ?? [] },
+      { title: "Slow sessions", icon: "perf.sessions" as const, items: top?.slowSessions ?? [] },
+      { title: "Slow tools", icon: "perf.tools" as const, items: top?.slowTools ?? [] },
+      { title: "Slow providers", icon: "perf.providers" as const, items: top?.slowProviders ?? [] },
+      { title: "Slow storage", icon: "perf.storage" as const, items: top?.slowStorage ?? [] },
+      { title: "Slow library", icon: "perf.library" as const, items: top?.slowLibrary ?? [] },
     ]
   })
   return (
@@ -457,7 +457,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
         {(group) => (
           <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
             <div class="mb-3 flex items-center gap-2">
-              <Icon name={getSemanticIcon("perf.latency")} size="small" class="text-icon-weak" />
+              <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak" />
               <h3 class="text-14-semibold text-text-strong">{group.title}</h3>
             </div>
             <Show when={group.items.length > 0} fallback={<EmptyState label="No slow items in this range" />}>
@@ -491,28 +491,57 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
   )
 }
 
-function BrowserMetrics(props: { samples: BrowserMetricSample[]; summary: PerformanceSummary | null | undefined }) {
-  const frontend = () => props.summary?.frontend
+function BrowserMetricsChart(props: { samples: BrowserMetricSample[] }) {
   return (
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.85fr]">
-      <ResourceChart
-        title="Browser metrics"
-        description="Client-side DOM, navigation, and heap samples collected by this settings view"
-        points={props.samples.map((sample) => ({
-          timestamp: sample.timestamp,
-          memory: sample.memory ? sample.memory / 1024 / 1024 : undefined,
-          requests: sample.domNodes,
-          latency: sample.navigationMs,
-        }))}
-        datasets={[
-          { label: "Heap MB", field: "memory", color: BROWSER_COLOR },
-          { label: "DOM nodes", field: "requests", color: MEMORY_COLOR },
-          { label: "Navigation ms", field: "latency", color: REQUEST_COLOR },
-        ]}
-      />
+    <ResourceChart
+      title="Browser metrics"
+      description="Client-side DOM, navigation, and heap samples collected by this settings view"
+      points={props.samples.map((sample) => ({
+        timestamp: sample.timestamp,
+        memory: sample.memory ? sample.memory / 1024 / 1024 : undefined,
+        requests: sample.domNodes,
+        latency: sample.navigationMs,
+      }))}
+      datasets={[
+        { label: "Heap MB", field: "memory", color: BROWSER_COLOR },
+        { label: "DOM nodes", field: "requests", color: MEMORY_COLOR },
+        { label: "Navigation ms", field: "latency", color: REQUEST_COLOR },
+      ]}
+    />
+  )
+}
+
+function FrontendSection(props: { summary: PerformanceSummary | null | undefined }) {
+  const frontend = () => props.summary?.frontend
+  const slow = () => props.summary?.top.slowFrontend ?? []
+  return (
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
         <div class="mb-3 flex items-center gap-2">
           <Icon name={getSemanticIcon("perf.frontend")} size="small" class="text-icon-weak" />
+          <h3 class="text-14-semibold text-text-strong">Slow frontend</h3>
+        </div>
+        <Show when={slow().length > 0} fallback={<EmptyState label="No slow frontend routes in this range" />}>
+          <div class="flex flex-col gap-1.5">
+            <For each={slow()}>
+              {(item) => (
+                <div class="flex items-center gap-3 rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-12-medium text-text-strong">{item.label}</div>
+                    <div class="truncate text-11-regular text-text-weaker">{item.module}</div>
+                  </div>
+                  <div class="text-11-medium text-text-weak tabular-nums">
+                    {formatMetricValue(item.value, item.unit)}
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+      <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+        <div class="mb-3 flex items-center gap-2">
+          <Icon name={getSemanticIcon("perf.vitals")} size="small" class="text-icon-weak" />
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">

@@ -82,6 +82,13 @@ export const SemanticIconToken = {
   "perf.network": "network",
   "perf.disk": "database",
   "perf.frontend": "monitor-dot",
+  "perf.routes": "route",
+  "perf.sessions": "users",
+  "perf.tools": "wrench",
+  "perf.providers": "cloud-upload",
+  "perf.storage": "hard-drive",
+  "perf.library": "book-open",
+  "perf.vitals": "gauge",
   "settings.import": "upload",
   "settings.configFiles": "folder",
 
