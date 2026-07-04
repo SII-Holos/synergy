@@ -20738,6 +20738,10 @@
           },
           "controlProfile": {
             "$ref": "#/components/schemas/ControlProfileId"
+          },
+          "defaultVariant": {
+            "description": "Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.",
+            "type": "string"
           }
         },
         "additionalProperties": {}
@@ -22389,6 +22393,16 @@
           "vision_model": {
             "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
             "type": "string"
+          },
+          "role_variant": {
+            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/components/schemas/ModelRole"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "default_agent": {
             "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
@@ -30454,6 +30468,9 @@
           },
           "external": {
             "$ref": "#/components/schemas/ExternalAgentInfo"
+          },
+          "defaultVariant": {
+            "type": "string"
           }
         },
         "required": ["name", "mode", "permission", "options"]
@@ -30502,6 +30519,9 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "defaultVariant": {
+            "type": "string"
           }
         },
         "required": ["name", "mode"]
