@@ -4,6 +4,9 @@ const html = await Bun.file(new URL("../index.html", import.meta.url)).text()
 const entry = await Bun.file(new URL("./entry.tsx", import.meta.url)).text()
 const app = await Bun.file(new URL("./app.tsx", import.meta.url)).text()
 const themeContext = await Bun.file(new URL("../../ui/src/theme/context.tsx", import.meta.url)).text()
+const globalSync = await Bun.file(new URL("./context/global-sync.tsx", import.meta.url)).text()
+const css = await Bun.file(new URL("./index.css", import.meta.url)).text()
+const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
 const desktopThemeSync = await Bun.file(new URL("./components/desktop-theme-sync.tsx", import.meta.url)).text()
 
 function blockBetween(source: string, start: string, end: string): string {
@@ -43,11 +46,24 @@ describe("app boot shell", () => {
     expect(style).not.toContain("--background-base")
   })
 
+  test("keeps the mounted app root on the resolved theme background", () => {
+    expect(css).toContain("html:not([data-color-scheme]),")
+    expect(css).toContain("html:not([data-color-scheme]) body,")
+    expect(css).toContain("html:not([data-color-scheme]) #root")
+    expect(css).toContain("background: var(--synergy-boot-bg, #fafafa);")
+    expect(css).toContain("html[data-color-scheme],")
+    expect(css).toContain("html[data-color-scheme] body,")
+    expect(css).toContain("html[data-color-scheme] #root")
+    expect(css).toContain("background: var(--background-stronger, var(--synergy-boot-bg, #fafafa));")
+    expect(css).toContain("color: var(--text-base, var(--synergy-boot-text));")
+  })
+
   test("hydrates and syncs the static boot theme from the saved app color scheme", () => {
     expect(html).toContain('var fallbackScheme = "system"')
     expect(html).not.toContain('var fallbackScheme = desktopWindow ? "dark" : "system"')
     expect(html).toContain('localStorage.getItem("synergy-color-scheme")')
     expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
+    expect(html).toContain('document.documentElement.setAttribute("data-color-scheme", mode)')
     expect(html).toContain('var isDark = scheme === "dark" || (scheme === "system" && systemDark)')
     expect(html).toContain("window.synergyDesktop?.theme?.set")
     expect(html).toContain("Promise.resolve(desktopThemeSet(scheme)).catch")
@@ -83,7 +99,7 @@ describe("app boot shell", () => {
     expect(html).toContain('data-synergy-app-boot-window-action="close"')
   })
 
-  test("initializes the app theme from the saved color scheme before mount", () => {
+  test("initializes and synchronizes the app and boot-shell theme before mount", () => {
     const initialSchemeIndex = themeContext.indexOf('const initialColorScheme = getSavedColorScheme() ?? "system"')
     const createStoreIndex = themeContext.indexOf("createStore({")
 
@@ -92,8 +108,27 @@ describe("app boot shell", () => {
     expect(themeContext).toContain("colorScheme: initialColorScheme")
     expect(themeContext).toContain("mode: resolveColorSchemeMode(initialColorScheme)")
     expect(themeContext).toContain("applyThemeCss(resolveColorSchemeMode(initialColorScheme))")
+    expect(themeContext).toContain("document.documentElement.dataset.colorScheme = mode")
+    expect(themeContext).toContain("document.documentElement.dataset.synergyColorScheme = mode")
     expect(themeContext).not.toContain('colorScheme: "system" as ColorScheme')
     expect(themeContext).not.toContain("const savedScheme = getSavedColorScheme()")
+  })
+
+  test("uses theme-backed workbench backgrounds for full-app and session loading fallbacks", () => {
+    const loadingClass =
+      "synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak"
+
+    expect(app).toContain(`class="${loadingClass}"`)
+    expect(globalSync).toContain(`class="${loadingClass}"`)
+    expect(sessionPage).toContain(
+      'class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger"',
+    )
+    expect(sessionPage).toContain(
+      'class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger"',
+    )
+    expect(sessionPage).toContain(
+      'class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger"',
+    )
   })
 
   test("maps the desktop theme bridge into platform and syncs app color scheme changes", () => {

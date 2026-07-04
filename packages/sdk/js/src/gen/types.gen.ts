@@ -3425,6 +3425,23 @@ export type CompactionPart = {
   auto: boolean
 }
 
+export type CompactionRecoveryPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "compaction_recovery"
+  summary: string
+  sections: Array<{
+    heading: string
+    items: Array<string>
+  }>
+  mechanical: boolean
+  recoverySessionIDs?: Array<string>
+  pendingDagCount?: number
+  nextStep?: string
+  validated: boolean
+}
+
 export type Part =
   | TextPart
   | ReasoningPart
@@ -3436,6 +3453,7 @@ export type Part =
   | PatchPart
   | RetryPart
   | CompactionPart
+  | CompactionRecoveryPart
 
 export type SessionRollbackEvent = {
   id: string
@@ -4319,6 +4337,10 @@ export type BlueprintLoopInfo = {
     updated: number
     completed?: number
   }
+  model?: {
+    providerID: string
+    modelID: string
+  }
 }
 
 export type BlueprintLoopCreateInput = {
@@ -4358,6 +4380,13 @@ export type BlueprintLoopCreateInput = {
    * Zero-based loop index
    */
   loopIndex?: number
+  /**
+   * Explicit model override for the Blueprint Run
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  }
 }
 
 export type BlueprintLoopActivity = {

@@ -67,7 +67,11 @@ const Session = lazy(async () => {
   signalAppSurfaceReady()
   return session
 })
-const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
+const Loading = () => (
+  <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
+    Loading...
+  </div>
+)
 
 import { proxyPrefix } from "@/utils/proxy"
 

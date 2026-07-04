@@ -449,6 +449,9 @@ export namespace Channel {
           streaming.start(),
         ])
         const sessionID = session.id
+        const sessionModel = session.modelOverride
+          ? { providerID: session.modelOverride.providerID, modelID: session.modelOverride.modelID }
+          : undefined
 
         let activeTextMessageId: string | null = null
         const assistantTranscript = new Map<string, string>()
@@ -519,6 +522,7 @@ export namespace Channel {
         try {
           const result = await SessionInvoke.invoke({
             sessionID,
+            model: sessionModel,
             parts: buildPromptParts(ctx),
           })
 
