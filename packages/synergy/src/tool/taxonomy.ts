@@ -117,6 +117,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   memory_edit: entry("knowledge.memory", { stateful: true, auxiliary: true }),
   note_write: entry("knowledge.note", { stateful: true, auxiliary: true }),
   note_archive: entry("knowledge.note", { stateful: true, auxiliary: true }),
+  note_delete: entry("knowledge.note", { stateful: true }),
   note_edit: entry("knowledge.note", { stateful: true, auxiliary: true }),
   note_list: entry("knowledge.note"),
   note_read: entry("knowledge.note"),

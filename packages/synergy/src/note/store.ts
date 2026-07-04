@@ -35,6 +35,7 @@ export namespace NoteStore {
 
   function normalize(note: z.infer<typeof NoteTypes.Info>): z.infer<typeof NoteTypes.Info> {
     note.global ??= false
+    note.archived ??= false
     note.version ??= 1
     note.kind ??= "note"
     note.content = NoteDocument.normalize(note.content)
@@ -69,6 +70,14 @@ export namespace NoteStore {
     while (i < a.length) result.push(a[i++])
     while (j < b.length) result.push(b[j++])
     return result
+  }
+
+  // --- Archive status filter ---
+  export type ArchiveFilter = "active" | "archived" | "all"
+  export function filterArchive<T extends { archived?: boolean }>(items: T[], filter: ArchiveFilter): T[] {
+    if (filter === "active") return items.filter((i) => !i.archived)
+    if (filter === "archived") return items.filter((i) => i.archived)
+    return items
   }
 
   // --- Index management ---
@@ -198,6 +207,7 @@ export namespace NoteStore {
       content: NoteDocument.normalize(create.note.content),
       pinned: false,
       global: isGlobal,
+      archived: false,
       tags: create.note.tags ?? [],
       kind: create.note.kind ?? "note",
       blueprint: blueprint
@@ -233,7 +243,10 @@ export namespace NoteStore {
     return normalize(note)
   }
 
-  export async function list(scopeID: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
+  export async function list(
+    scopeID: string,
+    archiveFilter?: ArchiveFilter,
+  ): Promise<z.infer<typeof NoteTypes.Info>[]> {
     const sid = Identifier.asScopeID(scopeID)
     const ids = await Storage.scan(StoragePath.notesRoot(sid))
     if (ids.length === 0) return []
@@ -241,7 +254,7 @@ export namespace NoteStore {
     const results = await Storage.readMany<z.infer<typeof NoteTypes.Info>>(keys)
     const notes = results.filter((n): n is z.infer<typeof NoteTypes.Info> => n !== undefined).map(normalize)
     sortByPinAndTime(notes)
-    return notes
+    return filterArchive(notes, archiveFilter ?? "active")
   }
 
   export async function listByKind(scopeID: string, kind: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
@@ -249,17 +262,20 @@ export namespace NoteStore {
     return notes.filter((n) => n.kind === kind)
   }
 
-  export async function listWithGlobal(scopeID: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
-    if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID)
-    const [local, global] = await Promise.all([list(scopeID), list(HOME_SCOPE_ID)])
+  export async function listWithGlobal(
+    scopeID: string,
+    archiveFilter?: ArchiveFilter,
+  ): Promise<z.infer<typeof NoteTypes.Info>[]> {
+    if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID, archiveFilter)
+    const [local, global] = await Promise.all([list(scopeID, archiveFilter), list(HOME_SCOPE_ID, archiveFilter)])
     return mergeSorted(local, global, comparePinTime)
   }
 
-  export async function listGrouped(): Promise<NoteTypes.ScopeGroup[]> {
+  export async function listGrouped(archiveFilter?: ArchiveFilter): Promise<NoteTypes.ScopeGroup[]> {
     const scopeIDs = await Storage.scan(["notes"])
     const groups: NoteTypes.ScopeGroup[] = []
     for (const sid of scopeIDs) {
-      const notes = await list(sid)
+      const notes = await list(sid, archiveFilter)
       groups.push({
         scopeID: sid,
         scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
@@ -324,6 +340,9 @@ export namespace NoteStore {
       if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string
       }
+      if (update.patch.archived !== undefined) {
+        draft.archived = update.patch.archived
+      }
       draft.version += 1
       draft.time.updated = Date.now()
     })
@@ -349,6 +368,11 @@ export namespace NoteStore {
 
     log.info("updated", { id: noteID, version: note.version })
     await Bus.publish(NoteEvent.Updated, { note })
+    if (patch.archived === true) {
+      await Bus.publish(NoteEvent.Archived, { ids: [noteID], scopeID })
+    } else if (patch.archived === false) {
+      await Bus.publish(NoteEvent.Unarchived, { ids: [noteID], scopeID })
+    }
     await Plugin.trigger(
       "note.update.after",
       {
@@ -402,7 +426,7 @@ export namespace NoteStore {
     for (const noteID of noteIDs) {
       const sourcePath = StoragePath.note(sid, noteID)
       const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
-        delete draft.archived
+        draft.archived = false
         draft.version += 1
         draft.time.updated = Date.now()
       })
@@ -417,13 +441,17 @@ export namespace NoteStore {
 
   // --- Public API: metadata only (fast, for tools) ---
 
-  export async function listMeta(scopeID: string): Promise<Metadata[]> {
-    return loadIndex(scopeID)
+  export async function listMeta(scopeID: string, archiveFilter?: ArchiveFilter): Promise<Metadata[]> {
+    const entries = await loadIndex(scopeID)
+    return filterArchive(entries, archiveFilter ?? "active")
   }
 
-  export async function listMetaWithGlobal(scopeID: string): Promise<Metadata[]> {
-    if (scopeID === HOME_SCOPE_ID) return listMeta(HOME_SCOPE_ID)
-    const [local, global] = await Promise.all([listMeta(scopeID), listMeta(HOME_SCOPE_ID)])
+  export async function listMetaWithGlobal(scopeID: string, archiveFilter?: ArchiveFilter): Promise<Metadata[]> {
+    if (scopeID === HOME_SCOPE_ID) return listMeta(HOME_SCOPE_ID, archiveFilter)
+    const [local, global] = await Promise.all([
+      listMeta(scopeID, archiveFilter),
+      listMeta(HOME_SCOPE_ID, archiveFilter),
+    ])
     return mergeSorted(local, global, comparePinTime)
   }
 
@@ -437,7 +465,7 @@ export namespace NoteStore {
     return result
   }
 
-  export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
+  export async function listMetaGrouped(archiveFilter?: ArchiveFilter): Promise<NoteTypes.MetaScopeGroup[]> {
     const scopeIDs = await Storage.scan(["notes"])
     const currentScopeID = ScopeContext.current.scope.id
     scopeIDs.sort((a, b) => {
@@ -447,7 +475,7 @@ export namespace NoteStore {
     })
     const groups = await Promise.all(
       scopeIDs.map(async (sid): Promise<NoteTypes.MetaScopeGroup | undefined> => {
-        const metaList = await listMeta(sid)
+        const metaList = await listMeta(sid, archiveFilter)
         if (metaList.length === 0) return undefined
         return {
           scopeID: sid,

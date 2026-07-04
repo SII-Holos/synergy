@@ -14,7 +14,7 @@ export const NoteRoute = new Hono()
     describeRoute({
       summary: "List note metadata grouped by scope",
       description:
-        "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+        "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.",
       operationId: "note.listMeta",
       responses: {
         200: {
@@ -24,9 +24,21 @@ export const NoteRoute = new Hono()
         ...errors(400),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
     async (c) => {
       try {
-        const groups = await NoteStore.listMetaGrouped()
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const groups = await NoteStore.listMetaGrouped(archFilter)
         return c.json(groups)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
@@ -37,7 +49,8 @@ export const NoteRoute = new Hono()
     "/all",
     describeRoute({
       summary: "List all notes grouped by scope",
-      description: "List all notes across all scopes, grouped by scope ID.",
+      description:
+        "List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.",
       operationId: "note.listAll",
       responses: {
         200: {
@@ -47,9 +60,21 @@ export const NoteRoute = new Hono()
         ...errors(400),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
     async (c) => {
       try {
-        const groups = await NoteStore.listGrouped()
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const groups = await NoteStore.listGrouped(archFilter)
         return c.json(groups)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
@@ -192,14 +217,15 @@ export const NoteRoute = new Hono()
     "/:id",
     describeRoute({
       summary: "Delete note",
-      description: "Delete a note permanently.",
+      description:
+        "Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.",
       operationId: "note.remove",
       responses: {
         200: {
           description: "Deleted",
           content: { "application/json": { schema: resolver(z.boolean()) } },
         },
-        ...errors(400),
+        ...errors(400, 404, 409),
       },
     }),
     validator("param", z.object({ id: z.string().meta({ description: "Note ID" }) })),
@@ -209,6 +235,9 @@ export const NoteRoute = new Hono()
         await NoteStore.removeAny(ScopeContext.current.scope.id, id)
         return c.json(true)
       } catch (err: any) {
+        if (err instanceof NoteError.NotArchived) return c.json(err.toObject(), 409)
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Note not found: ${c.req.valid("param").id}` }, 404)
         return c.json({ message: err?.message ?? String(err) }, 400)
       }
     },
@@ -274,7 +303,8 @@ export const NoteRoute = new Hono()
     "/",
     describeRoute({
       summary: "List notes",
-      description: "List all notes for the current scope, including global notes.",
+      description:
+        "List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.",
       operationId: "note.list",
       responses: {
         200: {
@@ -284,9 +314,21 @@ export const NoteRoute = new Hono()
         ...errors(400),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
     async (c) => {
       try {
-        const notes = await NoteStore.listWithGlobal(ScopeContext.current.scope.id)
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const notes = await NoteStore.listWithGlobal(ScopeContext.current.scope.id, archFilter)
         return c.json(notes)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)

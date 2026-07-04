@@ -10832,10 +10832,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List note metadata grouped by scope",
-        "description": "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+        "description": "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "Note metadata grouped by scope",
@@ -10886,10 +10896,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List all notes grouped by scope",
-        "description": "List all notes across all scopes, grouped by scope ID.",
+        "description": "List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "Notes grouped by scope",
@@ -11071,10 +11091,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List notes",
-        "description": "List all notes for the current scope, including global notes.",
+        "description": "List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "List of notes",
@@ -11292,7 +11322,7 @@
           }
         ],
         "summary": "Delete note",
-        "description": "Delete a note permanently.",
+        "description": "Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.",
         "responses": {
           "200": {
             "description": "Deleted",
@@ -11310,6 +11340,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
                 }
               }
             }
@@ -20445,7 +20495,7 @@
           },
           "cacheTtlMs": {
             "description": "Remote marketplace cache TTL in milliseconds",
-            "default": 300000,
+            "default": 3600000,
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -26163,8 +26213,7 @@
             }
           },
           "archived": {
-            "type": "boolean",
-            "const": true
+            "type": "boolean"
           },
           "version": {
             "type": "number"
@@ -26182,7 +26231,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
+        "required": ["id", "title", "content", "pinned", "global", "tags", "archived", "version", "time"]
       },
       "NoteConflictError": {
         "type": "object",

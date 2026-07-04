@@ -21,7 +21,7 @@ export namespace NoteTypes {
           lastRunAt: z.number().optional(),
         })
         .optional(),
-      archived: z.literal(true).optional(),
+      archived: z.boolean(),
       version: z.number(),
       time: z.object({
         created: z.number(),

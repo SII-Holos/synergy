@@ -16,6 +16,10 @@ const parameters = z.object({
     .enum(["all", "note", "blueprint"])
     .default("all")
     .describe("Filter by document kind. Blueprints are executable notes."),
+  archived: z
+    .enum(["active", "archived", "all"])
+    .default("active")
+    .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
   since: z
     .string()
     .optional()
@@ -70,6 +74,7 @@ export const NoteSearchTool = Tool.define("note_search", {
         tags: params.tags,
         pinned: params.pinned,
         kind: params.kind,
+        archived: params.archived,
       },
     )
 
@@ -84,12 +89,14 @@ export const NoteSearchTool = Tool.define("note_search", {
       }
     }
 
-    const allNotes =
+    let allNotes =
       search.scope === "all"
         ? await NoteStore.listMetaWithGlobal(currentScopeID)
         : search.scope === "global"
           ? await NoteStore.listMeta("global")
           : await NoteStore.listMeta(currentScopeID)
+
+    allNotes = NoteStore.filterArchive(allNotes, search.archived ?? params.archived)
 
     const sinceMs = search.since ? new Date(search.since).getTime() : undefined
     const beforeMs = search.before ? new Date(search.before).getTime() : undefined

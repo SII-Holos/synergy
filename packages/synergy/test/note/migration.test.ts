@@ -73,4 +73,57 @@ describe("note migrations", () => {
     expect(NoteMarkdown.toMarkdown(migrated.content)).toBe(beforeMarkdown)
     await expect(Storage.read(StoragePath.note(scopeID, "_index"))).rejects.toBeInstanceOf(Storage.NotFoundError)
   })
+
+  test("archived migration adds archived: false to legacy notes missing the field", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const noteID = Identifier.ascending("note")
+    const now = Date.now()
+
+    await Storage.write(StoragePath.note(scopeID, noteID), {
+      id: noteID,
+      title: "Legacy note without archived",
+      content: { type: "doc", content: [] },
+      pinned: false,
+      global: false,
+      tags: [],
+      version: 1,
+      time: { created: now, updated: now },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260704-note-add-archived")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const migrated = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
+    expect(migrated.archived).toBe(false)
+  })
+
+  test("archived migration preserves existing archived: true", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const noteID = Identifier.ascending("note")
+    const now = Date.now()
+
+    await Storage.write(StoragePath.note(scopeID, noteID), {
+      id: noteID,
+      title: "Already archived note",
+      content: { type: "doc", content: [] },
+      pinned: false,
+      global: false,
+      tags: [],
+      archived: true,
+      version: 1,
+      time: { created: now, updated: now },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260704-note-add-archived")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const migrated = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
+    expect(migrated.archived).toBe(true)
+  })
 })

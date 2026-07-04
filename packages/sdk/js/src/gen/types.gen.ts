@@ -3938,7 +3938,7 @@ export type NoteInfo = {
     runCount?: number
     lastRunAt?: number
   }
-  archived?: true
+  archived: boolean
   version: number
   time: {
     created: number
@@ -11107,6 +11107,10 @@ export type NoteListMetaData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note/meta"
 }
@@ -11135,6 +11139,10 @@ export type NoteListAllData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note/all"
 }
@@ -11202,6 +11210,10 @@ export type NoteListData = {
   query?: {
     directory?: string
     scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
   }
   url: "/note"
 }
@@ -11272,6 +11284,14 @@ export type NoteRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
 }
 
 export type NoteRemoveError = NoteRemoveErrors[keyof NoteRemoveErrors]

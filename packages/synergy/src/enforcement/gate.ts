@@ -724,7 +724,12 @@ export namespace EnforcementGate {
       }
 
       // Note write tools
-      if (toolName === "note_write" || toolName === "note_edit") {
+      if (
+        toolName === "note_write" ||
+        toolName === "note_edit" ||
+        toolName === "note_archive" ||
+        toolName === "note_delete"
+      ) {
         caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }

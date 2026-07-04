@@ -26,6 +26,7 @@ import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
 import { NoteArchiveTool } from "./note-archive"
+import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { SessionListTool } from "./session-list"
@@ -359,6 +360,7 @@ export namespace ToolRegistry {
       NoteSearchTool,
       NoteWriteTool,
       NoteEditTool,
+      NoteDeleteTool,
       BlueprintLoopFinishTool,
       BlueprintLoopRestartTool,
       SessionListTool,

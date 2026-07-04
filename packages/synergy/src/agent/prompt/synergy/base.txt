@@ -555,7 +555,7 @@ Use `expand_tools({ groups: ["browser"] })` when the domain is clear. Use `searc
 
 {MEMORY_INTERACTION}
 
-**Notes** — Expand the `note` group for longer-form markdown documents, project-scoped or global (`note_list`, `note_read`, `note_search`, `note_write`). Use when information is too detailed for a memory, or when you need an evolving document rather than a static knowledge atom.
+**Notes** — Expand the `note` group for longer-form markdown documents, project-scoped or global (`note_list`, `note_read`, `note_search`, `note_write`, `note_edit`). Use when information is too detailed for a memory, or when you need an evolving document rather than a static knowledge atom. Archive notes that are no longer needed with `note_archive`; permanently delete archived notes with `note_delete` (only archived notes can be deleted).
 
 **Agenda** — Expand the `agenda` group for scheduling. `agenda_watch` sets a one-time wake-up in the current session (e.g. "check back in 30 min"); `agenda_schedule` creates recurring or one-off tasks that run in new sessions. Manage with `agenda_list`, `agenda_update`, `agenda_cancel`, `agenda_trigger`, `agenda_logs`.
 

@@ -6941,12 +6941,13 @@ export class Note extends HeyApiClient {
   /**
    * List note metadata grouped by scope
    *
-   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.
+   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.
    */
   public listMeta<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
+      archived?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6957,6 +6958,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
           ],
         },
       ],
@@ -6971,12 +6973,13 @@ export class Note extends HeyApiClient {
   /**
    * List all notes grouped by scope
    *
-   * List all notes across all scopes, grouped by scope ID.
+   * List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.
    */
   public listAll<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
+      archived?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6987,6 +6990,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
           ],
         },
       ],
@@ -7035,12 +7039,13 @@ export class Note extends HeyApiClient {
   /**
    * List notes
    *
-   * List all notes for the current scope, including global notes.
+   * List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
+      archived?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7051,6 +7056,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
           ],
         },
       ],
@@ -7102,7 +7108,7 @@ export class Note extends HeyApiClient {
   /**
    * Delete note
    *
-   * Delete a note permanently.
+   * Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
