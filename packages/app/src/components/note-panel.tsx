@@ -17,7 +17,8 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
-import { deleteNoteConfirm } from "@/components/dialog/confirm-copy"
+import { archiveNoteConfirm, unarchiveNoteConfirm, deleteArchivedNoteConfirm } from "@/components/dialog/confirm-copy"
+import { SelectionCheckbox } from "@/components/library/shared"
 import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
@@ -161,6 +162,9 @@ function NoteCard(props: {
   variant?: NoteCardVariant
   loops?: BlueprintLoopInfo[]
   onClick: () => void
+  selecting?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
@@ -182,10 +186,23 @@ function NoteCard(props: {
         "note-card--blueprint": isBlueprint(),
         [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
       }}
-      draggable={true}
-      onDragStart={(e) => attachNoteDragData(e, props.note)}
-      onClick={props.onClick}
+      draggable={!props.selecting}
+      onDragStart={(e) => {
+        if (!props.selecting) attachNoteDragData(e, props.note)
+      }}
+      onClick={() => {
+        if (props.selecting && props.onToggleSelect) {
+          props.onToggleSelect(props.note.id)
+        } else {
+          props.onClick()
+        }
+      }}
     >
+      <Show when={props.selecting && props.onToggleSelect}>
+        <div class="absolute right-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
+          <SelectionCheckbox selected={props.selected ?? false} />
+        </div>
+      </Show>
       <Show when={props.originName}>
         <span class="sr-only">From {props.originName}</span>
       </Show>
@@ -578,13 +595,20 @@ function ScopeSection(props: {
   onOpenNote: (id: string) => void
   onCreateNote: () => void
   scopeLookup: Map<string, { name: string; directory: string }>
+  selecting?: boolean
+  selectedNotes?: Set<string>
+  onToggleSelect?: (id: string) => void
 }) {
   const [columns, setColumns] = createSignal(2)
   const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
   const noteCountLabel = createMemo(
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
   )
-  const shelfNotes = createMemo(() => props.group.notes.slice(0, columns()))
+  const shelfNotes = createMemo(() => {
+    void props.selecting
+    void props.selectedNotes?.size
+    return props.group.notes.slice(0, columns())
+  })
   const hasMore = createMemo(() => props.group.notes.length > columns())
 
   let sectionRef!: HTMLElement
@@ -675,6 +699,9 @@ function ScopeSection(props: {
                     loops={props.loopsByNote.get(note.id) ?? []}
                     variant="compact"
                     onClick={() => props.onOpenNote(note.id)}
+                    selecting={props.selecting}
+                    selected={props.selectedNotes?.has(note.id) ?? false}
+                    onToggleSelect={props.onToggleSelect}
                   />
                 )}
               </For>
@@ -704,6 +731,9 @@ function ScopeSection(props: {
                   loops={props.loopsByNote.get(note.id) ?? []}
                   variant={note.pinned ? "featured" : "balanced"}
                   onClick={() => props.onOpenNote(note.id)}
+                  selecting={props.selecting}
+                  selected={props.selectedNotes?.has(note.id) ?? false}
+                  onToggleSelect={props.onToggleSelect}
                 />
               )}
             </For>
@@ -726,6 +756,10 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const [search, setSearch] = createSignal("")
   const [kindFilter, setKindFilter] = createSignal<NoteKindFilter>("all")
   const [expandedState, setExpandedState] = createSignal<Record<string, boolean>>({})
+  const [selecting, setSelecting] = createSignal(false)
+  const [selectedNotes, setSelectedNotes] = createSignal<Set<string>>(new Set())
+  const [batchBusy, setBatchBusy] = createSignal(false)
+  const [showArchived, setShowArchived] = createSignal(false)
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
@@ -796,18 +830,21 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const displayGroups = createMemo(() => {
+    void selecting()
+    void selectedNotes().size
     const groups = rawGroups() ?? []
     const lookup = scopeLookup()
     const curID = currentScopeID()
     const q = search().toLowerCase().trim()
     const activeKind = kindFilter()
-    const archivedNotes: NoteCardInfo[] = []
+    const showArch = showArchived()
+    const archived: NoteCardInfo[] = []
 
     const mapped = groups
       .map((g): DisplayGroup | undefined => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
-        const archived = g.scopeType === "project" && !meta && !isCurrent
+        const deregistered = g.scopeType === "project" && !meta && !isCurrent
         const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
         let notes: NoteCardInfo[] = [...g.notes]
         if (q) {
@@ -824,13 +861,27 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
           return b.time.updated - a.time.updated
         })
-        if (archived) {
-          archivedNotes.push(...notes)
+        if (deregistered) {
+          archived.push(...notes)
           return undefined
         }
+        const archivedMember = notes.filter((n) => n.archived)
+        const activeMember = notes.filter((n) => !n.archived)
+        if (!showArch) {
+          sortNotes(activeMember)
+          return {
+            ...g,
+            notes: activeMember,
+            name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
+            directory: groupDirectory,
+            isCurrent,
+          }
+        }
+        archived.push(...archivedMember)
+        sortNotes(activeMember)
         return {
           ...g,
-          notes,
+          notes: activeMember,
           name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
           directory: groupDirectory,
           isCurrent,
@@ -838,16 +889,13 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       })
       .filter((g): g is DisplayGroup => g !== undefined)
 
-    if (archivedNotes.length > 0) {
-      archivedNotes.sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-        return b.time.updated - a.time.updated
-      })
+    if (showArch && archived.length > 0) {
+      sortNotes(archived)
       mapped.push({
-        scopeID: "__archived_projects__",
+        scopeID: "__archived__",
         scopeType: "project",
-        notes: archivedNotes,
-        name: "Archived projects",
+        notes: archived,
+        name: "Archived",
         directory: directory() ?? "home",
         isCurrent: false,
         archived: true,
@@ -919,6 +967,94 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     }
   }
 
+  const confirm = useConfirm()
+
+  function sortNotes(list: NoteCardInfo[]) {
+    list.sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      return b.time.updated - a.time.updated
+    })
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedNotes((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function batchArchive() {
+    const ids = [...selectedNotes()]
+    confirm.show({
+      ...archiveNoteConfirm(ids.length),
+      onConfirm: async () => {
+        setBatchBusy(true)
+        try {
+          await sdk.client.note.batch({ ids, action: "archive", directory: directory() })
+        } catch (e) {
+          console.error("Batch archive failed", e)
+        }
+        setSelectedNotes(new Set<string>())
+        setSelecting(false)
+        await refetch()
+        setBatchBusy(false)
+      },
+    })
+  }
+
+  async function batchUnarchive() {
+    const ids = [...selectedNotes()]
+    confirm.show({
+      ...unarchiveNoteConfirm(ids.length),
+      onConfirm: async () => {
+        setBatchBusy(true)
+        try {
+          await sdk.client.note.batch({ ids, action: "unarchive", directory: directory() })
+        } catch (e) {
+          console.error("Batch unarchive failed", e)
+        }
+        setSelectedNotes(new Set<string>())
+        setSelecting(false)
+        await refetch()
+        setBatchBusy(false)
+      },
+    })
+  }
+
+  async function batchDelete() {
+    const ids = [...selectedNotes()]
+    confirm.show({
+      ...deleteArchivedNoteConfirm(ids.length),
+      onConfirm: async () => {
+        setBatchBusy(true)
+        try {
+          await sdk.client.note.batch({ ids, action: "delete", directory: directory() })
+        } catch (e) {
+          console.error("Batch delete failed", e)
+        }
+        setSelectedNotes(new Set<string>())
+        setSelecting(false)
+        await refetch()
+        setBatchBusy(false)
+      },
+    })
+  }
+
+  function cancelSelecting() {
+    setSelecting(false)
+    setSelectedNotes(new Set<string>())
+  }
+
+  createEffect(() => {
+    if (!selecting()) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") cancelSelecting()
+    }
+    window.addEventListener("keydown", onKey)
+    onCleanup(() => window.removeEventListener("keydown", onKey))
+  })
   return (
     <div class="flex flex-col h-full bg-background-base relative">
       <style>{TIPTAP_STYLES}</style>
@@ -970,6 +1106,28 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               </span>
               <button
                 type="button"
+                classList={{
+                  "flex items-center justify-center size-7 rounded-lg transition-colors": true,
+                  "text-icon-base bg-surface-raised-stronger-non-alpha": showArchived(),
+                  "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !showArchived(),
+                }}
+                onClick={() => setShowArchived((v) => !v)}
+                title={showArchived() ? "Show active" : "Show archived"}
+              >
+                <Icon name="archive" size="small" />
+              </button>
+              <Show when={!selecting()}>
+                <button
+                  type="button"
+                  class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                  onClick={() => setSelecting(true)}
+                  title="Select notes"
+                >
+                  <Icon name="square-check" size="small" />
+                </button>
+              </Show>
+              <button
+                type="button"
                 class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                 onClick={() => refetch()}
                 title="Refresh"
@@ -978,6 +1136,74 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               </button>
             </div>
           </div>
+
+          <Show when={selecting()}>
+            <div class="flex items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="text-12-medium text-text-base">
+                  {selectedNotes().size} / {visibleNotes()} selected
+                </span>
+                <Show when={selectedNotes().size < visibleNotes()}>
+                  <button
+                    type="button"
+                    class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
+                    onClick={() => {
+                      const all = new Set<string>()
+                      for (const g of displayGroups()) {
+                        for (const n of g.notes) all.add(n.id)
+                      }
+                      setSelectedNotes(all)
+                    }}
+                  >
+                    Select all
+                  </button>
+                </Show>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <Show when={selectedNotes().size > 0}>
+                  <Show
+                    when={displayGroups().some((g) => g.archived)}
+                    fallback={
+                      <button
+                        type="button"
+                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
+                        onClick={batchArchive}
+                        disabled={batchBusy()}
+                      >
+                        <Show when={!batchBusy()} fallback={<Spinner class="size-3" />}>
+                          Archive ({selectedNotes().size})
+                        </Show>
+                      </button>
+                    }
+                  >
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all hover:bg-surface-raised-base-hover text-text-base ring-border-base/35"
+                      onClick={batchUnarchive}
+                      disabled={batchBusy()}
+                    >
+                      Restore ({selectedNotes().size})
+                    </button>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
+                      onClick={batchDelete}
+                      disabled={batchBusy()}
+                    >
+                      Delete ({selectedNotes().size})
+                    </button>
+                  </Show>
+                </Show>
+                <button
+                  type="button"
+                  class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+                  onClick={cancelSelecting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </Show>
 
           <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Show when={rawGroups.loading}>
@@ -1011,6 +1237,9 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                         onOpenNote={(id) => openNote(id, group.directory)}
                         onCreateNote={() => createNoteInScope(group.directory)}
                         scopeLookup={scopeLookup()}
+                        selecting={selecting()}
+                        selectedNotes={selectedNotes()}
+                        onToggleSelect={toggleSelect}
                       />
                     )}
                   </For>
@@ -1620,13 +1849,34 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }
   }
 
-  async function deleteNote() {
+  const isArchived = createMemo(() => baseNote()?.archived ?? false)
+
+  async function archiveNote() {
     const dir = directory()
     if (!dir) return
     confirm.show({
-      ...deleteNoteConfirm(baseNote()?.title),
+      ...archiveNoteConfirm(1),
       onConfirm: async () => {
-        await sdk.client.note.remove({ id: props.id, directory: dir })
+        await sdk.client.note.batch({ ids: [props.id], action: "archive", directory: dir })
+        props.onBack()
+      },
+    })
+  }
+
+  async function restoreNote() {
+    const dir = directory()
+    if (!dir) return
+    await sdk.client.note.batch({ ids: [props.id], action: "unarchive", directory: dir })
+    void refetch()
+  }
+
+  async function deleteArchivedNote() {
+    const dir = directory()
+    if (!dir) return
+    confirm.show({
+      ...deleteArchivedNoteConfirm(1),
+      onConfirm: async () => {
+        await sdk.client.note.batch({ ids: [props.id], action: "delete", directory: dir })
         props.onDelete()
       },
     })
@@ -1738,15 +1988,39 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
               </button>
 
-              <button
-                type="button"
-                class="note-detail-icon-button note-detail-icon-button--danger"
-                onClick={deleteNote}
-                title="Delete"
-                aria-label="Delete"
+              <Show
+                when={isArchived()}
+                fallback={
+                  <button
+                    type="button"
+                    class="note-detail-icon-button note-detail-icon-button--danger"
+                    onClick={archiveNote}
+                    title="Archive"
+                    aria-label="Archive"
+                  >
+                    <Icon name="archive" size="small" />
+                  </button>
+                }
               >
-                <Icon name={getSemanticIcon("action.remove")} size="small" />
-              </button>
+                <button
+                  type="button"
+                  class="note-detail-icon-button"
+                  onClick={restoreNote}
+                  title="Restore"
+                  aria-label="Restore"
+                >
+                  <Icon name="rotate-ccw" size="small" />
+                </button>
+                <button
+                  type="button"
+                  class="note-detail-icon-button note-detail-icon-button--danger"
+                  onClick={deleteArchivedNote}
+                  title="Delete permanently"
+                  aria-label="Delete permanently"
+                >
+                  <Icon name={getSemanticIcon("action.remove")} size="small" />
+                </button>
+              </Show>
             </div>
           </div>
         </div>

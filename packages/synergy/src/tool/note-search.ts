@@ -2,7 +2,6 @@ import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
-import { NoteTypes } from "../note"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-search.txt"
 import { Plugin } from "../plugin"
@@ -120,7 +119,7 @@ export const NoteSearchTool = Tool.define("note_search", {
     const sections: string[] = []
     let totalMatches = 0
     let matchedNotes = 0
-    const matched: NoteTypes.Info[] = []
+    const matched: any[] = []
 
     for (const meta of candidates) {
       if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break

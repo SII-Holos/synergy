@@ -249,6 +249,8 @@ import type {
   McpTestResponses,
   MemoryCategory,
   MemoryRecallMode,
+  NoteBatchErrors,
+  NoteBatchResponses,
   NoteCreateErrors,
   NoteCreateInput,
   NoteCreateResponses,
@@ -7190,6 +7192,45 @@ export class Note extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<NoteUpdateResponses, NoteUpdateErrors, ThrowOnError>({
       url: "/note/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Batch archive or delete notes
+   *
+   * Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.
+   */
+  public batch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      ids?: Array<string>
+      action?: "archive" | "unarchive" | "delete"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "ids" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<NoteBatchResponses, NoteBatchErrors, ThrowOnError>({
+      url: "/note/batch",
       ...options,
       ...params,
       headers: {

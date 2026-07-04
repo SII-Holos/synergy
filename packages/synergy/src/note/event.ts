@@ -24,4 +24,18 @@ export namespace NoteEvent {
       scopeID: z.string(),
     }),
   )
+  export const Archived = BusEvent.define(
+    "note.archived",
+    z.object({
+      ids: z.array(z.string()),
+      scopeID: z.string(),
+    }),
+  )
+  export const Unarchived = BusEvent.define(
+    "note.unarchived",
+    z.object({
+      ids: z.array(z.string()),
+      scopeID: z.string(),
+    }),
+  )
 }

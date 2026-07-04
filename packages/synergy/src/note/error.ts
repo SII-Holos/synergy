@@ -11,4 +11,11 @@ export namespace NoteError {
       note: NoteTypes.Info,
     }),
   )
+  export const NotArchived = NamedError.create(
+    "NoteNotArchivedError",
+    z.object({
+      noteID: z.string(),
+      message: z.string(),
+    }),
+  )
 }

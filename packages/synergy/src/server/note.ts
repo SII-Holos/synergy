@@ -214,6 +214,62 @@ export const NoteRoute = new Hono()
     },
   )
 
+  .post(
+    "/batch",
+    describeRoute({
+      summary: "Batch archive or delete notes",
+      description: "Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.",
+      operationId: "note.batch",
+      responses: {
+        200: {
+          description: "Batch operation result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({ archived: z.array(z.string()).optional(), deleted: z.array(z.string()).optional() }),
+              ),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        ids: z.array(z.string()).min(1).max(100).meta({ description: "Note IDs to act on" }),
+        action: z
+          .enum(["archive", "unarchive", "delete"])
+          .meta({ description: "Action: archive, unarchive, or delete" }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { ids, action } = c.req.valid("json")
+        const scopeID = ScopeContext.current.scope.id
+        if (action === "archive") {
+          await NoteStore.archive(scopeID, ids)
+          return c.json({ archived: ids })
+        }
+        if (action === "unarchive") {
+          await NoteStore.unarchive(scopeID, ids)
+          return c.json({ archived: [] })
+        }
+        if (action === "delete") {
+          for (const id of ids) {
+            await NoteStore.remove(scopeID, id)
+          }
+          return c.json({ deleted: ids })
+        }
+        return c.json({ message: "Invalid action" }, 400)
+      } catch (err: any) {
+        if (err instanceof NoteError.NotArchived)
+          return c.json({ message: err.toObject().data?.message ?? "Note must be archived first" }, 400)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
   .get(
     "/",
     describeRoute({

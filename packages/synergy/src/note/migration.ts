@@ -270,6 +270,44 @@ export const migrations: Migration[] = [
       log.info("note block id migration complete", { totalNotes, changed, scopes: scopeIDs.length })
     },
   },
+  {
+    id: "20260704-note-add-archived",
+    description: "Add archived field to existing notes; default to false",
+    domain: "note",
+    dependsOn: ["20260626-note-add-block-ids"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let totalNotes = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        totalNotes += ids.filter((id) => !id.startsWith("_")).length
+      }
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        const noteIDs = ids.filter((id) => !id.startsWith("_"))
+        for (const noteID of noteIDs) {
+          const notePath = StoragePath.note(s, noteID)
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (raw.archived === undefined) {
+              raw.archived = false
+              await Storage.write(notePath, raw)
+            }
+          } catch (err) {
+            log.warn("failed to add archived field to note", { scopeID: sid, noteID, error: String(err) })
+          }
+          done++
+          if (done % 10 === 0 || done === totalNotes) {
+            progress(done, totalNotes)
+          }
+        }
+      }
+      log.info("archived field migration complete", { totalNotes, scopes: scopeIDs.length })
+    },
+  },
 ]
 
 MigrationRegistry.register("note", migrations)

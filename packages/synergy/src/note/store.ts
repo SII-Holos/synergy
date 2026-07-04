@@ -1,4 +1,5 @@
 import { Storage } from "../storage/storage"
+import z from "zod"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
 import { ScopeContext } from "../scope/context"
@@ -15,15 +16,15 @@ export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
   const HOME_SCOPE_ID = "home"
 
-  export type Metadata = NoteTypes.MetaInfo
+  export type Metadata = z.infer<typeof NoteTypes.MetaInfo>
 
-  function normalizeBlueprint(note: NoteTypes.Info): void {
+  function normalizeBlueprint(note: z.infer<typeof NoteTypes.Info>): void {
     if (note.kind !== "blueprint") {
       note.blueprint = undefined
       return
     }
 
-    const blueprint = note.blueprint as (NoteTypes.Info["blueprint"] & { status?: unknown }) | undefined
+    const blueprint = note.blueprint as (z.infer<typeof NoteTypes.Info>["blueprint"] & { status?: unknown }) | undefined
     if (!blueprint) {
       note.blueprint = {}
       return
@@ -32,7 +33,7 @@ export namespace NoteStore {
     note.blueprint = blueprint
   }
 
-  function normalize(note: NoteTypes.Info): NoteTypes.Info {
+  function normalize(note: z.infer<typeof NoteTypes.Info>): z.infer<typeof NoteTypes.Info> {
     note.global ??= false
     note.version ??= 1
     note.kind ??= "note"
@@ -41,7 +42,7 @@ export namespace NoteStore {
     return note
   }
 
-  function toMetadata(note: NoteTypes.Info): Metadata {
+  function toMetadata(note: z.infer<typeof NoteTypes.Info>): Metadata {
     const { content, ...meta } = note
     const markdown = NoteMarkdown.toMarkdown(content)
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
@@ -92,20 +93,34 @@ export namespace NoteStore {
     const ids = (await Storage.scan(StoragePath.notesRoot(sid))).filter((id) => !id.startsWith("_"))
     if (ids.length === 0) return []
     const keys = ids.map((id) => StoragePath.note(sid, id))
-    const results = await Storage.readMany<NoteTypes.Info>(keys)
-    const entries = results.filter((n): n is NoteTypes.Info => n !== undefined).map((n) => toMetadata(normalize(n)))
+    const results = await Storage.readMany<z.infer<typeof NoteTypes.Info>>(keys)
+    const entries = results
+      .filter((n): n is z.infer<typeof NoteTypes.Info> => n !== undefined)
+      .map((n) => toMetadata(normalize(n)))
     sortByPinAndTime(entries)
     await Storage.write(indexPath(sid), entries)
     log.info("index rebuilt", { scopeID, count: entries.length })
     return entries
   }
 
-  async function indexSet(scopeID: string, note: NoteTypes.Info): Promise<void> {
+  async function indexSet(scopeID: string, note: z.infer<typeof NoteTypes.Info>): Promise<void> {
     const entries = await loadIndex(scopeID)
     const entry = toMetadata(note)
     const idx = entries.findIndex((e) => e.id === note.id)
     if (idx >= 0) entries[idx] = entry
     else entries.push(entry)
+    sortByPinAndTime(entries)
+    await Storage.write(indexPath(Identifier.asScopeID(scopeID)), entries)
+  }
+
+  async function indexUpdateMany(scopeID: string, notes: z.infer<typeof NoteTypes.Info>[]): Promise<void> {
+    const entries = await loadIndex(scopeID)
+    for (const note of notes) {
+      const entry = toMetadata(note)
+      const idx = entries.findIndex((e) => e.id === note.id)
+      if (idx >= 0) entries[idx] = entry
+      else entries.push(entry)
+    }
     sortByPinAndTime(entries)
     await Storage.write(indexPath(Identifier.asScopeID(scopeID)), entries)
   }
@@ -118,10 +133,13 @@ export namespace NoteStore {
 
   // --- Scope resolution ---
 
-  async function resolveScope(scopeID: string, noteID: string): Promise<{ scopeID: string; note: NoteTypes.Info }> {
+  async function resolveScope(
+    scopeID: string,
+    noteID: string,
+  ): Promise<{ scopeID: string; note: z.infer<typeof NoteTypes.Info> }> {
     const sid = Identifier.asScopeID(scopeID)
     try {
-      const note = await Storage.read<NoteTypes.Info>(StoragePath.note(sid, noteID))
+      const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID))
       return { scopeID, note: normalize(note) }
     } catch {
       // fallthrough
@@ -129,7 +147,7 @@ export namespace NoteStore {
     if (scopeID !== HOME_SCOPE_ID) {
       const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       try {
-        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(globalSid, noteID))
+        const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(globalSid, noteID))
         return { scopeID: HOME_SCOPE_ID, note: normalize(note) }
       } catch {
         // fallthrough
@@ -139,7 +157,9 @@ export namespace NoteStore {
     for (const candidate of scopeIDs) {
       if (candidate === scopeID || candidate === HOME_SCOPE_ID) continue
       try {
-        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(candidate), noteID))
+        const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(
+          StoragePath.note(Identifier.asScopeID(candidate), noteID),
+        )
         return { scopeID: candidate, note: normalize(note) }
       } catch {
         // continue
@@ -150,7 +170,10 @@ export namespace NoteStore {
 
   // --- Public API: full data ---
 
-  export async function create(input: NoteTypes.CreateInput, options?: { scopeID?: string }): Promise<NoteTypes.Info> {
+  export async function create(
+    input: NoteTypes.CreateInput,
+    options?: { scopeID?: string },
+  ): Promise<z.infer<typeof NoteTypes.Info>> {
     const targetScopeID = options?.scopeID ?? ScopeContext.current.scope.id
     const create = await Plugin.trigger(
       "note.create.before",
@@ -169,7 +192,7 @@ export namespace NoteStore {
       | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
       | undefined
     if (blueprint) delete blueprint.status
-    const note: NoteTypes.Info = {
+    const note: z.infer<typeof NoteTypes.Info> = {
       id,
       title: create.note.title,
       content: NoteDocument.normalize(create.note.content),
@@ -203,28 +226,30 @@ export namespace NoteStore {
     return note
   }
 
-  export async function get(scopeID: string, noteID: string): Promise<NoteTypes.Info> {
-    const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(scopeID), noteID))
+  export async function get(scopeID: string, noteID: string): Promise<z.infer<typeof NoteTypes.Info>> {
+    const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(
+      StoragePath.note(Identifier.asScopeID(scopeID), noteID),
+    )
     return normalize(note)
   }
 
-  export async function list(scopeID: string): Promise<NoteTypes.Info[]> {
+  export async function list(scopeID: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
     const sid = Identifier.asScopeID(scopeID)
     const ids = await Storage.scan(StoragePath.notesRoot(sid))
     if (ids.length === 0) return []
     const keys = ids.filter((id) => !id.startsWith("_")).map((id) => StoragePath.note(sid, id))
-    const results = await Storage.readMany<NoteTypes.Info>(keys)
-    const notes = results.filter((n): n is NoteTypes.Info => n !== undefined).map(normalize)
+    const results = await Storage.readMany<z.infer<typeof NoteTypes.Info>>(keys)
+    const notes = results.filter((n): n is z.infer<typeof NoteTypes.Info> => n !== undefined).map(normalize)
     sortByPinAndTime(notes)
     return notes
   }
 
-  export async function listByKind(scopeID: string, kind: string): Promise<NoteTypes.Info[]> {
+  export async function listByKind(scopeID: string, kind: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
     const notes = await list(scopeID)
     return notes.filter((n) => n.kind === kind)
   }
 
-  export async function listWithGlobal(scopeID: string): Promise<NoteTypes.Info[]> {
+  export async function listWithGlobal(scopeID: string): Promise<z.infer<typeof NoteTypes.Info>[]> {
     if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID)
     const [local, global] = await Promise.all([list(scopeID), list(HOME_SCOPE_ID)])
     return mergeSorted(local, global, comparePinTime)
@@ -244,10 +269,14 @@ export namespace NoteStore {
     return groups
   }
 
-  export async function update(scopeID: string, noteID: string, patch: NoteTypes.PatchInput): Promise<NoteTypes.Info> {
+  export async function update(
+    scopeID: string,
+    noteID: string,
+    patch: z.infer<typeof NoteTypes.PatchInput>,
+  ): Promise<z.infer<typeof NoteTypes.Info>> {
     const sid = Identifier.asScopeID(scopeID)
     const sourcePath = StoragePath.note(sid, noteID)
-    const current = normalize(await Storage.read<NoteTypes.Info>(sourcePath))
+    const current = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(sourcePath))
     const update = await Plugin.trigger(
       "note.update.before",
       {
@@ -261,7 +290,7 @@ export namespace NoteStore {
     )
 
     let wasGlobal = false
-    const note = await Storage.update<NoteTypes.Info>(sourcePath, (draft) => {
+    const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
       draft.global ??= false
       draft.version ??= 1
       wasGlobal = draft.global
@@ -280,7 +309,9 @@ export namespace NoteStore {
       if (update.patch.blueprint === null) {
         draft.blueprint = undefined
       } else if (update.patch.blueprint !== undefined) {
-        const { activeLoopID, ...rest } = update.patch.blueprint as NoteTypes.PatchInput["blueprint"] & {
+        const { activeLoopID, ...rest } = update.patch.blueprint as z.infer<
+          typeof NoteTypes.PatchInput
+        >["blueprint"] & {
           status?: unknown
         }
         delete rest.status
@@ -333,10 +364,55 @@ export namespace NoteStore {
 
   export async function remove(scopeID: string, noteID: string): Promise<void> {
     const sid = Identifier.asScopeID(scopeID)
+    const note = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID)))
+    if (!note.archived) {
+      throw new NoteError.NotArchived({
+        noteID,
+        message: "Note must be archived before it can be deleted. Use note_archive first.",
+      })
+    }
     await Storage.remove(StoragePath.note(sid, noteID))
     await indexRemove(scopeID, noteID)
     log.info("removed", { id: noteID })
     await Bus.publish(NoteEvent.Deleted, { id: noteID, scopeID })
+  }
+
+  export async function archive(scopeID: string, noteIDs: string[]): Promise<z.infer<typeof NoteTypes.Info>[]> {
+    const sid = Identifier.asScopeID(scopeID)
+    const results: z.infer<typeof NoteTypes.Info>[] = []
+    for (const noteID of noteIDs) {
+      const sourcePath = StoragePath.note(sid, noteID)
+      const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
+        draft.archived = true as const
+        draft.version += 1
+        draft.time.updated = Date.now()
+      })
+      normalize(note)
+      results.push(note)
+    }
+    await indexUpdateMany(scopeID, results)
+    log.info("archived", { ids: noteIDs, count: noteIDs.length })
+    await Bus.publish(NoteEvent.Archived, { ids: noteIDs, scopeID })
+    return results
+  }
+
+  export async function unarchive(scopeID: string, noteIDs: string[]): Promise<z.infer<typeof NoteTypes.Info>[]> {
+    const sid = Identifier.asScopeID(scopeID)
+    const results: z.infer<typeof NoteTypes.Info>[] = []
+    for (const noteID of noteIDs) {
+      const sourcePath = StoragePath.note(sid, noteID)
+      const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
+        delete draft.archived
+        draft.version += 1
+        draft.time.updated = Date.now()
+      })
+      normalize(note)
+      results.push(note)
+    }
+    await indexUpdateMany(scopeID, results)
+    log.info("unarchived", { ids: noteIDs, count: noteIDs.length })
+    await Bus.publish(NoteEvent.Unarchived, { ids: noteIDs, scopeID })
+    return results
   }
 
   // --- Public API: metadata only (fast, for tools) ---
@@ -385,7 +461,7 @@ export namespace NoteStore {
 
   // --- Public API: scope-agnostic access ---
 
-  export async function getAny(scopeID: string, noteID: string): Promise<NoteTypes.Info> {
+  export async function getAny(scopeID: string, noteID: string): Promise<z.infer<typeof NoteTypes.Info>> {
     const { note } = await resolveScope(scopeID, noteID)
     return note
   }
@@ -393,8 +469,8 @@ export namespace NoteStore {
   export async function updateAny(
     scopeID: string,
     noteID: string,
-    patch: NoteTypes.PatchInput,
-  ): Promise<NoteTypes.Info> {
+    patch: z.infer<typeof NoteTypes.PatchInput>,
+  ): Promise<z.infer<typeof NoteTypes.Info>> {
     const { scopeID: resolved } = await resolveScope(scopeID, noteID)
     return update(resolved, noteID, patch)
   }
