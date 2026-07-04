@@ -451,7 +451,7 @@ export namespace Agent {
           source: agent.source,
           modelSource: agent.modelSource,
           model: agent.model,
-          defaultVariant: agent.defaultVariant ?? (cfg.role_variant as any)?.[agent.modelRole || "default"],
+          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"],
         }))
 
       return {

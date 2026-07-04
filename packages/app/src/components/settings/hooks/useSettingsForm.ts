@@ -49,7 +49,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
   })
-  params.setSettings("roleVariant", ((cfg as Record<string, unknown>).role_variant as Record<string, string>) ?? {})
+  params.setSettings("roleVariant", cfg.role_variant ?? {})
 
   params.setSettings("providers", {
     enabledProviders: formatList(cfg.enabled_providers),

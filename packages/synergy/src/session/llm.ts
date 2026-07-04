@@ -163,9 +163,7 @@ export namespace LLM {
     const optionsTimer = l.time("options.assembly")
     const provider = await Provider.getProvider(input.model.providerID)
     const effectiveVariant =
-      input.user.variant ??
-      input.agent.defaultVariant ??
-      (cfg.role_variant as any)?.[input.agent.modelRole || "default"]
+      input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
     let variant: Record<string, any> = {}
     if (!input.small && input.model.variants && Object.keys(input.model.variants).length > 0 && effectiveVariant) {
       if (input.model.variants[effectiveVariant]) {

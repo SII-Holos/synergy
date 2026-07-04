@@ -48,7 +48,7 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
     const newVal = state.models[role.key]
     if (newVal !== origVal) patch[role.key] = newVal || undefined
   }
-  const origVariant = (cfg as Record<string, unknown>).role_variant as Record<string, string> | undefined
+  const origVariant = cfg.role_variant
   const variants = state.roleVariant
   const cleanedVariant: Record<string, string> = {}
   for (const [role, variant] of Object.entries(variants)) {
