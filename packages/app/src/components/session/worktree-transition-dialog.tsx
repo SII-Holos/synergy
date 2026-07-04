@@ -80,7 +80,6 @@ export function WorktreeTransitionContent(props: {
   mode: "enter" | "leave"
   sessionID: string
   directory: string
-  onPendingChange?: (pending: boolean) => void
   onClose: () => void
 }) {
   const globalSDK = useGlobalSDK()
@@ -125,8 +124,6 @@ export function WorktreeTransitionContent(props: {
     ]
   })
 
-  const setPending = (pending: boolean) => props.onPendingChange?.(pending)
-
   const submit = async () => {
     if (loading()) return
     const operation = props.mode === "leave" ? "leave" : "enter"
@@ -137,7 +134,6 @@ export function WorktreeTransitionContent(props: {
         step: operation === "leave" ? "Leaving worktree" : "Creating worktree",
       }),
     )
-    setPending(true)
     try {
       if (props.mode === "leave") {
         await globalSDK.client.worktree.leave({ directory: props.directory, sessionID: props.sessionID })
@@ -172,8 +168,6 @@ export function WorktreeTransitionContent(props: {
         title: props.mode === "leave" ? "Leave worktree failed" : "Move to worktree failed",
         description: errorDescription(error),
       })
-    } finally {
-      setPending(false)
     }
   }
 
@@ -194,7 +188,6 @@ export function WorktreeTransitionContent(props: {
           data-component="icon-button"
           data-variant="ghost"
           disabled={loading()}
-          class="w-[30px] h-[30px] rounded-lg text-icon-weak border border-border-base bg-surface-inset-base hover:text-icon-base hover:bg-surface-inset-base-hover hover:border-border-weak-base disabled:opacity-50 flex items-center justify-center"
           onClick={() => {
             if (!loading()) props.onClose()
           }}

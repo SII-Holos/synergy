@@ -900,16 +900,18 @@ function SessionPageContent() {
             }}
           >
             <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-              <Show when={!isNewSession() && worktreeTransition()}>
+              <Show when={worktreeTransition()}>
                 {(transition) => (
-                  <div class="absolute inset-0 z-40 flex flex-col bg-background-base">
-                    <WorktreeTransitionContent
-                      mode={transition().mode}
-                      sessionID={transition().sessionID}
-                      directory={transition().directory}
-                      onClose={clearWorktreeTransition}
-                    />
-                  </div>
+                  <Show when={transition().sessionID === params.id}>
+                    <div class="absolute inset-0 z-40 flex flex-col bg-background-base">
+                      <WorktreeTransitionContent
+                        mode={transition().mode}
+                        sessionID={transition().sessionID}
+                        directory={transition().directory}
+                        onClose={clearWorktreeTransition}
+                      />
+                    </div>
+                  </Show>
                 )}
               </Show>
               <SessionTopBar />
