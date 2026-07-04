@@ -118,12 +118,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const list: ProviderModel[] = []
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
-      for (const [modelId, model] of Object.entries(provider.models)) {
+      for (const [modelId, model] of Object.entries(provider.models) as [
+        string,
+        { name: string; variants?: Record<string, unknown> },
+      ][]) {
         list.push({
           providerId: provider.id,
           providerName: provider.name,
           modelId,
           modelName: model.name,
+          variantKeys: model.variants ? Object.keys(model.variants) : [],
         })
       }
     }
@@ -481,8 +485,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
             savedModels={savedModels()}
             providerModels={providerModels}
             modelRoleSummaries={() => modelRoleSummaries() ?? []}
+            roleVariant={settings.roleVariant}
             popoverLayer={settingsPopoverLayer()}
             onModelChange={(key, value) => setSettings("models", key, value)}
+            onVariantChange={(roleId, variant) =>
+              setSettings("roleVariant", roleId, variant || (undefined as unknown as string))
+            }
             onConnectProvider={() => setActiveTab("providers")}
           />
         )

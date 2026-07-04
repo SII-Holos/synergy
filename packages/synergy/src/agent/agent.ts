@@ -56,6 +56,7 @@ export namespace Agent {
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
       model: ModelRef.optional(),
+      defaultVariant: z.string().optional(),
     })
     .meta({ ref: "ModelRoleUsage" })
 
@@ -170,6 +171,7 @@ export namespace Agent {
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
       external: ExternalAgent.Info.optional(),
+      defaultVariant: z.string().optional(),
     })
     .meta({
       ref: "Agent",
@@ -259,6 +261,7 @@ export namespace Agent {
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      item.defaultVariant = value.defaultVariant ?? item.defaultVariant
       if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
 
@@ -448,6 +451,7 @@ export namespace Agent {
           source: agent.source,
           modelSource: agent.modelSource,
           model: agent.model,
+          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"],
         }))
 
       return {

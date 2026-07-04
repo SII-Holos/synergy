@@ -162,8 +162,21 @@ export namespace LLM {
 
     const optionsTimer = l.time("options.assembly")
     const provider = await Provider.getProvider(input.model.providerID)
-    const variant =
-      !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}
+    const effectiveVariant =
+      input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
+    let variant: Record<string, any> = {}
+    if (!input.small && input.model.variants && Object.keys(input.model.variants).length > 0 && effectiveVariant) {
+      if (Object.prototype.hasOwnProperty.call(input.model.variants, effectiveVariant)) {
+        variant = input.model.variants[effectiveVariant]
+      } else {
+        l.warn("configured variant not available for model", {
+          variant: effectiveVariant,
+          modelID: input.model.id,
+          availableVariants: Object.keys(input.model.variants),
+          agent: input.agent.name,
+        })
+      }
+    }
     const base = input.small
       ? ProviderTransform.smallOptions(input.model)
       : ProviderTransform.options(input.model, input.sessionID, provider.options)
