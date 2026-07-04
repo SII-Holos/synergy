@@ -15,6 +15,7 @@ export interface SettingsSection {
   domainIds?: string[]
   rowLabels?: string[]
   hidden?: boolean
+  visibility?: "standard" | "developer"
   component?: Component
   loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean
