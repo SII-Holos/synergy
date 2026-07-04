@@ -118,7 +118,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
-  const working = createMemo(() => status()?.type !== "idle")
+  const rawWorking = createMemo(() => status()?.type !== "idle")
+  const working = createMemo(() => rawWorking() || !!effectiveActiveLoopID())
   const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
   const sessionScopeDirectory = createMemo(() => {
