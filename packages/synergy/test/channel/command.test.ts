@@ -89,6 +89,7 @@ describe("ChannelCommand", () => {
           action: "handled",
           reply: [
             "Available commands:",
+            "/model <providerID/modelID> — change the model for this conversation",
             "/new — start a new conversation",
             "/status — show the current conversation status",
             "/help — show this command list",

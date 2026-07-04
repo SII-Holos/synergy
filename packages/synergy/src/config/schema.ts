@@ -164,6 +164,10 @@ export const ChannelFeishuAccount = z
       .optional()
       .default(0)
       .describe("Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)"),
+    model: z
+      .string()
+      .optional()
+      .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
     resolveSenderNames: z
       .boolean()
       .optional()

@@ -129,6 +129,7 @@ export type EmailSettings = {
 export type AccountToggle = {
   key: string
   enabled: boolean
+  model: string
 }
 
 export type ChannelSettings = {

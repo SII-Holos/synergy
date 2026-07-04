@@ -173,6 +173,13 @@ export const Info = z
         })
         .optional(),
       completionNotice: CompletionNotice.default(() => ({ unread: false, silent: false })),
+      modelOverride: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional()
+        .describe("Per-session model override set by /model command"),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
