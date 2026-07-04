@@ -903,16 +903,20 @@ function SidebarSessionRow(props: {
       <span
         classList={{
           "sb-session-icon-wrap": true,
-          "sb-session-icon-active-tone": visual().tone === "active",
-          "sb-session-icon-waiting-tone": visual().tone === "waiting",
-          "sb-session-icon-worktree-tone": visual().tone === "worktree",
-          "sb-session-icon-muted-tone": visual().tone === "muted",
-          "sb-session-icon-pulse": !!visual().pulse,
+          "sb-session-icon-active-tone": visual()?.tone === "active",
+          "sb-session-icon-waiting-tone": visual()?.tone === "waiting",
+          "sb-session-icon-worktree-tone": visual()?.tone === "worktree",
+          "sb-session-icon-muted-tone": visual()?.tone === "muted",
+          "sb-session-icon-pulse": !!visual()?.pulse,
         }}
-        title={visual().label}
+        title={visual()?.label ?? ""}
       >
-        <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
-        <Show when={visual().completionUnread}>
+        <Icon
+          name={visual()?.icon ?? "loader"}
+          size="small"
+          class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"}
+        />
+        <Show when={visual()?.completionUnread}>
           <span class="sb-session-completion-dot" />
         </Show>
       </span>

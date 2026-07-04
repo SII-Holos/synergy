@@ -267,6 +267,30 @@ function SessionPageContent() {
     ),
   )
 
+  // Blueprint loop start messages carry a model override but are excluded from
+  // userMessages by isSessionIdentityAnchor (source starts with "blueprint_loop_").
+  // Track their model separately so the stb-root model display stays current.
+  const lastBlueprintStartModel = createMemo(() => {
+    const msgs = messages()
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.role !== "user") continue
+      const meta = m.metadata as Record<string, unknown> | undefined
+      if (typeof meta?.source === "string" && meta.source === "blueprint_loop_start") {
+        return m.model
+      }
+    }
+    return undefined
+  })
+  createEffect(
+    on(
+      () => lastBlueprintStartModel(),
+      (model) => {
+        if (model) local.model.set(model)
+      },
+    ),
+  )
+
   const renderedUserMessages = createMemo(() => {
     const msgs = visibleUserMessages()
     if (!msgs) return emptyUserMessages
