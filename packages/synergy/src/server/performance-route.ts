@@ -272,7 +272,7 @@ export const PerformanceRoute = new Hono()
     describeRoute({
       summary: "Get performance config",
       description: "Get effective performance observability configuration and default metadata.",
-      operationId: "performance.settings.get",
+      operationId: "performance.config.get",
       responses: {
         200: {
           description: "Performance config",
@@ -307,7 +307,7 @@ export const PerformanceRoute = new Hono()
       summary: "Patch performance config",
       description:
         "Validate and persist runtime performance configuration fields in the runtime observability config domain.",
-      operationId: "performance.settings.update",
+      operationId: "performance.config.update",
       responses: {
         200: {
           description: "Validated performance config",

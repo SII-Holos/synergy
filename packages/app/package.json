@@ -12,6 +12,8 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
+    "build:visualizer": "SYNERGY_BUNDLE_VISUALIZER=1 vite build",
+    "perf:visualizer": "bun script/visualizer-report.ts",
     "serve": "vite preview"
   },
   "license": "MIT",

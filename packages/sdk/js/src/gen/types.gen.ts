@@ -6533,38 +6533,39 @@ export type PerformanceIssuesListResponses = {
 
 export type PerformanceIssuesListResponse = PerformanceIssuesListResponses[keyof PerformanceIssuesListResponses]
 
-export type PerformanceSettingsGetData = {
+export type PerformancePerformanceConfigGetData = {
   body?: never
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceSettingsGetResponses = {
+export type PerformancePerformanceConfigGetResponses = {
   /**
    * Performance config
    */
   200: PerformanceConfigResponse
 }
 
-export type PerformanceSettingsGetResponse = PerformanceSettingsGetResponses[keyof PerformanceSettingsGetResponses]
+export type PerformancePerformanceConfigGetResponse =
+  PerformancePerformanceConfigGetResponses[keyof PerformancePerformanceConfigGetResponses]
 
-export type PerformanceSettingsUpdateData = {
+export type PerformancePerformanceConfigUpdateData = {
   body?: PerformanceConfigPatch
   path?: never
   query?: never
   url: "/global/performance/config"
 }
 
-export type PerformanceSettingsUpdateResponses = {
+export type PerformancePerformanceConfigUpdateResponses = {
   /**
    * Validated performance config
    */
   200: PerfConfig
 }
 
-export type PerformanceSettingsUpdateResponse =
-  PerformanceSettingsUpdateResponses[keyof PerformanceSettingsUpdateResponses]
+export type PerformancePerformanceConfigUpdateResponse =
+  PerformancePerformanceConfigUpdateResponses[keyof PerformancePerformanceConfigUpdateResponses]
 
 export type PerformanceBrowserMetricsIngestData = {
   body?: PerfBrowserMetricBatch

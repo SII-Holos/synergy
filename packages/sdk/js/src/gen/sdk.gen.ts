@@ -280,8 +280,8 @@ import type {
   PerformanceConfigPatch,
   PerformanceEventsStreamResponses,
   PerformanceIssuesListResponses,
-  PerformanceSettingsGetResponses,
-  PerformanceSettingsUpdateResponses,
+  PerformancePerformanceConfigGetResponses,
+  PerformancePerformanceConfigUpdateResponses,
   PerformanceSummaryResponses,
   PerformanceTimelineResponses,
   PerformanceTracesDetailResponses,
@@ -2861,14 +2861,14 @@ export class Issues extends HeyApiClient {
   }
 }
 
-export class Settings extends HeyApiClient {
+export class PerformanceConfig extends HeyApiClient {
   /**
    * Get performance config
    *
    * Get effective performance observability configuration and default metadata.
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<PerformanceSettingsGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PerformancePerformanceConfigGetResponses, unknown, ThrowOnError>({
       url: "/global/performance/config",
       ...options,
     })
@@ -2886,7 +2886,7 @@ export class Settings extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ key: "performanceConfigPatch", map: "body" }] }])
-    return (options?.client ?? this.client).patch<PerformanceSettingsUpdateResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).patch<PerformancePerformanceConfigUpdateResponses, unknown, ThrowOnError>({
       url: "/global/performance/config",
       ...options,
       ...params,
@@ -3006,7 +3006,7 @@ export class Performance extends HeyApiClient {
 
   issues = new Issues({ client: this.client })
 
-  settings = new Settings({ client: this.client })
+  performanceConfig = new PerformanceConfig({ client: this.client })
 
   browserMetrics = new BrowserMetrics({ client: this.client })
 

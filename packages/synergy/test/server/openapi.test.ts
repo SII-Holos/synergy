@@ -114,8 +114,8 @@ describe("OpenAPI spec generation", () => {
     expect(spec.paths["/global/performance/traces"]?.get?.operationId).toBe("performance.traces.list")
     expect(spec.paths["/global/performance/traces/{traceId}"]?.get?.operationId).toBe("performance.traces.detail")
     expect(spec.paths["/global/performance/issues"]?.get?.operationId).toBe("performance.issues.list")
-    expect(spec.paths["/global/performance/config"]?.get?.operationId).toBe("performance.settings.get")
-    expect(spec.paths["/global/performance/config"]?.patch?.operationId).toBe("performance.settings.update")
+    expect(spec.paths["/global/performance/config"]?.get?.operationId).toBe("performance.config.get")
+    expect(spec.paths["/global/performance/config"]?.patch?.operationId).toBe("performance.config.update")
     expect(spec.paths["/global/performance/browser-metrics"]?.post?.operationId).toBe(
       "performance.browserMetrics.ingest",
     )

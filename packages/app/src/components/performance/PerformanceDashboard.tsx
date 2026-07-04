@@ -15,6 +15,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { usePerformance } from "./use-performance"
+import { runtimeSupportItems } from "./runtime-support"
 import type {
   BrowserMetricSample,
   PerformanceIssue,
@@ -124,6 +125,7 @@ export function PerformanceDashboard() {
       </Show>
 
       <SummaryCards summary={summary()} issues={issues()} />
+      <RuntimeSupport summary={summary()} />
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ResourceChart
@@ -253,6 +255,40 @@ function MetricCard(props: {
         />
       </div>
       <div class="mt-2 truncate text-20-semibold text-text-strong tabular-nums">{props.value}</div>
+    </div>
+  )
+}
+
+function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined }) {
+  return (
+    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+      <div class="mb-3 flex items-center gap-2">
+        <Icon name={getSemanticIcon("perf.health")} size="small" class="text-icon-weak" />
+        <div>
+          <h3 class="text-14-semibold text-text-strong">Runtime health and support</h3>
+          <p class="mt-1 text-11-regular text-text-weak">
+            Diagnostics-derived support signals for lock health, trace evidence, recent errors, and pending sessions.
+          </p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
+        <For each={runtimeSupportItems(props.summary)}>
+          {(item) => (
+            <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+              <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{item.label}</div>
+              <div
+                classList={{
+                  "mt-1 text-13-medium text-text-strong tabular-nums": true,
+                  "text-icon-warning-base": item.tone === "warning",
+                  "text-icon-success-base": item.tone === "success",
+                }}
+              >
+                {item.value}
+              </div>
+            </div>
+          )}
+        </For>
+      </div>
     </div>
   )
 }

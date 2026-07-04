@@ -65,7 +65,7 @@ The server exposes local-first endpoints under `/global/performance`:
 - `POST /global/performance/browser-metrics`
 - `GET /global/performance/events`
 
-Stable error codes use the `PERF_*` prefix. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.settings.get()` and `client.performance.settings.update()` for that endpoint.
+Stable error codes use the `PERF_*` prefix. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.config.get()` and `client.performance.config.update()` for that endpoint.
 
 ## External OSS tooling
 
@@ -75,14 +75,26 @@ The runtime dashboard does not require SaaS or external agents. For repeatable l
 # Bun-native lightweight smoke load
 bun script/performance-load.ts
 
-# oha or bombardier if installed
-SYNERGY_URL=http://127.0.0.1:5817 oha -z 30s -c 16 "$SYNERGY_URL/global/health"
-SYNERGY_URL=http://127.0.0.1:5817 bombardier -d 30s -c 16 "$SYNERGY_URL/global/health"
+# oha or bombardier wrapper if either tool is installed
+SYNERGY_PERF_BASE_URL=http://127.0.0.1:5817 script/performance-http.sh
 
 # hyperfine for command startup comparisons
-hyperfine 'bun dev send "ping"'
+script/performance-hyperfine.sh
+
+# Playwright trace/HAR smoke capture for a running Web app
+SYNERGY_PERF_APP_URL=http://127.0.0.1:3000 bun script/performance-playwright.ts
+
+# Bun microbenchmark harness for hot pure performance helpers
+bun script/performance-benchmark.ts
+
+# Lighthouse CI config for opt-in browser performance checks
+npx lhci autorun --config=lighthouserc.performance.cjs
+
+# Rollup visualizer report mode for app bundles, opt-in only
+bun packages/app/script/visualizer-report.ts
+SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd packages/app build
 ```
 
-k6 can be used from an external checkout when teams already rely on it, but it is not a Synergy runtime dependency because of its AGPL license.
+k6 can be used with `script/performance-k6.js` when teams already rely on it, but it is not a runtime dependency because of its AGPL license.
 
 For browser investigations, use Playwright traces/HAR, Lighthouse CI against the Web app, and Rollup/Vite visualizer reports in development workflows. These tools complement the local Performance panel; they do not replace runtime telemetry.

@@ -10,6 +10,7 @@ import { PerformanceDashboard } from "../../src/performance/dashboard"
 import { PerformanceIngestion } from "../../src/performance/ingestion"
 import { PerformanceConfig } from "../../src/performance/config"
 import { PerformanceMetrics } from "../../src/performance/metrics"
+import { PerformanceResources } from "../../src/performance/resources"
 import { PerformanceStore } from "../../src/performance/store"
 import { PerformanceWriter } from "../../src/performance/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
@@ -157,6 +158,42 @@ describe("performance observability store", () => {
     expect(operations).toContain("scan")
     expect(operations).toContain("list")
     expect(operations).toContain("remove")
+  })
+
+  test("resource sampler records finite process and app IO samples", () => {
+    PerformanceResources.addRead(128)
+    PerformanceResources.addWrite(256)
+    PerformanceResources.snapshot()
+    PerformanceStore.flush()
+
+    const samples = PerformanceStore.resourceSince(0)
+    expect(samples.length).toBeGreaterThan(0)
+    const latest = samples.at(-1)!
+    expect(Number.isFinite(latest.cpu_utilization_ratio)).toBe(true)
+    expect(Number.isFinite(latest.memory_rss_bytes)).toBe(true)
+    expect(Number.isFinite(latest.event_loop_lag_ms)).toBe(true)
+    expect(latest.app_read_bytes ?? 0).toBeGreaterThanOrEqual(128)
+    expect(latest.app_written_bytes ?? 0).toBeGreaterThanOrEqual(256)
+  })
+
+  test("writer buffers, flushes, and records backpressure drops", async () => {
+    const file = path.join(process.env.SYNERGY_TEST_HOME!, "writer", "trace.jsonl")
+    PerformanceWriter.append(file, '{"type":"one"}\n')
+    expect(PerformanceWriter.stats().queueDepth).toBeGreaterThan(0)
+    await PerformanceWriter.flush()
+    expect(PerformanceWriter.stats().queueDepth).toBe(0)
+    expect(await Bun.file(file).text()).toContain("one")
+
+    for (let i = 0; i < 5_050; i++) PerformanceWriter.append(file, `{\"type\":\"${i}\"}\n`)
+    await PerformanceWriter.flush()
+    PerformanceStore.flush()
+    const drops = PerformanceStore.queryMetrics({ since: 0, names: ["observability.writer.dropped"] })
+    expect(drops.some((row) => JSON.parse(row.labels_json).reason === "queue_full")).toBe(true)
+    expect(
+      PerformanceIssues.list({ module: "observability" }).some(
+        (issue) => issue.code === "PERF_OBSERVABILITY_WRITER_BACKPRESSURE",
+      ),
+    ).toBe(true)
   })
 })
 
