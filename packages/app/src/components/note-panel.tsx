@@ -782,10 +782,37 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const [rawGroups, { refetch }] = createResource(
-    () => ({ dir: directory(), ver: globalSync.noteVersion() }),
-    async ({ dir }) => {
+    () => ({ dir: directory(), ver: globalSync.noteVersion(), showArchived: showArchived() }),
+    async ({ dir, showArchived }) => {
       if (!dir) return []
-      const result = await sdk.client.note.listMeta({ directory: dir })
+      if (showArchived) {
+        const [active, archived] = await Promise.all([
+          sdk.client.note.listMeta({ directory: dir, archived: "false" }),
+          sdk.client.note.listMeta({ directory: dir, archived: "true" }),
+        ])
+        const activeGroups = (active.data ?? []) as NoteMetaScopeGroup[]
+        const archivedGroups = (archived.data ?? []) as NoteMetaScopeGroup[]
+        const merged: NoteMetaScopeGroup[] = []
+        const byScope = new Map<string, NoteMetaScopeGroup>()
+        for (const g of activeGroups) {
+          const existing = byScope.get(g.scopeID)
+          if (existing) existing.notes.push(...g.notes)
+          else {
+            byScope.set(g.scopeID, { ...g, notes: [...g.notes] })
+            merged.push(byScope.get(g.scopeID)!)
+          }
+        }
+        for (const g of archivedGroups) {
+          const existing = byScope.get(g.scopeID)
+          if (existing) existing.notes.push(...g.notes)
+          else {
+            byScope.set(g.scopeID, { ...g, notes: [...g.notes] })
+            merged.push(byScope.get(g.scopeID)!)
+          }
+        }
+        return merged
+      }
+      const result = await sdk.client.note.listMeta({ directory: dir, archived: "false" })
       return (result.data ?? []) as NoteMetaScopeGroup[]
     },
   )
