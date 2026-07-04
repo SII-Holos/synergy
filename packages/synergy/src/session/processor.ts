@@ -102,6 +102,10 @@ export namespace SessionProcessor {
     return name === "AbortError"
   }
 
+  export function unresolvedToolError(fastAbort: boolean) {
+    return fastAbort ? "Tool execution aborted" : "Tool execution did not return a final result"
+  }
+
   export function create(input: {
     assistantMessage: MessageV2.Assistant
     sessionID: string
@@ -111,6 +115,8 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
+    const executionOutcomes = new Map<string, ToolOutcome>()
+    const settlementPromises = new Map<string, Promise<void>>()
     const generatingAccum: Record<string, string> = {}
     let snapshot: string | undefined
     let blocked = false
@@ -221,6 +227,40 @@ export namespace SessionProcessor {
       })
     }
 
+    function settleTrackedExecution(toolCallId: string): Promise<void> | undefined {
+      const existing = settlementPromises.get(toolCallId)
+      if (existing) return existing
+
+      const outcome = executionOutcomes.get(toolCallId)
+      const part = toolcalls[toolCallId]
+      if (!outcome || !part || part.state.status !== "running") return undefined
+
+      const settlement = (async () => {
+        await settleToolPart(part, outcome)
+        pendingExecutions.delete(toolCallId)
+        executionOutcomes.delete(toolCallId)
+        delete toolcalls[toolCallId]
+      })()
+      settlementPromises.set(toolCallId, settlement)
+      void settlement
+        .catch((error) =>
+          log.warn("failed to settle tracked tool execution", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: toolCallId,
+            tool: part.tool,
+            error,
+          }),
+        )
+        .finally(() => settlementPromises.delete(toolCallId))
+      return settlement
+    }
+
+    async function waitForTrackedSettlements() {
+      if (settlementPromises.size === 0) return
+      await Promise.allSettled([...settlementPromises.values()])
+    }
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -229,7 +269,12 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       trackExecution(toolCallId: string, promise: Promise<ToolOutcome>) {
-        pendingExecutions.set(toolCallId, promise)
+        const tracked = promise.then((outcome) => {
+          executionOutcomes.set(toolCallId, outcome)
+          void settleTrackedExecution(toolCallId)
+          return outcome
+        })
+        pendingExecutions.set(toolCallId, tracked)
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
@@ -451,17 +496,15 @@ export namespace SessionProcessor {
                         signal: input.abort,
                       })
                     }
+                    await settleTrackedExecution(value.toolCallId)
                     break
                   }
                   case "tool-result": {
-                    const match = toolcalls[value.toolCallId]
-                    if (match && match.state.status === "running") {
-                      const pending = pendingExecutions.get(value.toolCallId)
-                      const outcome = pending ? await pending : undefined
-                      if (outcome) await settleToolPart(match, outcome)
-                      pendingExecutions.delete(value.toolCallId)
-                      delete toolcalls[value.toolCallId]
+                    const pending = pendingExecutions.get(value.toolCallId)
+                    if (pending && !executionOutcomes.has(value.toolCallId)) {
+                      executionOutcomes.set(value.toolCallId, await pending)
                     }
+                    await settleTrackedExecution(value.toolCallId)
                     break
                   }
 
@@ -469,10 +512,16 @@ export namespace SessionProcessor {
                     const match = toolcalls[value.toolCallId]
                     if (match && match.state.status === "running") {
                       const pending = pendingExecutions.get(value.toolCallId)
-                      const outcome = pending ? await pending : streamToolErrorOutcome(match, value.error)
-                      await settleToolPart(match, outcome)
-                      pendingExecutions.delete(value.toolCallId)
-                      delete toolcalls[value.toolCallId]
+                      if (pending && !executionOutcomes.has(value.toolCallId)) {
+                        executionOutcomes.set(value.toolCallId, await pending)
+                      }
+                      const settlement = settleTrackedExecution(value.toolCallId)
+                      if (settlement) {
+                        await settlement
+                      } else {
+                        await settleToolPart(match, streamToolErrorOutcome(match, value.error))
+                        delete toolcalls[value.toolCallId]
+                      }
                     }
                     if (
                       value.error instanceof PermissionNext.RejectedError ||
@@ -742,11 +791,8 @@ export namespace SessionProcessor {
             }
             snapshot = undefined
           }
-          const p = await MessageV2.parts({
-            sessionID: input.sessionID,
-            messageID: input.assistantMessage.id,
-          })
-          const outcomes = new Map<string, ToolOutcome>()
+          await waitForTrackedSettlements()
+          const outcomes = new Map<string, ToolOutcome>(executionOutcomes)
           if (!fastAbort && pendingExecutions.size > 0) {
             const timeout = new Promise<undefined>((resolve) =>
               setTimeout(() => resolve(undefined), TOOL_SETTLE_TIMEOUT),
@@ -754,10 +800,18 @@ export namespace SessionProcessor {
             await Promise.allSettled(
               [...pendingExecutions.entries()].map(async ([id, promise]) => {
                 const outcome = await Promise.race([promise, timeout])
-                if (outcome) outcomes.set(id, outcome)
+                if (outcome) {
+                  executionOutcomes.set(id, outcome)
+                  outcomes.set(id, outcome)
+                }
               }),
             )
           }
+          await waitForTrackedSettlements()
+          const p = await MessageV2.parts({
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+          })
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
               const outcome = outcomes.get(part.callID)
@@ -770,7 +824,7 @@ export namespace SessionProcessor {
                   state: {
                     ...part.state,
                     status: "error",
-                    error: "Tool execution aborted",
+                    error: unresolvedToolError(fastAbort),
                     time: {
                       start: startTime,
                       end: Date.now(),

@@ -1,0 +1,105 @@
+.performance-workbench {
+  --performance-panel-bg: var(--workbench-panel-bg);
+  --performance-panel-bg-hover: var(--workbench-panel-bg-hover);
+  --performance-content-bg: var(--workbench-row-bg);
+  --performance-content-bg-hover: var(--workbench-row-bg-hover);
+  --performance-control-bg: var(--workbench-control-bg);
+  --performance-control-bg-hover: var(--workbench-control-bg-hover);
+  --performance-line: var(--workbench-border);
+
+  background: var(--workbench-canvas-bg);
+}
+
+.performance-header {
+  gap: 0.875rem;
+  border-bottom-color: color-mix(in oklab, var(--border-weaker-base) 48%, transparent);
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+.performance-header-inner,
+.performance-stage {
+  width: min(72rem, 100%);
+  margin: 0 auto;
+}
+
+.performance-header-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.performance-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.125rem 1.5rem 1.5rem;
+}
+
+.performance-stage {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.performance-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.performance-toolbar,
+.performance-card {
+  border: 1px solid var(--performance-line);
+  background: var(--performance-panel-bg);
+}
+
+.performance-card-soft {
+  background: var(--performance-content-bg);
+}
+
+.performance-control {
+  background: var(--performance-control-bg);
+}
+
+.performance-control:hover {
+  background: var(--performance-control-bg-hover);
+}
+
+.performance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.performance-chart-grid,
+.performance-split-grid,
+.performance-rankings-grid,
+.performance-frontend-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .performance-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .performance-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .performance-chart-grid,
+  .performance-rankings-grid,
+  .performance-frontend-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .performance-split-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+}
