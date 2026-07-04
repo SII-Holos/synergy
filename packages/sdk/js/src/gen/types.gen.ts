@@ -311,18 +311,36 @@ export type PerfDashboardSummary = {
   issues: Array<PerfIssue>
 }
 
+export type PerfTimelineQuality = {
+  truncated?: boolean
+  sampled?: boolean
+  partial?: boolean
+  retentionLimited?: boolean
+  unavailableReason?: string
+}
+
+export type PerfMetricKind = "duration" | "gauge" | "counter" | "rate" | "size" | "ratio"
+
+export type PerfTimelineStat = "avg" | "latest" | "sum" | "rate" | "p50" | "p95" | "p99" | "max"
+
 export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
 
 export type PerfTimelinePoint = {
   time: number
   value: number | null
+  sampleCount?: number
 }
 
 export type PerfTimelineSeries = {
   name: string
+  label?: string
   unit: PerfUnit
+  kind?: PerfMetricKind
+  stat?: PerfTimelineStat
+  sampleCount?: number
   module?: PerfModule
   source?: PerfSource
+  quality?: PerfTimelineQuality
   points: Array<PerfTimelinePoint>
 }
 
@@ -331,6 +349,7 @@ export type PerfTimeline = {
   from: number
   to: number
   bucketMs: number
+  quality?: PerfTimelineQuality
   series: Array<PerfTimelineSeries>
 }
 

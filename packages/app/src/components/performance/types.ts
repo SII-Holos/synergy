@@ -12,12 +12,17 @@ export type PerformanceMetricPoint = {
   value?: number
   cpu?: number
   memory?: number
+  heapUsed?: number
+  heapTotal?: number
   requests?: number
   latency?: number
   activeSessions?: number
+  domNodes?: number
   diskReadOps?: number
   diskWriteOps?: number
   diskOps?: number
+  readBytes?: number
+  writeBytes?: number
   eventLoopLag?: number
 }
 

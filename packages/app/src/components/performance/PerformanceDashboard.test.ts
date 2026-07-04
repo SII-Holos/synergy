@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
+import {
+  browserMetricPoints,
+  buildLineChartModel,
+  memoryPoints,
+  requestPoints,
+  resourcePressurePoints,
+  type ChartDatasetSpec,
+} from "./chart-model"
 import { runtimeSupportItems } from "./runtime-support"
-import type { PerformanceSummary } from "./types"
+import type { PerformanceSummary, PerformanceTimeline } from "./types"
 
 function summary(runtime: PerformanceSummary["runtime"]): PerformanceSummary {
   return {
@@ -24,6 +32,145 @@ function summary(runtime: PerformanceSummary["runtime"]): PerformanceSummary {
     issues: [],
   }
 }
+
+const datasetSpecs: ChartDatasetSpec[] = [
+  { label: "CPU avg", field: "cpu", unit: "percent", axisId: "percent", axisTitle: "Percent", color: "red" },
+  { label: "Memory", field: "memory", unit: "megabytes", axisId: "memory", axisTitle: "Memory (MB)", color: "green" },
+  {
+    label: "Event loop p95",
+    field: "eventLoopLag",
+    unit: "ms",
+    axisId: "duration",
+    axisTitle: "Milliseconds",
+    color: "blue",
+  },
+]
+
+function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
+  return { generatedAt: new Date(0).toISOString(), from: 1000, to: 3000, bucketMs: 1000, series }
+}
+
+describe("performance chart model", () => {
+  test("resource chart assigns each dataset to a unit axis", () => {
+    const model = buildLineChartModel({
+      points: [{ timestamp: 1000, cpu: 25, memory: 512, eventLoopLag: 12 }],
+      datasets: datasetSpecs,
+    })
+    expect(model.data.datasets.every((dataset) => dataset.yAxisID)).toBe(true)
+    const scales = model.options.scales ?? {}
+    expect(scales.percent).toBeDefined()
+    expect(scales.memory).toBeDefined()
+    expect(scales.duration).toBeDefined()
+    expect(new Set(model.data.datasets.map((dataset) => dataset.yAxisID)).size).toBeGreaterThan(1)
+  })
+
+  test("request chart does not invent session or disk time series from static summary", () => {
+    const points = requestPoints(
+      timeline([
+        {
+          name: "http.request.duration",
+          unit: "ms",
+          stat: "p95",
+          kind: "duration",
+          sampleCount: 1,
+          points: [{ time: 1000, value: 50, sampleCount: 1 }],
+        },
+      ]),
+    )
+    expect(points).toEqual([{ timestamp: 1000, latency: 50, requests: 1 }])
+  })
+
+  test("points from timeline align sparse metrics by timestamp", () => {
+    const points = resourcePressurePoints(
+      timeline([
+        {
+          name: "process.cpu.utilization",
+          unit: "ratio",
+          stat: "avg",
+          kind: "ratio",
+          points: [
+            { time: 1000, value: null, sampleCount: 0 },
+            { time: 2000, value: 0.42, sampleCount: 1 },
+          ],
+        },
+        {
+          name: "process.event_loop.lag",
+          unit: "ms",
+          stat: "p95",
+          kind: "duration",
+          points: [
+            { time: 1000, value: 8, sampleCount: 1 },
+            { time: 2000, value: 11, sampleCount: 1 },
+          ],
+        },
+      ]),
+    )
+    expect(points.map((point) => point.timestamp)).toEqual([1000, 2000])
+    expect(points[0].cpu).toBeUndefined()
+    expect(points[0].eventLoopLag).toBe(8)
+    expect(points[1].cpu).toBe(42)
+  })
+
+  test("timeline memory bytes convert to MB without losing sparse gaps", () => {
+    const points = memoryPoints(
+      timeline([
+        {
+          name: "process.memory.rss",
+          unit: "bytes",
+          stat: "latest",
+          kind: "gauge",
+          points: [
+            { time: 1000, value: 1048576, sampleCount: 1 },
+            { time: 2000, value: null, sampleCount: 0 },
+          ],
+        },
+      ]),
+    )
+    expect(points).toEqual([{ timestamp: 1000, memory: 1 }, { timestamp: 2000 }])
+  })
+
+  test("browser metric chart uses separate axes for heap DOM nodes and navigation latency", () => {
+    const points = browserMetricPoints([{ timestamp: 1000, memory: 1048576, domNodes: 42, navigationMs: 120 }])
+    const model = buildLineChartModel({
+      points,
+      datasets: [
+        {
+          label: "Heap",
+          field: "memory",
+          unit: "megabytes",
+          axisId: "memory",
+          axisTitle: "Memory (MB)",
+          color: "purple",
+        },
+        { label: "DOM", field: "domNodes", unit: "count", axisId: "count", axisTitle: "Count", color: "green" },
+        {
+          label: "Navigation",
+          field: "latency",
+          unit: "ms",
+          axisId: "duration",
+          axisTitle: "Milliseconds",
+          color: "orange",
+        },
+      ],
+    })
+    expect(points[0]).toMatchObject({ memory: 1, domNodes: 42, latency: 120 })
+    expect(new Set(model.data.datasets.map((dataset) => dataset.yAxisID))).toEqual(
+      new Set(["memory", "count", "duration"]),
+    )
+  })
+
+  test("line chart model keeps missing values as gaps", () => {
+    const model = buildLineChartModel({
+      points: [
+        { timestamp: 1000, cpu: undefined },
+        { timestamp: 2000, cpu: Number.NaN },
+        { timestamp: 3000, cpu: Number.POSITIVE_INFINITY },
+      ],
+      datasets: [datasetSpecs[0]],
+    })
+    expect(model.data.datasets[0].data).toEqual([null, null, null])
+  })
+})
 
 describe("performance dashboard runtime support", () => {
   test("surfaces diagnostics-derived runtime health fields", () => {

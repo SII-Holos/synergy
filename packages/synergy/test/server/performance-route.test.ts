@@ -94,6 +94,105 @@ describe("performance routes", () => {
     expect((await tooManyBuckets.json()).code).toBe("PERF_TOO_MANY_BUCKETS")
   })
 
+  test("timeline returns chart metrics with aggregation metadata", async () => {
+    const now = Date.now()
+    PerformanceMetrics.record({ name: "http.request.duration", value: 10, unit: "ms", module: "server" })
+    PerformanceMetrics.record({ name: "http.request.duration", value: 40, unit: "ms", module: "server" })
+    PerformanceMetrics.record({
+      name: "process.cpu.utilization",
+      value: 0.2,
+      unit: "ratio",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({ name: "session.turn.duration", value: 25, unit: "ms", module: "session" })
+    PerformanceMetrics.record({ name: "storage.operation.count", value: 1, unit: "count", module: "storage" })
+    PerformanceStore.flush()
+
+    const from = new Date(now - 1_000).toISOString()
+    const to = new Date(now + 2_000).toISOString()
+    const metrics = [
+      "http.request.duration",
+      "process.cpu.utilization",
+      "session.turn.duration",
+      "storage.operation.count",
+    ]
+      .map((metric) => `metric=${encodeURIComponent(metric)}`)
+      .join("&")
+    const response = await Server.App().request(
+      `/global/performance/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&bucketMs=1000&${metrics}`,
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    const names = body.series.map((series: { name: string }) => series.name)
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "http.request.duration",
+        "process.cpu.utilization",
+        "session.turn.duration",
+        "storage.operation.count",
+      ]),
+    )
+    const http = body.series.find((series: { name: string }) => series.name === "http.request.duration")
+    expect(http.unit).toBe("ms")
+    expect(http.kind).toBe("duration")
+    expect(http.stat).toBe("p95")
+    expect(http.sampleCount).toBeGreaterThanOrEqual(2)
+    expect(
+      http.points.some(
+        (point: { value: number | null; sampleCount?: number }) => point.value === 40 && point.sampleCount === 2,
+      ),
+    ).toBe(true)
+    const pointTimes = http.points.map((point: { time: number }) => point.time)
+    expect(pointTimes).toEqual([...pointTimes].sort((a, b) => a - b))
+    expect(http.points.some((point: { value: number | null }) => point.value === null)).toBe(true)
+  })
+
+  test("timeline rejects unknown metric but accepts chart metric names", async () => {
+    const now = Date.now()
+    const from = new Date(now - 1_000).toISOString()
+    const to = new Date(now + 1_000).toISOString()
+    const invalid = await Server.App().request(
+      `/global/performance/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&metric=unknown.metric`,
+    )
+    expect(invalid.status).toBe(400)
+
+    for (const metric of [
+      "process.memory.heap_total",
+      "session.turn.active",
+      "storage.read.bytes",
+      "llm.request.duration",
+      "tool.execution.count",
+    ]) {
+      const response = await Server.App().request(
+        `/global/performance/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&metric=${encodeURIComponent(metric)}`,
+      )
+      expect(response.status).toBe(200)
+    }
+  })
+
+  test("frontend ingestion preserves sanitized route labels for slow frontend ranking", async () => {
+    const response = await Server.App().request("/global/performance/browser-metrics", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sentAt: Date.now(),
+        page: { routeName: "Session Detail", pathTemplate: "/session/:id?token=secret" },
+        metrics: [],
+        resourceEntries: [{ name: "/global/session?token=secret", startTime: 1, duration: 80 }],
+        longTasks: [{ startTime: 2, duration: 120, attribution: "script" }],
+      }),
+    })
+    expect(response.status).toBe(200)
+    PerformanceStore.flush()
+
+    const summary = await Server.App().request("/global/performance/summary?windowMs=60000")
+    expect(summary.status).toBe(200)
+    const body = await summary.json()
+    expect(body.top.slowFrontend.some((item: { label: string }) => item.label === "Session Detail")).toBe(true)
+    expect(body.top.slowFrontend.every((item: { label: string }) => !item.label.includes("token"))).toBe(true)
+  })
+
   test("timeline filters by providerID and returns ascending nullable buckets", async () => {
     const now = Date.now()
     PerformanceMetrics.record({

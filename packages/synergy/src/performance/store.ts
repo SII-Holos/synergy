@@ -287,8 +287,8 @@ export namespace PerformanceStore {
       params.push(opts.tool)
     }
     if (opts.providerID) {
-      filters.push("json_extract(labels_json, '$.providerID') = ?")
-      params.push(opts.providerID)
+      filters.push("(json_extract(labels_json, '$.providerID') = ? OR json_extract(labels_json, '$.provider') = ?)")
+      params.push(opts.providerID, opts.providerID)
     }
     params.push(opts.limit ?? 10_000)
     return conn

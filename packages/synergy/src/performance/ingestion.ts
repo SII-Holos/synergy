@@ -25,7 +25,7 @@ export namespace PerformanceIngestion {
           unit: metric.unit,
           module: "frontend",
           source: "browser",
-          labels: browserLabels(metric.labels),
+          labels: { ...browserLabels(metric.labels), ...pageLabels(page) },
           sessionID: page.sessionID,
           scopeID: page.scopeID,
         })
@@ -49,6 +49,7 @@ export namespace PerformanceIngestion {
           name: PerformanceRedaction.url(entry.name),
           initiatorType: entry.initiatorType,
           transferSize: entry.transferSize ?? 0,
+          ...pageLabels(page),
         },
         sessionID: page.sessionID,
         scopeID: page.scopeID,
@@ -62,7 +63,7 @@ export namespace PerformanceIngestion {
         unit: "ms",
         module: "frontend",
         source: "browser",
-        labels: { attribution: task.attribution ?? "unknown" },
+        labels: { attribution: task.attribution ?? "unknown", ...pageLabels(page) },
         sessionID: page.sessionID,
         scopeID: page.scopeID,
       })
@@ -86,9 +87,17 @@ export namespace PerformanceIngestion {
   function normalizePage(page: PerformanceSchema.BrowserMetricBatch["page"]) {
     const pathTemplate = page.pathTemplate ?? page.routeName
     return {
+      routeName: page.routeName ? PerformanceRedaction.text(page.routeName, 120) : undefined,
       pathTemplate: pathTemplate ? PerformanceRedaction.routePath(pathTemplate) : undefined,
       sessionID: page.sessionID || undefined,
       scopeID: page.scopeID || undefined,
+    }
+  }
+
+  function pageLabels(page: ReturnType<typeof normalizePage>) {
+    return {
+      routeName: page.routeName,
+      pathTemplate: page.pathTemplate,
     }
   }
 

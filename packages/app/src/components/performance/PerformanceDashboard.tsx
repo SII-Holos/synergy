@@ -1,20 +1,25 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { Line } from "solid-chartjs"
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  Filler,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Tooltip,
-  type ChartData,
-  type ChartOptions,
-} from "chart.js"
+import { Chart as ChartJS, CategoryScale, Filler, LinearScale, LineElement, PointElement, Tooltip } from "chart.js"
 import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import {
+  browserMetricPoints,
+  buildLineChartModel,
+  formatBytes as formatChartBytes,
+  formatDuration as formatChartDuration,
+  formatMetricValue as formatChartMetricValue,
+  formatPercent as formatChartPercent,
+  memoryPoints,
+  requestPoints as requestTimelinePoints,
+  resourcePressurePoints,
+  ratioToPercent,
+  sessionPoints,
+  storagePoints,
+  type ChartDatasetSpec,
+} from "./chart-model"
 import { usePerformance } from "./use-performance"
 import { runtimeSupportItems } from "./runtime-support"
 import type {
@@ -29,8 +34,6 @@ import type {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
-const AXIS_TEXT = "rgba(125,122,118,.84)"
-const GRID_COLOR = "rgba(124,118,110,.14)"
 const CPU_COLOR = "rgba(56, 88, 182, 0.92)"
 const MEMORY_COLOR = "rgba(39, 143, 116, 0.92)"
 const REQUEST_COLOR = "rgba(196, 132, 36, 0.88)"
@@ -129,26 +132,78 @@ export function PerformanceDashboard() {
       <RuntimeSupport summary={summary()} />
 
       <div class="performance-chart-grid">
-        <ResourceChart
-          title="CPU, memory, and event loop"
-          description="Runtime pressure from resource samples and timeline aggregates"
-          points={resourcePoints(perf.timeline(), summary())}
+        <PerformanceLineChart
+          title="CPU and event loop"
+          description="CPU average percent and event-loop p95 latency from runtime timeline buckets"
+          points={resourcePressurePoints(perf.timeline())}
           datasets={[
-            { label: "CPU %", field: "cpu", color: CPU_COLOR },
-            { label: "Memory MB", field: "memory", color: MEMORY_COLOR },
-            { label: "Event loop p95 ms", field: "eventLoopLag", color: REQUEST_COLOR },
+            percentDataset("CPU avg", "cpu", CPU_COLOR, "Timeline process.cpu.utilization"),
+            durationDataset("Event loop p95", "eventLoopLag", REQUEST_COLOR, "Timeline process.event_loop.lag"),
           ]}
+          quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
           onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
-        <ResourceChart
-          title="Requests, sessions, and disk IO"
-          description="Request latency with session activity and app-owned disk counters"
-          points={requestPoints(perf.timeline(), summary())}
+        <PerformanceLineChart
+          title="Memory"
+          description="RSS, heap used, and heap total as memory gauges in MB"
+          points={memoryPoints(perf.timeline(), summary())}
           datasets={[
-            { label: "Latency ms", field: "latency", color: CPU_COLOR },
-            { label: "Sessions", field: "activeSessions", color: MEMORY_COLOR },
-            { label: "Disk ops", field: "diskOps", color: DISK_COLOR },
+            megabytesDataset("RSS latest", "memory", MEMORY_COLOR, "Timeline process.memory.rss"),
+            megabytesDataset("Heap used latest", "heapUsed", BROWSER_COLOR, "Timeline process.memory.heap_used"),
+            megabytesDataset("Heap total latest", "heapTotal", DISK_COLOR, "Timeline process.memory.heap_total"),
           ]}
+          quality={timelineQuality(perf.timeline(), [
+            "process.memory.rss",
+            "process.memory.heap_used",
+            "process.memory.heap_total",
+          ])}
+          onVisible={() => void perf.loadTimeline(perf.windowMs())}
+        />
+        <PerformanceLineChart
+          title="Requests"
+          description="HTTP request p95 latency with request sample count per bucket"
+          points={requestTimelinePoints(perf.timeline())}
+          datasets={[
+            durationDataset("Request p95", "latency", CPU_COLOR, "Timeline http.request.duration"),
+            countDataset(
+              "Requests / bucket",
+              "requests",
+              REQUEST_COLOR,
+              "Bucket sample count for http.request.duration",
+            ),
+          ]}
+          quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
+          onVisible={() => void perf.loadTimeline(perf.windowMs())}
+        />
+        <PerformanceLineChart
+          title="Sessions"
+          description="Only real session timeline metrics are shown; current active sessions remain in summary cards"
+          points={sessionPoints(perf.timeline())}
+          datasets={[
+            countDataset("Active turns latest", "activeSessions", MEMORY_COLOR, "Timeline session.turn.active"),
+            durationDataset("Turn p95", "latency", BROWSER_COLOR, "Timeline session.turn.duration"),
+          ]}
+          quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
+          emptyLabel="No historical session samples for this range"
+          onVisible={() => void perf.loadTimeline(perf.windowMs())}
+        />
+        <PerformanceLineChart
+          title="Storage I/O"
+          description="Storage operation counts and p95 latency from emitted storage metrics"
+          points={storagePoints(perf.timeline())}
+          datasets={[
+            countDataset("Operations / bucket", "diskOps", DISK_COLOR, "Timeline storage.operation.count"),
+            durationDataset("Operation p95", "latency", REQUEST_COLOR, "Timeline storage.operation.duration"),
+            bytesDataset("Read bytes / bucket", "readBytes", MEMORY_COLOR, "Timeline storage.read.bytes"),
+            bytesDataset("Write bytes / bucket", "writeBytes", BROWSER_COLOR, "Timeline storage.write.bytes"),
+          ]}
+          quality={timelineQuality(perf.timeline(), [
+            "storage.operation.count",
+            "storage.operation.duration",
+            "storage.read.bytes",
+            "storage.write.bytes",
+          ])}
+          emptyLabel="Storage metrics are not available for this range"
           onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
       </div>
@@ -208,7 +263,7 @@ function SummaryCards(props: { summary: PerformanceSummary | null | undefined; i
   return (
     <div class="performance-summary-grid">
       <MetricCard label="Health" value={summary()?.health.status ?? "Unknown"} icon="perf.health" />
-      <MetricCard label="HTTP p95" value={formatDuration(summary()?.backend.p95RequestMs)} icon="perf.latency" />
+      <MetricCard label="HTTP p95" value={formatChartDuration(summary()?.backend.p95RequestMs)} icon="perf.latency" />
       <MetricCard
         label="Sessions"
         value={`${summary()?.backend.activeSessions ?? 0} active · ${summary()?.backend.pendingSessions ?? 0} pending`}
@@ -220,12 +275,20 @@ function SummaryCards(props: { summary: PerformanceSummary | null | undefined; i
         icon="perf.issue"
         tone={props.issues.length > 0 ? "warning" : "default"}
       />
-      <MetricCard label="CPU" value={formatPercent(ratioToPercent(resources()?.cpuUtilizationRatio))} icon="perf.cpu" />
-      <MetricCard label="Memory" value={formatBytes(resources()?.rssBytes)} icon="perf.memory" />
-      <MetricCard label="Event loop p95" value={formatDuration(resources()?.eventLoopLagP95Ms)} icon="perf.latency" />
+      <MetricCard
+        label="CPU"
+        value={formatChartPercent(ratioToPercent(resources()?.cpuUtilizationRatio))}
+        icon="perf.cpu"
+      />
+      <MetricCard label="Memory" value={formatChartBytes(resources()?.rssBytes)} icon="perf.memory" />
+      <MetricCard
+        label="Event loop p95"
+        value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
+        icon="perf.latency"
+      />
       <MetricCard
         label="Disk IO"
-        value={`${formatBytes(resources()?.appReadBytes)} read · ${formatBytes(resources()?.appWrittenBytes)} write`}
+        value={`${formatChartBytes(resources()?.appReadBytes)} read · ${formatChartBytes(resources()?.appWrittenBytes)} write`}
         icon="perf.disk"
       />
       <MetricCard
@@ -295,11 +358,13 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
   )
 }
 
-function ResourceChart(props: {
+function PerformanceLineChart(props: {
   title: string
   description: string
   points: PerformanceMetricPoint[]
-  datasets: Array<{ label: string; field: keyof PerformanceMetricPoint; color: string }>
+  datasets: ChartDatasetSpec[]
+  quality?: string
+  emptyLabel?: string
   onVisible?: () => void
 }) {
   let element: HTMLDivElement | undefined
@@ -316,45 +381,23 @@ function ResourceChart(props: {
   } else {
     queueMicrotask(() => props.onVisible?.())
   }
-  const chartData = createMemo<ChartData<"line">>(() => ({
-    labels: props.points.map((point, index) => formatPointLabel(point, index)),
-    datasets: props.datasets.map((dataset) => ({
-      label: dataset.label,
-      data: props.points.map((point) => numberValue(point[dataset.field])),
-      borderColor: dataset.color,
-      backgroundColor: dataset.color.replace("0.9", "0.12").replace("0.88", "0.12").replace("0.92", "0.12"),
-      fill: true,
-      tension: 0.35,
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-    })),
-  }))
-
-  const chartOptions = createMemo<ChartOptions<"line">>(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: { labels: { color: AXIS_TEXT, boxWidth: 8, boxHeight: 8 } },
-      tooltip: { mode: "index", intersect: false },
-    },
-    scales: {
-      x: { grid: { display: false }, ticks: { color: AXIS_TEXT, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-      y: { border: { display: false }, grid: { color: GRID_COLOR }, ticks: { color: AXIS_TEXT } },
-    },
-    animation: { duration: 500, easing: "easeOutQuart" },
-  }))
+  const model = createMemo(() => buildLineChartModel({ points: props.points, datasets: props.datasets }))
 
   return (
     <div ref={element} class="performance-card rounded-xl p-4">
       <div class="mb-3">
         <h3 class="text-14-semibold text-text-strong">{props.title}</h3>
         <p class="mt-1 text-11-regular text-text-weak">{props.description}</p>
+        <Show when={props.quality}>
+          {(quality) => <p class="mt-1 text-11-regular text-icon-warning-base">{quality()}</p>}
+        </Show>
       </div>
-      <Show when={props.points.length > 0} fallback={<EmptyState label="No samples yet" />}>
+      <Show
+        when={hasVisibleChartData(props.points, props.datasets)}
+        fallback={<EmptyState label={props.emptyLabel ?? "No samples yet"} />}
+      >
         <div class="h-56">
-          <Line data={chartData()} options={chartOptions()} />
+          <Line data={model().data} options={model().options} />
         </div>
       </Show>
     </div>
@@ -384,7 +427,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
                     {[trace.kind, trace.module, trace.traceId].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                <div class="text-11-medium text-text-weak tabular-nums">{formatDuration(trace.durationMs)}</div>
+                <div class="text-11-medium text-text-weak tabular-nums">{formatChartDuration(trace.durationMs)}</div>
               </button>
             )}
           </For>
@@ -478,7 +521,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
                         </div>
                       </div>
                       <div class="text-11-medium text-text-weak tabular-nums">
-                        {formatMetricValue(item.value, item.unit)}
+                        {formatChartMetricValue(item.value, item.unit)}
                       </div>
                     </button>
                   )}
@@ -493,21 +536,21 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
 }
 
 function BrowserMetricsChart(props: { samples: BrowserMetricSample[] }) {
+  const points = createMemo(() => browserMetricPoints(props.samples))
+  const memoryUnsupported = createMemo(
+    () => props.samples.length > 0 && props.samples.every((sample) => sample.memory === undefined),
+  )
   return (
-    <ResourceChart
-      title="Browser metrics"
-      description="Client-side DOM, navigation, and heap samples collected by this performance view"
-      points={props.samples.map((sample) => ({
-        timestamp: sample.timestamp,
-        memory: sample.memory ? sample.memory / 1024 / 1024 : undefined,
-        requests: sample.domNodes,
-        latency: sample.navigationMs,
-      }))}
+    <PerformanceLineChart
+      title="Local browser samples"
+      description="Local DOM, navigation, and heap samples collected by this Performance view, separate from stored frontend telemetry"
+      points={points()}
       datasets={[
-        { label: "Heap MB", field: "memory", color: BROWSER_COLOR },
-        { label: "DOM nodes", field: "requests", color: MEMORY_COLOR },
-        { label: "Navigation ms", field: "latency", color: REQUEST_COLOR },
+        megabytesDataset("Heap used", "memory", BROWSER_COLOR, "Local performance.memory sample"),
+        countDataset("DOM nodes", "domNodes", MEMORY_COLOR, "Local DOM sample"),
+        durationDataset("Navigation duration", "latency", REQUEST_COLOR, "Local navigation timing sample"),
       ]}
+      quality={memoryUnsupported() ? "Browser memory API is unavailable in this browser." : undefined}
     />
   )
 }
@@ -532,7 +575,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
                     <div class="truncate text-11-regular text-text-weaker">{item.module}</div>
                   </div>
                   <div class="text-11-medium text-text-weak tabular-nums">
-                    {formatMetricValue(item.value, item.unit)}
+                    {formatChartMetricValue(item.value, item.unit)}
                   </div>
                 </div>
               )}
@@ -546,12 +589,12 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">
-          <Vital label="INP" value={formatDuration(frontend()?.inpMs)} />
-          <Vital label="LCP" value={formatDuration(frontend()?.lcpMs)} />
+          <Vital label="INP" value={formatChartDuration(frontend()?.inpMs)} />
+          <Vital label="LCP" value={formatChartDuration(frontend()?.lcpMs)} />
           <Vital label="CLS" value={formatDecimal(frontend()?.cls)} />
-          <Vital label="FCP" value={formatDuration(frontend()?.fcpMs)} />
-          <Vital label="TTFB" value={formatDuration(frontend()?.ttfbMs)} />
-          <Vital label="Resource p95" value={formatDuration(frontend()?.resourceP95Ms)} />
+          <Vital label="FCP" value={formatChartDuration(frontend()?.fcpMs)} />
+          <Vital label="TTFB" value={formatChartDuration(frontend()?.ttfbMs)} />
+          <Vital label="Resource p95" value={formatChartDuration(frontend()?.resourceP95Ms)} />
           <Vital label="Long tasks" value={String(frontend()?.longTaskCount ?? 0)} />
         </div>
       </div>
@@ -605,7 +648,7 @@ function TraceDrawer(props: {
                   {(trace) => (
                     <div class="flex flex-col gap-3 text-12-regular">
                       <DetailRow label="Status" value={trace().status ?? "unknown"} />
-                      <DetailRow label="Duration" value={formatDuration(trace().durationMs)} />
+                      <DetailRow label="Duration" value={formatChartDuration(trace().durationMs)} />
                       <DetailRow label="Module" value={trace().module ?? "—"} />
                       <DetailRow label="Session" value={trace().sessionID ?? "—"} />
                       <DetailRow label="Start" value={formatTime(trace().startedAt)} />
@@ -624,7 +667,7 @@ function TraceDrawer(props: {
                                 <div class="performance-card-soft rounded-lg px-3 py-2">
                                   <div class="truncate text-12-medium text-text-strong">{span.name}</div>
                                   <div class="mt-1 text-11-regular text-text-weaker">
-                                    {[span.module, span.status, formatDuration(span.durationMs)]
+                                    {[span.module, span.status, formatChartDuration(span.durationMs)]
                                       .filter(Boolean)
                                       .join(" · ")}
                                   </div>
@@ -680,66 +723,131 @@ function EmptyState(props: { label: string }) {
   )
 }
 
-function resourcePoints(
-  timeline: PerformanceTimeline | null | undefined,
-  summary?: PerformanceSummary | null,
-): PerformanceMetricPoint[] {
-  const points = pointsFromTimeline(timeline, {
-    "process.cpu.utilization": (value, point) => ({ ...point, cpu: ratioToPercent(value) }),
-    "process.memory.rss": (value, point) => ({ ...point, memory: value / 1024 / 1024 }),
-    "process.event_loop.lag": (value, point) => ({ ...point, eventLoopLag: value }),
-  })
-  if (points.length > 0) return points
-  if (!summary?.resources) return []
-  return [
-    {
-      timestamp: summary.generatedAt,
-      cpu: ratioToPercent(summary.resources.cpuUtilizationRatio),
-      memory: summary.resources.rssBytes ? summary.resources.rssBytes / 1024 / 1024 : undefined,
-      eventLoopLag: summary.resources.eventLoopLagP95Ms,
-    },
-  ]
+function percentDataset(
+  label: string,
+  field: keyof PerformanceMetricPoint,
+  color: string,
+  source: string,
+): ChartDatasetSpec {
+  return {
+    label,
+    field,
+    color,
+    source,
+    unit: "percent",
+    stat: "avg",
+    axisId: "percent",
+    axisTitle: "Percent",
+    formatter: formatChartPercent,
+  }
 }
 
-function requestPoints(
-  timeline: PerformanceTimeline | null | undefined,
-  summary?: PerformanceSummary | null,
-): PerformanceMetricPoint[] {
-  const points = pointsFromTimeline(timeline, {
-    "http.request.duration": (value, point) => ({ ...point, latency: value }),
-  })
-  const diskOps = (summary?.resources.appReadOps ?? 0) + (summary?.resources.appWriteOps ?? 0)
-  if (points.length > 0) {
-    return points.map((point) => ({ ...point, activeSessions: summary?.backend.activeSessions, diskOps }))
+function durationDataset(
+  label: string,
+  field: keyof PerformanceMetricPoint,
+  color: string,
+  source: string,
+): ChartDatasetSpec {
+  return {
+    label,
+    field,
+    color,
+    source,
+    unit: "ms",
+    stat: label.includes("p95") ? "p95" : undefined,
+    axisId: "duration",
+    axisTitle: "Milliseconds",
+    formatter: formatChartDuration,
   }
-  if (!summary?.backend) return []
-  return [
-    {
-      timestamp: summary.generatedAt,
-      requests: summary.backend.requestCount,
-      latency: summary.backend.p95RequestMs,
-      activeSessions: summary.backend.activeSessions,
-      diskOps,
-    },
-  ]
 }
 
-function pointsFromTimeline(
-  timeline: PerformanceTimeline | null | undefined,
-  mappers: Record<string, (value: number, point: PerformanceMetricPoint) => PerformanceMetricPoint>,
-): PerformanceMetricPoint[] {
-  if (!timeline?.series.length) return []
-  const byTime = new Map<number, PerformanceMetricPoint>()
-  for (const series of timeline.series) {
-    const mapValue = mappers[series.name]
-    if (!mapValue) continue
-    for (const item of series.points) {
-      if (item.value === null) continue
-      const current = byTime.get(item.time) ?? { timestamp: item.time }
-      byTime.set(item.time, mapValue(item.value, current))
-    }
+function megabytesDataset(
+  label: string,
+  field: keyof PerformanceMetricPoint,
+  color: string,
+  source: string,
+): ChartDatasetSpec {
+  return {
+    label,
+    field,
+    color,
+    source,
+    unit: "megabytes",
+    stat: "latest",
+    axisId: "memory",
+    axisTitle: "Memory (MB)",
+    formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} MB`,
   }
-  return [...byTime.values()].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0))
+}
+
+function countDataset(
+  label: string,
+  field: keyof PerformanceMetricPoint,
+  color: string,
+  source: string,
+): ChartDatasetSpec {
+  return {
+    label,
+    field,
+    color,
+    source,
+    unit: "count",
+    stat: label.includes("bucket") ? "count" : "latest",
+    axisId: "count",
+    axisTitle: "Count",
+    formatter: (value) => value.toFixed(value >= 10 ? 0 : 1),
+  }
+}
+
+function bytesDataset(
+  label: string,
+  field: keyof PerformanceMetricPoint,
+  color: string,
+  source: string,
+): ChartDatasetSpec {
+  return {
+    label,
+    field,
+    color,
+    source,
+    unit: "bytes",
+    stat: "sum",
+    axisId: "bytes",
+    axisTitle: "Bytes",
+    formatter: formatChartBytes,
+  }
+}
+
+function hasVisibleChartData(points: PerformanceMetricPoint[], datasets: ChartDatasetSpec[]) {
+  return points.some((point) =>
+    datasets.some(
+      (dataset) => typeof point[dataset.field] === "number" && Number.isFinite(point[dataset.field] as number),
+    ),
+  )
+}
+
+function timelineQuality(timeline: PerformanceTimeline | null | undefined, metrics: string[]) {
+  if (!timeline) return undefined
+  if (timeline.quality?.truncated || timeline.quality?.partial)
+    return "Timeline data is partial because the metric volume exceeded the dashboard cap."
+  const related = timeline.series.filter((series) => metrics.includes(series.name))
+  if (!related.length) return "Metrics are not available for this range."
+  if (related.every((series) => (series.sampleCount ?? 0) === 0)) return "Metrics are not available for this range."
+  if (related.some((series) => series.quality?.retentionLimited))
+    return "Timeline data is retention-limited for this range."
+  return undefined
+}
+
+function formatDecimal(value?: number): string {
+  if (value === undefined) return "—"
+  return value.toFixed(value >= 1 ? 2 : 3)
+}
+
+function formatTime(value?: number | string): string {
+  if (value === undefined) return ""
+  const time = typeof value === "number" ? value : Date.parse(value)
+  if (Number.isNaN(time)) return String(value)
+  return new Date(time).toLocaleString()
 }
 
 function issueTraceFallback(issue: PerformanceIssue): Partial<PerformanceTraceSpan> {
@@ -763,62 +871,6 @@ function rankedTraceFallback(item: RankedItem): Partial<PerformanceTraceSpan> {
     sessionID: item.sessionID,
     redactionApplied: true,
   }
-}
-
-function formatPointLabel(point: PerformanceMetricPoint, index: number): string {
-  const value = point.label ?? point.timestamp
-  if (value === undefined) return String(index + 1)
-  if (typeof value === "number") return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  const date = Date.parse(value)
-  if (!Number.isNaN(date)) return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  return value
-}
-
-function numberValue(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null
-  return value
-}
-
-function ratioToPercent(value?: number): number | undefined {
-  if (value === undefined) return undefined
-  return value <= 1 ? value * 100 : value
-}
-
-function formatPercent(value?: number): string {
-  if (value === undefined) return "—"
-  return `${value.toFixed(value >= 10 ? 0 : 1)}%`
-}
-
-function formatBytes(value?: number): string {
-  if (value === undefined) return "—"
-  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`
-  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(0)} MB`
-  return `${value.toFixed(0)} B`
-}
-
-function formatDuration(value?: number): string {
-  if (value === undefined) return "—"
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}s`
-  return `${value.toFixed(0)}ms`
-}
-
-function formatDecimal(value?: number): string {
-  if (value === undefined) return "—"
-  return value.toFixed(value >= 1 ? 2 : 3)
-}
-
-function formatMetricValue(value: number, unit: string): string {
-  if (unit === "ms") return formatDuration(value)
-  if (unit === "bytes") return formatBytes(value)
-  if (unit === "ratio") return formatPercent(ratioToPercent(value))
-  return value.toFixed(value >= 10 ? 0 : 1)
-}
-
-function formatTime(value?: number | string): string {
-  if (value === undefined) return ""
-  const time = typeof value === "number" ? value : Date.parse(value)
-  if (Number.isNaN(time)) return String(value)
-  return new Date(time).toLocaleString()
 }
 
 function severityClass(severity?: string): string {
