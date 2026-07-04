@@ -6,6 +6,8 @@ import type { Embedding } from "../vector/embedding"
 import { existsSync, realpathSync } from "fs"
 import path from "path"
 
+import { PerformanceIssues } from "@/performance/issues"
+import { PerformanceMetrics } from "@/performance/metrics"
 const log = Log.create({ service: "library.db" })
 
 let db: Database | undefined
@@ -144,7 +146,7 @@ function open(): Database {
   conn.exec("PRAGMA busy_timeout=5000")
   conn.exec("PRAGMA foreign_keys=ON")
   initialize(conn)
-  db = conn
+  db = instrumentConnection(conn)
 
   // Periodic WAL checkpoint to prevent unbounded WAL file growth.
   // TRUNCATE checkpoints and zeros the WAL file; failures are non-critical.
@@ -158,7 +160,77 @@ function open(): Database {
   )
   checkpointTimer.unref()
 
+  return db
+}
+
+function instrumentConnection(conn: Database): Database {
+  const originalPrepare = conn.prepare.bind(conn)
+  conn.prepare = ((sql: string, ...args: unknown[]) => {
+    const statement = originalPrepare(sql, ...(args as []))
+    const operation = librarySqlOperation(sql)
+    const statementRecord = statement as unknown as Record<string, (...bindings: SQLQueryBindings[]) => unknown>
+    for (const method of ["run", "get", "all"] as const) {
+      const original = statementRecord[method]?.bind(statement)
+      if (!original) continue
+      statementRecord[method] = (...bindings: SQLQueryBindings[]) => {
+        const start = performance.now()
+        let status = "ok"
+        try {
+          return original(...bindings)
+        } catch (error) {
+          status = "error"
+          PerformanceMetrics.record({
+            name: "library.sqlite.query.error",
+            value: 1,
+            unit: "count",
+            module: "library",
+            labels: { operation, method, errorName: error instanceof Error ? error.name : "unknown" },
+          })
+          PerformanceIssues.raise({
+            code: "PERF_LIBRARY_QUERY_ERROR",
+            severity: "warning",
+            module: "library",
+            title: "Library query failed",
+            message: `${operation} ${method} failed`,
+            evidence: { operation, method, errorName: error instanceof Error ? error.name : "unknown" },
+          })
+          throw error
+        } finally {
+          PerformanceMetrics.record({
+            name: "library.sqlite.query.duration",
+            value: performance.now() - start,
+            unit: "ms",
+            module: "library",
+            labels: { operation, method, status },
+          })
+        }
+      }
+    }
+    return statement
+  }) as typeof conn.prepare
   return conn
+}
+
+function librarySqlOperation(sql: string) {
+  const normalized = sql.trim().replace(/\s+/g, " ").toLowerCase()
+  const verb = normalized.split(" ", 1)[0] ?? "query"
+  if (
+    normalized.includes(" from memory") ||
+    normalized.includes(" into memory") ||
+    normalized.includes(" update memory")
+  ) {
+    return `${verb}.memory`
+  }
+  if (
+    normalized.includes(" from experience") ||
+    normalized.includes(" into experience") ||
+    normalized.includes(" update experience")
+  ) {
+    return `${verb}.experience`
+  }
+  if (normalized.includes("vec_memory")) return `${verb}.vec_memory`
+  if (normalized.includes("vec_experience")) return `${verb}.vec_experience`
+  return verb
 }
 
 function hasVecTable(conn: Database, name: string): boolean {

@@ -1,9 +1,34 @@
-import { defineConfig } from "vite"
+import { defineConfig, type PluginOption } from "vite"
 import appPlugin from "./vite"
+
+async function performanceVisualizer(): Promise<PluginOption[]> {
+  if (process.env.SYNERGY_BUNDLE_VISUALIZER !== "1") return []
+  try {
+    const importer = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<{
+      visualizer: (options: {
+        filename: string
+        template: string
+        gzipSize: boolean
+        brotliSize: boolean
+      }) => PluginOption
+    }>
+    const { visualizer } = await importer("rollup-plugin-visualizer")
+    return [
+      visualizer({
+        filename: process.env.SYNERGY_BUNDLE_REPORT ?? "dist/performance/bundle-visualizer.html",
+        template: process.env.SYNERGY_BUNDLE_REPORT_MODE ?? "treemap",
+        gzipSize: true,
+        brotliSize: true,
+      }),
+    ]
+  } catch {
+    throw new Error("SYNERGY_BUNDLE_VISUALIZER=1 requires optional dev dependency rollup-plugin-visualizer")
+  }
+}
 
 export default defineConfig({
   base: "./",
-  plugins: [appPlugin] as any,
+  plugins: [appPlugin, ...(await performanceVisualizer())] as PluginOption[],
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
@@ -13,7 +38,7 @@ export default defineConfig({
     target: "esnext",
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        manualChunks(id: string) {
           if (id.includes("node_modules/solid-js") || id.includes("node_modules/@solidjs")) return "vendor-solid"
           if (id.includes("node_modules/marked") || id.includes("node_modules/shiki")) return "vendor-markdown"
           if (id.includes("node_modules/mermaid")) return "vendor-mermaid"

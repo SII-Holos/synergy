@@ -12,6 +12,8 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
+    "build:visualizer": "SYNERGY_BUNDLE_VISUALIZER=1 vite build",
+    "perf:visualizer": "bun script/visualizer-report.ts",
     "serve": "vite preview"
   },
   "license": "MIT",
@@ -84,6 +86,7 @@
     "tailwindcss": "catalog:",
     "tiptap-extension-code-block-shiki": "1.0.0",
     "virtua": "catalog:",
+    "web-vitals": "5.1.0",
     "zod": "catalog:"
   }
 }

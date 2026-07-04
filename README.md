@@ -43,6 +43,15 @@ Synergy spans several product surfaces and workflows:
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
 - Holos identity, login, notes, library, agenda, and community-facing capabilities
+- A Performance settings panel for local-first runtime health, request/session/tool latency, resource usage, frontend Web Vitals, and redacted trace drill-down
+
+### Performance Observability
+
+The Web Settings runtime area includes a first-class **Performance** panel for live local observability. It summarizes backend request latency and error rate, session/tool/LLM activity, CPU and memory pressure, event-loop lag, app-owned IO counters, frontend Web Vitals, long tasks, top slow owners, and active performance issues in one surface.
+
+Performance data is collected locally and stored under `~/.synergy/state/observability/performance/performance.sqlite` with bounded retention. Raw Observability JSONL traces remain available for compatibility and support packages, while the Performance API exposes redacted metrics, spans, issues, timeline, and trace-detail projections under `/global/performance/*`. Diagnostics remains a hidden support API; Performance is the user-facing monitoring surface.
+
+See [docs/performance-observability.md](docs/performance-observability.md) for the configuration fields, API routes, local storage layout, and optional OSS load/perf tooling commands.
 
 ### Built-In Browser Workspace
 

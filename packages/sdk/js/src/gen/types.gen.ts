@@ -183,6 +183,348 @@ export type DiagnosticsSummary = {
   [key: string]: unknown
 }
 
+export type PerfModule =
+  | "server"
+  | "session"
+  | "llm"
+  | "tool"
+  | "enforcement"
+  | "storage"
+  | "library"
+  | "process"
+  | "pty"
+  | "browser"
+  | "frontend"
+  | "desktop"
+  | "observability"
+
+export type PerfUnit = "ms" | "bytes" | "count" | "ratio" | "percent" | "microseconds" | "tokens"
+
+export type PerfRankedItem = {
+  id: string
+  label: string
+  module?: PerfModule
+  value: number
+  unit: PerfUnit
+  traceId?: string
+  sessionID?: string
+  tool?: string
+  status?: string
+}
+
+export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
+
+export type PerfIssueStatus = "open" | "resolved" | "suppressed"
+
+export type PerfLabelValue = string | number | boolean | null
+
+export type PerfLabels = {
+  [key: string]: PerfLabelValue
+}
+
+export type PerfIssue = {
+  issueId: string
+  time: number
+  iso: string
+  severity: PerfIssueSeverity
+  status?: PerfIssueStatus
+  code: string
+  title: string
+  message: string
+  recommendation?: string
+  module: PerfModule
+  traceId?: string
+  spanId?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  evidence?: PerfLabels
+  firstSeenTime: number
+  lastSeenTime: number
+  occurrenceCount: number
+  fingerprint: string
+}
+
+export type PerfDashboardSummary = {
+  generatedAt: string
+  windowMs: number
+  health: {
+    status: "healthy" | "degraded" | "critical" | "unknown"
+    score: number
+    openIssueCount: number
+    criticalIssueCount: number
+  }
+  backend: {
+    requestCount: number
+    errorRate: number
+    p50RequestMs?: number
+    p95RequestMs?: number
+    p99RequestMs?: number
+    activeSessions: number
+    pendingSessions: number
+  }
+  resources: {
+    rssBytes?: number
+    heapUsedBytes?: number
+    heapTotalBytes?: number
+    cpuUtilizationRatio?: number
+    eventLoopLagP95Ms?: number
+    appReadBytes?: number
+    appWrittenBytes?: number
+    appReadOps?: number
+    appWriteOps?: number
+  }
+  sessions: {
+    turnCount: number
+    p95TurnMs?: number
+    llmCallCount: number
+    toolCallCount: number
+  }
+  frontend: {
+    inpMs?: number
+    lcpMs?: number
+    cls?: number
+    fcpMs?: number
+    ttfbMs?: number
+    longTaskCount: number
+    resourceP95Ms?: number
+  }
+  runtime: {
+    alive?: boolean
+    healthy?: boolean
+    pid?: number
+    mode?: string
+    traceFiles: number
+    recentErrors: number
+    pendingSessions: number
+  }
+  top: {
+    slowRoutes: Array<PerfRankedItem>
+    slowSessions: Array<PerfRankedItem>
+    slowTools: Array<PerfRankedItem>
+    slowProviders: Array<PerfRankedItem>
+    slowStorage: Array<PerfRankedItem>
+    slowLibrary: Array<PerfRankedItem>
+    slowFrontend: Array<PerfRankedItem>
+  }
+  issues: Array<PerfIssue>
+}
+
+export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
+
+export type PerfTimelinePoint = {
+  time: number
+  value: number | null
+}
+
+export type PerfTimelineSeries = {
+  name: string
+  unit: PerfUnit
+  module?: PerfModule
+  source?: PerfSource
+  points: Array<PerfTimelinePoint>
+}
+
+export type PerfTimeline = {
+  generatedAt: string
+  from: number
+  to: number
+  bucketMs: number
+  series: Array<PerfTimelineSeries>
+}
+
+export type PerfSpanStatus = "ok" | "error" | "cancelled" | "timeout"
+
+export type PerfTraceListItem = {
+  traceId: string
+  kind: string
+  name: string
+  status: PerfSpanStatus
+  startedAt: string
+  endedAt?: string
+  durationMs?: number
+  module: PerfModule
+  source: PerfSource
+  sessionID?: string
+  scopeID?: string
+  rid?: string
+  tool?: string
+  errorCode?: string
+  redactionApplied: boolean
+}
+
+export type PerfTraceList = {
+  generatedAt: string
+  items: Array<PerfTraceListItem>
+  nextCursor?: string
+}
+
+export type PerfSpan = {
+  traceId: string
+  spanId: string
+  parentSpanId?: string
+  name: string
+  module: PerfModule
+  source: PerfSource
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  status?: PerfSpanStatus
+  errorCode?: string
+  errorMessage?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  processId?: string
+  pid?: number
+  tool?: string
+  attributes?: PerfLabels
+}
+
+export type PerfTraceEvent = {
+  time: number
+  iso: string
+  type: string
+  level?: string
+  traceId?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  tool?: string
+  processId?: string
+  pid?: number
+  dataKeys?: Array<string>
+  redactionApplied: boolean
+}
+
+export type PerfTraceDetail = {
+  generatedAt: string
+  traceId: string
+  root?: PerfSpan
+  spans: Array<PerfSpan>
+  events: Array<PerfTraceEvent>
+  redaction: {
+    applied: boolean
+    omittedAttributes: number
+  }
+}
+
+export type PerformanceIssues = {
+  generatedAt: string
+  issues: Array<PerfIssue>
+}
+
+export type PerfConfig = {
+  enabled: boolean
+  samplingRate: number
+  metricRetentionMs: number
+  traceRetentionMs: number
+  resourceSampleIntervalMs: number
+  slowTraceThresholdMs: number
+  maxTraceEvents: number
+  maxTimelineBuckets: number
+  maxTraceListLimit: number
+  maxAttributeStringLength: number
+  dashboardRefreshMs: number
+  sseHeartbeatMs: number
+  sseBufferSize: number
+  perClientSseQueueSize: number
+  rateLimits?: {
+    [key: string]: number
+  }
+  redactAttributeKeys: Array<string>
+  storage: {
+    sqliteEnabled: boolean
+    jsonlMirrorEnabled: boolean
+    maxSqliteBytes: number
+    walCheckpointIntervalMs: number
+  }
+  thresholds: {
+    [key: string]: number
+  }
+}
+
+export type PerformanceConfigResponse = {
+  config: PerfConfig
+  defaults: PerfConfig
+  sources: Array<string>
+}
+
+export type PerformanceConfigPatch = {
+  enabled?: boolean
+  samplingRate?: number
+  metricRetentionMs?: number
+  traceRetentionMs?: number
+  resourceSampleIntervalMs?: number
+  slowTraceThresholdMs?: number
+  maxTraceEvents?: number
+  maxTimelineBuckets?: number
+  maxTraceListLimit?: number
+  maxAttributeStringLength?: number
+  dashboardRefreshMs?: number
+  sseHeartbeatMs?: number
+  sseBufferSize?: number
+  perClientSseQueueSize?: number
+  rateLimits?: {
+    [key: string]: number
+  }
+  redactAttributeKeys?: Array<string>
+  storage?: {
+    sqliteEnabled: boolean
+    jsonlMirrorEnabled: boolean
+    maxSqliteBytes: number
+    walCheckpointIntervalMs: number
+  }
+  thresholds?: {
+    [key: string]: number
+  }
+}
+
+export type PerfBrowserMetricIngestResult = {
+  batchId: string
+  accepted: number
+  rejected: number
+  receivedAt: string
+}
+
+export type PerfBrowserMetric = {
+  name: string
+  value: number
+  unit: PerfUnit
+  time?: number
+  labels?: PerfLabels
+}
+
+export type PerfBrowserMetricBatch = {
+  batchId?: string
+  sentAt: number
+  page?: {
+    routeName?: string
+    pathTemplate?: string
+    sessionID?: string
+    scopeID?: string
+  }
+  metrics: Array<PerfBrowserMetric>
+  resourceEntries?: Array<{
+    name: string
+    initiatorType?: string
+    startTime: number
+    duration: number
+    transferSize?: number
+    encodedBodySize?: number
+    decodedBodySize?: number
+  }>
+  longTasks?: Array<{
+    startTime: number
+    duration: number
+    attribution?: string
+  }>
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -1890,6 +2232,83 @@ export type ObservabilityConfig = {
    * Milliseconds without tool activity before emitting a stalled-tool trace event
    */
   stalledToolMs?: number
+  /**
+   * Structured local performance observability settings
+   */
+  performance?: {
+    /**
+     * Enable structured local performance metrics and traces
+     */
+    enabled?: boolean
+    /**
+     * Default performance metric sampling rate
+     */
+    samplingRate?: number
+    /**
+     * Milliseconds to retain raw performance metrics
+     */
+    metricRetentionMs?: number
+    /**
+     * Milliseconds to retain performance spans and trace details
+     */
+    traceRetentionMs?: number
+    /**
+     * Runtime resource sampling interval
+     */
+    resourceSampleIntervalMs?: number
+    /**
+     * Default slow trace issue threshold
+     */
+    slowTraceThresholdMs?: number
+    /**
+     * Maximum related events returned for a trace detail
+     */
+    maxTraceEvents?: number
+    /**
+     * Maximum timeline buckets returned to the dashboard
+     */
+    maxTimelineBuckets?: number
+    /**
+     * Maximum trace list rows returned
+     */
+    maxTraceListLimit?: number
+    /**
+     * Maximum redacted attribute string length
+     */
+    maxAttributeStringLength?: number
+    /**
+     * Performance dashboard polling refresh interval
+     */
+    dashboardRefreshMs?: number
+    /**
+     * Performance SSE heartbeat interval
+     */
+    sseHeartbeatMs?: number
+    /**
+     * Performance event stream replay buffer size
+     */
+    sseBufferSize?: number
+    /**
+     * Per-client performance SSE queue size
+     */
+    perClientSseQueueSize?: number
+    /**
+     * Additional performance telemetry attribute keys to redact
+     */
+    redactAttributeKeys?: Array<string>
+    rateLimits?: {
+      [key: string]: number
+    }
+    storage?: {
+      sqliteEnabled?: boolean
+      jsonlMirrorEnabled?: boolean
+      maxSqliteBytes?: number
+      walCheckpointIntervalMs?: number
+    }
+    thresholds?: {
+      [key: string]: number
+    }
+  }
 }
 
 /**
@@ -6040,6 +6459,193 @@ export type ObservabilityDiagnosticsSummaryResponses = {
 
 export type ObservabilityDiagnosticsSummaryResponse =
   ObservabilityDiagnosticsSummaryResponses[keyof ObservabilityDiagnosticsSummaryResponses]
+
+export type PerformanceSummaryData = {
+  body?: never
+  path?: never
+  query?: {
+    windowMs?: number
+    includeInactive?: boolean
+    scopeID?: string
+  }
+  url: "/global/performance/summary"
+}
+
+export type PerformanceSummaryResponses = {
+  /**
+   * Performance summary
+   */
+  200: PerfDashboardSummary
+}
+
+export type PerformanceSummaryResponse = PerformanceSummaryResponses[keyof PerformanceSummaryResponses]
+
+export type PerformanceTimelineData = {
+  body?: never
+  path?: never
+  query?: {
+    from?: string
+    to?: string
+    bucketMs?: number
+    metric?: string | Array<string>
+    scopeID?: string
+    sessionID?: string
+    tool?: string
+    providerID?: string
+    module?: PerfModule
+    windowMs?: number
+  }
+  url: "/global/performance/timeline"
+}
+
+export type PerformanceTimelineResponses = {
+  /**
+   * Performance timeline
+   */
+  200: PerfTimeline
+}
+
+export type PerformanceTimelineResponse = PerformanceTimelineResponses[keyof PerformanceTimelineResponses]
+
+export type PerformanceTracesListData = {
+  body?: never
+  path?: never
+  query?: {
+    from?: string
+    to?: string
+    limit?: number
+    cursor?: string
+    kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+    status?: PerfSpanStatus
+    minDurationMs?: number
+    scopeID?: string
+    sessionID?: string
+  }
+  url: "/global/performance/traces"
+}
+
+export type PerformanceTracesListResponses = {
+  /**
+   * Performance traces
+   */
+  200: PerfTraceList
+}
+
+export type PerformanceTracesListResponse = PerformanceTracesListResponses[keyof PerformanceTracesListResponses]
+
+export type PerformanceTracesDetailData = {
+  body?: never
+  path: {
+    traceId: string
+  }
+  query?: {
+    includeEvents?: boolean
+    includeAttributes?: boolean
+    maxEvents?: number
+  }
+  url: "/global/performance/traces/{traceId}"
+}
+
+export type PerformanceTracesDetailResponses = {
+  /**
+   * Performance trace detail
+   */
+  200: PerfTraceDetail
+}
+
+export type PerformanceTracesDetailResponse = PerformanceTracesDetailResponses[keyof PerformanceTracesDetailResponses]
+
+export type PerformanceIssuesListData = {
+  body?: never
+  path?: never
+  query?: {
+    status?: PerfIssueStatus
+    severity?: PerfIssueSeverity
+    module?: PerfModule
+    limit?: number
+  }
+  url: "/global/performance/issues"
+}
+
+export type PerformanceIssuesListResponses = {
+  /**
+   * Performance issues
+   */
+  200: PerformanceIssues
+}
+
+export type PerformanceIssuesListResponse = PerformanceIssuesListResponses[keyof PerformanceIssuesListResponses]
+
+export type PerformancePerformanceConfigGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/performance/config"
+}
+
+export type PerformancePerformanceConfigGetResponses = {
+  /**
+   * Performance config
+   */
+  200: PerformanceConfigResponse
+}
+
+export type PerformancePerformanceConfigGetResponse =
+  PerformancePerformanceConfigGetResponses[keyof PerformancePerformanceConfigGetResponses]
+
+export type PerformancePerformanceConfigUpdateData = {
+  body?: PerformanceConfigPatch
+  path?: never
+  query?: never
+  url: "/global/performance/config"
+}
+
+export type PerformancePerformanceConfigUpdateResponses = {
+  /**
+   * Validated performance config
+   */
+  200: PerfConfig
+}
+
+export type PerformancePerformanceConfigUpdateResponse =
+  PerformancePerformanceConfigUpdateResponses[keyof PerformancePerformanceConfigUpdateResponses]
+
+export type PerformanceBrowserMetricsIngestData = {
+  body?: PerfBrowserMetricBatch
+  path?: never
+  query?: never
+  url: "/global/performance/browser-metrics"
+}
+
+export type PerformanceBrowserMetricsIngestResponses = {
+  /**
+   * Browser metrics ingest result
+   */
+  200: PerfBrowserMetricIngestResult
+}
+
+export type PerformanceBrowserMetricsIngestResponse =
+  PerformanceBrowserMetricsIngestResponses[keyof PerformanceBrowserMetricsIngestResponses]
+
+export type PerformanceEventsStreamData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    includeTraces?: boolean
+    heartbeatMs?: number
+    sinceEventId?: string
+  }
+  url: "/global/performance/events"
+}
+
+export type PerformanceEventsStreamResponses = {
+  /**
+   * Performance event stream
+   */
+  200: unknown
+}
 
 export type GlobalDisposeData = {
   body?: never

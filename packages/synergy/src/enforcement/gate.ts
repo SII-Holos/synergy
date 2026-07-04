@@ -43,6 +43,7 @@ import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-pro
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
+import { PerformanceMetrics } from "@/performance/metrics"
 
 export interface Capability {
   class: string
@@ -913,6 +914,7 @@ export namespace EnforcementGate {
     }
 
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      const perfStart = performance.now()
       // ── ExecPolicy: bash command routing ──────────────────────────────
       let execPolicyMatch: RuleMatch | undefined
       let amendment: ExecPolicyAmendment | undefined
@@ -1051,7 +1053,7 @@ export namespace EnforcementGate {
         timestamp: Date.now(),
       })
 
-      return {
+      const envelope = {
         decision,
         profileId,
         opaque,
@@ -1059,6 +1061,19 @@ export namespace EnforcementGate {
         refusal,
         amendment,
       }
+      PerformanceMetrics.record({
+        name: "enforcement.gate.duration",
+        value: performance.now() - perfStart,
+        unit: "ms",
+        module: "enforcement",
+        labels: {
+          tool: toolName,
+          decision,
+          capabilityCount: capabilities.length,
+          opaque,
+        },
+      })
+      return envelope
     }
 
     return {

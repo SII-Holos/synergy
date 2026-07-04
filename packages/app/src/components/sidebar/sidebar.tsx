@@ -45,6 +45,22 @@ function getStoreForEntry(
   return globalSync.peekScopeState(scopeKey)?.[0]
 }
 
+function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
+  const tone = visual?.tone
+  return {
+    "sb-session-icon-wrap": true,
+    "sb-session-icon-active-tone": tone === "active",
+    "sb-session-icon-waiting-tone": tone === "waiting",
+    "sb-session-icon-worktree-tone": tone === "worktree",
+    "sb-session-icon-muted-tone": tone === "muted",
+    "sb-session-icon-blueprint-tone": tone === "blueprint",
+    "sb-session-icon-blueprint-running-tone": tone === "blueprint-running",
+    "sb-session-icon-blueprint-waiting-tone": tone === "blueprint-waiting",
+    "sb-session-icon-blueprint-audit-tone": tone === "blueprint-audit",
+    "sb-session-icon-pulse": !!visual?.pulse,
+  }
+}
+
 export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
@@ -907,6 +923,10 @@ function SidebarSessionRow(props: {
           "sb-session-icon-waiting-tone": visual()?.tone === "waiting",
           "sb-session-icon-worktree-tone": visual()?.tone === "worktree",
           "sb-session-icon-muted-tone": visual()?.tone === "muted",
+          "sb-session-icon-blueprint-tone": visual()?.tone === "blueprint",
+          "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
+          "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
+          "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
           "sb-session-icon-pulse": !!visual()?.pulse,
         }}
         title={visual()?.label ?? ""}

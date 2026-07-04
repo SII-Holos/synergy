@@ -1074,7 +1074,7 @@ export namespace ACP {
     const directory = cwd ?? process.cwd()
 
     const specified = await sdk.config
-      .get({ directory }, { throwOnError: true })
+      .global({ directory }, { throwOnError: true })
       .then((resp) => {
         const cfg = resp.data
         if (!cfg || !cfg.model) return undefined

@@ -404,13 +404,37 @@ export namespace PluginMarketplaceRegistry {
     return new URL(entry, registryUrl).href
   }
 
+  const pendingRefreshes = new Map<string, Promise<z.infer<typeof RemoteRegistry>>>()
+
+  async function backgroundRefreshRegistry(config: Awaited<ReturnType<typeof currentConfig>>) {
+    const cachedPath = registryCachePath(config.registryUrl)
+    const key = cachedPath
+    const existing = pendingRefreshes.get(key)
+    if (existing) return existing
+    const promise = (async () => {
+      try {
+        const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
+        await writeJsonFile(cachedPath, registry)
+        return registry
+      } catch {
+        return null as unknown as z.infer<typeof RemoteRegistry>
+      } finally {
+        pendingRefreshes.delete(key)
+      }
+    })()
+    pendingRefreshes.set(key, promise)
+    return promise
+  }
+
   async function remoteRegistry(inputConfig?: Awaited<ReturnType<typeof currentConfig>>) {
     const config = inputConfig ?? (await currentConfig())
     if (!config.enabled) return { schemaVersion: 1 as const, updatedAt: new Date(0).toISOString(), plugins: [] }
     const cachedPath = registryCachePath(config.registryUrl)
-    if (await isFresh(cachedPath, config.cacheTtlMs)) {
-      const cached = await readJsonFile(cachedPath, RemoteRegistry)
-      if (cached) return cached
+    const cached = await readJsonFile(cachedPath, RemoteRegistry)
+    if (cached) {
+      if (await isFresh(cachedPath, config.cacheTtlMs)) return cached
+      backgroundRefreshRegistry(config)
+      return cached
     }
 
     try {
@@ -419,11 +443,19 @@ export namespace PluginMarketplaceRegistry {
       return registry
     } catch (err) {
       if (config.offlineCache) {
-        const cached = await readJsonFile(cachedPath, RemoteRegistry)
-        if (cached) return cached
+        const stale = await readJsonFile(cachedPath, RemoteRegistry)
+        if (stale) return stale
       }
       throw err
     }
+  }
+
+  export async function prefetchRegistry() {
+    const config = await currentConfig()
+    if (!config.enabled) return
+    const cachedPath = registryCachePath(config.registryUrl)
+    if (await isFresh(cachedPath, config.cacheTtlMs)) return
+    await backgroundRefreshRegistry(config)
   }
 
   export async function searchOfficial(input: { q?: string; offset?: number; limit?: number } = {}) {

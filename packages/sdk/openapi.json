@@ -928,6 +928,314 @@
         ]
       }
     },
+    "/global/performance/summary": {
+      "get": {
+        "operationId": "performance.summary",
+        "summary": "Get performance summary",
+        "description": "Get the local Synergy performance dashboard summary.",
+        "responses": {
+          "200": {
+            "description": "Performance summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfDashboardSummary"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PerformanceSummaryQuery"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.summary({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/timeline": {
+      "get": {
+        "operationId": "performance.timeline",
+        "summary": "Get performance timeline",
+        "description": "Get bucketed performance metric series for the selected range.",
+        "responses": {
+          "200": {
+            "description": "Performance timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfTimeline"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PerfTimelineQuery"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.timeline({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/traces": {
+      "get": {
+        "operationId": "performance.traces.list",
+        "summary": "List performance traces",
+        "description": "List recent redacted performance traces.",
+        "responses": {
+          "200": {
+            "description": "Performance traces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfTraceList"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PerfTraceListQuery"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.traces.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/traces/{traceId}": {
+      "get": {
+        "operationId": "performance.traces.detail",
+        "summary": "Get performance trace detail",
+        "description": "Get one redacted performance trace with spans and related events.",
+        "responses": {
+          "200": {
+            "description": "Performance trace detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfTraceDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "traceId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "$ref": "#/components/parameters/PerformanceTraceDetailQuery"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.traces.detail({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/issues": {
+      "get": {
+        "operationId": "performance.issues.list",
+        "summary": "List performance issues",
+        "description": "List open or historical performance issues.",
+        "responses": {
+          "200": {
+            "description": "Performance issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceIssues"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PerformanceIssuesQuery"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.issues.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/config": {
+      "get": {
+        "operationId": "performance.config.get",
+        "summary": "Get performance config",
+        "description": "Get effective performance observability configuration and default metadata.",
+        "responses": {
+          "200": {
+            "description": "Performance config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.get({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "performance.config.update",
+        "summary": "Patch performance config",
+        "description": "Validate and persist runtime performance configuration fields in the runtime observability config domain.",
+        "responses": {
+          "200": {
+            "description": "Validated performance config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfConfig"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerformanceConfigPatch"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.config.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/browser-metrics": {
+      "post": {
+        "operationId": "performance.browserMetrics.ingest",
+        "summary": "Ingest browser performance metrics",
+        "description": "Validate, redact, and store a batch of frontend/browser performance metrics.",
+        "responses": {
+          "200": {
+            "description": "Browser metrics ingest result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfBrowserMetricIngestResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerfBrowserMetricBatch"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.browserMetrics.ingest({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/events": {
+      "get": {
+        "operationId": "performance.events.stream",
+        "summary": "Subscribe to performance events",
+        "description": "Server-sent stream for performance dashboard refresh hints and heartbeats.",
+        "responses": {
+          "200": {
+            "description": "Performance event stream"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeTraces",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "heartbeatMs",
+            "schema": {
+              "default": 15000,
+              "type": "integer",
+              "minimum": 5000,
+              "maximum": 60000
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceEventId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.events.stream({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/dispose": {
       "post": {
         "operationId": "global.dispose",
@@ -17541,6 +17849,1124 @@
         },
         "additionalProperties": {}
       },
+      "PerfModule": {
+        "type": "string",
+        "enum": [
+          "server",
+          "session",
+          "llm",
+          "tool",
+          "enforcement",
+          "storage",
+          "library",
+          "process",
+          "pty",
+          "browser",
+          "frontend",
+          "desktop",
+          "observability"
+        ]
+      },
+      "PerfUnit": {
+        "type": "string",
+        "enum": ["ms", "bytes", "count", "ratio", "percent", "microseconds", "tokens"]
+      },
+      "PerfRankedItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PerfUnit"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label", "value", "unit"]
+      },
+      "PerfIssueSeverity": {
+        "type": "string",
+        "enum": ["info", "warning", "error", "critical"]
+      },
+      "PerfIssueStatus": {
+        "default": "open",
+        "type": "string",
+        "enum": ["open", "resolved", "suppressed"]
+      },
+      "PerfLabelValue": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 512
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "PerfLabels": {
+        "default": {},
+        "type": "object",
+        "propertyNames": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/PerfLabelValue"
+        }
+      },
+      "PerfIssue": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "number"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/PerfIssueSeverity"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PerfIssueStatus"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PerfLabels"
+          },
+          "firstSeenTime": {
+            "type": "number"
+          },
+          "lastSeenTime": {
+            "type": "number"
+          },
+          "occurrenceCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "time",
+          "iso",
+          "severity",
+          "code",
+          "title",
+          "message",
+          "module",
+          "firstSeenTime",
+          "lastSeenTime",
+          "occurrenceCount",
+          "fingerprint"
+        ]
+      },
+      "PerfDashboardSummary": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "windowMs": {
+            "type": "number"
+          },
+          "health": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["healthy", "degraded", "critical", "unknown"]
+              },
+              "score": {
+                "type": "number"
+              },
+              "openIssueCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "criticalIssueCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["status", "score", "openIssueCount", "criticalIssueCount"]
+          },
+          "backend": {
+            "type": "object",
+            "properties": {
+              "requestCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "errorRate": {
+                "type": "number"
+              },
+              "p50RequestMs": {
+                "type": "number"
+              },
+              "p95RequestMs": {
+                "type": "number"
+              },
+              "p99RequestMs": {
+                "type": "number"
+              },
+              "activeSessions": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "pendingSessions": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["requestCount", "errorRate", "activeSessions", "pendingSessions"]
+          },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "rssBytes": {
+                "type": "number"
+              },
+              "heapUsedBytes": {
+                "type": "number"
+              },
+              "heapTotalBytes": {
+                "type": "number"
+              },
+              "cpuUtilizationRatio": {
+                "type": "number"
+              },
+              "eventLoopLagP95Ms": {
+                "type": "number"
+              },
+              "appReadBytes": {
+                "type": "number"
+              },
+              "appWrittenBytes": {
+                "type": "number"
+              },
+              "appReadOps": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "appWriteOps": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          "sessions": {
+            "type": "object",
+            "properties": {
+              "turnCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "p95TurnMs": {
+                "type": "number"
+              },
+              "llmCallCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "toolCallCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["turnCount", "llmCallCount", "toolCallCount"]
+          },
+          "frontend": {
+            "type": "object",
+            "properties": {
+              "inpMs": {
+                "type": "number"
+              },
+              "lcpMs": {
+                "type": "number"
+              },
+              "cls": {
+                "type": "number"
+              },
+              "fcpMs": {
+                "type": "number"
+              },
+              "ttfbMs": {
+                "type": "number"
+              },
+              "longTaskCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "resourceP95Ms": {
+                "type": "number"
+              }
+            },
+            "required": ["longTaskCount"]
+          },
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "alive": {
+                "type": "boolean"
+              },
+              "healthy": {
+                "type": "boolean"
+              },
+              "pid": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "mode": {
+                "type": "string"
+              },
+              "traceFiles": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "recentErrors": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "pendingSessions": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["traceFiles", "recentErrors", "pendingSessions"]
+          },
+          "top": {
+            "type": "object",
+            "properties": {
+              "slowRoutes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowSessions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowTools": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowProviders": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowStorage": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowLibrary": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "slowFrontend": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              }
+            },
+            "required": [
+              "slowRoutes",
+              "slowSessions",
+              "slowTools",
+              "slowProviders",
+              "slowStorage",
+              "slowLibrary",
+              "slowFrontend"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfIssue"
+            }
+          }
+        },
+        "required": [
+          "generatedAt",
+          "windowMs",
+          "health",
+          "backend",
+          "resources",
+          "sessions",
+          "frontend",
+          "runtime",
+          "top",
+          "issues"
+        ]
+      },
+      "PerfSource": {
+        "type": "string",
+        "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
+      },
+      "PerfTimelinePoint": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "number"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["time", "value"]
+      },
+      "PerfTimelineSeries": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PerfUnit"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PerfSource"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfTimelinePoint"
+            }
+          }
+        },
+        "required": ["name", "unit", "points"]
+      },
+      "PerfTimeline": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "from": {
+            "type": "number"
+          },
+          "to": {
+            "type": "number"
+          },
+          "bucketMs": {
+            "type": "number"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfTimelineSeries"
+            }
+          }
+        },
+        "required": ["generatedAt", "from", "to", "bucketMs", "series"]
+      },
+      "PerfSpanStatus": {
+        "default": "ok",
+        "type": "string",
+        "enum": ["ok", "error", "cancelled", "timeout"]
+      },
+      "PerfTraceListItem": {
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PerfSpanStatus"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "endedAt": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PerfSource"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "redactionApplied": {
+            "type": "boolean"
+          }
+        },
+        "required": ["traceId", "kind", "name", "status", "startedAt", "module", "source", "redactionApplied"]
+      },
+      "PerfTraceList": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfTraceListItem"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": ["generatedAt", "items"]
+      },
+      "PerfSpan": {
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "parentSpanId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PerfSource"
+          },
+          "startTime": {
+            "type": "number"
+          },
+          "endTime": {
+            "type": "number"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PerfSpanStatus"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tool": {
+            "type": "string"
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/PerfLabels"
+          }
+        },
+        "required": ["traceId", "spanId", "name", "module", "source", "startTime"]
+      },
+      "PerfTraceEvent": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "number"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "dataKeys": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "redactionApplied": {
+            "type": "boolean"
+          }
+        },
+        "required": ["time", "iso", "type", "redactionApplied"]
+      },
+      "PerfTraceDetail": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "root": {
+            "$ref": "#/components/schemas/PerfSpan"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfSpan"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfTraceEvent"
+            }
+          },
+          "redaction": {
+            "type": "object",
+            "properties": {
+              "applied": {
+                "type": "boolean"
+              },
+              "omittedAttributes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["applied", "omittedAttributes"]
+          }
+        },
+        "required": ["generatedAt", "traceId", "spans", "events", "redaction"]
+      },
+      "PerformanceIssues": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfIssue"
+            }
+          }
+        },
+        "required": ["generatedAt", "issues"]
+      },
+      "PerfConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "samplingRate": {
+            "type": "number"
+          },
+          "metricRetentionMs": {
+            "type": "number"
+          },
+          "traceRetentionMs": {
+            "type": "number"
+          },
+          "resourceSampleIntervalMs": {
+            "type": "number"
+          },
+          "slowTraceThresholdMs": {
+            "type": "number"
+          },
+          "maxTraceEvents": {
+            "type": "number"
+          },
+          "maxTimelineBuckets": {
+            "type": "number"
+          },
+          "maxTraceListLimit": {
+            "type": "number"
+          },
+          "maxAttributeStringLength": {
+            "type": "number"
+          },
+          "dashboardRefreshMs": {
+            "type": "number"
+          },
+          "sseHeartbeatMs": {
+            "type": "number"
+          },
+          "sseBufferSize": {
+            "type": "number"
+          },
+          "perClientSseQueueSize": {
+            "type": "number"
+          },
+          "rateLimits": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "redactAttributeKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "sqliteEnabled": {
+                "type": "boolean"
+              },
+              "jsonlMirrorEnabled": {
+                "type": "boolean"
+              },
+              "maxSqliteBytes": {
+                "type": "number"
+              },
+              "walCheckpointIntervalMs": {
+                "type": "number"
+              }
+            },
+            "required": ["sqliteEnabled", "jsonlMirrorEnabled", "maxSqliteBytes", "walCheckpointIntervalMs"]
+          },
+          "thresholds": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "samplingRate",
+          "metricRetentionMs",
+          "traceRetentionMs",
+          "resourceSampleIntervalMs",
+          "slowTraceThresholdMs",
+          "maxTraceEvents",
+          "maxTimelineBuckets",
+          "maxTraceListLimit",
+          "maxAttributeStringLength",
+          "dashboardRefreshMs",
+          "sseHeartbeatMs",
+          "sseBufferSize",
+          "perClientSseQueueSize",
+          "redactAttributeKeys",
+          "storage",
+          "thresholds"
+        ]
+      },
+      "PerformanceConfigResponse": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/PerfConfig"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/PerfConfig"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["config", "defaults", "sources"]
+      },
+      "PerformanceConfigPatch": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "samplingRate": {
+            "type": "number"
+          },
+          "metricRetentionMs": {
+            "type": "number"
+          },
+          "traceRetentionMs": {
+            "type": "number"
+          },
+          "resourceSampleIntervalMs": {
+            "type": "number"
+          },
+          "slowTraceThresholdMs": {
+            "type": "number"
+          },
+          "maxTraceEvents": {
+            "type": "number"
+          },
+          "maxTimelineBuckets": {
+            "type": "number"
+          },
+          "maxTraceListLimit": {
+            "type": "number"
+          },
+          "maxAttributeStringLength": {
+            "type": "number"
+          },
+          "dashboardRefreshMs": {
+            "type": "number"
+          },
+          "sseHeartbeatMs": {
+            "type": "number"
+          },
+          "sseBufferSize": {
+            "type": "number"
+          },
+          "perClientSseQueueSize": {
+            "type": "number"
+          },
+          "rateLimits": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "redactAttributeKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "sqliteEnabled": {
+                "type": "boolean"
+              },
+              "jsonlMirrorEnabled": {
+                "type": "boolean"
+              },
+              "maxSqliteBytes": {
+                "type": "number"
+              },
+              "walCheckpointIntervalMs": {
+                "type": "number"
+              }
+            },
+            "required": ["sqliteEnabled", "jsonlMirrorEnabled", "maxSqliteBytes", "walCheckpointIntervalMs"]
+          },
+          "thresholds": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "PerfBrowserMetricIngestResult": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "rejected": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "receivedAt": {
+            "type": "string"
+          }
+        },
+        "required": ["batchId", "accepted", "rejected", "receivedAt"]
+      },
+      "PerfBrowserMetric": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 96
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PerfUnit"
+          },
+          "time": {
+            "type": "number"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/PerfLabels"
+          }
+        },
+        "required": ["name", "value", "unit"]
+      },
+      "PerfBrowserMetricBatch": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "sentAt": {
+            "type": "number"
+          },
+          "page": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "routeName": {
+                "type": "string"
+              },
+              "pathTemplate": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            }
+          },
+          "metrics": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfBrowserMetric"
+            }
+          },
+          "resourceEntries": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                "initiatorType": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "startTime": {
+                  "type": "number"
+                },
+                "duration": {
+                  "type": "number"
+                },
+                "transferSize": {
+                  "type": "number"
+                },
+                "encodedBodySize": {
+                  "type": "number"
+                },
+                "decodedBodySize": {
+                  "type": "number"
+                }
+              },
+              "required": ["name", "startTime", "duration"]
+            }
+          },
+          "longTasks": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startTime": {
+                  "type": "number"
+                },
+                "duration": {
+                  "type": "number"
+                },
+                "attribution": {
+                  "type": "string",
+                  "maxLength": 128
+                }
+              },
+              "required": ["startTime", "duration"]
+            }
+          }
+        },
+        "required": ["sentAt", "metrics"]
+      },
       "HolosLoginResponse": {
         "type": "object",
         "properties": {
@@ -20354,6 +21780,145 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "performance": {
+            "description": "Structured local performance observability settings",
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "description": "Enable structured local performance metrics and traces",
+                "type": "boolean"
+              },
+              "samplingRate": {
+                "description": "Default performance metric sampling rate",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "metricRetentionMs": {
+                "description": "Milliseconds to retain raw performance metrics",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "traceRetentionMs": {
+                "description": "Milliseconds to retain performance spans and trace details",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "resourceSampleIntervalMs": {
+                "description": "Runtime resource sampling interval",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "slowTraceThresholdMs": {
+                "description": "Default slow trace issue threshold",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxTraceEvents": {
+                "description": "Maximum related events returned for a trace detail",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxTimelineBuckets": {
+                "description": "Maximum timeline buckets returned to the dashboard",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxTraceListLimit": {
+                "description": "Maximum trace list rows returned",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxAttributeStringLength": {
+                "description": "Maximum redacted attribute string length",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "dashboardRefreshMs": {
+                "description": "Performance dashboard polling refresh interval",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sseHeartbeatMs": {
+                "description": "Performance SSE heartbeat interval",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sseBufferSize": {
+                "description": "Performance event stream replay buffer size",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "perClientSseQueueSize": {
+                "description": "Per-client performance SSE queue size",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "redactAttributeKeys": {
+                "description": "Additional performance telemetry attribute keys to redact",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rateLimits": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "storage": {
+                "type": "object",
+                "properties": {
+                  "sqliteEnabled": {
+                    "type": "boolean"
+                  },
+                  "jsonlMirrorEnabled": {
+                    "type": "boolean"
+                  },
+                  "maxSqliteBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "walCheckpointIntervalMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "thresholds": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -30952,6 +32517,46 @@
             "$ref": "#/components/schemas/Event.global.disposed"
           }
         ]
+      }
+    },
+    "parameters": {
+      "PerformanceSummaryQuery": {
+        "in": "query",
+        "name": "windowMs",
+        "schema": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 86400000
+        }
+      },
+      "PerfTimelineQuery": {
+        "in": "query",
+        "name": "from",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PerfTraceListQuery": {
+        "in": "query",
+        "name": "from",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PerformanceTraceDetailQuery": {
+        "in": "query",
+        "name": "includeEvents",
+        "schema": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "PerformanceIssuesQuery": {
+        "in": "query",
+        "name": "status",
+        "schema": {
+          "$ref": "#/components/schemas/PerfIssueStatus"
+        }
       }
     }
   }

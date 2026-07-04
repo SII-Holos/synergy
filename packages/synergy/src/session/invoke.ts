@@ -66,6 +66,7 @@ import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import { PerformanceSpans } from "@/performance/spans"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -805,7 +806,16 @@ export namespace SessionInvoke {
         // Race against the deadline instead of relying on abort propagation:
         // the processor can be stuck in an await that never observes signals
         // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
-        let result: Awaited<ReturnType<typeof processor.process>>
+        const turnSpan = PerformanceSpans.start({
+          name: "session.turn",
+          module: "session",
+          scopeID,
+          sessionID,
+          messageID: lastUser.id,
+          attributes: { agent: agent.name, model: model.id, provider: model.providerID },
+        })
+        let turnSpanEnded = false
+        let result: Awaited<ReturnType<typeof processor.process>> = "stop"
         try {
           result = await Promise.race([
             processor.process({
@@ -823,16 +833,31 @@ export namespace SessionInvoke {
             deadlinePromise,
           ])
         } catch (error) {
-          if (error !== deadlineError) throw error
+          if (error !== deadlineError) {
+            PerformanceSpans.end(turnSpan, { status: "error", error })
+            turnSpanEnded = true
+            throw error
+          }
           log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
           processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
           processor.message.time.completed = Date.now()
           await Session.updateMessage(processor.message)
           Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
           result = "stop"
+          PerformanceSpans.end(turnSpan, { status: "timeout", error: deadlineError })
+          turnSpanEnded = true
         } finally {
           clearTimeout(turnTimer)
           processTimer.stop()
+          if (!turnSpanEnded) {
+            PerformanceSpans.end(turnSpan, {
+              attributes: {
+                result,
+                assistantMessageID: processor.message.id,
+                finish: processor.message.finish,
+              },
+            })
+          }
         }
 
         // post-LLM jobs

@@ -107,6 +107,21 @@ describe("OpenAPI spec generation", () => {
     expect(spec.paths["/workspace/files/status"]?.get?.operationId).toBe("workspace.files.status")
   })
 
+  test("includes performance observability routes with stable operation IDs", async () => {
+    const spec = await Server.openapi()
+    expect(spec.paths["/global/performance/summary"]?.get?.operationId).toBe("performance.summary")
+    expect(spec.paths["/global/performance/timeline"]?.get?.operationId).toBe("performance.timeline")
+    expect(spec.paths["/global/performance/traces"]?.get?.operationId).toBe("performance.traces.list")
+    expect(spec.paths["/global/performance/traces/{traceId}"]?.get?.operationId).toBe("performance.traces.detail")
+    expect(spec.paths["/global/performance/issues"]?.get?.operationId).toBe("performance.issues.list")
+    expect(spec.paths["/global/performance/config"]?.get?.operationId).toBe("performance.config.get")
+    expect(spec.paths["/global/performance/config"]?.patch?.operationId).toBe("performance.config.update")
+    expect(spec.paths["/global/performance/browser-metrics"]?.post?.operationId).toBe(
+      "performance.browserMetrics.ingest",
+    )
+    expect(spec.paths["/global/performance/events"]?.get?.operationId).toBe("performance.events.stream")
+  })
+
   test("does not expose legacy file or find routes", async () => {
     const spec = await Server.openapi()
     const paths = Object.keys(spec.paths)
