@@ -7,19 +7,11 @@ import { getSemanticIcon } from "./semantic-icon"
 
 import "./compaction-card.css"
 
-interface CompactionRecoverySection {
-  heading: string
-  items: string[]
-}
-
 interface CompactionRecoveryPayload {
   type: string
   summary: string
-  sections: CompactionRecoverySection[]
   mechanical: boolean
   recoverySessionIDs?: string[]
-  pendingDagCount?: number
-  nextStep?: string
   validated: boolean
 }
 
@@ -45,7 +37,7 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
   const timestamp = createMemo(() => DateTime.fromMillis(props.message.time.created).toFormat("HH:mm"))
   const title = createMemo(() => (complete() ? "Context compressed" : "Compressing context..."))
   const description = createMemo(() => (complete() ? "Summary ready" : "Preparing a compact continuation summary"))
-  const canExpand = createMemo(() => complete() && (!!summary() || !!recovery()?.nextStep))
+  const canExpand = createMemo(() => complete() && !!summary())
   const expandIcon = createMemo(() =>
     expanded() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
   )
@@ -75,9 +67,6 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
           <div data-slot="compaction-card-copy">
             <div data-slot="compaction-card-title-row">
               <span data-slot="compaction-card-title">{title()}</span>
-              <Show when={(recovery()?.pendingDagCount ?? 0) > 0}>
-                <span data-slot="compaction-card-badge">{recovery()!.pendingDagCount} pending</span>
-              </Show>
             </div>
             <span data-slot="compaction-card-description">{description()}</span>
           </div>
@@ -108,15 +97,6 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
               <div data-slot="compaction-card-summary">
                 <Markdown text={summary()} />
               </div>
-            </Show>
-
-            <Show when={p().nextStep}>
-              {(nextStep) => (
-                <div data-slot="compaction-card-next-step">
-                  <span data-slot="compaction-card-next-step-label">Next step</span>
-                  <span data-slot="compaction-card-next-step-text">{nextStep()}</span>
-                </div>
-              )}
             </Show>
           </div>
         )}

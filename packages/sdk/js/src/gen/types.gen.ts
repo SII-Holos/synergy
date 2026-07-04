@@ -3871,14 +3871,8 @@ export type CompactionRecoveryPart = {
   messageID: string
   type: "compaction_recovery"
   summary: string
-  sections: Array<{
-    heading: string
-    items: Array<string>
-  }>
   mechanical: boolean
   recoverySessionIDs?: Array<string>
-  pendingDagCount?: number
-  nextStep?: string
   validated: boolean
 }
 

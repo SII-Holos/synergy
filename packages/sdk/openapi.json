@@ -25939,24 +25939,6 @@
           "summary": {
             "type": "string"
           },
-          "sections": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "heading": {
-                  "type": "string"
-                },
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": ["heading", "items"]
-            }
-          },
           "mechanical": {
             "type": "boolean"
           },
@@ -25966,19 +25948,11 @@
               "type": "string"
             }
           },
-          "pendingDagCount": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "nextStep": {
-            "type": "string"
-          },
           "validated": {
             "type": "boolean"
           }
         },
-        "required": ["id", "sessionID", "messageID", "type", "summary", "sections", "mechanical", "validated"]
+        "required": ["id", "sessionID", "messageID", "type", "summary", "mechanical", "validated"]
       },
       "Part": {
         "anyOf": [

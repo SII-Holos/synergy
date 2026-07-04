@@ -110,7 +110,6 @@ function compactionRecoveryPart(id: string, messageID: string): PartType {
     messageID,
     type: "compaction_recovery",
     summary: "## Current work\n- Keep the UI stable",
-    sections: [{ heading: "Current work", items: ["Keep the UI stable"] }],
     mechanical: false,
     validated: true,
   } as PartType
