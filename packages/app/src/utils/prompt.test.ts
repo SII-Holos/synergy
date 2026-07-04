@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { Part } from "@ericsanchezok/synergy-sdk"
-import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot, extractPromptDraft } from "./prompt"
+import {
+  createPromptDraftSnapshot,
+  createSubmitFailureRestoreSnapshot,
+  extractPromptDraft,
+  type PromptDraftSnapshot,
+} from "./prompt"
 
 const uploaded = {
   type: "attachment" as const,
@@ -221,5 +226,215 @@ describe("prompt draft restore", () => {
         { type: "file", path: "src/context.ts", selection: { startLine: 2, endLine: 4, startChar: 0, endChar: 0 } },
       ],
     })
+  })
+
+  test("falls back to legacy when message has no metadata", () => {
+    const restored = extractPromptDraft({
+      parts: [{ id: "text", type: "text", text: "plain text" } as Part],
+    })
+
+    expect(restored.prompt).toEqual([{ type: "text", content: "plain text", start: 0, end: 10 }])
+    expect(restored.context).toEqual({ activeTab: true, items: [] })
+  })
+
+  test("falls back to legacy when metadata has no promptDraft key", () => {
+    const restored = extractPromptDraft({
+      message: { metadata: { unrelated: "value" } },
+      parts: [{ id: "text", type: "text", text: "no draft" } as Part],
+    })
+
+    expect(restored.prompt).toEqual([{ type: "text", content: "no draft", start: 0, end: 8 }])
+    expect(restored.context).toEqual({ activeTab: true, items: [] })
+  })
+
+  test("snapshot dedup: active file materialization skips duplicate context item path", () => {
+    const snapshot = createPromptDraftSnapshot({
+      prompt: [{ type: "text", content: "fix", start: 0, end: 3 }],
+      context: {
+        activeTab: true,
+        items: [{ type: "file", path: "src/app.ts" }],
+      },
+      activeFile: "src/app.ts",
+    })
+
+    expect(snapshot.context.activeTab).toBe(false)
+    expect(snapshot.context.items).toHaveLength(1)
+    expect(snapshot.context.items[0]).toEqual({
+      type: "file",
+      path: "src/app.ts",
+      selection: undefined,
+    })
+  })
+
+  test("snapshot dedup: same file with same selection from context items is collapsed", () => {
+    const snapshot = createPromptDraftSnapshot({
+      prompt: [{ type: "text", content: "dup", start: 0, end: 3 }],
+      context: {
+        activeTab: false,
+        items: [
+          { type: "file", path: "src/app.ts", selection: { startLine: 5, startChar: 0, endLine: 10, endChar: 0 } },
+          { type: "file", path: "src/app.ts", selection: { startLine: 5, startChar: 0, endLine: 10, endChar: 0 } },
+        ],
+      },
+    })
+
+    expect(snapshot.context.items).toHaveLength(1)
+  })
+
+  test("snapshot sanitize strips prompt parts with dangerous shapes", () => {
+    const snapshot = createPromptDraftSnapshot({
+      prompt: [
+        { type: "text", content: "safe", start: 0, end: 4 },
+        { type: "evil", payload: "malicious" } as unknown as never,
+      ],
+      context: { activeTab: true, items: [] },
+    })
+
+    expect(snapshot.prompt).toEqual([{ type: "text", content: "safe", start: 0, end: 4 }])
+  })
+
+  test("snapshot with note and session parts round-trips through extractPromptDraft", () => {
+    const snapshot = createPromptDraftSnapshot({
+      prompt: [{ type: "text", content: "doc", start: 0, end: 3 }, note, session],
+      context: { activeTab: true, items: [] },
+    })
+
+    const restored = extractPromptDraft({
+      message: { metadata: { promptDraft: snapshot } },
+      parts: [],
+    })
+
+    expect(restored.prompt).toHaveLength(3)
+    expect(restored.prompt[1]).toEqual(note)
+    expect(restored.prompt[2]).toEqual(session)
+  })
+
+  test("legacy fallback: text position mismatch triggers search reposition", () => {
+    const parts = [
+      { id: "text", type: "text", text: "read @src/app.ts and check" },
+      {
+        id: "file",
+        type: "attachment",
+        mime: "text/plain",
+        url: "file:///repo/src/app.ts",
+        filename: "app.ts",
+        source: {
+          type: "file",
+          text: { value: "@src/app.ts", start: 999, end: 1010 },
+          path: "/repo/src/app.ts",
+        },
+      },
+    ] as Part[]
+
+    const restored = extractPromptDraft({ parts, directory: "/repo" })
+
+    expect(restored.prompt).toHaveLength(3)
+    expect(restored.prompt[0].type).toBe("text")
+    expect(restored.prompt[1].type).toBe("file")
+    expect((restored.prompt[1] as { path: string }).path).toBe("src/app.ts")
+  })
+
+  test("legacy fallback: empty parts array produces empty prompt", () => {
+    const restored = extractPromptDraft({ parts: [] })
+
+    expect(restored.prompt).toEqual([{ type: "text", content: "", start: 0, end: 0 }])
+    expect(restored.context).toEqual({ activeTab: true, items: [] })
+  })
+
+  test("legacy fallback: no text part, only asset attachments", () => {
+    const parts = [
+      {
+        id: "img",
+        type: "attachment",
+        mime: "image/png",
+        url: "asset://img.png",
+        filename: "image.png",
+      },
+    ] as Part[]
+
+    const restored = extractPromptDraft({ parts })
+
+    expect(restored.prompt).toEqual([
+      { type: "text", content: "", start: 0, end: 0 },
+      { type: "attachment", id: "img", filename: "image.png", mime: "image/png", url: "asset://img.png" },
+    ])
+  })
+
+  test("legacy fallback: session attachment missing sessionId is skipped", () => {
+    const parts = [
+      {
+        id: "bad-session",
+        type: "attachment",
+        mime: "text/plain",
+        url: "data:text/plain;base64,abc",
+        filename: "session.txt",
+        metadata: { kind: "session", title: "No ID" },
+      },
+    ] as unknown as Part[]
+
+    const restored = extractPromptDraft({ parts })
+
+    expect(restored.prompt).toEqual([{ type: "text", content: "", start: 0, end: 0 }])
+  })
+
+  test("legacy fallback: inline file + file context URL for same content dedups", () => {
+    const parts = [
+      { id: "text", type: "text", text: "check @src/app.ts" },
+      {
+        id: "inline-source",
+        type: "attachment",
+        mime: "text/plain",
+        url: "file:///repo/src/app.ts?start=1&end=5",
+        filename: "app.ts",
+        source: { type: "file", text: { value: "@src/app.ts", start: 6, end: 17 }, path: "/repo/src/app.ts" },
+      },
+    ] as Part[]
+
+    const restored = extractPromptDraft({ parts, directory: "/repo" })
+
+    expect(restored.prompt.some((p) => p.type === "file")).toBe(true)
+  })
+
+  test("extractPromptDraft preserves context items when snapshot has items and no activeFile", () => {
+    const snapshot = createPromptDraftSnapshot({
+      prompt: [{ type: "text", content: "multi context", start: 0, end: 13 }],
+      context: {
+        activeTab: false,
+        items: [
+          { type: "file", path: "src/a.ts" },
+          { type: "file", path: "src/b.ts" },
+        ],
+      },
+    })
+
+    const restored = extractPromptDraft({
+      message: { metadata: { promptDraft: snapshot } },
+      parts: [],
+    })
+
+    expect(restored.context.items).toHaveLength(2)
+    expect(restored.context.items[0].path).toBe("src/a.ts")
+    expect(restored.context.items[1].path).toBe("src/b.ts")
+    expect(restored.context.activeTab).toBe(false)
+  })
+
+  test("legacy fallback: http attachment without text content", () => {
+    const restored = extractPromptDraft({
+      parts: [
+        { id: "text", type: "text", text: "see " },
+        {
+          id: "web",
+          type: "attachment",
+          mime: "text/html",
+          url: "https://example.com/doc",
+          filename: "doc.html",
+        },
+      ] as Part[],
+    })
+
+    expect(restored.prompt).toEqual([
+      { type: "text", content: "see ", start: 0, end: 4 },
+      { type: "attachment", id: "web", filename: "doc.html", mime: "text/html", url: "https://example.com/doc" },
+    ])
   })
 })
