@@ -84,6 +84,7 @@
     "tailwindcss": "catalog:",
     "tiptap-extension-code-block-shiki": "1.0.0",
     "virtua": "catalog:",
+    "web-vitals": "5.1.0",
     "zod": "catalog:"
   }
 }

@@ -2,6 +2,7 @@ import type { ChildProcess } from "child_process"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Observability } from "../observability"
+import { PerformanceMetrics } from "@/performance/metrics"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -115,6 +116,16 @@ export namespace ProcessRegistry {
     }
     proc.tail = proc.output.slice(-TAIL_CHARS)
     proc.lastOutputAt = Date.now()
+    PerformanceMetrics.record({
+      name: "process.output.chars",
+      value: chunk.length,
+      unit: "count",
+      module: "process",
+      source: "process",
+      processId: proc.id,
+      pid: proc.pid,
+      labels: { backgrounded: proc.backgrounded, truncated: proc.truncated },
+    })
   }
 
   export function markBackgrounded(proc: Process) {
@@ -158,6 +169,16 @@ export namespace ProcessRegistry {
       })
     }
 
+    PerformanceMetrics.record({
+      name: "process.duration",
+      value: Date.now() - proc.startedAt,
+      unit: "ms",
+      module: "process",
+      source: "process",
+      processId: proc.id,
+      pid: proc.pid,
+      labels: { status, exitCode: exitCode ?? null, exitSignal: exitSignal ? String(exitSignal) : null },
+    })
     log.info("process exited", { id: proc.id, status, exitCode, exitSignal })
     void Observability.emit("process.exit", {
       processId: proc.id,

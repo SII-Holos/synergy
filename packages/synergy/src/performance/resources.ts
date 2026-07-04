@@ -1,0 +1,121 @@
+import { PerformanceClock } from "./clock"
+import { PerformanceConfig } from "./config"
+import { PerformanceIssues } from "./issues"
+import { PerformanceMetrics } from "./metrics"
+import { PerformanceSchema } from "./schema"
+import { PerformanceStore } from "./store"
+
+export namespace PerformanceResources {
+  let timer: Timer | undefined
+  let lastCpu = process.cpuUsage()
+  let lastTime = performance.now()
+  let eventLoopExpected = Date.now()
+  const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
+
+  export function addRead(bytes: number) {
+    io.appReadBytes += Math.max(0, bytes)
+    io.appReadOps += 1
+  }
+
+  export function addWrite(bytes: number) {
+    io.appWrittenBytes += Math.max(0, bytes)
+    io.appWriteOps += 1
+  }
+
+  export function snapshot() {
+    const config = PerformanceConfig.current()
+    if (!config.enabled) return
+    const now = PerformanceClock.now()
+    const memory = process.memoryUsage()
+    const cpu = process.cpuUsage()
+    const elapsedMs = Math.max(1, performance.now() - lastTime)
+    const userDelta = cpu.user - lastCpu.user
+    const systemDelta = cpu.system - lastCpu.system
+    const utilizationRatio = Math.min(1, Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000)))
+    const lagMs = Math.max(0, Date.now() - eventLoopExpected)
+    eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+    lastCpu = cpu
+    lastTime = performance.now()
+    const sample = PerformanceSchema.ResourceSample.parse({
+      sampleId: PerformanceClock.id("res"),
+      time: now,
+      iso: PerformanceClock.iso(now),
+      source: "process",
+      process: { pid: process.pid, role: "server" },
+      cpu: { userMicros: cpu.user, systemMicros: cpu.system, utilizationRatio },
+      memory: {
+        rssBytes: memory.rss,
+        heapTotalBytes: memory.heapTotal,
+        heapUsedBytes: memory.heapUsed,
+        externalBytes: memory.external,
+        arrayBuffersBytes: memory.arrayBuffers,
+      },
+      eventLoop: { lagMs, sampleWindowMs: config.resourceSampleIntervalMs },
+      io: { ...io, osAvailable: false },
+      labels: {},
+    })
+    PerformanceStore.insertResource(sample)
+    PerformanceMetrics.record({
+      name: "process.memory.rss",
+      value: memory.rss,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({
+      name: "process.memory.heap_used",
+      value: memory.heapUsed,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({
+      name: "process.cpu.utilization",
+      value: utilizationRatio,
+      unit: "ratio",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({
+      name: "process.event_loop.lag",
+      value: lagMs,
+      unit: "ms",
+      module: "process",
+      source: "process",
+    })
+    if (memory.rss >= (config.thresholds.highRssBytes ?? PerformanceConfig.defaults.thresholds.highRssBytes)) {
+      PerformanceIssues.raise({
+        code: "PERF_MEMORY_HIGH_RSS",
+        severity: "warning",
+        module: "process",
+        title: "High RSS memory usage",
+        message: `Process RSS is ${memory.rss} bytes`,
+        evidence: { observedValue: memory.rss, thresholdValue: config.thresholds.highRssBytes ?? null, unit: "bytes" },
+      })
+    }
+    if (lagMs >= (config.thresholds.eventLoopLagMs ?? PerformanceConfig.defaults.thresholds.eventLoopLagMs)) {
+      PerformanceIssues.raise({
+        code: "PERF_EVENT_LOOP_LAG",
+        severity: "warning",
+        module: "process",
+        title: "Event loop lag detected",
+        message: `Event loop lag is ${Math.round(lagMs)}ms`,
+        evidence: { observedValue: lagMs, thresholdValue: config.thresholds.eventLoopLagMs ?? null, unit: "ms" },
+      })
+    }
+  }
+
+  export function start() {
+    if (timer) return
+    const config = PerformanceConfig.current()
+    if (!config.enabled) return
+    eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+    timer = setInterval(snapshot, config.resourceSampleIntervalMs)
+    timer.unref()
+  }
+
+  export function stop() {
+    if (timer) clearInterval(timer)
+    timer = undefined
+  }
+}

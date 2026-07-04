@@ -4,6 +4,8 @@ import { Global } from "../global"
 import { Lock } from "../util/lock"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
+import { PerformanceMetrics } from "@/performance/metrics"
+import { PerformanceResources } from "@/performance/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
@@ -29,11 +31,16 @@ export namespace Storage {
   export async function read<T>(key: string[]) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.read(target)
-      const result = await Bun.file(target).json()
-      return result as T
-    })
+    return measureStorage("read", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.read(target)
+        const file = Bun.file(target)
+        const result = await file.json()
+        const size = file.size
+        PerformanceResources.addRead(size)
+        return result as T
+      }),
+    )
   }
 
   export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
@@ -72,10 +79,14 @@ export namespace Storage {
   export async function write<T>(key: string[], content: T) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.write(target)
-      await writeJsonAtomic(target, content)
-    })
+    return measureStorage("write", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        const bytes = byteLength(JSON.stringify(content, null, 2))
+        await writeJsonAtomic(target, content)
+        PerformanceResources.addWrite(bytes)
+      }),
+    )
   }
 
   export async function scan(prefix: string[]): Promise<string[]> {
@@ -110,6 +121,25 @@ export namespace Storage {
         break
       }
     }
+  }
+
+  async function measureStorage<T>(operation: string, key: string[], body: () => Promise<T>) {
+    const start = performance.now()
+    try {
+      return await body()
+    } finally {
+      PerformanceMetrics.record({
+        name: "storage.operation.duration",
+        value: performance.now() - start,
+        unit: "ms",
+        module: "storage",
+        labels: { operation, keyPrefix: key[0] ?? "root" },
+      })
+    }
+  }
+
+  function byteLength(value: string) {
+    return new TextEncoder().encode(value).byteLength
   }
 
   async function withErrorHandling<T>(body: () => Promise<T>) {

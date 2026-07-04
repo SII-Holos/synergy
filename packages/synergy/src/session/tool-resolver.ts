@@ -36,6 +36,8 @@ import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approva
 import { Observability } from "@/observability"
 import { SessionModePolicy } from "./tool-mode-policy"
 import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
+import { PerformanceIssues } from "@/performance/issues"
+import { PerformanceSpans } from "@/performance/spans"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -203,6 +205,7 @@ export namespace ToolResolver {
 
   interface ToolTrace {
     traceId: string
+    span: PerformanceSpans.SpanContext
     phase(
       type: string,
       phase: string,
@@ -227,6 +230,16 @@ export namespace ToolResolver {
     let lastActivity = startedAt
     let stalled = false
     const stalledMs = await stalledToolMs()
+    const perfSpan = PerformanceSpans.start({
+      name: "tool.execution",
+      module: "tool",
+      traceId,
+      sessionID: input.sessionID,
+      messageID: input.processor.message.id,
+      callID: ctx.callID,
+      tool: toolName,
+      attributes: { tool: toolName },
+    })
     const base = () => ({
       traceId,
       sessionID: input.sessionID,
@@ -267,6 +280,20 @@ export namespace ToolResolver {
             },
             "warn",
           )
+          PerformanceIssues.raise({
+            code: "PERF_TOOL_STALLED",
+            severity: "warning",
+            module: "tool",
+            title: "Tool execution stalled",
+            message: `${toolName} has not reported activity for ${idleMs}ms`,
+            recommendation: "Inspect the tool trace and owning tool implementation.",
+            traceId,
+            spanId: perfSpan.spanId,
+            sessionID: input.sessionID,
+            messageID: input.processor.message.id,
+            callID: ctx.callID,
+            evidence: { idleMs, thresholdMs: stalledMs, tool: toolName },
+          })
         }
       },
       Math.max(5_000, Math.min(stalledMs, TOOL_HEARTBEAT_MS)),
@@ -276,6 +303,7 @@ export namespace ToolResolver {
 
     return {
       traceId,
+      span: perfSpan,
       async phase(type, nextPhase, data, level) {
         phase = nextPhase
         lastActivity = Date.now()
@@ -285,6 +313,7 @@ export namespace ToolResolver {
         phase = "end"
         lastActivity = Date.now()
         await emit("tool.end", data)
+        PerformanceSpans.end(perfSpan, { attributes: data })
       },
       async error(error, data) {
         phase = "error"
@@ -298,6 +327,7 @@ export namespace ToolResolver {
           },
           "error",
         )
+        PerformanceSpans.end(perfSpan, { status: "error", error, attributes: data })
       },
       dispose() {
         clearInterval(heartbeat)

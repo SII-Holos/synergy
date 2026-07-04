@@ -21,6 +21,7 @@ import { withPreambleSection } from "@/agent/prompt/preamble"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
+import { PerformanceSpans } from "@/performance/spans"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -204,79 +205,94 @@ export namespace LLM {
 
     const tools = input.tools
 
-    const streamTextTimer = l.time("streamText.call")
-    const result = streamText({
-      onError(error) {
-        streamTextTimer.stop()
-        l.error("stream error", {
-          error,
-        })
-      },
-      async experimental_repairToolCall(failed) {
-        const toolNames = new Set(Object.keys(tools))
-        const repaired = repairToolCall(failed, toolNames)
-        if (repaired) {
-          if (repaired.toolName !== failed.toolCall.toolName) {
-            l.info("repairing tool call name", {
-              tool: failed.toolCall.toolName,
-              repaired: repaired.toolName,
-            })
-          }
-          if (repaired.input !== failed.toolCall.input) {
-            l.info("repairing tool call input", {
-              tool: repaired.toolName,
-              originalLength: failed.toolCall.input.length,
-              recoveredLength: repaired.input.length,
-              error: failed.error.message,
-            })
-          }
-          return repaired
-        }
-        return null
-      },
-      temperature: params.temperature,
-      topP: params.topP,
-      topK: params.topK,
-      providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-      activeTools: input.activeToolIDs ?? Object.keys(tools),
-      tools,
-      stopWhen: stepCountIs(1),
-      maxOutputTokens,
-      abortSignal: input.abort,
-      headers: input.model.headers,
-      maxRetries: input.retries ?? 0,
-      messages: [
-        ...system.map(
-          (x): ModelMessage => ({
-            role: "system",
-            content: x,
-          }),
-        ),
-        ...input.messages,
-      ],
-      model: wrapLanguageModel({
-        model: language,
-        middleware: [
-          {
-            async transformParams(args) {
-              if (args.type === "stream") {
-                // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, {
-                  systemCacheBreakpoint:
-                    input.systemCacheBreakpoint === undefined
-                      ? undefined
-                      : baseSystemLength + input.systemCacheBreakpoint,
-                })
-              }
-              return args.params
-            },
-          },
-          extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
-        ],
-      }),
-      experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
+    const llmSpan = PerformanceSpans.start({
+      name: "llm.stream.initialization",
+      module: "llm",
+      sessionID: input.sessionID,
+      messageID: input.user.id,
+      attributes: { provider: input.model.providerID, model: input.model.id },
     })
-    streamTextTimer.stop()
-    return result
+    const streamTextTimer = l.time("streamText.call")
+    try {
+      const result = streamText({
+        onError(error) {
+          streamTextTimer.stop()
+          PerformanceSpans.end(llmSpan, { status: "error", error })
+          l.error("stream error", {
+            error,
+          })
+        },
+        async experimental_repairToolCall(failed) {
+          const toolNames = new Set(Object.keys(tools))
+          const repaired = repairToolCall(failed, toolNames)
+          if (repaired) {
+            if (repaired.toolName !== failed.toolCall.toolName) {
+              l.info("repairing tool call name", {
+                tool: failed.toolCall.toolName,
+                repaired: repaired.toolName,
+              })
+            }
+            if (repaired.input !== failed.toolCall.input) {
+              l.info("repairing tool call input", {
+                tool: repaired.toolName,
+                originalLength: failed.toolCall.input.length,
+                recoveredLength: repaired.input.length,
+                error: failed.error.message,
+              })
+            }
+            return repaired
+          }
+          return null
+        },
+        temperature: params.temperature,
+        topP: params.topP,
+        topK: params.topK,
+        providerOptions: ProviderTransform.providerOptions(input.model, params.options),
+        activeTools: input.activeToolIDs ?? Object.keys(tools),
+        tools,
+        stopWhen: stepCountIs(1),
+        maxOutputTokens,
+        abortSignal: input.abort,
+        headers: input.model.headers,
+        maxRetries: input.retries ?? 0,
+        messages: [
+          ...system.map(
+            (x): ModelMessage => ({
+              role: "system",
+              content: x,
+            }),
+          ),
+          ...input.messages,
+        ],
+        model: wrapLanguageModel({
+          model: language,
+          middleware: [
+            {
+              async transformParams(args) {
+                if (args.type === "stream") {
+                  // @ts-expect-error
+                  args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, {
+                    systemCacheBreakpoint:
+                      input.systemCacheBreakpoint === undefined
+                        ? undefined
+                        : baseSystemLength + input.systemCacheBreakpoint,
+                  })
+                }
+                return args.params
+              },
+            },
+            extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
+          ],
+        }),
+        experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
+      })
+      streamTextTimer.stop()
+      PerformanceSpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
+      return result
+    } catch (error) {
+      streamTextTimer.stop()
+      PerformanceSpans.end(llmSpan, { status: "error", error })
+      throw error
+    }
   }
 }

@@ -274,6 +274,18 @@ import type {
   PartUpdateErrors,
   PartUpdateResponses,
   PathGetResponses,
+  PerfBrowserMetricBatch,
+  PerfIssueStatus,
+  PerformanceBrowserMetricsIngestResponses,
+  PerformanceConfigPatch,
+  PerformanceEventsStreamResponses,
+  PerformanceGetConfigResponses,
+  PerformanceIssuesListResponses,
+  PerformanceSummaryResponses,
+  PerformanceTimelineResponses,
+  PerformanceTracesDetailResponses,
+  PerformanceTracesListResponses,
+  PerformanceUpdateConfigResponses,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
@@ -2775,6 +2787,226 @@ export class Diagnostics extends HeyApiClient {
 
 export class Observability extends HeyApiClient {
   diagnostics = new Diagnostics({ client: this.client })
+}
+
+export class Traces extends HeyApiClient {
+  /**
+   * List performance traces
+   *
+   * List recent redacted performance traces.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      from?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "from" }] }])
+    return (options?.client ?? this.client).get<PerformanceTracesListResponses, unknown, ThrowOnError>({
+      url: "/global/performance/traces",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get performance trace detail
+   *
+   * Get one redacted performance trace with spans and related events.
+   */
+  public detail<ThrowOnError extends boolean = false>(
+    parameters: {
+      traceId: string
+      includeEvents?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "traceId" },
+            { in: "query", key: "includeEvents" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PerformanceTracesDetailResponses, unknown, ThrowOnError>({
+      url: "/global/performance/traces/{traceId}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Issues extends HeyApiClient {
+  /**
+   * List performance issues
+   *
+   * List open or historical performance issues.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      status?: PerfIssueStatus
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "status" }] }])
+    return (options?.client ?? this.client).get<PerformanceIssuesListResponses, unknown, ThrowOnError>({
+      url: "/global/performance/issues",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class BrowserMetrics extends HeyApiClient {
+  /**
+   * Ingest browser performance metrics
+   *
+   * Validate, redact, and store a batch of frontend/browser performance metrics.
+   */
+  public ingest<ThrowOnError extends boolean = false>(
+    parameters?: {
+      perfBrowserMetricBatch?: PerfBrowserMetricBatch
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "perfBrowserMetricBatch", map: "body" }] }])
+    return (options?.client ?? this.client).post<PerformanceBrowserMetricsIngestResponses, unknown, ThrowOnError>({
+      url: "/global/performance/browser-metrics",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Events extends HeyApiClient {
+  /**
+   * Subscribe to performance events
+   *
+   * Server-sent stream for performance dashboard refresh hints and heartbeats.
+   */
+  public stream<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      sessionID?: string
+      includeTraces?: boolean
+      heartbeatMs?: number
+      sinceEventId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "includeTraces" },
+            { in: "query", key: "heartbeatMs" },
+            { in: "query", key: "sinceEventId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PerformanceEventsStreamResponses, unknown, ThrowOnError>({
+      url: "/global/performance/events",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Performance extends HeyApiClient {
+  /**
+   * Get performance summary
+   *
+   * Get the local Synergy performance dashboard summary.
+   */
+  public summary<ThrowOnError extends boolean = false>(
+    parameters?: {
+      windowMs?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "windowMs" }] }])
+    return (options?.client ?? this.client).get<PerformanceSummaryResponses, unknown, ThrowOnError>({
+      url: "/global/performance/summary",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get performance timeline
+   *
+   * Get bucketed performance metric series for the selected range.
+   */
+  public timeline<ThrowOnError extends boolean = false>(
+    parameters?: {
+      from?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "from" }] }])
+    return (options?.client ?? this.client).get<PerformanceTimelineResponses, unknown, ThrowOnError>({
+      url: "/global/performance/timeline",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get performance config
+   *
+   * Get effective performance observability configuration and default metadata.
+   */
+  public getConfig<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<PerformanceGetConfigResponses, unknown, ThrowOnError>({
+      url: "/global/performance/config",
+      ...options,
+    })
+  }
+
+  /**
+   * Patch performance config
+   *
+   * Validate runtime performance configuration fields. Persistent writes are handled by the Settings config domain.
+   */
+  public updateConfig<ThrowOnError extends boolean = false>(
+    parameters?: {
+      performanceConfigPatch?: PerformanceConfigPatch
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "performanceConfigPatch", map: "body" }] }])
+    return (options?.client ?? this.client).patch<PerformanceUpdateConfigResponses, unknown, ThrowOnError>({
+      url: "/global/performance/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  traces = new Traces({ client: this.client })
+
+  issues = new Issues({ client: this.client })
+
+  browserMetrics = new BrowserMetrics({ client: this.client })
+
+  events = new Events({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -9047,6 +9279,8 @@ export class SynergyClient extends HeyApiClient {
   global = new Global({ client: this.client })
 
   observability = new Observability({ client: this.client })
+
+  performance = new Performance({ client: this.client })
 
   holos = new Holos({ client: this.client })
 

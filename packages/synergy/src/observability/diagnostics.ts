@@ -121,7 +121,10 @@ export namespace Diagnostics {
     await copyTextFile(lockFile, path.join(root, "runtime-lock.json")).catch(() => {})
 
     await fs.mkdir(path.dirname(output), { recursive: true })
-    const proc = Bun.spawn(["tar", "-czf", output, "-C", root, "."], {
+    const outputDir = path.dirname(output)
+    const archiveName = path.basename(output)
+    const proc = Bun.spawn(["tar", "-czf", archiveName, "-C", root, "."], {
+      cwd: outputDir,
       stdout: "pipe",
       stderr: "pipe",
     })

@@ -9,6 +9,8 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { lazy } from "@ericsanchezok/synergy-util/lazy"
 import { Shell } from "@/util/shell"
+import { PerformanceMetrics } from "@/performance/metrics"
+import { PerformanceRedaction } from "@/performance/redact"
 
 export namespace Pty {
   const log = Log.create({ service: "pty" })
@@ -69,6 +71,8 @@ export namespace Pty {
     process: IPty
     buffer: string
     subscribers: Set<WSContext>
+    outputBytes: number
+    outputTimer?: ReturnType<typeof setTimeout>
   }
 
   const state = ScopedState.create(
@@ -113,6 +117,7 @@ export namespace Pty {
       env,
     })
 
+    const startTime = Date.now()
     const info = {
       id,
       title: input.title || `Terminal ${id.slice(-4)}`,
@@ -127,9 +132,39 @@ export namespace Pty {
       process: ptyProcess,
       buffer: "",
       subscribers: new Set(),
+      outputBytes: 0,
     }
+    PerformanceMetrics.record({
+      name: "pty.session.created",
+      value: 1,
+      unit: "count",
+      module: "pty",
+      source: "process",
+      processId: id,
+      pid: ptyProcess.pid,
+      labels: { cwdScope: PerformanceRedaction.cwdScope(cwd), command: PerformanceRedaction.commandFamily(command) },
+    })
     state().set(id, session)
-    ptyProcess.onData((data) => {
+    ptyProcess.onData((data: string) => {
+      session.outputBytes += Buffer.byteLength(data)
+      if (!session.outputTimer) {
+        session.outputTimer = setTimeout(() => {
+          const value = session.outputBytes
+          session.outputBytes = 0
+          session.outputTimer = undefined
+          PerformanceMetrics.record({
+            name: "pty.output.bytes",
+            value,
+            unit: "bytes",
+            module: "pty",
+            source: "process",
+            processId: id,
+            pid: ptyProcess.pid,
+            labels: { subscribers: session.subscribers.size },
+          })
+        }, 1000)
+        session.outputTimer.unref()
+      }
       let open = false
       for (const ws of session.subscribers) {
         if (ws.readyState !== 1) {
@@ -144,10 +179,38 @@ export namespace Pty {
       if (session.buffer.length <= BUFFER_LIMIT) return
       session.buffer = session.buffer.slice(-BUFFER_LIMIT)
     })
+    const flushOutputBytes = () => {
+      if (session.outputTimer) clearTimeout(session.outputTimer)
+      session.outputTimer = undefined
+      if (!session.outputBytes) return
+      const value = session.outputBytes
+      session.outputBytes = 0
+      PerformanceMetrics.record({
+        name: "pty.output.bytes",
+        value,
+        unit: "bytes",
+        module: "pty",
+        source: "process",
+        processId: id,
+        pid: ptyProcess.pid,
+        labels: { subscribers: session.subscribers.size },
+      })
+    }
     ptyProcess.onExit(({ exitCode }) => {
       log.info("session exited", { id, exitCode })
       session.info.status = "exited"
+      flushOutputBytes()
       Bus.publish(Event.Exited, { id, exitCode })
+      PerformanceMetrics.record({
+        name: "pty.session.duration",
+        value: Date.now() - startTime,
+        unit: "ms",
+        module: "pty",
+        source: "process",
+        processId: id,
+        pid: ptyProcess.pid,
+        labels: { exitCode },
+      })
       state().delete(id)
     })
     Bus.publish(Event.Created, { info })
@@ -172,6 +235,7 @@ export namespace Pty {
     if (!session) return
     log.info("removing session", { id })
     try {
+      if (session.outputTimer) clearTimeout(session.outputTimer)
       session.process.kill()
     } catch {}
     for (const ws of session.subscribers) {
@@ -191,6 +255,15 @@ export namespace Pty {
   export function write(id: string, data: string) {
     const session = state().get(id)
     if (session && session.info.status === "running") {
+      PerformanceMetrics.record({
+        name: "pty.input.bytes",
+        value: Buffer.byteLength(data),
+        unit: "bytes",
+        module: "pty",
+        source: "process",
+        processId: id,
+        pid: session.info.pid,
+      })
       session.process.write(data)
     }
   }
@@ -219,6 +292,16 @@ export namespace Pty {
     }
     return {
       onMessage: (message: string | ArrayBuffer) => {
+        PerformanceMetrics.record({
+          name: "pty.input.bytes",
+          value: typeof message === "string" ? Buffer.byteLength(message) : message.byteLength,
+          unit: "bytes",
+          module: "pty",
+          source: "process",
+          processId: id,
+          pid: session.info.pid,
+          labels: { via: "websocket" },
+        })
         session.process.write(String(message))
       },
       onClose: () => {

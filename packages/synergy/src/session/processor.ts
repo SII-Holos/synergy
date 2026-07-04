@@ -21,6 +21,7 @@ import { Observability } from "@/observability"
 import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
+import { PerformanceSpans } from "@/performance/spans"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -251,311 +252,325 @@ export namespace SessionProcessor {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const stream = await LLM.stream(streamInput)
+            const llmSpan = PerformanceSpans.start({
+              name: "llm.request",
+              module: "llm",
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              attributes: { provider: input.model.providerID, model: input.model.id },
+            })
 
-            for await (const value of stream.fullStream) {
-              input.abort.throwIfAborted()
-              switch (value.type) {
-                case "start":
-                  SessionManager.setStatus(input.sessionID, { type: "busy" })
-                  break
+            try {
+              for await (const value of stream.fullStream) {
+                input.abort.throwIfAborted()
+                switch (value.type) {
+                  case "start":
+                    SessionManager.setStatus(input.sessionID, { type: "busy" })
+                    break
 
-                case "reasoning-start":
-                  if (value.id in reasoningMap) {
-                    continue
-                  }
-                  reasoningMap[value.id] = {
-                    id: Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.assistantMessage.sessionID,
-                    type: "reasoning",
-                    text: "",
-                    time: {
-                      start: Date.now(),
-                    },
-                    metadata: value.providerMetadata,
-                  }
-                  break
-
-                case "reasoning-delta":
-                  if (value.id in reasoningMap) {
-                    const part = reasoningMap[value.id]
-                    part.text += value.text
-                    if (value.providerMetadata) part.metadata = value.providerMetadata
-                    if (part.text) await Session.updatePart({ part, delta: value.text })
-                  }
-                  break
-
-                case "reasoning-end":
-                  if (value.id in reasoningMap) {
-                    const part = reasoningMap[value.id]
-                    part.text = part.text.trimEnd()
-
-                    part.time = {
-                      ...part.time,
-                      end: Date.now(),
+                  case "reasoning-start":
+                    if (value.id in reasoningMap) {
+                      continue
                     }
-                    if (value.providerMetadata) part.metadata = value.providerMetadata
-                    await Session.updatePart(part)
-                    delete reasoningMap[value.id]
-                  }
-                  break
-
-                case "tool-input-start": {
-                  const part = await Session.updatePart({
-                    id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.assistantMessage.sessionID,
-                    type: "tool",
-                    tool: value.toolName,
-                    callID: value.id,
-                    state: {
-                      status: "pending",
-                      input: {},
-                      raw: "",
-                      metadata: runningToolMetadata(
-                        value.toolName,
-                        "providerMetadata" in value ? value.providerMetadata : undefined,
-                      ),
-                    },
-                  })
-                  toolcalls[value.id] = part as MessageV2.ToolPart
-                  generatingAccum[value.id] = ""
-                  break
-                }
-
-                case "tool-input-delta": {
-                  const match = toolcalls[value.id]
-                  if (!match) break
-                  const prevRaw = generatingAccum[value.id]
-                  if (prevRaw === undefined) break
-                  const raw = prevRaw + value.delta
-                  generatingAccum[value.id] = raw
-                  // Throttle generating updates: emit when enough new content has accumulated
-                  if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
-                  const part = await Session.updatePart({
-                    ...match,
-                    state: {
-                      status: "generating",
-                      input: {},
-                      raw,
-                      charsReceived: raw.length,
-                      metadata: streamingToolMetadata(match),
-                    },
-                  })
-                  toolcalls[value.id] = part as MessageV2.ToolPart
-                  break
-                }
-
-                case "tool-input-end": {
-                  const match = toolcalls[value.id]
-                  if (!match) break
-                  const raw = generatingAccum[value.id]
-                  if (!raw) break
-                  // Final flush: push the complete accumulated raw even if it didn't hit the throttle
-                  const part = await Session.updatePart({
-                    ...match,
-                    state: {
-                      status: "generating",
-                      input: {},
-                      raw,
-                      charsReceived: raw.length,
-                      metadata: streamingToolMetadata(match),
-                    },
-                  })
-                  toolcalls[value.id] = part as MessageV2.ToolPart
-                  break
-                }
-
-                case "tool-call": {
-                  const match = toolcalls[value.toolCallId]
-                  const display = input.toolDisplay?.(value.toolName)
-                  const toolInput = SessionToolInput.normalize(value.input)
-                  const part = await Session.updatePart({
-                    ...(match ?? {
+                    reasoningMap[value.id] = {
                       id: Identifier.ascending("part"),
                       messageID: input.assistantMessage.id,
                       sessionID: input.assistantMessage.sessionID,
-                      type: "tool" as const,
-                      callID: value.toolCallId,
-                    }),
-                    tool: value.toolName,
-                    state: {
-                      status: "running",
-                      input: toolInput,
-                      metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                      type: "reasoning",
+                      text: "",
                       time: {
                         start: Date.now(),
                       },
-                    },
-                    metadata: value.providerMetadata,
-                  })
-                  toolcalls[value.toolCallId] = part as MessageV2.ToolPart
-                  delete generatingAccum[value.toolCallId]
+                      metadata: value.providerMetadata,
+                    }
+                    break
 
-                  if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
-                    const agent = await Agent.get(input.assistantMessage.agent)
-                    const session = await Session.get(input.assistantMessage.sessionID)
-                    await PermissionNext.ask({
-                      permission: "doom_loop",
-                      patterns: [value.toolName],
+                  case "reasoning-delta":
+                    if (value.id in reasoningMap) {
+                      const part = reasoningMap[value.id]
+                      part.text += value.text
+                      if (value.providerMetadata) part.metadata = value.providerMetadata
+                      if (part.text) await Session.updatePart({ part, delta: value.text })
+                    }
+                    break
+
+                  case "reasoning-end":
+                    if (value.id in reasoningMap) {
+                      const part = reasoningMap[value.id]
+                      part.text = part.text.trimEnd()
+
+                      part.time = {
+                        ...part.time,
+                        end: Date.now(),
+                      }
+                      if (value.providerMetadata) part.metadata = value.providerMetadata
+                      await Session.updatePart(part)
+                      delete reasoningMap[value.id]
+                    }
+                    break
+
+                  case "tool-input-start": {
+                    const part = await Session.updatePart({
+                      id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
+                      messageID: input.assistantMessage.id,
                       sessionID: input.assistantMessage.sessionID,
-                      metadata: {
-                        tool: value.toolName,
-                        input: toolInput,
+                      type: "tool",
+                      tool: value.toolName,
+                      callID: value.id,
+                      state: {
+                        status: "pending",
+                        input: {},
+                        raw: "",
+                        metadata: runningToolMetadata(
+                          value.toolName,
+                          "providerMetadata" in value ? value.providerMetadata : undefined,
+                        ),
                       },
-                      ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                      signal: input.abort,
                     })
+                    toolcalls[value.id] = part as MessageV2.ToolPart
+                    generatingAccum[value.id] = ""
+                    break
                   }
-                  break
-                }
-                case "tool-result": {
-                  const match = toolcalls[value.toolCallId]
-                  if (match && match.state.status === "running") {
-                    const pending = pendingExecutions.get(value.toolCallId)
-                    const outcome = pending ? await pending : undefined
-                    if (outcome) await settleToolPart(match, outcome)
-                    pendingExecutions.delete(value.toolCallId)
-                    delete toolcalls[value.toolCallId]
-                  }
-                  break
-                }
 
-                case "tool-error": {
-                  const match = toolcalls[value.toolCallId]
-                  if (match && match.state.status === "running") {
-                    const pending = pendingExecutions.get(value.toolCallId)
-                    const outcome = pending ? await pending : streamToolErrorOutcome(match, value.error)
-                    await settleToolPart(match, outcome)
-                    pendingExecutions.delete(value.toolCallId)
-                    delete toolcalls[value.toolCallId]
-                  }
-                  if (
-                    value.error instanceof PermissionNext.RejectedError ||
-                    value.error instanceof Question.RejectedError
-                  ) {
-                    blocked = shouldBreak
-                  }
-                  break
-                }
-                case "error":
-                  throw value.error
-
-                case "start-step":
-                  snapshot = await Snapshot.track(input.sessionID, input.abort)
-                  await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.sessionID,
-                    snapshot,
-                    type: "step-start",
-                  })
-                  break
-
-                case "finish-step":
-                  const usage = Session.getUsage({
-                    model: input.model,
-                    usage: value.usage,
-                    metadata: value.providerMetadata,
-                  })
-                  input.assistantMessage.finish = value.finishReason
-                  input.assistantMessage.cost += usage.cost
-                  input.assistantMessage.tokens = usage.tokens
-                  await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    reason: value.finishReason,
-                    snapshot: await Snapshot.track(input.sessionID, input.abort),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.assistantMessage.sessionID,
-                    type: "step-finish",
-                    tokens: usage.tokens,
-                    cost: usage.cost,
-                  })
-                  await Session.updateMessage(input.assistantMessage)
-                  if (snapshot) {
-                    const patch = await Snapshot.patch(snapshot, input.sessionID, {
-                      indexFresh: true,
-                      signal: input.abort,
+                  case "tool-input-delta": {
+                    const match = toolcalls[value.id]
+                    if (!match) break
+                    const prevRaw = generatingAccum[value.id]
+                    if (prevRaw === undefined) break
+                    const raw = prevRaw + value.delta
+                    generatingAccum[value.id] = raw
+                    // Throttle generating updates: emit when enough new content has accumulated
+                    if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
+                    const part = await Session.updatePart({
+                      ...match,
+                      state: {
+                        status: "generating",
+                        input: {},
+                        raw,
+                        charsReceived: raw.length,
+                        metadata: streamingToolMetadata(match),
+                      },
                     })
-                    if (patch.files.length) {
-                      await Session.updatePart({
+                    toolcalls[value.id] = part as MessageV2.ToolPart
+                    break
+                  }
+
+                  case "tool-input-end": {
+                    const match = toolcalls[value.id]
+                    if (!match) break
+                    const raw = generatingAccum[value.id]
+                    if (!raw) break
+                    // Final flush: push the complete accumulated raw even if it didn't hit the throttle
+                    const part = await Session.updatePart({
+                      ...match,
+                      state: {
+                        status: "generating",
+                        input: {},
+                        raw,
+                        charsReceived: raw.length,
+                        metadata: streamingToolMetadata(match),
+                      },
+                    })
+                    toolcalls[value.id] = part as MessageV2.ToolPart
+                    break
+                  }
+
+                  case "tool-call": {
+                    const match = toolcalls[value.toolCallId]
+                    const display = input.toolDisplay?.(value.toolName)
+                    const toolInput = SessionToolInput.normalize(value.input)
+                    const part = await Session.updatePart({
+                      ...(match ?? {
                         id: Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
-                        sessionID: input.sessionID,
-                        type: "patch",
-                        hash: patch.hash,
-                        files: patch.files,
-                      })
-                    }
-                    snapshot = undefined
-                  }
-                  SessionSummary.summarize({
-                    sessionID: input.sessionID,
-                    messageID: input.assistantMessage.parentID,
-                  }).catch(() => {})
-                  break
-
-                case "text-start":
-                  currentText = {
-                    id: Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.assistantMessage.sessionID,
-                    type: "text",
-                    text: "",
-                    time: {
-                      start: Date.now(),
-                    },
-                    metadata: value.providerMetadata,
-                  }
-                  break
-
-                case "text-delta":
-                  if (currentText) {
-                    currentText.text += value.text
-                    if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    if (currentText.text)
-                      await Session.updatePart({
-                        part: currentText,
-                        delta: value.text,
-                      })
-                  }
-                  break
-
-                case "text-end":
-                  if (currentText) {
-                    currentText.text = currentText.text.trimEnd()
-                    const textOutput = await Plugin.trigger(
-                      "experimental.text.complete",
-                      {
-                        sessionID: input.sessionID,
-                        messageID: input.assistantMessage.id,
-                        partID: currentText.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "tool" as const,
+                        callID: value.toolCallId,
+                      }),
+                      tool: value.toolName,
+                      state: {
+                        status: "running",
+                        input: toolInput,
+                        metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                        time: {
+                          start: Date.now(),
+                        },
                       },
-                      { text: currentText.text },
-                    )
-                    currentText.text = textOutput.text
-                    currentText.time = {
-                      start: Date.now(),
-                      end: Date.now(),
+                      metadata: value.providerMetadata,
+                    })
+                    toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                    delete generatingAccum[value.toolCallId]
+
+                    if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
+                      const agent = await Agent.get(input.assistantMessage.agent)
+                      const session = await Session.get(input.assistantMessage.sessionID)
+                      await PermissionNext.ask({
+                        permission: "doom_loop",
+                        patterns: [value.toolName],
+                        sessionID: input.assistantMessage.sessionID,
+                        metadata: {
+                          tool: value.toolName,
+                          input: toolInput,
+                        },
+                        ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                        signal: input.abort,
+                      })
                     }
-                    if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    await Session.updatePart(currentText)
+                    break
                   }
-                  currentText = undefined
-                  break
+                  case "tool-result": {
+                    const match = toolcalls[value.toolCallId]
+                    if (match && match.state.status === "running") {
+                      const pending = pendingExecutions.get(value.toolCallId)
+                      const outcome = pending ? await pending : undefined
+                      if (outcome) await settleToolPart(match, outcome)
+                      pendingExecutions.delete(value.toolCallId)
+                      delete toolcalls[value.toolCallId]
+                    }
+                    break
+                  }
 
-                case "finish":
-                  break
+                  case "tool-error": {
+                    const match = toolcalls[value.toolCallId]
+                    if (match && match.state.status === "running") {
+                      const pending = pendingExecutions.get(value.toolCallId)
+                      const outcome = pending ? await pending : streamToolErrorOutcome(match, value.error)
+                      await settleToolPart(match, outcome)
+                      pendingExecutions.delete(value.toolCallId)
+                      delete toolcalls[value.toolCallId]
+                    }
+                    if (
+                      value.error instanceof PermissionNext.RejectedError ||
+                      value.error instanceof Question.RejectedError
+                    ) {
+                      blocked = shouldBreak
+                    }
+                    break
+                  }
+                  case "error":
+                    throw value.error
 
-                case "abort":
-                  break
+                  case "start-step":
+                    snapshot = await Snapshot.track(input.sessionID, input.abort)
+                    await Session.updatePart({
+                      id: Identifier.ascending("part"),
+                      messageID: input.assistantMessage.id,
+                      sessionID: input.sessionID,
+                      snapshot,
+                      type: "step-start",
+                    })
+                    break
 
-                default:
-                  log.info("unhandled", {
-                    ...value,
-                  })
-                  continue
+                  case "finish-step": {
+                    const usage = Session.getUsage({
+                      model: input.model,
+                      usage: value.usage,
+                      metadata: value.providerMetadata,
+                    })
+                    input.assistantMessage.finish = value.finishReason
+                    input.assistantMessage.cost += usage.cost
+                    input.assistantMessage.tokens = usage.tokens
+                    await Session.updatePart({
+                      id: Identifier.ascending("part"),
+                      reason: value.finishReason,
+                      snapshot: await Snapshot.track(input.sessionID, input.abort),
+                      messageID: input.assistantMessage.id,
+                      sessionID: input.assistantMessage.sessionID,
+                      type: "step-finish",
+                      tokens: usage.tokens,
+                      cost: usage.cost,
+                    })
+                    await Session.updateMessage(input.assistantMessage)
+                    if (snapshot) {
+                      const patch = await Snapshot.patch(snapshot, input.sessionID, {
+                        indexFresh: true,
+                        signal: input.abort,
+                      })
+                      if (patch.files.length) {
+                        await Session.updatePart({
+                          id: Identifier.ascending("part"),
+                          messageID: input.assistantMessage.id,
+                          sessionID: input.sessionID,
+                          type: "patch",
+                          hash: patch.hash,
+                          files: patch.files,
+                        })
+                      }
+                      snapshot = undefined
+                    }
+                    SessionSummary.summarize({
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.parentID,
+                    }).catch(() => {})
+                    break
+                  }
+
+                  case "text-start":
+                    currentText = {
+                      id: Identifier.ascending("part"),
+                      messageID: input.assistantMessage.id,
+                      sessionID: input.assistantMessage.sessionID,
+                      type: "text",
+                      text: "",
+                      time: {
+                        start: Date.now(),
+                      },
+                      metadata: value.providerMetadata,
+                    }
+                    break
+
+                  case "text-delta":
+                    if (currentText) {
+                      currentText.text += value.text
+                      if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                      if (currentText.text)
+                        await Session.updatePart({
+                          part: currentText,
+                          delta: value.text,
+                        })
+                    }
+                    break
+
+                  case "text-end":
+                    if (currentText) {
+                      currentText.text = currentText.text.trimEnd()
+                      const textOutput = await Plugin.trigger(
+                        "experimental.text.complete",
+                        {
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          partID: currentText.id,
+                        },
+                        { text: currentText.text },
+                      )
+                      currentText.text = textOutput.text
+                      currentText.time = {
+                        start: Date.now(),
+                        end: Date.now(),
+                      }
+                      if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                      await Session.updatePart(currentText)
+                    }
+                    currentText = undefined
+                    break
+
+                  case "finish":
+                    break
+
+                  case "abort":
+                    break
+
+                  default:
+                    log.info("unhandled", {
+                      ...value,
+                    })
+                    continue
+                }
               }
+              PerformanceSpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
+            } catch (error) {
+              PerformanceSpans.end(llmSpan, { status: "error", error })
+              throw error
             }
           } catch (e: any) {
             fastAbort = isFastAbort(input.abort, e)
