@@ -198,3 +198,167 @@ describe("GET /note/meta metadata route", () => {
     expect(note).toHaveProperty("content")
   })
 })
+
+describe("Note archive and delete routes", () => {
+  test("PUT /note/:id with { archived: true } archives the note", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let noteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({ title: "To archive" })
+        noteId = created.id
+      },
+    })
+
+    const app = Server.App()
+    const res = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    })
+    expect(res.status).toBe(200)
+
+    const updated = (await res.json()) as Record<string, unknown>
+    expect(updated.archived).toBe(true)
+    expect(updated.id).toBe(noteId)
+  })
+
+  test("PUT /note/:id with { archived: false } unarchives the note", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let noteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({ title: "To unarchive" })
+        noteId = created.id
+        await NoteStore.update(scope.id, noteId, { archived: true })
+      },
+    })
+
+    const app = Server.App()
+    const res = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: false }),
+    })
+    expect(res.status).toBe(200)
+
+    const updated = (await res.json()) as Record<string, unknown>
+    expect(updated.archived).toBe(false)
+    expect(updated.id).toBe(noteId)
+  })
+
+  test("DELETE /note/:id on active note returns 409 NoteNotArchivedError and note remains accessible", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let noteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({ title: "Active note" })
+        noteId = created.id
+      },
+    })
+
+    const app = Server.App()
+    const deleteRes = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`, {
+      method: "DELETE",
+    })
+    expect(deleteRes.status).toBe(409)
+
+    const body = (await deleteRes.json()) as Record<string, unknown>
+    expect(body.name).toBe("NoteNotArchivedError")
+
+    // Note should still be accessible
+    const getRes = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`)
+    expect(getRes.status).toBe(200)
+    const note = (await getRes.json()) as Record<string, unknown>
+    expect(note.id).toBe(noteId)
+  })
+
+  test("DELETE /note/:id on archived note returns 200 true and then GET returns not found", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let noteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({ title: "To delete" })
+        noteId = created.id
+        await NoteStore.update(scope.id, noteId, { archived: true })
+      },
+    })
+
+    const app = Server.App()
+    const deleteRes = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`, {
+      method: "DELETE",
+    })
+    expect(deleteRes.status).toBe(200)
+    expect(await deleteRes.json()).toBe(true)
+
+    // Verify note is gone
+    const getRes = await app.request(`/note/${noteId}?directory=${encodeURIComponent(tmp.path)}`)
+    expect(getRes.status).toBe(404)
+  })
+
+  test("GET /note/meta excludes archived notes by default", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let activeNoteId = ""
+    let archivedNoteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const active = await NoteStore.create({ title: "Active visible note" })
+        activeNoteId = active.id
+        const archived = await NoteStore.create({ title: "Archived hidden note" })
+        archivedNoteId = archived.id
+        await NoteStore.update(scope.id, archivedNoteId, { archived: true })
+      },
+    })
+
+    const app = Server.App()
+    const res = await app.request(`/note/meta?directory=${encodeURIComponent(tmp.path)}`)
+    expect(res.status).toBe(200)
+
+    const groups = (await res.json()) as Array<Record<string, unknown>>
+    const allIds = groups.flatMap((g) => (g.notes as Array<Record<string, unknown>>).map((n) => n.id))
+    expect(allIds).toContain(activeNoteId)
+    expect(allIds).not.toContain(archivedNoteId)
+  })
+
+  test("GET /note/meta?archived=true returns archived notes only", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    let activeNoteId = ""
+    let archivedNoteId = ""
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const active = await NoteStore.create({ title: "Active note" })
+        activeNoteId = active.id
+        const archived = await NoteStore.create({ title: "Archived note" })
+        archivedNoteId = archived.id
+        await NoteStore.update(scope.id, archivedNoteId, { archived: true })
+      },
+    })
+
+    const app = Server.App()
+    const res = await app.request(`/note/meta?directory=${encodeURIComponent(tmp.path)}&archived=true`)
+    expect(res.status).toBe(200)
+
+    const groups = (await res.json()) as Array<Record<string, unknown>>
+    const allIds = groups.flatMap((g) => (g.notes as Array<Record<string, unknown>>).map((n) => n.id))
+    expect(allIds).toContain(archivedNoteId)
+    expect(allIds).not.toContain(activeNoteId)
+  })
+})

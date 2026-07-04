@@ -10832,10 +10832,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List note metadata grouped by scope",
-        "description": "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+        "description": "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "Note metadata grouped by scope",
@@ -10886,10 +10896,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List all notes grouped by scope",
-        "description": "List all notes across all scopes, grouped by scope ID.",
+        "description": "List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "Notes grouped by scope",
@@ -11071,10 +11091,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Filter by archived state. Defaults to false (active notes only)."
           }
         ],
         "summary": "List notes",
-        "description": "List all notes for the current scope, including global notes.",
+        "description": "List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.",
         "responses": {
           "200": {
             "description": "List of notes",
@@ -11292,7 +11322,7 @@
           }
         ],
         "summary": "Delete note",
-        "description": "Delete a note permanently.",
+        "description": "Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.",
         "responses": {
           "200": {
             "description": "Deleted",
@@ -11313,12 +11343,123 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/note/batch": {
+      "post": {
+        "operationId": "note.batch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Batch archive or delete notes",
+        "description": "Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.",
+        "responses": {
+          "200": {
+            "description": "Batch operation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "archived": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "deleted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "description": "Note IDs to act on",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "action": {
+                    "description": "Action: archive, unarchive, or delete",
+                    "type": "string",
+                    "enum": ["archive", "unarchive", "delete"]
+                  }
+                },
+                "required": ["ids", "action"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.batch({\n  ...\n})"
           }
         ]
       }
@@ -20354,7 +20495,7 @@
           },
           "cacheTtlMs": {
             "description": "Remote marketplace cache TTL in milliseconds",
-            "default": 300000,
+            "default": 3600000,
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -21615,6 +21756,10 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "model": {
+            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+            "type": "string"
           },
           "resolveSenderNames": {
             "description": "Resolve sender display names via Feishu contact API",
@@ -24038,6 +24183,19 @@
           "completionNotice": {
             "$ref": "#/components/schemas/SessionCompletionNotice"
           },
+          "modelOverride": {
+            "description": "Per-session model override set by /model command",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -26054,6 +26212,9 @@
               }
             }
           },
+          "archived": {
+            "type": "boolean"
+          },
           "version": {
             "type": "number"
           },
@@ -26070,7 +26231,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
+        "required": ["id", "title", "content", "pinned", "global", "tags", "archived", "version", "time"]
       },
       "NoteConflictError": {
         "type": "object",
@@ -28329,6 +28490,9 @@
           "originScope": {
             "type": "string"
           },
+          "archived": {
+            "type": "boolean"
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -28478,6 +28642,9 @@
             "type": "boolean"
           },
           "global": {
+            "type": "boolean"
+          },
+          "archived": {
             "type": "boolean"
           },
           "tags": {
@@ -31625,6 +31792,56 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.note.archived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.archived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["ids", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.unarchived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.unarchived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["ids", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.blueprint_loop.created": {
         "type": "object",
         "properties": {
@@ -32419,6 +32636,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.note.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.archived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.unarchived"
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.created"

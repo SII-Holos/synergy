@@ -21,6 +21,7 @@ export namespace NoteTypes {
           lastRunAt: z.number().optional(),
         })
         .optional(),
+      archived: z.boolean(),
       version: z.number(),
       time: z.object({
         created: z.number(),
@@ -28,7 +29,6 @@ export namespace NoteTypes {
       }),
     })
     .meta({ ref: "NoteInfo" })
-  export type Info = z.infer<typeof Info>
 
   export const CreateInput = z
     .object({
@@ -56,6 +56,7 @@ export namespace NoteTypes {
       content: z.any().optional(),
       pinned: z.boolean().optional(),
       global: z.boolean().optional(),
+      archived: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
       kind: z.enum(["note", "blueprint"]).optional(),
       blueprint: z
@@ -72,7 +73,6 @@ export namespace NoteTypes {
       expectedVersion: z.number().optional(),
     })
     .meta({ ref: "NotePatchInput" })
-  export type PatchInput = z.infer<typeof PatchInput>
 
   export const ScopeGroup = z
     .object({
@@ -90,6 +90,7 @@ export namespace NoteTypes {
       pinned: z.boolean(),
       global: z.boolean(),
       originScope: z.string().optional(),
+      archived: z.boolean().optional(),
       tags: z.array(z.string()),
       kind: z.enum(["note", "blueprint"]).optional(),
       version: z.number(),
@@ -111,7 +112,6 @@ export namespace NoteTypes {
         .optional(),
     })
     .meta({ ref: "NoteMetaInfo" })
-  export type MetaInfo = z.infer<typeof MetaInfo>
 
   export const MetaScopeGroup = z
     .object({

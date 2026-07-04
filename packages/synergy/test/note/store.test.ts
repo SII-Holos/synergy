@@ -237,4 +237,226 @@ describe("NoteStore", () => {
       },
     })
   })
+
+  test("archived defaults to false on create", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({ title: "Default archived" })
+        expect(note.archived).toBe(false)
+      },
+    })
+  })
+
+  test("archive sets archived to true and preserves note data", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({
+          title: "To archive",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Data" }] }] },
+          tags: ["tag1"],
+        })
+        const archived = await NoteStore.archive(scope.id, [created.id])
+        expect(archived[0].archived).toBe(true)
+        expect(archived[0].title).toBe("To archive")
+        expect(archived[0].tags).toEqual(["tag1"])
+        expect(archived[0].id).toBe(created.id)
+      },
+    })
+  })
+
+  test("unarchive restores active state without data loss", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await NoteStore.create({
+          title: "To unarchive",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Restore me" }] }] },
+          tags: ["keep"],
+        })
+        await NoteStore.archive(scope.id, [created.id])
+        const restored = await NoteStore.unarchive(scope.id, [created.id])
+        expect(restored[0].archived).toBe(false)
+        expect(restored[0].title).toBe("To unarchive")
+        expect(restored[0].tags).toEqual(["keep"])
+      },
+    })
+  })
+
+  test("list defaults to active notes only", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const active = await NoteStore.create({ title: "Active note" })
+        const archived = await NoteStore.create({ title: "Archived note" })
+        await NoteStore.archive(scope.id, [archived.id])
+
+        const list = await NoteStore.list(scope.id)
+        expect(list.length).toBe(1)
+        expect(list[0].id).toBe(active.id)
+      },
+    })
+  })
+
+  test("list with all filter includes archived notes", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const active = await NoteStore.create({ title: "Active note" })
+        const archived = await NoteStore.create({ title: "Archived note" })
+        await NoteStore.archive(scope.id, [archived.id])
+
+        const list = await NoteStore.list(scope.id, "all")
+        expect(list.length).toBe(2)
+        const ids = list.map((n) => n.id)
+        expect(ids).toContain(active.id)
+        expect(ids).toContain(archived.id)
+      },
+    })
+  })
+
+  test("listMetaWithGlobal defaults to active notes only", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const active = await NoteStore.create({ title: "Active note" })
+        const archived = await NoteStore.create({ title: "Will archive" })
+        await NoteStore.archive(scope.id, [archived.id])
+
+        const meta = await NoteStore.listMetaWithGlobal(scope.id)
+        const ids = meta.map((m) => m.id)
+        expect(ids).toContain(active.id)
+        expect(ids).not.toContain(archived.id)
+      },
+    })
+  })
+
+  test("remove rejects active notes with NoteError.NotArchived", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({ title: "Cannot remove yet" })
+        await expect(NoteStore.remove(scope.id, note.id)).rejects.toBeInstanceOf(NoteError.NotArchived)
+      },
+    })
+  })
+
+  test("remove succeeds for archived notes", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({ title: "Can remove after archive" })
+        await NoteStore.archive(scope.id, [note.id])
+        await NoteStore.remove(scope.id, note.id)
+        await expect(NoteStore.get(scope.id, note.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
+      },
+    })
+  })
+
+  test("removeAny cannot bypass the archived-only delete gate", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({ title: "Blocked from removeAny" })
+        await expect(NoteStore.removeAny(scope.id, note.id)).rejects.toBeInstanceOf(NoteError.NotArchived)
+      },
+    })
+  })
+
+  test("archived notes remain readable by get", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Still accessible",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Present" }] }] },
+        })
+        await NoteStore.archive(scope.id, [note.id])
+        const fetched = await NoteStore.get(scope.id, note.id)
+        expect(fetched.title).toBe("Still accessible")
+        expect(fetched.archived).toBe(true)
+      },
+    })
+  })
+
+  test("archive/unarchive preserves content, title, tags, pinned", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const content = {
+          type: "doc" as const,
+          content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text: "Preserved text" }] }],
+        }
+        const note = await NoteStore.create({
+          title: "Full data note",
+          content,
+          tags: ["a", "b"],
+        })
+
+        await NoteStore.update(scope.id, note.id, { expectedVersion: note.version, pinned: true })
+        await NoteStore.archive(scope.id, [note.id])
+        const restored = await NoteStore.unarchive(scope.id, [note.id])
+        expect(restored[0].title).toBe("Full data note")
+        expect(restored[0].tags).toEqual(["a", "b"])
+        expect(restored[0].archived).toBe(false)
+
+        const fetched = await NoteStore.get(scope.id, note.id)
+        expect(fetched.title).toBe("Full data note")
+        expect(fetched.tags).toEqual(["a", "b"])
+        expect(fetched.pinned).toBe(true)
+      },
+    })
+  })
+
+  test("archived filter returns archived notes", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await NoteStore.create({ title: "Active note" })
+        const archived = await NoteStore.create({ title: "Archived note" })
+        await NoteStore.archive(scope.id, [archived.id])
+
+        const list = await NoteStore.list(scope.id, "archived")
+        expect(list.length).toBe(1)
+        expect(list[0].id).toBe(archived.id)
+      },
+    })
+  })
 })
