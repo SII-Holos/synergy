@@ -29,6 +29,9 @@ export function useSettingsSave(ctx: SaveContext) {
 
   let autoDebounce: ReturnType<typeof setTimeout> | undefined
   let bgDebounce: ReturnType<typeof setTimeout> | undefined
+  let autoResetTimer: ReturnType<typeof setTimeout> | undefined
+  let bgResetTimer: ReturnType<typeof setTimeout> | undefined
+  let saveGen = 0
 
   onCleanup(() => cancelDebounces())
 
@@ -62,13 +65,19 @@ export function useSettingsSave(ctx: SaveContext) {
 
   async function doAutoSave(patch: Record<string, unknown>) {
     if (Object.keys(patch).length === 0) return
+    const gen = ++saveGen
     setAutoStatus("saving")
     try {
       await saveServerPatch(patch)
-      setAutoStatus("saved")
       await ctx.refreshAfterConfigChange()
-      setTimeout(() => setAutoStatus("idle"), 2000)
+      if (saveGen !== gen) return
+      setAutoStatus("saved")
+      if (autoResetTimer) clearTimeout(autoResetTimer)
+      autoResetTimer = setTimeout(() => {
+        if (saveGen === gen) setAutoStatus("idle")
+      }, 2000)
     } catch (error: any) {
+      if (saveGen !== gen) return
       setAutoStatus("error")
       showToast({ type: "error", title: "Auto-save failed", description: error.message })
     }
@@ -76,18 +85,24 @@ export function useSettingsSave(ctx: SaveContext) {
 
   async function doBgSave(patch: Record<string, unknown>) {
     if (Object.keys(patch).length === 0) return
+    const gen = ++saveGen
     setBgStatus("saving")
     try {
       await saveServerPatch(patch)
-      setBgStatus("saved")
       await ctx.refreshAfterConfigChange()
+      if (saveGen !== gen) return
+      setBgStatus("saved")
+      if (bgResetTimer) clearTimeout(bgResetTimer)
+      bgResetTimer = setTimeout(() => {
+        if (saveGen === gen) setBgStatus("idle")
+      }, 2000)
       showToast({
         type: "success",
         title: `Saved ${ctx.editingLabel()}`,
         description: `Updated: ${Object.keys(patch).join(", ")}`,
       })
-      setTimeout(() => setBgStatus("idle"), 2000)
     } catch (error: any) {
+      if (saveGen !== gen) return
       setBgStatus("error")
       showToast({ type: "error", title: "Background save failed", description: error.message })
     }
