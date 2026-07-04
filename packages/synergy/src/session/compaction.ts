@@ -153,7 +153,12 @@ export namespace SessionCompaction {
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === "patch") {
-          for (const file of part.files) files.add(file)
+          for (const file of part.files) {
+            // Filter out temporary/internal files — they add noise to recovery UI
+            const base = file.split("/").pop() ?? file
+            if (base.startsWith(".tmp-") || base.startsWith("._")) continue
+            files.add(file)
+          }
         }
       }
     }
@@ -204,7 +209,39 @@ export namespace SessionCompaction {
     msg.finish = "stop"
     if (!msg.time.completed) msg.time.completed = Date.now()
     await Session.updateMessage(msg)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "compaction_recovery",
+      summary,
+      sections: [{ heading: "Summary", items: [summary] }],
+      mechanical: true,
+      validated: false,
+    })
     log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
+  }
+
+  export function parseCompactionSections(markdown: string): { heading: string; items: string[] }[] {
+    const sections: { heading: string; items: string[] }[] = []
+    const lines = markdown.split("\n")
+    let currentHeading = ""
+    let currentItems: string[] = []
+
+    for (const line of lines) {
+      const headingMatch = line.match(/^### (.+)/)
+      if (headingMatch) {
+        if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
+        currentHeading = headingMatch[1].trim()
+        currentItems = []
+      } else {
+        const itemMatch = line.match(/^- (.+)/)
+        if (itemMatch) currentItems.push(itemMatch[1].trim())
+      }
+    }
+    if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
+
+    return sections.length > 0 ? sections : [{ heading: "Summary", items: [markdown] }]
   }
 
   // goes backwards through parts until there are 40_000 tokens worth of tool
@@ -456,6 +493,32 @@ export namespace SessionCompaction {
       msg.time.completed = Date.now()
     }
     await Session.updateMessage(msg)
+
+    // Emit a CompactionRecoveryPart with the parsed sections for the frontend.
+    const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+    const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
+    const allText = textParts.map((p) => p.text).join("\n")
+    const sections = parseCompactionSections(allText)
+
+    const nextStepsSection = sections.find((s) => s.heading.toLowerCase().includes("next step"))
+    const nextStep = nextStepsSection?.items[0]
+
+    const inProgressSection = sections.find((s) => s.heading.toLowerCase().includes("in progress"))
+    const rawDagCount = inProgressSection?.items.filter((i) => i.toLowerCase().includes("dag")).length
+    const pendingDagCount = rawDagCount != null && rawDagCount > 0 ? rawDagCount : undefined
+
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "compaction_recovery",
+      summary: allText,
+      sections,
+      mechanical: false,
+      nextStep,
+      pendingDagCount,
+      validated: true,
+    })
 
     if (input.auto) {
       const anchor = resolveAnchor(input.messages, input.parentID)

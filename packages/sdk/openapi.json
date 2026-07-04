@@ -24183,6 +24183,66 @@
         },
         "required": ["id", "sessionID", "messageID", "type", "auto"]
       },
+      "CompactionRecoveryPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "compaction_recovery"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "heading": {
+                  "type": "string"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["heading", "items"]
+            }
+          },
+          "mechanical": {
+            "type": "boolean"
+          },
+          "recoverySessionIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pendingDagCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextStep": {
+            "type": "string"
+          },
+          "validated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "summary", "sections", "mechanical", "validated"]
+      },
       "Part": {
         "anyOf": [
           {
@@ -24214,6 +24274,9 @@
           },
           {
             "$ref": "#/components/schemas/CompactionPart"
+          },
+          {
+            "$ref": "#/components/schemas/CompactionRecoveryPart"
           }
         ]
       },

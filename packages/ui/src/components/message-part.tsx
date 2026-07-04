@@ -51,6 +51,7 @@ import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
 import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
+import { CompactionCard } from "./compaction-card"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -1975,3 +1976,5 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
     </Show>
   )
 }
+
+PART_MAPPING["compaction_recovery"] = CompactionCard
