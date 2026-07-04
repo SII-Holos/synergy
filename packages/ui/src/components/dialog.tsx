@@ -2,18 +2,23 @@ import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { ComponentProps, JSXElement, Match, ParentProps, Show, Switch } from "solid-js"
 import { Icon } from "./icon"
 
+export type DialogSize = "compact" | "form" | "list" | "wide" | "command" | "content"
+export type DialogPlacement = "center" | "top"
+
 export interface DialogProps extends ParentProps {
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
   dismissible?: boolean
+  size?: DialogSize
+  placement?: DialogPlacement
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
 }
 
 export function Dialog(props: DialogProps) {
   return (
-    <div data-component="dialog">
+    <div data-component="dialog" data-size={props.size ?? "content"} data-placement={props.placement ?? "center"}>
       <div data-slot="dialog-container">
         <Kobalte.Content
           data-slot="dialog-content"

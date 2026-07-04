@@ -166,6 +166,26 @@ describe.serial("snapshot", () => {
     })
   })
 
+  test("patch returns empty immediately when signal is already aborted", async () => {
+    await using tmp = await bootstrap()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const before = await Snapshot.track(tmp.extra.sessionID)
+        expect(before).toBeTruthy()
+
+        await Bun.write(`${tmp.path}/aborted.txt`, "aborted")
+        const controller = new AbortController()
+        controller.abort()
+        const started = Date.now()
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID, { signal: controller.signal })
+
+        expect(patch.files).toEqual([])
+        expect(Date.now() - started).toBeLessThan(1000)
+      },
+    })
+  })
+
   test("large file handling", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({

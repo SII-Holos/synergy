@@ -19,7 +19,12 @@ export { compareProviderIDs, providerConnectCopy } from "./provider-recommendati
 
 export function ProviderConnectionFlow(props: {
   providerID: string
+  providerName?: string
+  connectedOverride?: boolean
+  completeDescription?: string
+  iconID?: string
   compact?: boolean
+  skipAutoAdvance?: boolean
   onBack?: () => void
   onComplete?: () => void | Promise<void>
 }) {
@@ -27,7 +32,7 @@ export function ProviderConnectionFlow(props: {
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
-  const providerName = createMemo(() => provider()?.name ?? props.providerID)
+  const providerName = createMemo(() => props.providerName ?? provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
   const methods = createMemo<ProviderAuthMethod[]>(
     () =>
@@ -38,7 +43,9 @@ export function ProviderConnectionFlow(props: {
         },
       ],
   )
-  const connected = createMemo(() => globalSync.data.provider.connected.includes(props.providerID))
+  const connected = createMemo(
+    () => props.connectedOverride ?? globalSync.data.provider.connected.includes(props.providerID),
+  )
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
@@ -73,9 +80,9 @@ export function ProviderConnectionFlow(props: {
           setStore("state", "complete")
           setStore("authorization", x.data!)
         })
-        .catch((e) => {
+        .catch((e: any) => {
           setStore("state", "error")
-          setStore("error", String(e))
+          setStore("error", typeof e?.data?.message === "string" ? e.data.message : String(e))
         })
     }
 
@@ -98,7 +105,7 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (!connected() && methods().length === 1) void selectMethod(0)
+    if (!connected() && methods().length === 1 && !props.skipAutoAdvance) void selectMethod(0)
   })
 
   async function complete() {
@@ -108,8 +115,8 @@ export function ProviderConnectionFlow(props: {
     showToast({
       type: "success",
       icon: "circle-check",
-      title: `${provider()?.name ?? props.providerID} connected`,
-      description: `${provider()?.name ?? props.providerID} models are now available to use.`,
+      title: `${providerName()} connected`,
+      description: props.completeDescription ?? `${providerName()} models are now available to use.`,
     })
   }
 
@@ -145,7 +152,7 @@ export function ProviderConnectionFlow(props: {
             <Icon name={getSemanticIcon("navigation.back")} size="small" />
           </button>
         </Show>
-        <ProviderIcon id={props.providerID} class="size-5 shrink-0 icon-strong-base" />
+        <ProviderIcon id={props.iconID ?? props.providerID} class="size-5 shrink-0 icon-strong-base" />
         <div class="min-w-0">
           <div class="provider-flow-title">{providerConnectCopy(props.providerID, profiles(), provider()?.name)}</div>
           <div class="provider-flow-subtitle">
@@ -239,7 +246,7 @@ export function ProviderConnectionFlow(props: {
                   <TextField
                     autofocus
                     type="password"
-                    label={`${provider()?.name ?? props.providerID} API key`}
+                    label={`${providerName()} API key`}
                     placeholder="API key"
                     name="apiKey"
                     value={formStore.value}
@@ -341,16 +348,21 @@ export function ProviderConnectionFlow(props: {
                   })
 
                   onMount(async () => {
+                    if (store.authorization?.url) platform.openLink(store.authorization.url)
                     const result = await globalSDK.client.provider.oauth.callback({
                       providerID: props.providerID,
                       method: store.methodIndex,
                     })
                     if (result.error) {
                       setStore("state", "error")
-                      setStore("error", "Authorization did not complete.")
+                      setStore(
+                        "error",
+                        "Authorization timed out. Open the authorization page and enter the confirmation code, then try again.",
+                      )
                       return
                     }
                     await complete()
+                    resetMethod()
                   })
 
                   return (

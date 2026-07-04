@@ -13,6 +13,7 @@ function entry(input: Partial<NavEntry> = {}): NavEntry {
     lastActivityAt: 1,
     pinned: 0,
     archived: false,
+    completionNotice: { unread: false },
     ...input,
   }
 }
@@ -65,6 +66,50 @@ describe("resolveSessionVisualState", () => {
     expect(visual.icon).toBe("home")
     expect(visual.tone).toBe("default")
     expect(visual.pulse).toBeUndefined()
+  })
+
+  test("marks idle unread sessions as response ready", () => {
+    const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true } }))
+
+    expect(visual.icon).toBe("home")
+    expect(visual.completionUnread).toBe(true)
+    expect(visual.label).toBe("Home session; response ready")
+  })
+
+  test("suppresses completion unread while running", () => {
+    const visual = resolveSessionVisualState(
+      store({ session_status: { ses_test: { type: "busy" } } }),
+      entry({ completionNotice: { unread: true } }),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("session.running"))
+    expect(visual.completionUnread).toBeUndefined()
+  })
+
+  test("suppresses completion unread while waiting", () => {
+    const visual = resolveSessionVisualState(
+      store({ permission: { ses_test: [{}] } }),
+      entry({ completionNotice: { unread: true } }),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("session.waiting"))
+    expect(visual.completionUnread).toBeUndefined()
+  })
+
+  test("preserves worktree and child icons for unread sessions", () => {
+    const worktree = resolveSessionVisualState(
+      store({ session: [{ id: "ses_test", workspace: { type: "git_worktree" } }] }),
+      entry({ completionNotice: { unread: true } }),
+    )
+    const child = resolveSessionVisualState(
+      store(),
+      entry({ parentID: "ses_parent", completionNotice: { unread: true } }),
+    )
+
+    expect(worktree.icon).toBe(getSemanticIcon("workspace.worktree"))
+    expect(worktree.completionUnread).toBe(true)
+    expect(child.icon).toBe(getSemanticIcon("session.child"))
+    expect(child.completionUnread).toBe(true)
   })
 
   test("keeps project running behavior", () => {

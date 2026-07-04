@@ -218,7 +218,7 @@ export namespace SessionInbox {
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
-    const messageID = input.messageID ?? Identifier.ascending("message")
+    const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const item: StoredItem = {
       id: itemID,
@@ -234,8 +234,7 @@ export namespace SessionInbox {
       source: { type: "user", label: "You" },
       time: { created: Date.now() },
       orderKey: itemID,
-      messageID,
-      input: { ...input, messageID },
+      input: queuedInput,
     }
     return publicItem(await writeItem(item))
   }
@@ -305,6 +304,17 @@ export namespace SessionInbox {
 
   export async function drainGuiding(sessionID: string): Promise<StoredItem[]> {
     return drainWhere(sessionID, (item) => item.kind === "guiding")
+  }
+
+  /**
+   * Drain agent-update inbox items (e.g. cortex background-task completion
+   * notifications).  Unlike {@link drainReady}, this is designed for mid-turn
+   * injection — callers should materialize with `{ guiding: true }` so the
+   * update is injected into the running conversation without triggering a
+   * redundant reply cycle.
+   */
+  export async function drainAgentUpdates(sessionID: string): Promise<StoredItem[]> {
+    return drainWhere(sessionID, (item) => item.kind === "agent_update")
   }
 
   export async function drainReady(sessionID: string): Promise<StoredItem[]> {

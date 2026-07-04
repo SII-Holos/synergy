@@ -322,6 +322,162 @@ describe("session.compaction.isContextExceeded", () => {
 })
 
 // ---------------------------------------------------------------------------
+// SessionCompaction.buildAnchor
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.buildAnchor", () => {
+  const now = Date.now()
+
+  function userMsg(
+    id: string,
+    parts: Array<{ text: string; synthetic?: boolean; ignored?: boolean }>,
+    metadata?: Record<string, any>,
+  ): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        time: { created: now },
+        agent: "synergy",
+        model: { providerID: "test", modelID: "test-model" },
+        ...(metadata ? { metadata } : {}),
+      },
+      parts: parts.map((part, index) => ({
+        id: `text-${id}-${index}`,
+        sessionID: "test-session",
+        messageID: id,
+        type: "text",
+        text: part.text,
+        ...(part.synthetic ? { synthetic: true } : {}),
+        ...(part.ignored ? { ignored: true } : {}),
+      })),
+    }
+  }
+
+  test("anchors the active parent user request when it has real text", () => {
+    const messages = [
+      userMsg("previous", [{ text: "will gh pr create be blocked?" }]),
+      userMsg("active", [{ text: "allow ordinary branch push and gh pr create in autonomous mode" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("allow ordinary branch push and gh pr create in autonomous mode")
+    expect(anchor).not.toContain("will gh pr create be blocked?")
+  })
+
+  test("falls back to the latest real user request for synthetic continue parents", () => {
+    const messages = [
+      userMsg("active", [{ text: "keep this active request across compaction" }]),
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+
+    expect(anchor).toContain("keep this active request across compaction")
+    expect(anchor).not.toContain("Continue if you have next steps")
+  })
+
+  test("falls back past guided context even when it has real user text", () => {
+    const messages = [
+      userMsg("active", [{ text: "implement the active task" }]),
+      userMsg("guided", [{ text: "temporary steering context" }], { guided: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "guided")
+
+    expect(anchor).toContain("implement the active task")
+    expect(anchor).not.toContain("temporary steering context")
+  })
+
+  test("does not use earlier guided context as a fallback anchor", () => {
+    const messages = [
+      userMsg("active", [{ text: "preserve this original request" }]),
+      userMsg("guided", [{ text: "do not anchor this guided context" }], { guided: true }),
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+
+    expect(anchor).toContain("preserve this original request")
+    expect(anchor).not.toContain("do not anchor this guided context")
+  })
+
+  test("does not anchor synthetic or no-reply user messages", () => {
+    const messages = [
+      userMsg("active", [{ text: "anchor the actual request" }]),
+      userMsg("synthetic", [{ text: "synthetic user message" }], { synthetic: true }),
+      userMsg("no-reply", [{ text: "no reply context" }], { noReply: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "no-reply")
+
+    expect(anchor).toContain("anchor the actual request")
+    expect(anchor).not.toContain("synthetic user message")
+    expect(anchor).not.toContain("no reply context")
+  })
+
+  test("ignores synthetic and ignored text parts when extracting anchor text", () => {
+    const messages = [
+      userMsg("previous", [{ text: "previous real request" }]),
+      userMsg("active", [
+        { text: "hidden synthetic text", synthetic: true },
+        { text: "hidden ignored text", ignored: true },
+        { text: "visible active request" },
+      ]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("visible active request")
+    expect(anchor).not.toContain("hidden synthetic text")
+    expect(anchor).not.toContain("hidden ignored text")
+    expect(anchor).not.toContain("previous real request")
+  })
+
+  test("falls back to carried anchor metadata after the source user message is compacted away", () => {
+    const messages = [
+      userMsg(
+        "continue-1",
+        [
+          { text: "Continue if you have next steps", synthetic: true },
+          { text: "<anchor>original carried request</anchor>", synthetic: true },
+        ],
+        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
+      ),
+      userMsg(
+        "continue-2",
+        [
+          { text: "Continue if you have next steps", synthetic: true },
+          { text: "<anchor>original carried request</anchor>", synthetic: true },
+        ],
+        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
+      ),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue-2")
+
+    expect(anchor).toContain("original carried request")
+    expect(anchor).not.toContain("Continue if you have next steps")
+  })
+
+  test("prefers a new real user request over older carried anchor metadata", () => {
+    const messages = [
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }], {
+        compactionAnchor: { text: "old carried request", sourceMessageID: "old" },
+      }),
+      userMsg("active", [{ text: "new real request" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("new real request")
+    expect(anchor).not.toContain("old carried request")
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Token.encodingForModelID
 // ---------------------------------------------------------------------------
 
@@ -594,5 +750,79 @@ describe("session.compaction.selectPartsToPrune", () => {
 
     expect(withoutModel).toHaveLength(0)
     expect(withModel).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.parseCompactionSections
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.parseCompactionSections", () => {
+  test("parses structured markdown with headings and list items", () => {
+    const markdown = [
+      "### What was accomplished",
+      "- Built the user auth module",
+      "- Added login endpoint",
+      "",
+      "### What is currently in progress",
+      "- Fixing the session timeout bug",
+      "- DAG: tests_docs pending",
+      "",
+      "### Next steps",
+      "- Write integration tests",
+      "- Deploy to staging",
+    ].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(3)
+    expect(result[0].heading).toBe("What was accomplished")
+    expect(result[0].items).toEqual(["Built the user auth module", "Added login endpoint"])
+    expect(result[1].heading).toBe("What is currently in progress")
+    expect(result[1].items).toEqual(["Fixing the session timeout bug", "DAG: tests_docs pending"])
+    expect(result[2].heading).toBe("Next steps")
+    expect(result[2].items).toEqual(["Write integration tests", "Deploy to staging"])
+  })
+
+  test("handles empty input as fallback section", () => {
+    const result = SessionCompaction.parseCompactionSections("")
+    expect(result).toHaveLength(1)
+    expect(result[0].heading).toBe("Summary")
+    expect(result[0].items).toEqual([""])
+  })
+
+  test("handles text without headings as fallback section", () => {
+    const result = SessionCompaction.parseCompactionSections("Just some text")
+    expect(result).toHaveLength(1)
+    expect(result[0].heading).toBe("Summary")
+    expect(result[0].items).toEqual(["Just some text"])
+  })
+
+  test("handles headings without any list items", () => {
+    const markdown = ["### Section A", "", "### Section B", "- item 1"].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(2)
+    expect(result[0].heading).toBe("Section A")
+    expect(result[0].items).toEqual([])
+    expect(result[1].heading).toBe("Section B")
+    expect(result[1].items).toEqual(["item 1"])
+  })
+
+  test("ignores non-list, non-heading lines", () => {
+    const markdown = ["### Tasks", "- task 1", "Some prose text here", "- task 2", "More prose"].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(1)
+    expect(result[0].items).toEqual(["task 1", "task 2"])
+  })
+
+  test("trims heading text", () => {
+    const result = SessionCompaction.parseCompactionSections("###   Padded Heading   \n- item")
+    expect(result[0].heading).toBe("Padded Heading")
+  })
+
+  test("trims item text", () => {
+    const result = SessionCompaction.parseCompactionSections("### H\n-   padded item   ")
+    expect(result[0].items).toEqual(["padded item"])
   })
 })

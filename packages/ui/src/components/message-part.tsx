@@ -51,6 +51,7 @@ import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
 import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
+import { CompactionCard } from "./compaction-card"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -1652,6 +1653,7 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
     <For each={segments()}>
       {(segment) => (
         <Show
+          keyed
           when={resourceOpen ? segment.file : undefined}
           fallback={
             <span
@@ -1671,9 +1673,9 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
                 resourceOpen?.open(
                   {
                     kind: "workspace-file",
-                    path: fileReferencePath(file()),
-                    mime: file().mime,
-                    filename: file().filename,
+                    path: fileReferencePath(file),
+                    mime: file.mime,
+                    filename: file.filename,
                   },
                   { prefer: "workspace" },
                 )
@@ -1915,8 +1917,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
-  const part = props.part as TextPart
-  const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
+  const part = () => props.part as TextPart
+  const displayText = () => relativizeProjectPaths((part().text ?? "").trim(), data.directory)
   const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
@@ -1925,7 +1927,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     isRenderableTextPartCompleted(
       messageParts(),
       props.message as AssistantMessage,
-      part,
+      part(),
       sessionStatus() as { type: string } | undefined,
     )
 
@@ -1938,7 +1940,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={typedText()}>
       <div data-component="text-part">
-        <Markdown text={typedText()} cacheKey={part.id} />
+        <Markdown text={typedText()} cacheKey={part().id} />
       </div>
     </Show>
   )
@@ -1946,8 +1948,8 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
-  const part = props.part as ReasoningPart
-  const text = () => part.text.trim()
+  const part = () => props.part as ReasoningPart
+  const text = () => part().text.trim()
   const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
@@ -1956,7 +1958,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
     isRenderableTextPartCompleted(
       messageParts(),
       props.message as AssistantMessage,
-      part,
+      part(),
       sessionStatus() as { type: string } | undefined,
     )
 
@@ -1969,8 +1971,10 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={typedText()}>
       <div data-component="reasoning-part">
-        <Markdown text={typedText()} cacheKey={part.id} />
+        <Markdown text={typedText()} cacheKey={part().id} />
       </div>
     </Show>
   )
 }
+
+PART_MAPPING["compaction_recovery"] = CompactionCard

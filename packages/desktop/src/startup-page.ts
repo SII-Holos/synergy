@@ -1,6 +1,9 @@
+import type { DesktopThemeEffective } from "./theme.js"
+
 export interface DesktopStartupPageOptions {
   chrome: "custom" | "native"
   iconDataUrl?: string
+  theme: DesktopThemeEffective
 }
 
 export interface DesktopStartupStatus {
@@ -34,7 +37,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 </header>`
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en" data-startup-theme="${options.theme}">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
@@ -42,8 +45,32 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
   <title>Starting Synergy</title>
   <style>
     :root {
-      color-scheme: dark;
+      color-scheme: ${options.theme};
+      --startup-bg: #FAFAFA;
+      --startup-text: #191A1D;
+      --startup-mark-bg: #191A1D;
+      --startup-mark-text: #FAFAFA;
+      --startup-control-color: #5E6572;
+      --startup-control-hover-color: #191A1D;
+      --startup-control-hover-bg: #ECEDEF;
+      --startup-focus-ring: rgba(25, 26, 29, 0.16);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    :root[data-startup-theme="dark"] {
+      color-scheme: dark;
+      --startup-bg: #0F0F10;
+      --startup-text: #F5F6F7;
+      --startup-mark-bg: #F5F6F7;
+      --startup-mark-text: #0F0F10;
+      --startup-control-color: #B8BDC7;
+      --startup-control-hover-color: #F5F6F7;
+      --startup-control-hover-bg: #24262A;
+      --startup-focus-ring: rgba(245, 246, 247, 0.18);
+    }
+
+    :root[data-startup-theme="light"] {
+      color-scheme: light;
     }
 
     * {
@@ -54,8 +81,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       margin: 0;
       min-height: 100vh;
       overflow: hidden;
-      background: #111214;
-      color: #f5f6f7;
+      background: var(--startup-bg);
+      color: var(--startup-text);
     }
 
     button {
@@ -67,7 +94,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       display: grid;
       min-height: 100vh;
       place-items: center;
-      background: #111214;
+      background: var(--startup-bg);
     }
 
     .startup-chrome {
@@ -103,7 +130,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       width: 46px;
       height: 100%;
       padding: 0;
-      color: #b8bdc7;
+      color: var(--startup-control-color);
       background: transparent;
       border: 0;
       border-radius: 0;
@@ -114,19 +141,19 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 
     .startup-chrome__control:hover,
     .startup-chrome__control:focus-visible {
-      color: #f5f6f7;
-      background: #24262a;
+      color: var(--startup-control-hover-color);
+      background: var(--startup-control-hover-bg);
       outline: none;
     }
 
     .startup-chrome__control:focus-visible {
-      box-shadow: inset 0 0 0 2px rgba(245, 246, 247, 0.18);
+      box-shadow: inset 0 0 0 2px var(--startup-focus-ring);
     }
 
     .startup-chrome__control--close:hover,
     .startup-chrome__control--close:focus-visible {
-      color: #ffffff;
-      background: #c7392f;
+      color: #FFFFFF;
+      background: #C7392F;
     }
 
     .startup-chrome__glyph {
@@ -219,8 +246,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     .startup-mark__fallback {
       display: grid;
       place-items: center;
-      color: #111214;
-      background: #f5f6f7;
+      color: var(--startup-mark-text);
+      background: var(--startup-mark-bg);
       font-size: 32px;
       font-weight: 650;
     }
@@ -273,7 +300,14 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       if (typeof next.detail === "string") status.setAttribute("data-detail", next.detail)
     }
 
+    function setStartupTheme(theme) {
+      if (theme !== "light" && theme !== "dark") return
+      document.documentElement.setAttribute("data-startup-theme", theme)
+      document.documentElement.style.setProperty("color-scheme", theme)
+    }
+
     window.synergySetStartupStatus = setStatus
+    window.synergySetStartupTheme = setStartupTheme
 
     document.querySelector('[data-window-action="minimize"]')?.addEventListener("click", () => {
       desktopWindow?.minimize?.()
@@ -305,6 +339,10 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 
 export function startupStatusScript(status: DesktopStartupStatus): string {
   return `window.synergySetStartupStatus?.(${JSON.stringify(status)})`
+}
+
+export function startupThemeScript(theme: DesktopThemeEffective): string {
+  return `window.synergySetStartupTheme?.(${JSON.stringify(theme)})`
 }
 
 function escapeAttribute(value: string): string {

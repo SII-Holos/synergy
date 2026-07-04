@@ -21,6 +21,8 @@ import {
   type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
+import { resolveWorkspaceTransition } from "./workspace-transition"
+import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -905,20 +907,41 @@ function createGlobalSync() {
         const parts = store.part[part.messageID]
         if (!parts) {
           setStore("part", part.messageID, [part])
-          break
+        } else {
+          const result = Binary.search(parts, part.id, (p) => p.id)
+          if (result.found) {
+            setStore("part", part.messageID, result.index, part)
+          } else {
+            setStore(
+              "part",
+              part.messageID,
+              produce((draft) => {
+                draft.splice(result.index, 0, part)
+              }),
+            )
+          }
         }
-        const result = Binary.search(parts, part.id, (p) => p.id)
-        if (result.found) {
-          setStore("part", part.messageID, result.index, part)
-          break
+
+        // Optimistic workspace update for worktree tools — the status bar reads
+        // session.workspace from the store and should reflect the new workspace
+        // immediately when the tool result appears, without waiting for the
+        // session.updated event. This races with the canonical session.updated
+        // handler; in practice the events carry identical data so the race is benign.
+        const transition = resolveWorkspaceTransition(part)
+        if (transition.kind !== "none") {
+          const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+          if (idx.found) {
+            if (transition.kind === "enter") {
+              setStore("session", idx.index, "workspace", transition.workspace)
+            } else {
+              const workspace: SessionWorkspace = {
+                ...transition.workspace,
+                scopeID: store.session[idx.index].scope.id,
+              }
+              setStore("session", idx.index, "workspace", workspace)
+            }
+          }
         }
-        setStore(
-          "part",
-          part.messageID,
-          produce((draft) => {
-            draft.splice(result.index, 0, part)
-          }),
-        )
         break
       }
       case "message.part.removed": {

@@ -27,6 +27,10 @@ const CreateInput = z
     parentSessionID: z.string().optional().meta({ description: "Parent session ID" }),
     firstPrompt: z.string().optional().meta({ description: "First user prompt for the loop" }),
     loopIndex: z.number().optional().meta({ description: "Zero-based loop index" }),
+    model: z
+      .object({ providerID: z.string(), modelID: z.string() })
+      .optional()
+      .meta({ description: "Explicit model override for the Blueprint Run" }),
   })
   .meta({ ref: "BlueprintLoopCreateInput" })
 
@@ -65,6 +69,10 @@ async function resolveBlueprintAuditAgent(noteID: string): Promise<string> {
   const note = await NoteStore.getAny(ScopeContext.current.scope.id, noteID).catch(() => undefined)
   const noteAgent = await knownAgentName(note?.blueprint?.auditAgent)
   return noteAgent ?? "supervisor"
+}
+function normalizeBlueprintStartUserPrompt(userPrompt?: string): string | undefined {
+  const trimmed = userPrompt?.trim()
+  return trimmed ? trimmed : undefined
 }
 
 function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }, agentName?: string) {
@@ -107,13 +115,20 @@ async function assertLoopSessionInCurrentScope(sessionID: string) {
 
 async function deliverFirstPrompt(
   sessionID: string,
-  loop: { id: string; noteID: string; title: string; firstPrompt?: string; executionAgent?: string },
+  loop: {
+    id: string
+    noteID: string
+    title: string
+    firstPrompt?: string
+    executionAgent?: string
+    model?: { providerID: string; modelID: string }
+  },
   userPrompt?: string,
 ) {
   const agentName = loop.executionAgent ?? (await resolveBlueprintAgent(sessionID, loop.noteID))
   let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop, agentName)
-  if (userPrompt?.trim()) {
-    text += `\n\nUser instruction:\n${userPrompt.trim()}`
+  if (userPrompt) {
+    text += `\n\nUser instruction:\n${userPrompt}`
   }
   const textPart: MessageV2.TextPart = {
     id: Identifier.ascending("part"),
@@ -126,6 +141,7 @@ async function deliverFirstPrompt(
     type: "user",
     parts: [textPart],
     ...(agentName ? { agent: agentName } : {}),
+    ...(loop.model ? { model: loop.model } : {}),
     summary: {
       title: `Execute ${loop.title} blueprint`,
     },
@@ -135,7 +151,7 @@ async function deliverFirstPrompt(
       noteID: loop.noteID,
       title: loop.title,
       ...(agentName ? { agent: agentName } : {}),
-      ...(userPrompt?.trim() ? { userPrompt: userPrompt.trim() } : {}),
+      ...(userPrompt ? { userPrompt } : {}),
     },
   }
   await SessionManager.deliver({ target: sessionID, mail })
@@ -346,12 +362,16 @@ export const BlueprintRoute = new Hono()
       let started = false
       try {
         const body = c.req.valid("json")
+        const userPrompt = normalizeBlueprintStartUserPrompt(body?.userPrompt)
         const before = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
-        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
+        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, {
+          status: "running",
+          userPrompt: userPrompt ?? null,
+        })
         started = true
         await bindSessionToLoop(before.sessionID, id, "execution")
         const scopeID = ScopeContext.current.scope.id
-        void deliverFirstPrompt(before.sessionID, before, body?.userPrompt).catch((err) => {
+        void deliverFirstPrompt(before.sessionID, before, userPrompt).catch((err) => {
           log.error("failed to deliver BlueprintLoop start prompt", { loopID: id, error: err })
           BlueprintLoopStore.updateStatus(scopeID, id, {
             status: "failed",

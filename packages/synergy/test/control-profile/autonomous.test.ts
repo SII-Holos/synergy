@@ -55,6 +55,18 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
+  test("autonomous allows PR publication while denying generic remote writes", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await autonomousProfile()
+        expect(rule(profile, "shell_remote_publish")?.action).toBe("allow")
+        expect(rule(profile, "shell_remote_write")?.action).toBe("deny")
+      },
+    })
+  })
+
   test("autonomous allows mcp and ordinary delegated capabilities but denies secrets", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -203,6 +215,7 @@ describe("autonomous profile approval risk", () => {
         const profile = await autonomousProfile()
         expect(ApprovalPolicy.decidePermission(profile, "task", {}).action).toBe("allow")
         expect(ApprovalPolicy.decidePermission(profile, "mcp_invoke", {}).action).toBe("allow")
+
         expect(ApprovalPolicy.decidePermission(profile, "secrets", {}).action).toBe("deny")
       },
     })

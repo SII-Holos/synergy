@@ -109,6 +109,14 @@ export const WorkingInfo = z
   .meta({ ref: "SessionWorkingInfo" })
 export type WorkingInfo = z.infer<typeof WorkingInfo>
 
+export const CompletionNotice = z
+  .object({
+    unread: z.boolean(),
+    silent: z.boolean(),
+  })
+  .meta({ ref: "SessionCompletionNotice" })
+export type CompletionNotice = z.infer<typeof CompletionNotice>
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -164,6 +172,14 @@ export const Info = z
           activatedTools: z.array(z.string()).optional(),
         })
         .optional(),
+      completionNotice: CompletionNotice.default(() => ({ unread: false, silent: false })),
+      modelOverride: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional()
+        .describe("Per-session model override set by /model command"),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z

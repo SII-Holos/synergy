@@ -16,7 +16,7 @@ export const UpgradeCommand = {
         alias: "m",
         describe: "installation method to use",
         type: "string",
-        choices: ["npm", "yarn", "pnpm", "bun", "brew"],
+        choices: ["npm", "yarn", "pnpm", "bun", "brew", "desktop"],
       })
   },
   handler: async (args: { target?: string; method?: string }) => {
@@ -42,6 +42,16 @@ export const UpgradeCommand = {
       }
     }
     prompts.log.info("Using method: " + method)
+    if (method === "desktop") {
+      const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest("desktop")
+      if (Installation.VERSION === target) {
+        prompts.log.warn(`synergy upgrade skipped: ${target} is already installed`)
+      }
+      prompts.log.info("Synergy is installed with the Desktop app.")
+      prompts.log.info("Desktop updates are managed from the Synergy app. Open Synergy and use Settings → Updates.")
+      prompts.outro("Done")
+      return
+    }
     const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest()
 
     if (Installation.VERSION === target) {

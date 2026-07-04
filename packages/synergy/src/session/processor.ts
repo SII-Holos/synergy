@@ -93,6 +93,13 @@ export namespace SessionProcessor {
     }
   }
 
+  export function isFastAbort(signal: AbortSignal, error?: unknown): boolean {
+    if (signal.aborted) return true
+    if (!error || typeof error !== "object") return false
+    const name = "name" in error ? String((error as { name?: unknown }).name) : ""
+    return name === "AbortError"
+  }
+
   export function create(input: {
     assistantMessage: MessageV2.Assistant
     sessionID: string
@@ -106,6 +113,7 @@ export namespace SessionProcessor {
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
+    let fastAbort = input.abort.aborted
 
     function toolStartTime(part: MessageV2.ToolPart, fallback = Date.now()) {
       if (part.state.status !== "running") return fallback
@@ -239,6 +247,7 @@ export namespace SessionProcessor {
         const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
+            input.abort.throwIfAborted()
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const stream = await LLM.stream(streamInput)
@@ -549,11 +558,12 @@ export namespace SessionProcessor {
               }
             }
           } catch (e: any) {
+            fastAbort = isFastAbort(input.abort, e)
             log.error("process", {
               error: e,
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
-            const retry = SessionRetry.retryable(error)
+            const retry = fastAbort ? undefined : SessionRetry.retryable(error)
             if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
               attempt++
               const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
@@ -593,17 +603,20 @@ export namespace SessionProcessor {
               error: input.assistantMessage.error,
             })
           }
+          fastAbort ||= input.abort.aborted
           if (snapshot) {
-            const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
-            if (patch.files.length) {
-              await Session.updatePart({
-                id: Identifier.ascending("part"),
-                messageID: input.assistantMessage.id,
-                sessionID: input.sessionID,
-                type: "patch",
-                hash: patch.hash,
-                files: patch.files,
-              })
+            if (!fastAbort) {
+              const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
+              if (patch.files.length) {
+                await Session.updatePart({
+                  id: Identifier.ascending("part"),
+                  messageID: input.assistantMessage.id,
+                  sessionID: input.sessionID,
+                  type: "patch",
+                  hash: patch.hash,
+                  files: patch.files,
+                })
+              }
             }
             snapshot = undefined
           }
@@ -612,7 +625,7 @@ export namespace SessionProcessor {
             messageID: input.assistantMessage.id,
           })
           const outcomes = new Map<string, ToolOutcome>()
-          if (pendingExecutions.size > 0) {
+          if (!fastAbort && pendingExecutions.size > 0) {
             const timeout = new Promise<undefined>((resolve) =>
               setTimeout(() => resolve(undefined), TOOL_SETTLE_TIMEOUT),
             )

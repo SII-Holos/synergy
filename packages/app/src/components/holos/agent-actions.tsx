@@ -11,6 +11,7 @@ import type { HolosAccountMeta, HolosAgentProfile } from "@ericsanchezok/synergy
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 import { usePlatform } from "@/context/platform"
+import "./agent-actions.css"
 
 type GlobalSDK = ReturnType<typeof useGlobalSDK>
 type HolosProfileInput = {
@@ -233,29 +234,29 @@ export function DialogSwitchHolosAgent(props: {
     <Dialog
       title="Switch Agent"
       description="Choose which saved Holos agent Synergy should use."
-      class="sidebar-agent-switch-dialog-shell"
+      class="holos-agent-switch-dialog"
     >
-      <div class="sidebar-agent-switch-dialog">
+      <div class="holos-agent-switch">
         <Show
           when={props.accounts.length > 0}
           fallback={
-            <div class="sidebar-agent-switch-empty">
+            <div class="holos-agent-switch-empty">
               <Icon name="user" size="normal" />
               <span>No saved agents</span>
             </div>
           }
         >
-          <div class="sidebar-agent-switch-list">
+          <div class="holos-agent-switch-list">
             <For each={props.accounts}>
               {(account) => (
                 <button
                   type="button"
-                  class="sidebar-agent-switch-row"
-                  classList={{ "sidebar-agent-switch-row-active": isActive(account) }}
+                  class="holos-agent-switch-row"
+                  data-active={isActive(account)}
                   disabled={isActive(account)}
                   onClick={() => void props.onSwitch(account.agentId)}
                 >
-                  <span class="sidebar-agent-switch-avatar">
+                  <span class="holos-agent-switch-avatar">
                     <Show
                       when={avatarUrl(account)}
                       fallback={
@@ -268,24 +269,24 @@ export function DialogSwitchHolosAgent(props: {
                       {(src) => <img src={src()} alt="" />}
                     </Show>
                   </span>
-                  <span class="sidebar-agent-switch-copy">
-                    <span class="sidebar-agent-switch-name">{label(account)}</span>
-                    <span class="sidebar-agent-switch-description">{description(account)}</span>
-                    <span class="sidebar-agent-switch-id">{shortID(account.agentId)}</span>
+                  <span class="holos-agent-switch-copy">
+                    <span class="holos-agent-switch-name">{label(account)}</span>
+                    <span class="holos-agent-switch-description">{description(account)}</span>
+                    <span class="holos-agent-switch-id">{shortID(account.agentId)}</span>
                   </span>
                   <Show when={!isActive(account)}>
-                    <span class="sidebar-agent-switch-status">Switch</span>
+                    <span class="holos-agent-switch-status">Switch</span>
                   </Show>
                 </button>
               )}
             </For>
           </div>
         </Show>
-        <div class="sidebar-agent-switch-actions">
-          <Button type="button" variant="secondary" size="small" onClick={props.onImport}>
+        <div class="holos-agent-switch-actions">
+          <Button type="button" variant="secondary" size="large" onClick={props.onImport}>
             Import Agent
           </Button>
-          <Button type="button" variant="primary" size="small" onClick={props.onCreate}>
+          <Button type="button" variant="primary" size="large" onClick={props.onCreate}>
             Create Agent
           </Button>
         </div>
@@ -333,10 +334,11 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
     <Dialog
       title="Create Agent"
       description="Choose how this agent should appear in Holos."
-      class="sidebar-agent-import-dialog-shell"
+      size="form"
+      class="holos-agent-form-dialog"
     >
-      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-fields">
+      <form onSubmit={handleSubmit} class="holos-agent-form">
+        <div class="holos-agent-form-fields">
           <TextField
             autofocus
             label="Name"
@@ -370,7 +372,7 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
             error={form.avatarUrlError}
           />
         </div>
-        <div class="sidebar-agent-import-actions">
+        <div class="holos-agent-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
           </Button>
@@ -425,10 +427,11 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
     <Dialog
       title="Import Agent"
       description="Paste the secret for an existing Holos agent."
-      class="sidebar-agent-import-dialog-shell"
+      size="form"
+      class="holos-agent-form-dialog"
     >
-      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-fields">
+      <form onSubmit={handleSubmit} class="holos-agent-form">
+        <div class="holos-agent-form-fields">
           <TextField
             autofocus
             label="Agent Secret"
@@ -443,7 +446,7 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
             error={form.agentSecretError}
           />
         </div>
-        <div class="sidebar-agent-import-actions">
+        <div class="holos-agent-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
           </Button>

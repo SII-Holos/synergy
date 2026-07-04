@@ -1,27 +1,81 @@
 import { describe, expect, test } from "bun:test"
+import {
+  formatUsageResetCompact,
+  formatUsageResetSentence,
+  formatUsageWindowDetail,
+  formatUsageWindowLabel,
+  formatUsageWindowValue,
+  nextUsageReset,
+  usageWindowMeterPercent,
+} from "./UsagePanel.model"
 
-const usagePanel = await Bun.file(new URL("./UsagePanel.tsx", import.meta.url)).text()
-const settingsCss = await Bun.file(new URL("../settings-panel.css", import.meta.url)).text()
-
-describe("Usage panel UI contract", () => {
-  test("keeps refresh inside the content flow instead of the page header", () => {
-    expect(usagePanel).toContain("usage-overview")
-    expect(usagePanel).toContain("usage-page-shell")
-    expect(usagePanel).not.toContain("actions={")
-  })
+describe("Usage panel model", () => {
+  const now = Date.UTC(2026, 6, 3, 12, 0, 0)
 
   test("uses human-facing quota window labels and values", () => {
-    expect(usagePanel).toContain("formatUsageWindowLabel(window.label)")
-    expect(usagePanel).toContain('"5-hour window"')
-    expect(usagePanel).toContain("formatPercent(window.remainingPercent)")
-    expect(usagePanel).toContain("remaining")
-    expect(usagePanel).not.toContain('<div class="usage-window-label">{window.label}</div>')
+    expect(formatUsageWindowLabel("Session")).toBe("5-hour window")
+    expect(formatUsageWindowLabel("Current session")).toBe("5-hour window")
+    expect(formatUsageWindowLabel("Weekly")).toBe("Weekly window")
+    expect(formatUsageWindowLabel("Current week")).toBe("Weekly window")
+    expect(formatUsageWindowValue({ label: "Session", remainingPercent: 94 })).toBe("94% remaining")
+    expect(formatUsageWindowValue({ label: "Session", usedPercent: 54 })).toBe("54% used")
+    expect(usageWindowMeterPercent({ label: "Session", remainingPercent: 94.4 })).toBe(94)
   })
 
-  test("renders compact usage rows with a meter instead of distant label-value pairs", () => {
-    expect(usagePanel).toContain("usage-window-meter")
-    expect(settingsCss).toContain(".ds-content-inner:has(> .usage-page-shell)")
-    expect(settingsCss).toContain("grid-template-columns: minmax(150px, 1fr) minmax(120px, 170px)")
-    expect(settingsCss).toContain(".usage-window-meter span")
+  test("keeps provider details separate from reset timing", () => {
+    const resetAt = new Date(now + 90 * 60 * 1000).toISOString()
+    expect(
+      formatUsageWindowDetail({
+        label: "API key quota",
+        remainingPercent: 24,
+        resetAt,
+        detail: "$12.00 of $50.00 remaining",
+      }),
+    ).toBe("$12.00 of $50.00 remaining")
+  })
+
+  test("formats reset timing as product copy", () => {
+    const resetAt = new Date(now + 90 * 60 * 1000).toISOString()
+    const sentence = formatUsageResetSentence(resetAt, now)
+    const compact = formatUsageResetCompact(resetAt, now)
+
+    expect(sentence?.value).toMatch(/^Resets today at /)
+    expect(sentence?.title).toBe(sentence?.value)
+    expect(compact?.value).toMatch(/^Today at /)
+    expect(compact?.title).toBe(sentence?.value)
+    expect(formatUsageResetSentence(undefined, now)).toBeUndefined()
+    expect(formatUsageResetSentence("not-a-date", now)).toBeUndefined()
+  })
+
+  test("finds the next future reset across connected snapshots", () => {
+    const earliest = new Date(now + 2 * 60 * 60 * 1000).toISOString()
+    const later = new Date(now + 8 * 60 * 60 * 1000).toISOString()
+    const past = new Date(now - 60 * 1000).toISOString()
+
+    const reset = nextUsageReset(
+      [
+        {
+          providerID: "openai-codex",
+          status: "available",
+          fetchedAt: new Date(now).toISOString(),
+          windows: [
+            { label: "Session", remainingPercent: 94, resetAt: later },
+            { label: "Weekly", remainingPercent: 46, resetAt: earliest },
+          ],
+          details: [],
+        },
+        {
+          providerID: "anthropic",
+          status: "available",
+          fetchedAt: new Date(now).toISOString(),
+          windows: [{ label: "Current session", remainingPercent: 80, resetAt: past }],
+          details: [],
+        },
+      ],
+      now,
+    )
+
+    expect(reset?.value).toMatch(/^Today at /)
+    expect(reset?.title).toMatch(/^Resets today at /)
   })
 })

@@ -11,7 +11,7 @@ Preferred operations:
 - insertBefore / insertAfter: Insert content adjacent to a stable blockId.
 - deleteBlock: Delete one block by stable blockId.
 - setAttrs: Update a block's attributes while preserving its blockId.
-- replaceText: Replace text inside one block using find or range. If find appears more than once, specify occurrence.
+- replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases.
 - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col.
 - replaceRange: Replace a contiguous sibling range.
 
@@ -21,6 +21,11 @@ Content inputs:
 - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures.
 
 Safety behavior:
-- Version mismatch, docHash mismatch, missing targets, hash mismatch, invalid JSON content, and ambiguous text replacements fail without writing.
-- On failure, the tool returns current version, current docHash, and current block summaries so you can re-read/retry deliberately.
-- dryRun:true validates and reports changed blocks without writing.
+- Version mismatch, docHash mismatch, missing targets, hash mismatch, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing.
+- On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred.
+- dryRun:true validates and returns the same semantic operation preview without writing.
+
+Result interpretation:
+- Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct.
+- `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set.
+- Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note.

@@ -3,6 +3,7 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
@@ -90,17 +91,17 @@ export function DialogSessionExport() {
   }
 
   return (
-    <Dialog title="Export Session Data" class="dialog-session-export">
+    <Dialog title="Export session data" size="wide" class="dialog-session-export">
       <div class="session-export-body">
         <Show when={currentSession()}>
           {(session) => (
-            <div class="session-export-card">
-              <div class="flex items-center gap-2">
-                <Icon name="message-square" size="small" class="text-text-weak flex-shrink-0" />
-                <span class="text-13-medium text-text-strong truncate">{session().title || "Untitled session"}</span>
+            <section class="session-export-summary" aria-label="Session summary">
+              <div class="session-export-summary-title">
+                <Icon name="message-square" size="small" class="session-export-summary-icon" />
+                <span>{session().title || "Untitled session"}</span>
               </div>
               <div class="session-export-meta">
-                <span class="session-export-meta-dim">{session().id.slice(0, 16)}…</span>
+                <span>{session().id.slice(0, 16)}…</span>
                 <Show when={estimate()}>
                   {(est) => {
                     const value = est()
@@ -124,18 +125,18 @@ export function DialogSessionExport() {
                   </span>
                 </Show>
               </div>
-            </div>
+            </section>
           )}
         </Show>
 
-        <div class="session-export-field">
+        <section data-slot="dialog-section">
           <span class="session-export-label">Detail level</span>
-          <div class="session-export-mode-group">
+          <div data-slot="dialog-option-list" class="session-export-mode-group">
             {MODE_OPTIONS.map((opt) => (
               <button
                 type="button"
-                class="session-export-mode-option"
-                classList={{ "session-export-mode-option-active": mode() === opt.value }}
+                data-slot="dialog-option"
+                data-selected={mode() === opt.value}
                 onClick={() => setMode(opt.value)}
               >
                 <span class="session-export-mode-title">{opt.label}</span>
@@ -143,20 +144,21 @@ export function DialogSessionExport() {
               </button>
             ))}
           </div>
-        </div>
+        </section>
       </div>
 
-      <div class="session-export-footer">
-        <button
+      <div data-slot="dialog-actions" class="session-export-footer">
+        <span class="session-export-hint">Save session data as .json.gz</span>
+        <Button
           type="button"
-          class="session-export-action session-export-action-primary"
+          variant="primary"
+          size="large"
+          icon="download"
           disabled={exporting()}
           onClick={handleExport}
         >
-          <Icon name="download" size="normal" class="session-export-action-icon" />
-          <span class="session-export-action-label">{exporting() ? "Downloading…" : "Download Export"}</span>
-          <span class="session-export-action-hint">Save session data as .json.gz</span>
-        </button>
+          {exporting() ? "Downloading..." : "Download export"}
+        </Button>
       </div>
     </Dialog>
   )

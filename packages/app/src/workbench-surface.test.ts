@@ -198,17 +198,22 @@ describe("workbench surface polarity", () => {
   })
 
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {
-    expect(questionPrompt).toContain('<section class="question-prompt-shell">')
+    expect(questionPrompt).toContain('<section class="question-prompt-shell"')
     expect(questionPrompt).toContain("question-prompt-option")
+    expect(questionPrompt).toContain('class="question-prompt-option question-prompt-other-trigger"')
+    expect(questionPrompt).toContain("question-prompt-skip")
     expect(questionPrompt).toContain("disabled={!currentAnswered()}")
     expect(questionPrompt).toContain("disabled={!allAnswered()}")
+    expect(questionPrompt).not.toContain("Dismiss")
     expect(questionPrompt).not.toContain('Card variant="info"')
     expect(questionPrompt).not.toContain("workbench-card-surface workbench-card-surface-hover")
 
     expect(questionPromptCss).toContain("--question-shell-bg")
     expect(questionPromptCss).toContain("--question-content-bg")
     expect(questionPromptCss).toContain("--question-selected-bg")
+    expect(questionPromptCss).toContain("border-radius: var(--radius-2xl);")
     expect(questionPromptCss).toContain(".question-prompt-option.is-picked")
+    expect(questionPromptCss).toContain(".question-prompt-option-copy")
     expect(questionPromptCss).toContain(".question-prompt-footer")
   })
 

@@ -11,6 +11,7 @@ import { CodexProvider } from "./codex"
 import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
+import { GitHubProvider } from "./github"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 
@@ -96,6 +97,20 @@ export namespace ProviderAuth {
           },
         ],
       },
+      [GitHubProvider.PROVIDER_ID]: {
+        provider: GitHubProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "api" as const,
+            label: "GitHub token",
+          },
+          {
+            type: "oauth" as const,
+            label: "Sign in with GitHub",
+            authorize: () => GitHubProvider.authorizeDeviceCode(),
+          },
+        ],
+      },
       [MiniMaxProvider.PROVIDER_ID]: {
         provider: MiniMaxProvider.PROVIDER_ID,
         methods: [
@@ -149,11 +164,16 @@ export namespace ProviderAuth {
       providerID: z.string(),
       method: z.number(),
     }),
-    async (input): Promise<Authorization | undefined> => {
+    async (input) => {
       const auth = await state().then((s) => s.methods[input.providerID])
       const method = auth.methods[input.method]
       if (method.type === "oauth") {
-        const result = await method.authorize()
+        const result = await method.authorize().catch((original) => {
+          throw new OauthNotConfigured({
+            providerID: input.providerID,
+            message: original instanceof Error ? original.message : String(original),
+          })
+        })
         await state().then((s) => (s.pending[input.providerID] = result))
         return {
           url: result.url,
@@ -272,6 +292,14 @@ export namespace ProviderAuth {
   )
 
   export const OauthCallbackFailed = NamedError.create("ProviderAuthOauthCallbackFailed", z.object({}))
+
+  export const OauthNotConfigured = NamedError.create(
+    "ProviderAuthOauthNotConfigured",
+    z.object({
+      providerID: z.string(),
+      message: z.string().optional(),
+    }),
+  )
 
   export const ImportUnavailable = NamedError.create(
     "ProviderAuthImportUnavailable",

@@ -41,12 +41,10 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
-import { Identifier } from "@/utils/id"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
-import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
-import { Binary } from "@ericsanchezok/synergy-util/binary"
+import type { Message } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { QuickActions } from "@/components/quick-actions"
 import { isHomeScope } from "@/utils/scope"
@@ -262,12 +260,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const displayedLoopID = untrack(sessionLoop)?.id
     if (loop.id !== activeLoopID && loop.id !== displayedLoopID) return
 
-    if (loop.id !== activeLoopID || isTerminalBlueprintLoopStatus(loop.status)) {
+    // Terminal: clear whichever reference matched
+    if (isTerminalBlueprintLoopStatus(loop.status)) {
       if (loop.id === activeLoopID) clearVisibleSessionLoop(params.id, loop.id)
-      else mutateSessionLoop(null)
+      else if (loop.id === displayedLoopID) mutateSessionLoop(null)
       return
     }
 
+    // Non-terminal: always update the display. Don't clear first — the
+    // session binding (activeLoopID) may arrive after the loop event,
+    // and clearing would cause a visible flicker.
     mutateSessionLoop(loop)
   }
 
@@ -855,63 +857,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setStore,
     })
 
-  const sendQuickAction = (text: string) => {
-    const sessionID = params.id
-    if (!sessionID) return
-
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!currentModel || !currentAgent) return
-
-    const agent = currentAgent.name
-    const model = { modelID: currentModel.id, providerID: currentModel.provider.id }
-    const variant = local.model.variant.current()
-    const messageID = Identifier.ascending("message")
-    const textPart = { id: Identifier.ascending("part"), type: "text" as const, text }
-
-    const optimistic: Message = { id: messageID, sessionID, role: "user", time: { created: Date.now() }, agent, model }
-    let optimisticAdded = false
-    const addOptimisticMessage = () => {
-      sync.set(
-        produce((draft) => {
-          const messages = draft.message[sessionID]
-          if (!messages) {
-            draft.message[sessionID] = [optimistic]
-          } else {
-            const { index } = Binary.search(messages, messageID, (m) => m.id)
-            messages.splice(index, 0, optimistic)
-          }
-          draft.part[messageID] = [{ ...textPart, sessionID, messageID }] as unknown as Part[]
-        }),
-      )
-      optimisticAdded = true
-    }
-    const removeOptimisticMessage = () => {
-      sync.set(
-        produce((draft) => {
-          const messages = draft.message[sessionID]
-          if (messages) {
-            const { index, found } = Binary.search(messages, messageID, (m) => m.id)
-            if (found) messages.splice(index, 1)
-          }
-          delete draft.part[messageID]
-        }),
-      )
-      optimisticAdded = false
-    }
-
-    if (!working()) addOptimisticMessage()
-
-    sdk.client.session
-      .input({ sessionID, agent, model, messageID, parts: [textPart], variant })
-      .then((result) => {
-        if (result.data?.status === "queued" && optimisticAdded) removeOptimisticMessage()
-      })
-      .catch(() => {
-        if (optimisticAdded) removeOptimisticMessage()
-      })
-  }
-
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(prompt).trim()
     const hasAttachment = prompt.some(
@@ -1133,12 +1078,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Show when={params.id}>
         <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
-          <QuickActions
-            class="relative"
-            onSend={sendQuickAction}
-            onCommand={(id) => command.trigger(id)}
-            commandsDisabled={working()}
-          />
+          <QuickActions class="relative" onCommand={(id) => command.trigger(id)} commandsDisabled={working()} />
         </div>
       </Show>
       <Show when={store.popover}>

@@ -13,7 +13,7 @@ For charts/graphs: extract data points, trends, labels, axis values
 For photos: describe relevant content, objects, scenes
 
 Response rules:
-- Return extracted information directly, no preamble
+- Return extracted information directly
 - If info not found, state clearly what's missing
 - Match the language of the request
 - Be thorough on the goal, concise on everything else

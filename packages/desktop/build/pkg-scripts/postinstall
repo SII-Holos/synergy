@@ -1,0 +1,28 @@
+#!/bin/sh
+set -u
+
+CLI_LINK="/usr/local/bin/synergy"
+CLI_TARGET="/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy"
+
+mkdir -p "/usr/local/bin"
+
+if [ -e "$CLI_LINK" ] || [ -L "$CLI_LINK" ]; then
+  if [ -L "$CLI_LINK" ]; then
+    EXISTING_TARGET="$(readlink "$CLI_LINK")"
+    case "$EXISTING_TARGET" in
+      /Applications/Synergy.app/Contents/Resources/synergy/bin/synergy|*/Synergy.app/Contents/Resources/synergy/bin/synergy)
+        rm -f "$CLI_LINK"
+        ;;
+      *)
+        echo "Synergy Desktop warning: $CLI_LINK points to $EXISTING_TARGET. Leaving it unchanged." >&2
+        exit 0
+        ;;
+    esac
+  else
+    echo "Synergy Desktop warning: $CLI_LINK exists and is not a symlink. Leaving it unchanged." >&2
+    exit 0
+  fi
+fi
+
+ln -s "$CLI_TARGET" "$CLI_LINK"
+exit 0

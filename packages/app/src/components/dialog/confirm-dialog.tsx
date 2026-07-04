@@ -65,14 +65,14 @@ export function ConfirmDialog(props: ConfirmOptions) {
         </button>
       }
     >
-      <div class="confirm-dialog-actions">
-        <Button type="button" variant="ghost" size="small" disabled={pending()} onClick={() => dialog.close()}>
+      <div data-slot="dialog-actions" class="confirm-dialog-actions">
+        <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dialog.close()}>
           {props.cancelLabel ?? "Cancel"}
         </Button>
         <Button
           type="button"
           variant={props.tone === "neutral" ? "primary" : "secondary"}
-          size="small"
+          size="large"
           class="confirm-dialog-button"
           data-tone={props.tone}
           disabled={pending()}

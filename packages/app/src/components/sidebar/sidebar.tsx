@@ -28,7 +28,6 @@ import { listAppPanels, subscribeAppPanels } from "@/plugin"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
-  type SessionVisualState,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
 import "./sidebar.css"
@@ -281,22 +280,6 @@ export function Sidebar(props: SidebarProps) {
     navigate(`/${base64Encode(worktree === "home" ? "home" : worktree)}/session/${entry.id}`)
   }
 
-  const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState =>
-    resolveSessionVisualState(globalSync.peekScopeState(scope.worktree)?.[0], entry)
-
-  const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
-    const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
-    return (
-      <span classList={sessionIconClassList(visual())} title={visual()?.label ?? ""}>
-        <Icon
-          name={visual()?.icon ?? "loader"}
-          size="small"
-          class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"}
-        />
-      </span>
-    )
-  }
-
   return (
     <div
       classList={{
@@ -485,18 +468,11 @@ export function Sidebar(props: SidebarProps) {
                   <FlipList entries={recentEntries()} class="sb-sessions">
                     <For each={recentEntries()}>
                       {(entry) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "sb-session-row": true,
-                            "sb-session-active": entry.id === params.id,
-                          }}
-                          data-session-id={entry.id}
+                        <SidebarSessionRow
+                          entry={entry}
+                          active={entry.id === params.id}
                           onClick={() => handleNavEntryClick(entry)}
-                        >
-                          <SessionRowIcon entry={entry} />
-                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                        </button>
+                        />
                       )}
                     </For>
                   </FlipList>
@@ -543,18 +519,11 @@ export function Sidebar(props: SidebarProps) {
                     <FlipList entries={channelEntries()} class="sb-sessions">
                       <For each={channelEntries()}>
                         {(entry) => (
-                          <button
-                            type="button"
-                            classList={{
-                              "sb-session-row": true,
-                              "sb-session-active": entry.id === params.id,
-                            }}
-                            data-session-id={entry.id}
+                          <SidebarSessionRow
+                            entry={entry}
+                            active={entry.id === params.id}
                             onClick={() => handleNavEntryClick(entry)}
-                          >
-                            <SessionRowIcon entry={entry} />
-                            <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                          </button>
+                          />
                         )}
                       </For>
                     </FlipList>
@@ -789,17 +758,13 @@ export function Sidebar(props: SidebarProps) {
                   </button>
                   <For each={sessions()}>
                     {(session) => (
-                      <button
-                        type="button"
-                        classList={{
-                          "sb-flyout-session-row": true,
-                          "sb-session-active": session.id === params.id,
-                        }}
+                      <SidebarSessionRow
+                        entry={session}
+                        scope={scope}
+                        active={session.id === params.id}
+                        flyout
                         onClick={() => handleFlyoutSessionClick(session, scope.worktree)}
-                      >
-                        <SessionIcon scope={scope} entry={session} flyout />
-                        <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
-                      </button>
+                      />
                     )}
                   </For>
                 </div>
@@ -882,18 +847,11 @@ function RootNavSection(props: {
           <FlipList entries={props.entries} class="sb-sessions">
             <For each={props.entries}>
               {(entry) => (
-                <button
-                  type="button"
-                  classList={{
-                    "sb-session-row": true,
-                    "sb-session-active": entry.id === props.activeID,
-                  }}
-                  data-session-id={entry.id}
+                <SidebarSessionRow
+                  entry={entry}
+                  active={entry.id === props.activeID}
                   onClick={() => props.onSessionClick(entry)}
-                >
-                  <SessionRowIcon entry={entry} />
-                  <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                </button>
+                />
               )}
             </For>
           </FlipList>
@@ -918,28 +876,28 @@ function GroupedSessionList(props: {
     <FlipList entries={props.entries} class="sb-sessions">
       <For each={props.entries.filter((e) => e.category === "project")}>
         {(entry) => (
-          <button
-            type="button"
-            classList={{
-              "sb-session-row": true,
-              "sb-session-active": entry.id === props.activeID,
-            }}
-            data-session-id={entry.id}
+          <SidebarSessionRow
+            entry={entry}
+            scope={props.scope}
+            active={entry.id === props.activeID}
             onClick={(e) => {
               e.stopPropagation()
               props.onSessionClick(entry)
             }}
-          >
-            <SessionRowIcon entry={entry} scope={props.scope} />
-            <span class="sb-session-title">{entry.title || "Untitled"}</span>
-          </button>
+          />
         )}
       </For>
     </FlipList>
   )
 }
 
-function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
+function SidebarSessionRow(props: {
+  entry: NavEntry
+  active: boolean
+  scope?: LocalScope
+  flyout?: boolean
+  onClick: (event: MouseEvent) => void
+}) {
   const globalSync = useGlobalSync()
 
   const visual = createMemo(() => {
@@ -948,9 +906,44 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
   })
 
   return (
-    <span classList={sessionIconClassList(visual())} title={visual()?.label ?? ""}>
-      <Icon name={visual()?.icon ?? "loader"} size="small" class="sb-session-icon" />
-    </span>
+    <button
+      type="button"
+      classList={{
+        "sb-session-row": !props.flyout,
+        "sb-flyout-session-row": !!props.flyout,
+        "sb-session-active": props.active,
+      }}
+      data-session-id={props.entry.id}
+      onClick={props.onClick}
+    >
+      <span
+        classList={{
+          "sb-session-icon-wrap": true,
+          "sb-session-icon-active-tone": visual()?.tone === "active",
+          "sb-session-icon-waiting-tone": visual()?.tone === "waiting",
+          "sb-session-icon-worktree-tone": visual()?.tone === "worktree",
+          "sb-session-icon-muted-tone": visual()?.tone === "muted",
+          "sb-session-icon-blueprint-tone": visual()?.tone === "blueprint",
+          "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
+          "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
+          "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
+          "sb-session-icon-pulse": !!visual()?.pulse,
+        }}
+        title={visual()?.label ?? ""}
+      >
+        <Icon
+          name={visual()?.icon ?? "loader"}
+          size="small"
+          class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"}
+        />
+        <Show when={visual()?.completionUnread}>
+          <span class="sb-session-completion-dot" />
+        </Show>
+      </span>
+      <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
+        {props.entry.title || "Untitled"}
+      </span>
+    </button>
   )
 }
 

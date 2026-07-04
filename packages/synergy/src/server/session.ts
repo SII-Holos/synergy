@@ -30,12 +30,13 @@ const booleanQuery = z.preprocess((value) => {
 }, z.boolean())
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  const messageID = input.messageID ?? Identifier.ascending("message")
-  const next = { ...input, messageID }
   if (SessionManager.isRunning(input.sessionID)) {
-    const item = await SessionInbox.enqueueUser(next)
+    const { messageID: _queuedMessageID, ...queuedInput } = input
+    const item = await SessionInbox.enqueueUser(queuedInput)
     return { status: "queued", item }
   }
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const next = { ...input, messageID }
   SessionInvoke.invoke(next).catch((error) => {
     log.error("failed to execute async input", { sessionID: input.sessionID, error })
   })
@@ -347,6 +348,12 @@ export const SessionRoute = new Hono()
           id: z.string().optional(),
           controlProfile: ControlProfileId.optional(),
           workspace: Session.WorkspaceSelection.optional(),
+          completionNotice: z
+            .object({
+              silent: z.boolean().optional(),
+            })
+            .strict()
+            .optional(),
         })
         .optional(),
     ),
@@ -422,6 +429,12 @@ export const SessionRoute = new Hono()
         title: z.string().optional(),
         pinned: z.number().optional(),
         controlProfile: ControlProfileId.optional(),
+        completionNotice: z
+          .object({
+            unread: z.literal(false),
+          })
+          .strict()
+          .optional(),
         time: z
           .object({
             archived: z.number().optional(),
@@ -433,10 +446,21 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
 
+      const hasOtherUpdates =
+        updates.title !== undefined ||
+        updates.pinned !== undefined ||
+        updates.controlProfile !== undefined ||
+        updates.time?.archived !== undefined
+
+      if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
+        return c.json(await Session.clearCompletionNotice(sessionID))
+      }
+
       const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+        if (updates.completionNotice?.unread === false) session.completionNotice.unread = false
       }
 
       const updatedSession =

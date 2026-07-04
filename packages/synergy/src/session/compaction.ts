@@ -153,7 +153,12 @@ export namespace SessionCompaction {
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === "patch") {
-          for (const file of part.files) files.add(file)
+          for (const file of part.files) {
+            // Filter out temporary/internal files — they add noise to recovery UI
+            const base = file.split("/").pop() ?? file
+            if (base.startsWith(".tmp-") || base.startsWith("._")) continue
+            files.add(file)
+          }
         }
       }
     }
@@ -204,7 +209,39 @@ export namespace SessionCompaction {
     msg.finish = "stop"
     if (!msg.time.completed) msg.time.completed = Date.now()
     await Session.updateMessage(msg)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "compaction_recovery",
+      summary,
+      sections: [{ heading: "Summary", items: [summary] }],
+      mechanical: true,
+      validated: false,
+    })
     log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
+  }
+
+  export function parseCompactionSections(markdown: string): { heading: string; items: string[] }[] {
+    const sections: { heading: string; items: string[] }[] = []
+    const lines = markdown.split("\n")
+    let currentHeading = ""
+    let currentItems: string[] = []
+
+    for (const line of lines) {
+      const headingMatch = line.match(/^### (.+)/)
+      if (headingMatch) {
+        if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
+        currentHeading = headingMatch[1].trim()
+        currentItems = []
+      } else {
+        const itemMatch = line.match(/^- (.+)/)
+        if (itemMatch) currentItems.push(itemMatch[1].trim())
+      }
+    }
+    if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
+
+    return sections.length > 0 ? sections : [{ heading: "Summary", items: [markdown] }]
   }
 
   // goes backwards through parts until there are 40_000 tokens worth of tool
@@ -270,27 +307,73 @@ export namespace SessionCompaction {
 
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
+  const ANCHOR_METADATA_KEY = "compactionAnchor"
+
+  type Anchor = {
+    text: string
+    sourceMessageID?: string
+  }
+
+  function realUserText(msg: MessageV2.WithParts): string | undefined {
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic && !p.ignored)
+    if (textParts.length === 0) return undefined
+    const text = textParts
+      .map((p) => p.text)
+      .join("\n")
+      .trim()
+    return text || undefined
+  }
+
+  function formatAnchor(text: string): string {
+    return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+  }
+
+  function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
+    if (msg.info.role !== "user") return false
+    const metadata = msg.info.metadata
+    return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
+  }
+
+  function carriedAnchor(msg: MessageV2.WithParts): Anchor | undefined {
+    if (msg.info.role !== "user") return undefined
+    const value = msg.info.metadata?.[ANCHOR_METADATA_KEY]
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+    const text = typeof value.text === "string" ? value.text.trim() : undefined
+    if (!text) return undefined
+    const sourceMessageID = typeof value.sourceMessageID === "string" ? value.sourceMessageID : undefined
+    return { text, sourceMessageID }
+  }
 
   /**
-   * Extract the last real (non-synthetic) user message before the compaction
-   * trigger as an anchor, so the agent remembers what it was working on.
+   * Preserve the active user request across compaction. Prefer the compaction
+   * parent when it is a real reply-requesting user message; synthetic, no-reply,
+   * and guided context messages fall back to the latest earlier real request.
    */
-  function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+  export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
+    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
+    const parentText = parent ? realUserText(parent) : undefined
+    if (parent && parentText) return { text: parentText, sourceMessageID: parent.info.id }
+
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg.info.role !== "user") continue
+      if (!isAnchorEligibleUser(msg)) continue
       if (msg.info.id === parentID) continue
-      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
-      if (textParts.length === 0) continue
-      const text = textParts
-        .map((p) => p.text)
-        .join("\n")
-        .trim()
+      const text = realUserText(msg)
       if (!text) continue
-      return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+      return { text, sourceMessageID: msg.info.id }
+    }
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const anchor = carriedAnchor(messages[i])
+      if (anchor) return anchor
     }
 
     return undefined
+  }
+
+  export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+    const anchor = resolveAnchor(messages, parentID)
+    return anchor ? formatAnchor(anchor.text) : undefined
   }
 
   export async function process(input: {
@@ -411,7 +494,34 @@ export namespace SessionCompaction {
     }
     await Session.updateMessage(msg)
 
+    // Emit a CompactionRecoveryPart with the parsed sections for the frontend.
+    const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+    const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
+    const allText = textParts.map((p) => p.text).join("\n")
+    const sections = parseCompactionSections(allText)
+
+    const nextStepsSection = sections.find((s) => s.heading.toLowerCase().includes("next step"))
+    const nextStep = nextStepsSection?.items[0]
+
+    const inProgressSection = sections.find((s) => s.heading.toLowerCase().includes("in progress"))
+    const rawDagCount = inProgressSection?.items.filter((i) => i.toLowerCase().includes("dag")).length
+    const pendingDagCount = rawDagCount != null && rawDagCount > 0 ? rawDagCount : undefined
+
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "compaction_recovery",
+      summary: allText,
+      sections,
+      mechanical: false,
+      nextStep,
+      pendingDagCount,
+      validated: true,
+    })
+
     if (input.auto) {
+      const anchor = resolveAnchor(input.messages, input.parentID)
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",
@@ -422,6 +532,13 @@ export namespace SessionCompaction {
         agent: userMessage.agent,
         model: userMessage.model,
         summary: { title: "Compaction complete", diffs: [] },
+        ...(anchor
+          ? {
+              metadata: {
+                [ANCHOR_METADATA_KEY]: anchor,
+              },
+            }
+          : {}),
       })
       const now = Date.now()
       await Session.updatePart({
@@ -433,7 +550,6 @@ export namespace SessionCompaction {
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
-      const anchor = buildAnchor(input.messages, input.parentID)
       if (anchor) {
         await Session.updatePart({
           id: Identifier.ascending("part"),
@@ -441,7 +557,7 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: anchor,
+          text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })
       }

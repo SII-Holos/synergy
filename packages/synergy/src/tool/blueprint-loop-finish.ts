@@ -4,7 +4,9 @@ import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
+import { Identifier } from "../id/id"
 import DESCRIPTION from "./blueprint-loop-finish.txt"
+import { SessionManager } from "../session/manager"
 
 const parameters = z.object({
   loopID: z.string().describe("The BlueprintLoop ID to finish."),
@@ -15,6 +17,28 @@ const parameters = z.object({
     ),
   summary: z.string().optional().describe("Optional summary of the finish reason or audit result."),
 })
+
+function startUserInstructionBlock(userPrompt?: string): string {
+  if (!userPrompt) return ""
+  return `
+
+Start user instruction for this run:
+${userPrompt}
+
+Treat this start user instruction as part of the BlueprintLoop contract alongside the Blueprint note. If it conflicts with the Blueprint note or cannot be satisfied, classify that as a blocking audit issue and use blueprint_loop_restart with concrete next actions.`
+}
+
+function completionNotificationText(input: { loopID: string; summary?: string; userPrompt?: string }) {
+  return [
+    `BlueprintLoop ${input.loopID} passed supervisor audit and is now complete.`,
+    input.summary ? `Audit summary: ${input.summary}` : "",
+    input.userPrompt ? `Start user instruction: ${input.userPrompt}` : "",
+    `Do not call blueprint_loop_finish or blueprint_loop_restart for this loop again; the loop is already complete.`,
+    `If there is user-requested final follow-up outside the BlueprintLoop, perform the allowed follow-up now. Otherwise, summarize completion for the user.`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
 
 export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
   description: DESCRIPTION,
@@ -97,9 +121,9 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
 
     if (params.status === "auditing") {
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
-Read the Blueprint Note via note_read, examine the execution evidence (session trajectory, produced artifacts or workspace changes, and domain-appropriate quality checks), and determine if the Blueprint outcome is complete.
+Read the Blueprint Note via note_read and audit any start user instruction included below. Examine the execution evidence (session trajectory, produced artifacts or workspace changes, and domain-appropriate quality checks), and determine if the Blueprint outcome is complete.
 If NOT complete, call blueprint_loop_restart({ loopID: "${params.loopID}", reason: "...", completed: "...", remaining: "...", instructions: "..." }) with a detailed reason and concrete next actions.
-If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "completed", summary: "..." }).`
+If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "completed", summary: "..." }).${startUserInstructionBlock(loop.userPrompt)}`
       const { Cortex } = await import("../cortex")
       const auditAgent = loop.auditAgent || "supervisor"
       const task = await Cortex.launch({
@@ -121,13 +145,43 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
         status: "auditing",
         auditSessionID,
       })
-      await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "failed" })
       await Bus.publish(LoopEvent.Failed, { loopID: params.loopID, error: params.summary ?? "Loop execution failed" })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
+      SessionManager.signalAbort(ctx.sessionID)
     } else if (params.status === "completed") {
+      const completionMail: SessionManager.SessionMail.User = {
+        type: "user",
+        ...(loop.executionAgent ? { agent: loop.executionAgent } : {}),
+        summary: { title: "Blueprint audit completed" },
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            sessionID: loop.sessionID,
+            messageID: Identifier.ascending("message"),
+            type: "text",
+            text: completionNotificationText({ loopID: loop.id, summary: params.summary, userPrompt: loop.userPrompt }),
+          },
+        ],
+        metadata: {
+          source: "blueprint_loop_completed",
+          sourceSessionID: ctx.sessionID,
+          loopID: loop.id,
+          noteID: loop.noteID,
+          title: loop.title,
+          status: "completed",
+          ...(params.summary ? { summary: params.summary } : {}),
+          ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
+        },
+      }
+      await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
       await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
+      SessionManager.signalAbort(ctx.sessionID)
     }
 
     const statusLabel: Record<string, string> = {

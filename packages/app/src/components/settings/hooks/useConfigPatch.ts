@@ -274,7 +274,9 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
   if ("feishu" in newChannel && newChannel.feishu?.accounts) {
     for (const entry of state.channels.feishuAccounts) {
       const account = newChannel.feishu.accounts[entry.key]
-      if (account) account.enabled = entry.enabled
+      if (!account) continue
+      account.enabled = entry.enabled
+      ;(account as Record<string, unknown>).model = entry.model || undefined
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel

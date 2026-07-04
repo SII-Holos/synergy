@@ -31,7 +31,7 @@ The input contains tool call details with per-field parameters and outputs. Use 
 - Write from a descriptive perspective — document what the trajectory did, not whether it was good, bad, optimal, appropriate, or recommended
 - Do not invent applicability rules, anti-patterns, or advice that were not evidenced in the interaction
 - No markdown formatting beyond the numbered list
-- No explanations, preambles, or conclusions — output ONLY the numbered steps
+- No explanations or conclusions — output ONLY the numbered steps
 - Never ask questions
 </rules>
 

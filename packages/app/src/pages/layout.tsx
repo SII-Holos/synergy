@@ -427,6 +427,7 @@ export default function Layout(props: ParentProps) {
     const id = params.id
     setStore("lastSession", directory, id)
     notification.session.markViewed(id)
+    void layout.nav.clearCompletionNotice(directory, id)
   })
 
   return (

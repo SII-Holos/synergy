@@ -1,5 +1,6 @@
 import { realpathSync, existsSync } from "fs"
-import { dirname, join, relative } from "path"
+import { dirname, join } from "path"
+import { isPathContained } from "./path-contain"
 
 export namespace Filesystem {
   /**
@@ -26,7 +27,7 @@ export namespace Filesystem {
     }
   }
   export function contains(parent: string, child: string) {
-    return !relative(parent, child).startsWith("..")
+    return isPathContained(parent, child)
   }
 
   export async function findUp(target: string, start: string, stop?: string) {

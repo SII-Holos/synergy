@@ -261,6 +261,24 @@ export namespace MessageV2 {
   })
   export type CompactionPart = z.infer<typeof CompactionPart>
 
+  export const CompactionRecoveryPart = PartBase.extend({
+    type: z.literal("compaction_recovery"),
+    summary: z.string(),
+    sections: z.array(
+      z.object({
+        heading: z.string(),
+        items: z.string().array(),
+      }),
+    ),
+    mechanical: z.boolean(),
+    recoverySessionIDs: z.string().array().optional(),
+    pendingDagCount: z.number().int().nonnegative().optional(),
+    nextStep: z.string().optional(),
+    validated: z.boolean(),
+  }).meta({
+    ref: "CompactionRecoveryPart",
+  })
+  export type CompactionRecoveryPart = z.infer<typeof CompactionRecoveryPart>
   export const RetryPart = PartBase.extend({
     type: z.literal("retry"),
     attempt: z.number(),
@@ -408,10 +426,14 @@ export namespace MessageV2 {
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
+    visible: z.boolean().optional(),
+    includeInContext: z.boolean().optional(),
+    rootID: z.string().optional(),
   })
 
   export const User = Base.extend({
     role: z.literal("user"),
+    isRoot: z.boolean().optional(),
     time: z.object({
       created: z.number(),
     }),
@@ -448,6 +470,7 @@ export namespace MessageV2 {
       PatchPart,
       RetryPart,
       CompactionPart,
+      CompactionRecoveryPart,
     ])
     .meta({
       ref: "Part",

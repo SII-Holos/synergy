@@ -3,6 +3,7 @@ import type { Part } from "@ericsanchezok/synergy-sdk/client"
 export interface BlueprintNoteFocusRequest {
   noteID: string
   title?: string
+  scopeID?: string
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -29,5 +30,6 @@ export function blueprintNoteCreateFocusRequest(part: Part, sessionID: string): 
   return {
     noteID,
     title: stringValue(metadata.title) ?? stringValue(input.title),
+    scopeID: stringValue(metadata.scopeID),
   }
 }

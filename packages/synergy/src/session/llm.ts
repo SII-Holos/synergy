@@ -17,6 +17,7 @@ import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
+import { withPreambleSection } from "@/agent/prompt/preamble"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
@@ -136,7 +137,9 @@ export namespace LLM {
     const systemTimer = l.time("system.assembly")
 
     const system: string[] = []
-    const baseSystem = input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)
+    const baseSystem = (input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)).map((prompt) =>
+      withPreambleSection(prompt),
+    )
     const baseSystemLength = baseSystem.length
 
     // Part 1: Agent prompt (most stable, always first for caching)

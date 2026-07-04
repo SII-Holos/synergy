@@ -122,3 +122,46 @@ describe("tool.attachment-discovery", () => {
     })
   })
 })
+
+describe("tool.attachment-discovery.shouldSkip", () => {
+  test("returns true for bare git command", () => {
+    expect(AttachmentDiscovery.shouldSkip("git")).toBe(true)
+  })
+
+  test("returns true for git subcommands", () => {
+    expect(AttachmentDiscovery.shouldSkip("git diff")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("git log --oneline")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("git status")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("git show HEAD~1")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("git push origin main")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("git commit -m 'fix'")).toBe(true)
+  })
+
+  test("returns true for bare gh command", () => {
+    expect(AttachmentDiscovery.shouldSkip("gh")).toBe(true)
+  })
+
+  test("returns true for gh subcommands", () => {
+    expect(AttachmentDiscovery.shouldSkip("gh pr view 217")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("gh issue list")).toBe(true)
+    expect(AttachmentDiscovery.shouldSkip("gh pr create --title 'fix'")).toBe(true)
+  })
+
+  test("returns false for non-git non-gh commands", () => {
+    expect(AttachmentDiscovery.shouldSkip("python plot.py")).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("ls")).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("cat file.txt")).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("npm test")).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("bun run build")).toBe(false)
+  })
+
+  test("returns false for undefined or empty command", () => {
+    expect(AttachmentDiscovery.shouldSkip(undefined)).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("")).toBe(false)
+  })
+
+  test("returns false for commands that merely contain git but are not git", () => {
+    expect(AttachmentDiscovery.shouldSkip("fugitive open")).toBe(false)
+    expect(AttachmentDiscovery.shouldSkip("digital something")).toBe(false)
+  })
+})

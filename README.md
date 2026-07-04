@@ -62,7 +62,7 @@ Large browser diagnostics such as console, network, snapshots, assets, and downl
 
 ### Desktop Application
 
-`packages/desktop` is the Electron desktop product for Synergy. Its production identity is `io.holosai.synergy`, product name `Synergy`, executable name `synergy`, and URL protocol `synergy://`.
+`packages/desktop` is the Electron desktop product for Synergy. Its production identity is `io.holosai.synergy`, product name `Synergy`, desktop shell executable name `synergy-desktop`, public runtime CLI name `synergy`, and URL protocol `synergy://`.
 
 Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. Managed server failures show a desktop error page. Source-checkout desktop development uses `bun dev desktop`, which defaults to external mode against the local Vite app and Synergy server.
 
@@ -70,11 +70,11 @@ In managed desktop mode, Add/Open Project uses the operating system's native fol
 
 On Windows and Linux, closing the desktop window hides it to the Synergy system tray icon so the local server and session shell remain reopenable. Use the tray menu to reopen Synergy or quit the desktop process. macOS keeps the standard Dock activation behavior.
 
-Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds show product updates as disabled and never check the release feed.
+Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Recommended Desktop installers are macOS `.pkg`, Windows NSIS `.exe`, and Linux `.deb`; they install the Desktop app and expose the packaged runtime as the public `synergy` CLI. Portable artifacts such as `.dmg`, `.zip`, `.AppImage`, and `.tar.gz` remain available for updater, app-bundle, or debug workflows and do not modify PATH.
 
-Stable desktop users can update without a terminal. The desktop shell checks for updates in the background, downloads according to the local desktop update mode, then offers `Restart to Update` in Settings and in the persistent sidebar update prompt; that action stops the managed server process, installs the Electron update, restarts the app, and starts the new bundled server runtime.
+Stable desktop users can update without a terminal. The desktop shell checks for updates in the background, downloads according to the local desktop update mode, then offers `Restart to Update` in Settings and in the persistent sidebar update prompt; that action stops the managed server process, installs the Electron update, restarts the app, and starts the new bundled server runtime. Desktop-managed CLI updates follow the same Desktop updater path.
 
-Web clients update frontend assets by refreshing the browser page when the loaded app version differs from `/global/health`; the sidebar prompt offers `Refresh` when that state is detected. Server replacement from Web is available only for a localhost Synergy managed daemon installed through a supported package manager. A normal terminal-run `synergy server` remains owned by the terminal or deployment system and is not replaced from the browser.
+Web clients update frontend assets by refreshing the browser page when the loaded app version differs from `/global/health`; the sidebar prompt offers `Refresh` when that state is detected. Server replacement from Web is available only for a localhost Synergy managed daemon installed through a supported package manager. A normal terminal-run `synergy server` and a Desktop-managed runtime remain owned by their launch surface and are not replaced from the browser.
 
 ### Session History, File Restore, And Forking
 
@@ -88,19 +88,34 @@ Forking copies the current effective history by default, so rolled-back turns ar
 
 ### Install
 
-Install the latest bundled release:
+Recommended Desktop install:
+
+Download the platform installer from GitHub Releases: macOS `.pkg`, Windows `.exe`, or Linux `.deb`. After installation, a new terminal can run both the Desktop-managed CLI and the app-managed runtime:
+
+```bash
+synergy --version
+synergy start
+synergy web
+synergy send "summarize this repo"
+synergy status
+synergy doctor
+```
+
+The Desktop installer does not run the CLI installer, does not copy a second runtime, and does not edit shell rc files. It exposes the runtime already bundled inside the Desktop app. Portable Desktop artifacts do not modify PATH; use the recommended installer when you want the Desktop app and CLI together.
+
+CLI + Web install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash
 ```
 
-Install a specific version:
+Install a specific CLI + Web version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 2.4.3
 ```
 
-The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
+The CLI + Web installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout. It does not install the Electron Desktop app.
 
 ### Develop Plugins
 
@@ -187,6 +202,7 @@ bun dev server            # server only, fixed development port
 bun dev app --open        # Vite web app against an existing server
 bun dev web               # server + Vite web app
 bun dev desktop           # server + Vite web app + Electron desktop shell
+bun dev desktop --managed # rebuild Web app dist + Electron managed server mode
 ```
 
 After editing code:
@@ -632,6 +648,12 @@ Run the desktop shell in the default external development mode:
 
 ```bash
 bun dev desktop
+```
+
+Validate the production-style managed server path with a fresh Web app dist:
+
+```bash
+bun dev desktop --managed
 ```
 
 Build, test, and package the desktop app:

@@ -1,6 +1,9 @@
 import { cmd } from "./cmd"
 import { detectPlatform } from "../../sandbox/detect"
 import { getSandboxReadiness } from "../../sandbox/readiness"
+import fs from "fs/promises"
+import { Installation } from "../../global/installation"
+import { DesktopInstallation } from "../../global/desktop-installation"
 
 export const DoctorCommand = cmd({
   command: "doctor",
@@ -13,6 +16,7 @@ export const DoctorCommand = cmd({
     const platform = detectPlatform()
     console.log(`\nPlatform: ${platform}`)
 
+    await printInstallationChecks()
     // Readiness checks
     try {
       const readiness = await getSandboxReadiness()
@@ -44,3 +48,46 @@ export const DoctorCommand = cmd({
     console.log(`  SHELL: ${process.env.SHELL ?? "not set"}`)
   },
 })
+
+async function printInstallationChecks() {
+  const method = await Installation.method()
+  const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
+  const context = { platform: process.platform, execPath: process.execPath, realExecPath, env: process.env }
+
+  console.log(`\nInstallation:`)
+  console.log(`  Method: ${method}`)
+  console.log(`  Executable: ${process.execPath}`)
+  console.log(`  Real executable: ${realExecPath}`)
+
+  if (method === "desktop") {
+    console.log(`  Updates: Desktop updates are managed from the Synergy app.`)
+    const link = await DesktopInstallation.inspectCliLink(context)
+    const icon = link.status === "healthy" ? "✅" : link.status === "not-applicable" ? "ℹ️" : "⚠️"
+    console.log(`  ${icon} Desktop CLI link: ${link.message}`)
+    if (link.path) console.log(`     Path: ${link.path}`)
+    if (link.target) console.log(`     Target: ${link.target}`)
+
+    const versionStatus = await DesktopInstallation.packageVersionStatus(context, Installation.VERSION)
+    const versionIcon =
+      versionStatus.status === "matching" ? "✅" : versionStatus.status === "not-applicable" ? "ℹ️" : "⚠️"
+    console.log(`  ${versionIcon} Desktop package version: ${versionStatus.message}`)
+    if (versionStatus.metadataPath) console.log(`     Metadata: ${versionStatus.metadataPath}`)
+  }
+
+  const candidates = await DesktopInstallation.pathCandidates(context)
+  if (candidates.length === 0) {
+    console.log(`  ⚠️ PATH: no synergy command found on PATH`)
+    return
+  }
+
+  console.log(`  PATH candidates:`)
+  candidates.forEach((candidate, index) => {
+    const first = index === 0
+    const icon = candidate.isCurrent ? "✅" : first ? "⚠️" : "•"
+    console.log(`    ${icon} ${candidate.path}${candidate.isCurrent ? " (current)" : ""}`)
+  })
+
+  if (method === "desktop" && !candidates[0]?.isCurrent) {
+    console.log(`  ⚠️ PATH conflict: the first synergy command is not this Desktop-managed CLI.`)
+  }
+}
