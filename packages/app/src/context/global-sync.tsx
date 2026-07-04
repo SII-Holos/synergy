@@ -21,6 +21,8 @@ import {
   type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
+import { resolveWorkspaceTransition } from "./workspace-transition"
+import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -900,20 +902,41 @@ function createGlobalSync() {
         const parts = store.part[part.messageID]
         if (!parts) {
           setStore("part", part.messageID, [part])
-          break
+        } else {
+          const result = Binary.search(parts, part.id, (p) => p.id)
+          if (result.found) {
+            setStore("part", part.messageID, result.index, part)
+          } else {
+            setStore(
+              "part",
+              part.messageID,
+              produce((draft) => {
+                draft.splice(result.index, 0, part)
+              }),
+            )
+          }
         }
-        const result = Binary.search(parts, part.id, (p) => p.id)
-        if (result.found) {
-          setStore("part", part.messageID, result.index, reconcile(part))
-          break
+
+        // Optimistic workspace update for worktree tools — the status bar reads
+        // session.workspace from the store and should reflect the new workspace
+        // immediately when the tool result appears, without waiting for the
+        // session.updated event. This races with the canonical session.updated
+        // handler; in practice the events carry identical data so the race is benign.
+        const transition = resolveWorkspaceTransition(part)
+        if (transition.kind !== "none") {
+          const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+          if (idx.found) {
+            if (transition.kind === "enter") {
+              setStore("session", idx.index, "workspace", transition.workspace)
+            } else {
+              const workspace: SessionWorkspace = {
+                ...transition.workspace,
+                scopeID: store.session[idx.index].scope.id,
+              }
+              setStore("session", idx.index, "workspace", workspace)
+            }
+          }
         }
-        setStore(
-          "part",
-          part.messageID,
-          produce((draft) => {
-            draft.splice(result.index, 0, part)
-          }),
-        )
         break
       }
       case "message.part.removed": {
@@ -1078,9 +1101,20 @@ function createGlobalSync() {
         const sessionID = event.properties.sessionID as string
         const messages = store.message[sessionID]
         if (!messages) break
-        const limit = Math.max(200, Math.min(messages.length, 500))
+        batch(() => {
+          setStore(
+            produce((draft) => {
+              for (const msg of messages) {
+                delete draft.part[msg.id]
+              }
+              delete draft.message[sessionID]
+              delete draft.session_diff[sessionID]
+              delete draft.inbox[sessionID]
+            }),
+          )
+        })
         const sdk = createScopedClient(scopeKey)
-        retry(() => sdk.session.messages({ sessionID, limit }))
+        retry(() => sdk.session.messages({ sessionID, limit: 200 }))
           .then((result) => {
             const items = (result.data ?? []).filter((x) => !!x?.info?.id)
             const all = items
@@ -1088,23 +1122,10 @@ function createGlobalSync() {
               .filter((m) => !!m?.id)
               .slice()
               .sort((a, b) => a.id.localeCompare(b.id))
-            const byID = new Set(all.map((m) => m.id))
-            const current = store.message[sessionID] ?? messages
-            for (const message of current) {
-              if (!byID.has(message.id)) all.push(message)
-            }
-            all.sort((a, b) => a.id.localeCompare(b.id))
             const keep = all.length > 500 ? all.slice(-500) : all
-            const keepIds = new Set(keep.map((m) => m.id))
             batch(() => {
-              setStore(
-                produce((draft) => {
-                  for (const msg of current) {
-                    if (!keepIds.has(msg.id)) delete draft.part[msg.id]
-                  }
-                }),
-              )
               setStore("message", sessionID, reconcile(keep, { key: "id" }))
+              const keepIds = new Set(keep.map((m) => m.id))
               for (const item of items) {
                 if (!keepIds.has(item.info.id)) continue
                 setStore(
@@ -1247,13 +1268,7 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
   return (
-    <Switch
-      fallback={
-        <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
-          Loading...
-        </div>
-      }
-    >
+    <Switch fallback={<div class="size-full flex items-center justify-center text-text-weak">Loading...</div>}>
       <Match when={value.error}>
         <ErrorPage error={value.error} />
       </Match>
