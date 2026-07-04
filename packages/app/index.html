@@ -52,6 +52,7 @@
         var mode = isDark ? "dark" : "light"
         document.documentElement.style.setProperty("color-scheme", mode)
         document.documentElement.setAttribute("data-synergy-color-scheme", mode)
+        document.documentElement.setAttribute("data-color-scheme", mode)
         try {
           var desktopThemeSet = window.synergyDesktop?.theme?.set
           if (desktopThemeSet) Promise.resolve(desktopThemeSet(scheme)).catch(function () {})
