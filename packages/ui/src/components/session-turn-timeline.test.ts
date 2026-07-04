@@ -40,6 +40,7 @@ mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
 const {
   collectAssistantMessagesForTurn,
+  collectCompactionParentIDs,
   collectMessagesForTurnDisplay,
   collectSessionTurnTimelineItems,
   collectUserCompactionTimelineItems,
@@ -294,6 +295,22 @@ describe("session turn assistant collection", () => {
         { hasCompactionEvent: true },
       ),
     ).toBe(false)
+  })
+
+  test("hides diffs for the turn compacted by a boundary", () => {
+    const parent = {
+      ...user("msg_parent"),
+      summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] },
+    } as UserMessage
+    const boundary = user("msg_boundary", {
+      synthetic: true,
+      compactionBoundary: true,
+      compactionParentID: parent.id,
+    })
+    const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
+
+    expect(compactedParents.has(parent.id)).toBe(true)
+    expect(shouldShowTurnDiffs(parent, { isCompactedParent: compactedParents.has(parent.id) })).toBe(false)
   })
 })
 

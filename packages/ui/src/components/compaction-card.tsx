@@ -1,4 +1,4 @@
-import { Show, For, createMemo, createSignal, type Component } from "solid-js"
+import { Show, createMemo, createSignal, type Component } from "solid-js"
 import { DateTime } from "luxon"
 import type { Message as MessageType, Part as PartType } from "@ericsanchezok/synergy-sdk/client"
 import { Markdown } from "./markdown"
@@ -38,16 +38,14 @@ function asCompactionRecovery(part: PartType | undefined): CompactionRecoveryPay
 const CompactionCard: Component<CompactionCardProps> = (props) => {
   const recovery = createMemo(() => asCompactionRecovery(props.part))
   const complete = createMemo(() => recovery()?.validated === true)
-  const sections = createMemo(() => recovery()?.sections ?? [])
   const summary = createMemo(() => recovery()?.summary?.trim() ?? "")
-  const showSummaryFallback = createMemo(() => sections().length === 0 && !!summary())
 
   const [expanded, setExpanded] = createSignal(props.defaultOpen ?? false)
 
   const timestamp = createMemo(() => DateTime.fromMillis(props.message.time.created).toFormat("HH:mm"))
-  const title = createMemo(() => (complete() ? "Context compressed" : "Compressing context…"))
+  const title = createMemo(() => (complete() ? "Context compressed" : "Compressing context..."))
   const description = createMemo(() => (complete() ? "Summary ready" : "Preparing a compact continuation summary"))
-  const canExpand = createMemo(() => complete() && (sections().length > 0 || !!summary() || !!recovery()?.nextStep))
+  const canExpand = createMemo(() => complete() && (!!summary() || !!recovery()?.nextStep))
   const expandIcon = createMemo(() =>
     expanded() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
   )
@@ -106,31 +104,11 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
               </div>
             </Show>
 
-            <Show when={showSummaryFallback()}>
+            <Show when={summary()}>
               <div data-slot="compaction-card-summary">
                 <Markdown text={summary()} />
               </div>
             </Show>
-
-            <For each={sections()}>
-              {(section) => (
-                <section data-slot="compaction-card-section">
-                  <h4 data-slot="compaction-card-section-heading">{section.heading}</h4>
-                  <For each={section.items}>
-                    {(item) => (
-                      <div data-slot="compaction-card-section-item">
-                        <span data-slot="compaction-card-bullet" aria-hidden="true">
-                          •
-                        </span>
-                        <div data-slot="compaction-card-section-item-text">
-                          <Markdown text={item} />
-                        </div>
-                      </div>
-                    )}
-                  </For>
-                </section>
-              )}
-            </For>
 
             <Show when={p().nextStep}>
               {(nextStep) => (

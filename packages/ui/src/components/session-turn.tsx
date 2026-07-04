@@ -111,6 +111,17 @@ export function isCompactionBoundaryUser(message: Pick<UserMessage, "metadata">)
   return message.metadata?.compactionBoundary === true
 }
 
+export function collectCompactionParentIDs(messages: readonly MessageType[]): Set<string> {
+  const result = new Set<string>()
+  for (const message of messages) {
+    if (message.role !== "user") continue
+    const metadata = (message as UserMessage).metadata
+    const parentID = metadata?.compactionParentID
+    if (metadata?.compactionBoundary === true && typeof parentID === "string" && parentID) result.add(parentID)
+  }
+  return result
+}
+
 export function collectUserCompactionTimelineItems(
   message: UserMessage,
   parts: readonly PartType[],
@@ -122,9 +133,10 @@ export function collectUserCompactionTimelineItems(
 
 export function shouldShowTurnDiffs(
   message: Pick<UserMessage, "metadata" | "summary"> | undefined,
-  options: { hasCompactionEvent?: boolean } = {},
+  options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean } = {},
 ): boolean {
   if (!message) return false
+  if (options.isCompactedParent) return false
   if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return false
   return (message.summary?.diffs?.length ?? 0) > 0
 }
@@ -396,6 +408,7 @@ export function SessionTurn(
   const emptyPermissions: PermissionRequest[] = []
 
   const allMessages = createMemo(() => data.store.message[props.sessionID] ?? emptyMessages)
+  const compactionParentIDs = createMemo(() => collectCompactionParentIDs(allMessages()))
 
   const messageIndex = createMemo(() => {
     const messages = allMessages()
@@ -522,7 +535,13 @@ export function SessionTurn(
     timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
   )
   const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
-  const hasDiffs = createMemo(() => shouldShowTurnDiffs(message(), { hasCompactionEvent: hasCompactionEvent() }))
+  const hasDiffs = createMemo(() => {
+    const msg = message()
+    return shouldShowTurnDiffs(msg, {
+      hasCompactionEvent: hasCompactionEvent(),
+      isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
+    })
+  })
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
     if (!latest) return []
