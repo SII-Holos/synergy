@@ -23,6 +23,7 @@ export const SemanticIconToken = {
   "session.background": "calendar-days",
   "session.channel": "message-circle", // channel session
   "session.default": "message-square",
+  "session.inbox": "mail",
 
   // Prompt composer
   "prompt.attach": "paperclip",

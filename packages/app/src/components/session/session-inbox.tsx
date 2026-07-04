@@ -1,10 +1,12 @@
-import { createMemo, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
+import { useConfirm } from "@/components/dialog"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
@@ -22,14 +24,29 @@ const labelByKind: Record<SessionInboxItem["kind"], string> = {
   agent_update: "Agent updates",
 }
 
-const iconByKind: Record<SessionInboxItem["kind"], "message-square" | "zap" | "megaphone"> = {
-  queued_user: "message-square",
-  guiding: "zap",
-  agent_update: "megaphone",
-}
-
 function timingLabel(item: SessionInboxItem) {
   return item.deliveryTarget === "next_model_call" ? "Next call" : "After turn"
+}
+
+function deliveryDescription(item: SessionInboxItem) {
+  if (item.deliveryTarget === "next_model_call") return "Joins the current run before its next model request."
+  return "Sends after this turn; multiple queued items share one reply cycle."
+}
+
+function itemCountLabel(count: number) {
+  return `${count} ${count === 1 ? "item" : "items"} waiting for your attention`
+}
+
+function queueNote(items: SessionInboxItem[]) {
+  const nextCall = items.filter((item) => item.deliveryTarget === "next_model_call").length
+  const afterTurn = items.filter((item) => item.deliveryTarget === "after_turn").length
+
+  if (nextCall > 0 && afterTurn > 0) return `${nextCall} next call · ${afterTurn} after turn`
+  if (nextCall > 1) return `${nextCall} items join the next model call`
+  if (nextCall === 1) return "Joins the current run's next model call"
+  if (afterTurn > 1) return `${afterTurn} items send together in one reply`
+  if (afterTurn === 1) return "Sends automatically after this turn"
+  return "Inbox clear"
 }
 
 function detailText(item: SessionInboxItem) {
@@ -48,10 +65,10 @@ function InboxDetail(props: { item: SessionInboxItem }) {
         cacheKey={`session-inbox-detail-${props.item.id}`}
         class="session-inbox-detail-markdown"
       />
-      <div class="mt-2 flex items-center gap-1.5 text-10-regular text-text-weak">
+      <div class="session-inbox-detail-meta">
         <span>{props.item.source.label ?? props.item.source.type}</span>
         <span>·</span>
-        <span>{timingLabel(props.item)}</span>
+        <span>{deliveryDescription(props.item)}</span>
       </div>
     </div>
   )
@@ -62,63 +79,83 @@ function InboxRow(props: {
   onGuide: (item: SessionInboxItem) => void
   onRemove: (item: SessionInboxItem) => void
 }) {
+  const [menuOpen, setMenuOpen] = createSignal(false)
   const canInteract = () => isInboxItemInteractive(props.item)
+  const preview = () => props.item.summary.preview || props.item.summary.title
+
+  const remove = () => {
+    setMenuOpen(false)
+    props.onRemove(props.item)
+  }
+
   return (
-    <Tooltip placement="left" value={<InboxDetail item={props.item} />}>
-      <div class="session-inbox-row group" data-kind={props.item.kind} data-interactive={canInteract()}>
-        <Icon
-          name={iconByKind[props.item.kind]}
-          size="small"
-          classList={{
-            "text-icon-weak": props.item.kind !== "guiding",
-            "text-icon-base": props.item.kind === "guiding",
-          }}
-        />
-        <div class="min-w-0">
-          <div class="flex min-w-0 items-center gap-1.5">
-            <span class="truncate text-12-medium text-text-base">{labelByKind[props.item.kind]}</span>
-            <span class="shrink-0 text-10-regular text-text-weaker">{timingLabel(props.item)}</span>
+    <div class="session-inbox-row" data-kind={props.item.kind} data-interactive={canInteract()}>
+      <Tooltip placement="left" class="session-inbox-row-tooltip" value={<InboxDetail item={props.item} />}>
+        <div class="session-inbox-row-main">
+          <div class="session-inbox-row-meta">
+            <span class="session-inbox-row-label">{labelByKind[props.item.kind]}</span>
+            <span class="session-inbox-row-status" data-target={props.item.deliveryTarget}>
+              {timingLabel(props.item)}
+            </span>
           </div>
-          <div class="mt-0.5 truncate text-12-regular text-text-weak">
-            {props.item.summary.preview || props.item.summary.title}
-          </div>
+          <div class="session-inbox-row-preview">{preview()}</div>
         </div>
+      </Tooltip>
+      <Show when={canInteract()}>
         <div class="session-inbox-actions">
-          <Show when={canInteract()}>
-            <button
-              type="button"
-              class="session-inbox-action"
-              data-primary="true"
-              aria-label="Guide current run"
-              onClick={(event) => {
-                event.stopPropagation()
-                props.onGuide(props.item)
-              }}
-            >
-              <Icon name="zap" size="small" />
-            </button>
-            <button
-              type="button"
-              class="session-inbox-action session-inbox-action-secondary"
-              aria-label="Remove queued message"
-              onClick={(event) => {
-                event.stopPropagation()
-                props.onRemove(props.item)
-              }}
-            >
-              <Icon name="x" size="small" />
-            </button>
-          </Show>
+          <button
+            type="button"
+            class="session-inbox-send-now"
+            aria-label="Send queued message now"
+            title="Add this message to the current run's next model call."
+            onClick={(event) => {
+              event.stopPropagation()
+              props.onGuide(props.item)
+            }}
+          >
+            Send now
+          </button>
+          <Popover
+            open={menuOpen()}
+            onOpenChange={setMenuOpen}
+            placement="bottom-end"
+            gutter={6}
+            class="session-inbox-menu-popover"
+            trigger={
+              <button
+                type="button"
+                class="session-inbox-more"
+                aria-label="Queued message actions"
+                aria-expanded={menuOpen()}
+              >
+                <Icon name={getSemanticIcon("action.more")} size="small" />
+              </button>
+            }
+          >
+            <div class="session-inbox-menu-list">
+              <button type="button" class="session-inbox-menu-item" onClick={remove}>
+                Delete
+              </button>
+            </div>
+          </Popover>
         </div>
-      </div>
-    </Tooltip>
+      </Show>
+    </div>
   )
 }
 
 export function SessionInbox(props: SessionInboxProps) {
+  const confirm = useConfirm()
   const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
+  const actionableItems = createMemo(() => items().filter(isInboxItemInteractive))
+  const titleDetail = createMemo(() => {
+    if (view().status === "loading") return "Checking for queued messages"
+    if (count() === 0) return "Inbox clear"
+    return itemCountLabel(count())
+  })
+  const note = createMemo(() => queueNote(items()))
 
   const guide = async (item: SessionInboxItem) => {
     try {
@@ -126,22 +163,40 @@ export function SessionInbox(props: SessionInboxProps) {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to guide run",
+        title: "Failed to send message now",
+        description: err instanceof Error ? err.message : "Request failed",
+      })
+    }
+  }
+
+  const guideAll = async () => {
+    const targets = actionableItems()
+    if (targets.length === 0) return
+    try {
+      for (const item of targets) {
+        await props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id })
+      }
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to send queued messages now",
         description: err instanceof Error ? err.message : "Request failed",
       })
     }
   }
 
   const remove = async (item: SessionInboxItem) => {
-    try {
-      await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
-    } catch (err) {
-      showToast({
-        type: "error",
-        title: "Failed to remove message",
-        description: err instanceof Error ? err.message : "Request failed",
-      })
-    }
+    await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
+  }
+  const confirmRemove = (item: SessionInboxItem) => {
+    confirm.show({
+      title: "Delete queued message?",
+      description: "Remove this message from the session inbox? It will not be sent after the turn.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      tone: "danger",
+      onConfirm: () => remove(item),
+    })
   }
 
   return (
@@ -151,9 +206,9 @@ export function SessionInbox(props: SessionInboxProps) {
         gutter={8}
         class="session-inbox-popover"
         title={
-          <div class="flex items-center gap-2">
-            <Icon name="mail" size="small" class="text-icon-weak" />
-            <span>Inbox</span>
+          <div class="session-inbox-title">
+            <span class="session-inbox-title-main">Inbox</span>
+            <span class="session-inbox-title-subtitle">{titleDetail()}</span>
           </div>
         }
         trigger={
@@ -163,7 +218,7 @@ export function SessionInbox(props: SessionInboxProps) {
             data-active={count() > 0}
             aria-label="Session inbox"
           >
-            <Icon name="mail" size="small" />
+            <Icon name={getSemanticIcon("session.inbox")} size="small" />
             <Show when={count() > 0}>
               <span class="session-inbox-badge">{Math.min(count(), 9)}</span>
             </Show>
@@ -179,7 +234,15 @@ export function SessionInbox(props: SessionInboxProps) {
           </Match>
           <Match when={true}>
             <div class="session-inbox-list">
-              <For each={items()}>{(item) => <InboxRow item={item} onGuide={guide} onRemove={remove} />}</For>
+              <div class="session-inbox-queue-note">
+                <span>{note()}</span>
+                <Show when={actionableItems().length > 1}>
+                  <button type="button" class="session-inbox-send-all" onClick={guideAll}>
+                    Send all now
+                  </button>
+                </Show>
+              </div>
+              <For each={items()}>{(item) => <InboxRow item={item} onGuide={guide} onRemove={confirmRemove} />}</For>
             </div>
           </Match>
         </Switch>

@@ -89,8 +89,8 @@ export function PerformanceDashboard() {
   }
 
   return (
-    <div class="flex flex-col gap-4">
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-weaker-base bg-surface-base px-4 py-3">
+    <div class="performance-dashboard">
+      <div class="performance-toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
         <div class="flex items-center gap-2 text-12-medium text-text-weak">
           <span
             classList={{
@@ -120,7 +120,7 @@ export function PerformanceDashboard() {
       </div>
 
       <Show when={perf.error() || perf.streamError()}>
-        <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base px-4 py-3 text-12-regular text-icon-warning-base">
+        <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">
           {perf.error() ?? perf.streamError()}
         </div>
       </Show>
@@ -128,7 +128,7 @@ export function PerformanceDashboard() {
       <SummaryCards summary={summary()} issues={issues()} />
       <RuntimeSupport summary={summary()} />
 
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div class="performance-chart-grid">
         <ResourceChart
           title="CPU, memory, and event loop"
           description="Runtime pressure from resource samples and timeline aggregates"
@@ -153,7 +153,7 @@ export function PerformanceDashboard() {
         />
       </div>
 
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div class="performance-split-grid">
         <Timeline traces={traces()} onSelect={(trace) => void selectTrace(trace.traceId, trace)} />
         <IssueList
           issues={issues()}
@@ -181,14 +181,14 @@ export function PerformanceDashboard() {
 
 function TimeRangeControl(props: { value: number; onChange: (value: number) => void }) {
   return (
-    <div class="flex items-center rounded-lg bg-surface-inset-base p-1">
+    <div class="performance-control flex items-center rounded-lg p-1">
       <For each={TIME_RANGES}>
         {(range) => (
           <button
             type="button"
             classList={{
               "rounded-md px-2.5 py-1 text-11-medium transition-colors": true,
-              "bg-surface-raised-base text-text-strong shadow-sm": props.value === range.value,
+              "workbench-selected-surface text-text-strong shadow-sm": props.value === range.value,
               "text-text-weak hover:text-text-base": props.value !== range.value,
             }}
             onClick={() => props.onChange(range.value)}
@@ -206,7 +206,7 @@ function SummaryCards(props: { summary: PerformanceSummary | null | undefined; i
   const resources = () => summary()?.resources
   const frontend = () => summary()?.frontend
   return (
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div class="performance-summary-grid">
       <MetricCard label="Health" value={summary()?.health.status ?? "Unknown"} icon="perf.health" />
       <MetricCard label="HTTP p95" value={formatDuration(summary()?.backend.p95RequestMs)} icon="perf.latency" />
       <MetricCard
@@ -247,7 +247,7 @@ function MetricCard(props: {
   tone?: "default" | "warning"
 }) {
   return (
-    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div class="performance-card rounded-xl p-4">
       <div class="flex items-center justify-between gap-3">
         <div class="text-11-medium uppercase tracking-[0.12em] text-text-weaker">{props.label}</div>
         <Icon
@@ -263,7 +263,7 @@ function MetricCard(props: {
 
 function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined }) {
   return (
-    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("perf.health")} size="small" class="text-icon-weak" />
         <div>
@@ -276,7 +276,7 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
       <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
         <For each={runtimeSupportItems(props.summary)}>
           {(item) => (
-            <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+            <div class="performance-card-soft rounded-lg px-3 py-2">
               <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{item.label}</div>
               <div
                 classList={{
@@ -347,7 +347,7 @@ function ResourceChart(props: {
   }))
 
   return (
-    <div ref={element} class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div ref={element} class="performance-card rounded-xl p-4">
       <div class="mb-3">
         <h3 class="text-14-semibold text-text-strong">{props.title}</h3>
         <p class="mt-1 text-11-regular text-text-weak">{props.description}</p>
@@ -363,7 +363,7 @@ function ResourceChart(props: {
 
 function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: PerformanceTraceSpan) => void }) {
   return (
-    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("perf.timeline")} size="small" class="text-icon-weak" />
         <h3 class="text-14-semibold text-text-strong">Trace timeline</h3>
@@ -374,7 +374,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
             {(trace) => (
               <button
                 type="button"
-                class="flex items-center gap-3 rounded-lg bg-surface-inset-base/70 px-3 py-2 text-left transition-colors hover:bg-surface-hover-base"
+                class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-hover-base"
                 onClick={() => props.onSelect(trace)}
               >
                 <div class="h-2 w-2 shrink-0 rounded-full bg-icon-accent-base" />
@@ -396,7 +396,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
 
 function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: PerformanceIssue) => void }) {
   return (
-    <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("perf.issue")} size="small" class="text-icon-weak" />
         <h3 class="text-14-semibold text-text-strong">Performance issues</h3>
@@ -424,13 +424,13 @@ function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: Perform
               return issue.traceId ? (
                 <button
                   type="button"
-                  class="rounded-lg bg-surface-inset-base/70 p-3 text-left transition-colors hover:bg-surface-hover-base"
+                  class="performance-card-soft rounded-lg p-3 text-left transition-colors hover:bg-surface-hover-base"
                   onClick={() => props.onTrace(issue)}
                 >
                   {content}
                 </button>
               ) : (
-                <div class="rounded-lg bg-surface-inset-base/70 p-3">{content}</div>
+                <div class="performance-card-soft rounded-lg p-3">{content}</div>
               )
             }}
           </For>
@@ -453,10 +453,10 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
     ]
   })
   return (
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div class="performance-rankings-grid">
       <For each={groups()}>
         {(group) => (
-          <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+          <div class="performance-card rounded-xl p-4">
             <div class="mb-3 flex items-center gap-2">
               <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak" />
               <h3 class="text-14-semibold text-text-strong">{group.title}</h3>
@@ -467,7 +467,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
                   {(item) => (
                     <button
                       type="button"
-                      class="flex items-center gap-3 rounded-lg bg-surface-inset-base/70 px-3 py-2 text-left transition-colors hover:bg-surface-hover-base disabled:cursor-default disabled:hover:bg-surface-inset-base/70"
+                      class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-hover-base disabled:cursor-default disabled:opacity-60"
                       disabled={!item.traceId}
                       onClick={() => props.onTrace(item)}
                     >
@@ -516,8 +516,8 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
   const frontend = () => props.summary?.frontend
   const slow = () => props.summary?.top.slowFrontend ?? []
   return (
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+    <div class="performance-frontend-grid">
+      <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
           <Icon name={getSemanticIcon("perf.frontend")} size="small" class="text-icon-weak" />
           <h3 class="text-14-semibold text-text-strong">Slow frontend</h3>
@@ -526,7 +526,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
           <div class="flex flex-col gap-1.5">
             <For each={slow()}>
               {(item) => (
-                <div class="flex items-center gap-3 rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                <div class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2">
                   <div class="min-w-0 flex-1">
                     <div class="truncate text-12-medium text-text-strong">{item.label}</div>
                     <div class="truncate text-11-regular text-text-weaker">{item.module}</div>
@@ -540,7 +540,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
           </div>
         </Show>
       </div>
-      <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base p-4">
+      <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
           <Icon name={getSemanticIcon("perf.vitals")} size="small" class="text-icon-weak" />
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
@@ -561,7 +561,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
 
 function Vital(props: { label: string; value: string }) {
   return (
-    <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+    <div class="performance-card-soft rounded-lg px-3 py-2">
       <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{props.label}</div>
       <div class="mt-1 text-13-medium text-text-strong tabular-nums">{props.value}</div>
     </div>
@@ -611,7 +611,7 @@ function TraceDrawer(props: {
                       <DetailRow label="Start" value={formatTime(trace().startedAt)} />
                       <DetailRow label="End" value={formatTime(trace().endedAt)} />
                       <Show when={trace().errorCode}>
-                        <div class="rounded-lg bg-surface-inset-base/70 p-3 text-icon-warning-base">
+                        <div class="performance-card-soft rounded-lg p-3 text-icon-warning-base">
                           {trace().errorCode}
                         </div>
                       </Show>
@@ -621,7 +621,7 @@ function TraceDrawer(props: {
                           <div class="flex flex-col gap-1.5">
                             <For each={props.detail?.spans ?? []}>
                               {(span) => (
-                                <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                                <div class="performance-card-soft rounded-lg px-3 py-2">
                                   <div class="truncate text-12-medium text-text-strong">{span.name}</div>
                                   <div class="mt-1 text-11-regular text-text-weaker">
                                     {[span.module, span.status, formatDuration(span.durationMs)]
@@ -640,7 +640,7 @@ function TraceDrawer(props: {
                           <div class="flex flex-col gap-1.5">
                             <For each={(props.detail?.events ?? []).slice(0, 20)}>
                               {(event) => (
-                                <div class="rounded-lg bg-surface-inset-base/70 px-3 py-2">
+                                <div class="performance-card-soft rounded-lg px-3 py-2">
                                   <div class="truncate text-12-medium text-text-strong">{event.type}</div>
                                   <div class="mt-1 text-11-regular text-text-weaker">
                                     {formatTime(event.iso ?? event.time)}
@@ -665,7 +665,7 @@ function TraceDrawer(props: {
 
 function DetailRow(props: { label: string; value: string }) {
   return (
-    <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base pb-2">
+    <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/70 pb-2">
       <span class="text-text-weaker">{props.label}</span>
       <span class="truncate text-text-base">{props.value}</span>
     </div>
@@ -674,7 +674,7 @@ function DetailRow(props: { label: string; value: string }) {
 
 function EmptyState(props: { label: string }) {
   return (
-    <div class="rounded-lg bg-surface-inset-base/70 px-3 py-8 text-center text-12-regular text-text-weaker">
+    <div class="performance-card-soft rounded-lg px-3 py-8 text-center text-12-regular text-text-weaker">
       {props.label}
     </div>
   )
