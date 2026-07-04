@@ -379,6 +379,21 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
+        <Tooltip value="Performance" placement="right">
+          <button
+            type="button"
+            classList={{
+              "sb-global-btn": true,
+              "sb-global-active": location.pathname === "/performance",
+            }}
+            onClick={() => navigate("/performance")}
+          >
+            <Icon name={getSemanticIcon("perf.dashboard")} size="normal" />
+            <Show when={isExpanded()}>
+              <span class="sb-action-label">Performance</span>
+            </Show>
+          </button>
+        </Tooltip>
         <Tooltip value="Plugins" placement="right">
           <button
             type="button"

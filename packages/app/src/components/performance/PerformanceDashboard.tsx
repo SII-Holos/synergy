@@ -495,7 +495,7 @@ function BrowserMetricsChart(props: { samples: BrowserMetricSample[] }) {
   return (
     <ResourceChart
       title="Browser metrics"
-      description="Client-side DOM, navigation, and heap samples collected by this settings view"
+      description="Client-side DOM, navigation, and heap samples collected by this performance view"
       points={props.samples.map((sample) => ({
         timestamp: sample.timestamp,
         memory: sample.memory ? sample.memory / 1024 / 1024 : undefined,

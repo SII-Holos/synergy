@@ -59,6 +59,7 @@ function initialRouteWaitsForSessionSurface() {
   if (pathname.includes("/agenda")) return false
   if (pathname.includes("/library")) return false
   if (pathname.includes("/plugins")) return false
+  if (pathname.includes("/performance")) return false
   return true
 }
 
@@ -66,6 +67,10 @@ const Session = lazy(async () => {
   const session = await import("@/pages/session")
   signalAppSurfaceReady()
   return session
+})
+const PerformancePanel = lazy(async () => {
+  const performance = await import("@/components/performance/panel")
+  return { default: performance.PerformancePanel }
 })
 const Loading = () => (
   <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
@@ -222,6 +227,7 @@ function ConnectedApp() {
                       <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
                       <Route path="/agenda" component={AgendaPanel} />
                       <Route path="/library" component={LibraryPanel} />
+                      <Route path="/performance" component={PerformancePanel} />
                       <Route path="/plugins/marketplace" component={MarketplacePage} />
                       <Route path="/plugins/panels/:pluginId/:panelId" component={PluginAppPanelPage} />
                       <Route path="/plugins/routes/:pluginId/:routeId" component={PluginAppRoutePage} />

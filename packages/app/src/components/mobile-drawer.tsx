@@ -106,6 +106,7 @@ export function MobileDrawer() {
 const DRAWER_TOOLS = [
   { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
   { id: "library", label: "Library", icon: "book-open", href: "/library" },
+  { id: "performance", label: "Performance", icon: "radar", href: "/performance" },
   { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
 ] as const
 
@@ -197,7 +198,7 @@ function ScopeListView(props: {
       <div class="px-4 pb-1.5">
         <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
       </div>
-      <div class="grid grid-cols-5 gap-1 px-3 pb-2">
+      <div class="grid grid-cols-4 gap-1 px-3 pb-2">
         <For each={DRAWER_TOOLS}>
           {(tool) => (
             <button
