@@ -6540,9 +6540,11 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 9007199254740991
+                  },
+                  "cutMessageID": {
+                    "type": "string"
                   }
-                },
-                "required": ["numTurns"]
+                }
               }
             }
           }
@@ -23898,6 +23900,10 @@
                   "pattern": "^msg.*"
                 }
               },
+              "cutMessageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
               "files": {
                 "type": "array",
                 "items": {
@@ -26087,6 +26093,9 @@
               "pattern": "^msg.*"
             }
           },
+          "cutMessageID": {
+            "type": "string"
+          },
           "files": {
             "type": "array",
             "items": {
@@ -26174,6 +26183,9 @@
               "type": "string",
               "pattern": "^msg.*"
             }
+          },
+          "cutMessageID": {
+            "type": "string"
           },
           "files": {
             "type": "array",

@@ -3133,6 +3133,7 @@ export type SessionHistoryInfo = {
     messageID?: string
     droppedMessageIDs: Array<string>
     droppedUserMessageIDs: Array<string>
+    cutMessageID?: string
     files: Array<string>
     patchPartIDs: Array<string>
     canUnrollback: boolean
@@ -3915,6 +3916,7 @@ export type SessionRollbackEvent = {
   numTurns: number
   droppedMessageIDs: Array<string>
   droppedUserMessageIDs: Array<string>
+  cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
 }
@@ -3936,6 +3938,7 @@ export type SessionRollbackSummary = {
   messageID?: string
   droppedMessageIDs: Array<string>
   droppedUserMessageIDs: Array<string>
+  cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
   canUnrollback: boolean
@@ -9116,7 +9119,8 @@ export type SessionShellResponse = SessionShellResponses[keyof SessionShellRespo
 
 export type SessionRollbackData = {
   body?: {
-    numTurns: number
+    numTurns?: number
+    cutMessageID?: string
   }
   path: {
     sessionID: string
