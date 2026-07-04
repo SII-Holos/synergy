@@ -701,10 +701,9 @@ function formatPercent(value?: number): string {
 
 function formatBytes(value?: number): string {
   if (value === undefined) return "—"
-  const bytes = value > 10_000_000 ? value : value * 1024 * 1024
-  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`
-  return `${bytes.toFixed(0)} B`
+  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(0)} MB`
+  return `${value.toFixed(0)} B`
 }
 
 function formatDuration(value?: number): string {

@@ -206,7 +206,7 @@ export namespace ToolResolver {
 
   interface ToolTrace {
     traceId: string
-    span: PerformanceSpans.SpanContext
+    span: PerformanceSpans.SpanContext | undefined
     phase(
       type: string,
       phase: string,
@@ -247,7 +247,7 @@ export namespace ToolResolver {
       unit: "count",
       module: "tool",
       traceId,
-      spanId: perfSpan.spanId,
+      spanId: perfSpan?.spanId,
       sessionID: input.sessionID,
       messageID: input.processor.message.id,
       callID: ctx.callID,
@@ -273,7 +273,7 @@ export namespace ToolResolver {
         },
       })
 
-    await emit("tool.start", { args })
+    await emit("tool.start", { tool: toolName })
 
     const heartbeat = setInterval(() => {
       void emit("tool.heartbeat", {
@@ -299,7 +299,7 @@ export namespace ToolResolver {
             unit: "count",
             module: "tool",
             traceId,
-            spanId: perfSpan.spanId,
+            spanId: perfSpan?.spanId,
             sessionID: input.sessionID,
             messageID: input.processor.message.id,
             callID: ctx.callID,
@@ -314,7 +314,7 @@ export namespace ToolResolver {
             message: `${toolName} has not reported activity for ${idleMs}ms`,
             recommendation: "Inspect the tool trace and owning tool implementation.",
             traceId,
-            spanId: perfSpan.spanId,
+            spanId: perfSpan?.spanId,
             sessionID: input.sessionID,
             messageID: input.processor.message.id,
             callID: ctx.callID,
@@ -340,7 +340,7 @@ export namespace ToolResolver {
           unit: "ms",
           module: "tool",
           traceId,
-          spanId: perfSpan.spanId,
+          spanId: perfSpan?.spanId,
           sessionID: input.sessionID,
           messageID: input.processor.message.id,
           callID: ctx.callID,
@@ -374,7 +374,7 @@ export namespace ToolResolver {
           unit: "count",
           module: "tool",
           traceId,
-          spanId: perfSpan.spanId,
+          spanId: perfSpan?.spanId,
           sessionID: input.sessionID,
           messageID: input.processor.message.id,
           callID: ctx.callID,

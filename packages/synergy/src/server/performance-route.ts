@@ -14,6 +14,7 @@ import { ServerSseMetrics } from "./sse-metrics"
 import { PerformanceSchema } from "@/performance/schema"
 import { PerformanceTimeline } from "@/performance/timeline"
 import { PerformanceTraceDetail } from "@/performance/trace-detail"
+import { Log } from "@/util/log"
 
 const SummaryQuery = z
   .object({
@@ -332,10 +333,8 @@ export const PerformanceRoute = new Hono()
         PerformanceConfig.refresh(await Config.current())
         return c.json(PerformanceConfig.current())
       } catch (error) {
-        return c.json(
-          { code: "PERF_CONFIG_CONFLICT", message: error instanceof Error ? error.message : String(error) },
-          409,
-        )
+        Log.create({ service: "performance-route" }).error("Failed to persist performance configuration", { error })
+        return c.json({ code: "PERF_CONFIG_CONFLICT", message: "Failed to persist performance configuration." }, 409)
       }
     },
   )

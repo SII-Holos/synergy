@@ -191,8 +191,6 @@ export namespace ProcessRegistry {
         exitCode,
         exitSignal,
         outputChars: proc.output.length,
-        tail: proc.tail,
-        truncated: proc.truncated,
       },
     })
   }
@@ -209,7 +207,6 @@ export namespace ProcessRegistry {
         data: {
           command: proc.command,
           outputChars: proc.output.length,
-          tail: proc.tail,
         },
       })
     }

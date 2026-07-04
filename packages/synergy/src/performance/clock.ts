@@ -1,3 +1,6 @@
+let monotonicCounter = 0
+const processStartMs = Date.now()
+
 export namespace PerformanceClock {
   export function now() {
     return Date.now()
@@ -8,7 +11,7 @@ export namespace PerformanceClock {
   }
 
   export function id(prefix: string) {
-    return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+    return `${prefix}_${processStartMs.toString(36)}_${(monotonicCounter++).toString(36)}`
   }
 
   export function start() {

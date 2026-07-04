@@ -43,7 +43,8 @@ export namespace PerformanceSpans {
     pid?: number
     tool?: string
     attributes?: Record<string, unknown>
-  }): SpanContext {
+  }): SpanContext | undefined {
+    if (!PerformanceConfig.current().enabled) return undefined
     const time = PerformanceClock.now()
     const span: PerformanceSchema.Span = {
       traceId: input.traceId ?? Observability.traceId("perf"),
@@ -75,9 +76,10 @@ export namespace PerformanceSpans {
   }
 
   export function end(
-    ctx: SpanContext,
+    ctx: SpanContext | undefined,
     opts: { status?: PerformanceSchema.SpanStatus; error?: unknown; attributes?: Record<string, unknown> } = {},
   ) {
+    if (!ctx) return
     const durationMs = PerformanceClock.durationMs(ctx.startMark)
     const time = PerformanceClock.now()
     const status = opts.status ?? (opts.error ? "error" : "ok")
@@ -166,6 +168,7 @@ export namespace PerformanceSpans {
     fn: (ctx: SpanContext) => Promise<T>,
   ): Promise<T> {
     const ctx = start(input)
+    if (!ctx) return fn({} as SpanContext)
     try {
       const result = await fn(ctx)
       end(ctx)

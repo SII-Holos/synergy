@@ -746,15 +746,20 @@ export namespace CodexProvider {
     if (!access) {
       return AccountUsage.unavailable(PROVIDER_ID, "OpenAI Codex is not connected.", { reloginRequired: true })
     }
-    const response = await fetchFn(usageURL(), {
-      headers: {
-        Authorization: `Bearer ${access}`,
-        Accept: "application/json",
-        "User-Agent": "codex-cli",
-        ...codexHeaders(access),
-      },
-      signal: AbortSignal.timeout(15_000),
-    })
+    let response: Response
+    try {
+      response = await fetchFn(usageURL(), {
+        headers: {
+          Authorization: `Bearer ${access}`,
+          Accept: "application/json",
+          "User-Agent": "codex-cli",
+          ...codexHeaders(access),
+        },
+        signal: AbortSignal.timeout(15_000),
+      })
+    } catch {
+      return AccountUsage.error(PROVIDER_ID, "OpenAI Codex usage request failed.")
+    }
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         return AccountUsage.error(PROVIDER_ID, `Codex usage request failed with status ${response.status}.`, {
