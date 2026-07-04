@@ -814,7 +814,12 @@ function createGlobalSync() {
           break
         }
         if (result.found) {
-          setStore("session", result.index, reconcile(info))
+          setStore(
+            "session",
+            produce((draft) => {
+              draft[result.index] = info
+            }),
+          )
           break
         }
         setStore(

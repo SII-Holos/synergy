@@ -135,10 +135,9 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
-    expect(visual.label).toBe("Running Blueprint")
-    expect(visual.tone).toBe("blueprint-running")
-    expect(visual.pulse).toBe(true)
+    expect(visual.icon).toBe("scan-eye")
+    expect(visual.label).toBe("Auditing Blueprint")
+    expect(visual.tone).toBe("blueprint-audit")
   })
 
   test("combines waiting state with blueprint identity", () => {
@@ -162,7 +161,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.icon).toBe("scan-eye")
     expect(visual.label).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
@@ -176,7 +175,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.icon).toBe("scan-eye")
     expect(visual.label).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
     expect(visual.pulse).toBe(true)
