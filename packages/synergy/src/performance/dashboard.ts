@@ -20,12 +20,10 @@ export namespace PerformanceDashboard {
       (row) => parseLabels(row.labels_json).status && Number(parseLabels(row.labels_json).status) >= 500,
     ).length
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
-    const llm = metrics.filter((row) => row.name === "llm.request.duration" || row.name === "session.llm_call.duration")
-    const tools = metrics.filter(
-      (row) => row.name === "tool.execution.duration" || row.name === "session.tool_call.duration",
-    )
+    const llm = metrics.filter((row) => row.name === "llm.call.duration")
+    const tools = metrics.filter((row) => row.name === "tool.execution.duration")
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
-    const library = metrics.filter((row) => row.name === "library.sqlite.query.duration")
+    const library = metrics.filter((row) => row.name === "library.query.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>

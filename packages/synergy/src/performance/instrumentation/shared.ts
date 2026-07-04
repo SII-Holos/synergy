@@ -35,5 +35,3 @@ export function startSpan(
 ) {
   return PerformanceSpans.start({ module, name, ...attrs })
 }
-
-export const endSpan = PerformanceSpans.end

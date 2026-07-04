@@ -80,6 +80,7 @@ import { PerformanceRedaction } from "@/performance/redact"
 import { PerformanceConfig } from "@/performance/config"
 import { PerformanceResources } from "@/performance/resources"
 import { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, DEFAULT_SERVER_URL } from "./defaults"
+import { PerformanceRetention } from "@/performance/retention"
 import { UpdateRoute } from "./update-route"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -90,6 +91,7 @@ void Config.current()
   .then((config) => PerformanceConfig.refresh(config))
   .catch(() => PerformanceConfig.refresh())
 PerformanceResources.start()
+PerformanceRetention.schedule()
 
 export namespace Server {
   export const DEFAULT_PORT = DEFAULT_SERVER_PORT
