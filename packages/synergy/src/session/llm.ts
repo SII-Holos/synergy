@@ -167,7 +167,7 @@ export namespace LLM {
       input.agent.defaultVariant ??
       (cfg.role_variant as any)?.[input.agent.modelRole || "default"]
     let variant: Record<string, any> = {}
-    if (!input.small && input.model.variants && effectiveVariant) {
+    if (!input.small && input.model.variants && Object.keys(input.model.variants).length > 0 && effectiveVariant) {
       if (input.model.variants[effectiveVariant]) {
         variant = input.model.variants[effectiveVariant]
       } else {
