@@ -7,6 +7,7 @@ import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "../id/id"
 import { Session } from "../session"
+import { isDefaultTitle } from "../session/title"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { fn } from "../util/fn"
@@ -228,6 +229,16 @@ export namespace Worktree {
       .replace(/^-+/, "")
       .replace(/-+$/, "")
     return result || randomName()
+  }
+
+  function purposeSlug(input?: string) {
+    const base = input ? slug(input) : "session"
+    const withoutBrand = base.replace(/^synergy(?:-+|$)/, "")
+    return withoutBrand || "session"
+  }
+
+  function worktreeName(segment: string) {
+    return `synergy-${segment}`
   }
 
   function hashID(input: string) {
@@ -499,11 +510,12 @@ export namespace Worktree {
 
   async function candidate(repoRoot: string, baseName?: string, sessionID?: string) {
     const root = worktreesRoot(repoRoot)
-    const base = slug(baseName || randomName())
+    const purpose = purposeSlug(baseName)
     const suffix = sessionID ? sessionID.replace(/^ses_/, "").slice(0, 6) : Date.now().toString(36).slice(-6)
     for (const attempt of Array.from({ length: 26 }, (_, i) => i)) {
-      const name = attempt === 0 ? `${base}-${suffix}` : `${base}-${suffix}-${attempt + 1}`
-      const branch = `synergy/${name}`
+      const segment = attempt === 0 ? `${purpose}-${suffix}` : `${purpose}-${suffix}-${attempt + 1}`
+      const name = worktreeName(segment)
+      const branch = `synergy/${segment}`
       const directory = path.join(root, name)
       if (await exists(directory)) continue
       const ref = `refs/heads/${branch}`
@@ -526,7 +538,7 @@ export namespace Worktree {
     await fs.mkdir(worktreesRoot(repoRoot), { recursive: true })
 
     const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
-    const titleName = session?.title && !session.title.startsWith("New Session") ? session.title : undefined
+    const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
     const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
     const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
 
