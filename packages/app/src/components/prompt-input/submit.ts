@@ -33,6 +33,8 @@ import {
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
+import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
+import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import {
   SessionStartProgressDialog,
@@ -147,6 +149,19 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const notes = input.noteAttachments().slice()
     const sessions = input.sessionAttachments().slice()
     const mode = input.store.mode
+    const currentContext = {
+      activeTab: prompt.context.activeTab(),
+      items: prompt.context.items(),
+    }
+    const draftSnapshot = createPromptDraftSnapshot({
+      prompt: currentPrompt,
+      context: currentContext,
+      activeFile: input.activeFile(),
+    })
+    const failureRestoreSnapshot = createSubmitFailureRestoreSnapshot({
+      prompt: currentPrompt,
+      context: currentContext,
+    })
 
     const blueprintSlot = input.localArmedLoop()
     if (
@@ -311,19 +326,20 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
 
     const clearInput = () => {
-      prompt.reset()
+      prompt.resetDraft()
       input.setStore("mode", "normal")
       input.setStore("popover", null)
       input.setLocalArmedLoop(null)
     }
 
     const restoreInput = () => {
-      prompt.set(currentPrompt, inlineLength(currentPrompt))
+      prompt.set(failureRestoreSnapshot.prompt, inlineLength(failureRestoreSnapshot.prompt))
+      prompt.context.set(failureRestoreSnapshot.context)
       input.setStore("mode", mode)
       input.setStore("popover", null)
       requestAnimationFrame(() => {
         input.editor().focus()
-        setCursorPosition(input.editor(), inlineLength(currentPrompt))
+        setCursorPosition(input.editor(), inlineLength(failureRestoreSnapshot.prompt))
         input.queueScroll()
       })
     }
@@ -411,46 +427,18 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const customCommand = sync.data.command.find((c) => c.name === commandName)
       if (customCommand) {
         clearInput()
-        client.session
-          .command({
-            sessionID: activeSession.id,
-            command: commandName,
-            arguments: args.join(" "),
-            agent,
-            model: `${model.providerID}/${model.modelID}`,
-            variant,
-            parts: [
-              ...attachments.map(createUploadedAttachmentInputPart),
-              ...notes.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-                filename: `${attachment.title || "Untitled"}.md`,
-                model: { mode: "content" as const, text: formatNoteContent(attachment) },
-                metadata: {
-                  kind: "note",
-                  noteId: attachment.noteId,
-                  title: attachment.title || "Untitled",
-                },
-              })),
-              ...sessions.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
-                filename: `${attachment.title || "session"}.session.txt`,
-                model: { mode: "content" as const, text: formatSessionReference(attachment) },
-                metadata: {
-                  kind: "session",
-                  sessionId: attachment.sessionId,
-                  directory: attachment.directory,
-                  title: attachment.title || "Untitled",
-                  updatedAt: attachment.updatedAt,
-                },
-              })),
-            ],
-          })
+        sendSessionCommand({
+          client,
+          sessionID: activeSession.id,
+          command: commandName,
+          arguments: args.join(" "),
+          agent,
+          model,
+          variant,
+          attachments,
+          notes,
+          sessions,
+        })
           .then(() => {
             closeStartProgress()
           })
@@ -634,6 +622,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })) as unknown as Part[])
       : []
 
+    const userMessageMetadata = {
+      ...optimisticPlanModeMetadata,
+      promptDraft: draftSnapshot,
+    }
+
     const optimisticMessage: Message | undefined = messageID
       ? {
           id: messageID,
@@ -642,7 +635,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           time: { created: Date.now() },
           agent,
           model,
-          ...(optimisticPlanModeMetadata ? { metadata: optimisticPlanModeMetadata } : {}),
+          metadata: userMessageMetadata,
         }
       : undefined
 
@@ -699,6 +692,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         ...(messageID ? { messageID } : {}),
         parts: requestParts,
         variant,
+        metadata: { promptDraft: draftSnapshot },
       })
       .then((result) => {
         closeStartProgress()

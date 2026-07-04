@@ -12,6 +12,10 @@ import { ScopedState } from "../scope/scoped-state"
 import { Skill } from "../skill/skill"
 import PROMPT_COMMIT from "./template/commit.txt"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
+import PROMPT_NOTE from "./template/note.txt"
+import PROMPT_CONTINUE from "./template/continue.txt"
+import PROMPT_AUDIT from "./template/audit.txt"
+import PROMPT_START from "./template/start.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import PROMPT_RMSLOP from "./template/rmslop.txt"
 
@@ -128,6 +132,10 @@ export namespace Command {
     REVIEW: "review",
     COMMIT: "commit",
     RMSLOP: "rmslop",
+    NOTE: "note",
+    CONTINUE: "continue",
+    AUDIT: "audit",
+    START: "start",
     WORKTREE: "worktree",
   } as const
 
@@ -197,6 +205,38 @@ export namespace Command {
           return PROMPT_RMSLOP
         },
         hints: hints(PROMPT_RMSLOP),
+      }),
+      [Default.NOTE]: promptCommand({
+        name: Default.NOTE,
+        description: "save the last substantive response as a note",
+        get template() {
+          return PROMPT_NOTE
+        },
+        hints: hints(PROMPT_NOTE),
+      }),
+      [Default.CONTINUE]: promptCommand({
+        name: Default.CONTINUE,
+        description: "continue where the session left off",
+        get template() {
+          return PROMPT_CONTINUE
+        },
+        hints: hints(PROMPT_CONTINUE),
+      }),
+      [Default.AUDIT]: promptCommand({
+        name: Default.AUDIT,
+        description: "audit recent changes and list issues without fixing them",
+        get template() {
+          return PROMPT_AUDIT
+        },
+        hints: hints(PROMPT_AUDIT),
+      }),
+      [Default.START]: promptCommand({
+        name: Default.START,
+        description: "start implementing the current plan",
+        get template() {
+          return PROMPT_START
+        },
+        hints: hints(PROMPT_START),
       }),
       [Default.WORKTREE]: actionCommand({
         name: Default.WORKTREE,

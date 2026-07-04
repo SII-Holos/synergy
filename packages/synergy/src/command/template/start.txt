@@ -1,0 +1,3 @@
+Your proposal looks good — go ahead and implement it. Prioritize clean, professional code: no redundant logic, no dead code, no leftover patches. Behavior should be tested, names should communicate domain meaning, structure should be locally consistent. If the right solution requires refactoring at a deeper level rather than layering fixes on top, do that. Quality checks must pass at the end. Treat the codebase with care — every line should earn its place.
+
+$ARGUMENTS

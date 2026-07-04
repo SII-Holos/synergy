@@ -68,6 +68,7 @@ import { PromptStartModeSelector, type PromptStartOptionGroup } from "@/componen
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
+import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -1073,12 +1074,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     queueScroll,
   })
 
+  const runRuntimeCommand = (name: string) => {
+    const sessionID = params.id
+    const currentModel = local.model.current()
+    const currentAgent = local.agent.current()
+    if (!sessionID || !currentModel || !currentAgent) return
+
+    sendSessionCommand({
+      client: sdk.client,
+      sessionID,
+      command: name,
+      agent: currentAgent.name,
+      model: { modelID: currentModel.id, providerID: currentModel.provider.id },
+      variant: local.model.variant.current(),
+    }).catch((err) => {
+      showToast({
+        type: "error",
+        title: "Failed to send command",
+        description: err instanceof Error ? err.message : "Request failed",
+      })
+    })
+  }
+
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
         <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
-          <QuickActions class="relative" onCommand={(id) => command.trigger(id)} commandsDisabled={working()} />
+          <QuickActions
+            class="relative"
+            onCommand={(id) => command.trigger(id)}
+            onRuntimeCommand={runRuntimeCommand}
+            commandsDisabled={working()}
+          />
         </div>
       </Show>
       <Show when={store.popover}>
@@ -1119,7 +1147,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </div>
         </Show>
-        <Show when={false && (prompt.context.items().length > 0 || !!activeFile())}>
+        <Show when={prompt.context.items().length > 0 || !!activeFile()}>
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
             <Show when={prompt.context.activeTab() ? activeFile() : undefined}>
               {(path) => (
