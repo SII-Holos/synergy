@@ -4,6 +4,7 @@ import { registerProviders } from "@/channel/provider"
 import { Channel } from "@/channel"
 import { Config } from "@/config/config"
 import { HolosRuntime } from "@/holos/runtime"
+import { PluginMarketplaceRegistry } from "@/plugin/marketplace-registry"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
 import { FileWatcher } from "@/file/watcher"
@@ -26,6 +27,7 @@ export namespace GlobalRuntime {
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
+          PluginMarketplaceRegistry.prefetchRegistry()
           await Agenda.start()
           await AgendaBootstrap.seed()
           log.info("started")

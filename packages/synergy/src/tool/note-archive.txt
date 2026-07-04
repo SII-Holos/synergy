@@ -1,0 +1,5 @@
+Archive notes by ID. Archived notes are hidden from the active list but preserved on disk.
+
+Use this when you need to clean up notes from a completed sprint, task, or session. Archiving is safe and reversible — archived notes can be restored with the same tool by passing `unarchive: true`, or permanently deleted from the Archived view in the Notes UI.
+
+To permanently delete archived notes, open the Notes panel in the UI, switch to the Archived view, and use the Delete button there. Agents cannot delete notes directly — they must archive first.

@@ -1,0 +1,5 @@
+Permanently delete one note by ID.
+
+Only archived notes can be permanently deleted. Active notes must be archived first using note_archive.
+
+To delete an active note: call note_archive first, then note_delete.

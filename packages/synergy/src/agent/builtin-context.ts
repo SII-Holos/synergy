@@ -168,6 +168,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_search: "allow",
         note_write: "allow",
         note_edit: "allow",
+        note_archive: "allow",
+        note_delete: "allow",
       }),
     )
   }
