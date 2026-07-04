@@ -4,7 +4,12 @@ import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
-import { sanitizePromptStateValue, sanitizePromptValue } from "./prompt-sanitize"
+import {
+  sanitizeContextItemsValue,
+  sanitizePromptContextValue,
+  sanitizePromptStateValue,
+  sanitizePromptValue,
+} from "./prompt-sanitize"
 
 interface PartBase {
   content: string
@@ -133,6 +138,41 @@ export function sanitizePrompt(value: unknown): Prompt {
   return sanitizePromptValue(value) as unknown as Prompt
 }
 
+export type PromptContextSnapshot = {
+  activeTab: boolean
+  items: ContextItem[]
+}
+
+export function keyForContextItem(item: ContextItem) {
+  if (item.type !== "file") return item.type
+  const startLine = item.selection?.startLine
+  const startChar = item.selection?.startChar
+  const endLine = item.selection?.endLine
+  const endChar = item.selection?.endChar
+  return `${item.type}:${item.path}:${startLine}:${startChar}:${endLine}:${endChar}`
+}
+
+export function sanitizeContextItems(value: unknown): ContextItem[] {
+  const items = sanitizeContextItemsValue(value) as unknown as ContextItem[]
+  const seen = new Set<string>()
+  const result: ContextItem[] = []
+  for (const item of items) {
+    const key = keyForContextItem(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ ...item, selection: cloneSelection(item.selection) })
+  }
+  return result
+}
+
+export function sanitizePromptContext(value: unknown): PromptContextSnapshot {
+  const context = sanitizePromptContextValue(value)
+  return {
+    activeTab: context.activeTab,
+    items: sanitizeContextItems(context.items),
+  }
+}
+
 const WORKSPACE_KEY = "__workspace__"
 const MAX_PROMPT_SESSIONS = 20
 
@@ -165,13 +205,6 @@ function createPromptSession(dir: string, id: string | undefined) {
     }),
   )
 
-  function keyForItem(item: ContextItem) {
-    if (item.type !== "file") return item.type
-    const start = item.selection?.startLine
-    const end = item.selection?.endLine
-    return `${item.type}:${item.path}:${start}:${end}`
-  }
-
   return {
     ready,
     current: createMemo(() => store.prompt),
@@ -187,9 +220,21 @@ function createPromptSession(dir: string, id: string | undefined) {
         setStore("context", "activeTab", false)
       },
       add(item: ContextItem) {
-        const key = keyForItem(item)
+        const sanitized = sanitizeContextItems([item])[0]
+        if (!sanitized) return
+        const key = keyForContextItem(sanitized)
         if (store.context.items.find((x) => x.key === key)) return
-        setStore("context", "items", (items) => [...items, { key, ...item }])
+        setStore("context", "items", (items) => [...items, { key, ...sanitized }])
+      },
+      set(context: PromptContextSnapshot) {
+        const next = sanitizePromptContext(context)
+        setStore("context", {
+          activeTab: next.activeTab,
+          items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })),
+        })
+      },
+      reset() {
+        setStore("context", { activeTab: true, items: [] })
       },
       remove(key: string) {
         setStore("context", "items", (items) => items.filter((x) => x.key !== key))
@@ -206,6 +251,13 @@ function createPromptSession(dir: string, id: string | undefined) {
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
+      })
+    },
+    resetDraft() {
+      batch(() => {
+        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+        setStore("cursor", 0)
+        setStore("context", { activeTab: true, items: [] })
       })
     },
   }
@@ -269,10 +321,13 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
         addActive: () => session().context.addActive(),
         removeActive: () => session().context.removeActive(),
         add: (item: ContextItem) => session().context.add(item),
+        set: (context: PromptContextSnapshot) => session().context.set(context),
+        reset: () => session().context.reset(),
         remove: (key: string) => session().context.remove(key),
       },
       set: (prompt: Prompt, cursorPosition?: number) => session().set(prompt, cursorPosition),
       reset: () => session().reset(),
+      resetDraft: () => session().resetDraft(),
     }
   },
 })

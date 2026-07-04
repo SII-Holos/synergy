@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { sanitizePromptValue } from "./prompt-sanitize"
+import { sanitizePromptContextValue, sanitizePromptValue } from "./prompt-sanitize"
 
 describe("prompt sanitization", () => {
   test("removes legacy image parts and data URL attachments", () => {
@@ -50,5 +50,25 @@ describe("prompt sanitization", () => {
       },
     ])
     expect(JSON.stringify(prompt)).not.toContain("data:image")
+  })
+
+  test("sanitizes valid context items and drops invalid ones", () => {
+    const context = sanitizePromptContextValue({
+      activeTab: false,
+      items: [
+        { type: "file", path: "src/app.ts", selection: { startLine: 1, startChar: 2, endLine: 3, endChar: 4 } },
+        { type: "file", path: "" },
+        { type: "note", noteId: "nte_1" },
+      ],
+    })
+
+    expect(context).toEqual({
+      activeTab: false,
+      items: [{ type: "file", path: "src/app.ts", selection: { startLine: 1, startChar: 2, endLine: 3, endChar: 4 } }],
+    })
+  })
+
+  test("defaults malformed context to active tab with no explicit items", () => {
+    expect(sanitizePromptContextValue("bad")).toEqual({ activeTab: true, items: [] })
   })
 })

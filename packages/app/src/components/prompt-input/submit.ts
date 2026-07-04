@@ -33,6 +33,7 @@ import {
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
+import { createPromptDraftSnapshot } from "@/utils/prompt"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import {
   SessionStartProgressDialog,
@@ -147,6 +148,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const notes = input.noteAttachments().slice()
     const sessions = input.sessionAttachments().slice()
     const mode = input.store.mode
+    const currentContext = {
+      activeTab: prompt.context.activeTab(),
+      items: prompt.context.items(),
+    }
+    const draftSnapshot = createPromptDraftSnapshot({
+      prompt: currentPrompt,
+      context: currentContext,
+      activeFile: input.activeFile(),
+    })
 
     const blueprintSlot = input.localArmedLoop()
     if (
@@ -311,19 +321,20 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
 
     const clearInput = () => {
-      prompt.reset()
+      prompt.resetDraft()
       input.setStore("mode", "normal")
       input.setStore("popover", null)
       input.setLocalArmedLoop(null)
     }
 
     const restoreInput = () => {
-      prompt.set(currentPrompt, inlineLength(currentPrompt))
+      prompt.set(draftSnapshot.prompt, inlineLength(draftSnapshot.prompt))
+      prompt.context.set(draftSnapshot.context)
       input.setStore("mode", mode)
       input.setStore("popover", null)
       requestAnimationFrame(() => {
         input.editor().focus()
-        setCursorPosition(input.editor(), inlineLength(currentPrompt))
+        setCursorPosition(input.editor(), inlineLength(draftSnapshot.prompt))
         input.queueScroll()
       })
     }
@@ -634,6 +645,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })) as unknown as Part[])
       : []
 
+    const userMessageMetadata = {
+      ...optimisticPlanModeMetadata,
+      promptDraft: draftSnapshot,
+    }
+
     const optimisticMessage: Message | undefined = messageID
       ? {
           id: messageID,
@@ -642,7 +658,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           time: { created: Date.now() },
           agent,
           model,
-          ...(optimisticPlanModeMetadata ? { metadata: optimisticPlanModeMetadata } : {}),
+          metadata: userMessageMetadata,
         }
       : undefined
 
@@ -699,6 +715,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         ...(messageID ? { messageID } : {}),
         parts: requestParts,
         variant,
+        metadata: { promptDraft: draftSnapshot },
       })
       .then((result) => {
         closeStartProgress()

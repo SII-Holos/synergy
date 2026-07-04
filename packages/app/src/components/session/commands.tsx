@@ -7,7 +7,7 @@ import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
-import { extractPromptFromParts } from "@/utils/prompt"
+import { extractPromptDraft } from "@/utils/prompt"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -210,8 +210,12 @@ export function useSessionCommands(params: {
         await sdk.client.session.rollback({ sessionID, numTurns: 1 })
         const parts = sync.data.part[message.id]
         if (parts) {
-          const restored = extractPromptFromParts(parts, { directory: sdk.directory })
-          prompt.set(restored)
+          const restored = extractPromptDraft({ message, parts, directory: sdk.directory })
+          prompt.set(
+            restored.prompt,
+            restored.prompt.reduce((total, part) => total + ("content" in part ? part.content.length : 0), 0),
+          )
+          prompt.context.set(restored.context)
         }
         const priorMessage = userMessages().findLast((x) => x.id < message.id)
         setActiveMessage(priorMessage)
@@ -228,7 +232,7 @@ export function useSessionCommands(params: {
         const sessionID = routeParams.id
         if (!sessionID) return
         await sdk.client.session.unrollback({ sessionID })
-        prompt.reset()
+        prompt.resetDraft()
         setActiveMessage(userMessages().at(-1))
       },
     },
