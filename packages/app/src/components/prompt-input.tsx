@@ -121,8 +121,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
-  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!effectiveActiveLoopID())
-  const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -184,6 +182,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sessionLoop: sessionLoop(),
     }),
   )
+  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!effectiveActiveLoopID())
+  const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
 
   const getBlueprintSlotStatusLabel = (status: string) => {
     switch (status) {
