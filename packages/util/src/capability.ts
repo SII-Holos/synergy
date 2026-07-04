@@ -146,7 +146,13 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     category: "runtime",
     severity: "medium",
     title: "Run remote-write shell commands",
-    description: "Can run commands that push, create, or modify remote state without local destruction.",
+    description: "Can modify existing remote state outside ordinary branch/PR publication workflows.",
+  },
+  shell_remote_publish: {
+    category: "runtime",
+    severity: "medium",
+    title: "Publish development changes",
+    description: "Can push explicit non-protected branches or create pull requests without destructive remote updates.",
   },
   shell_destructive: {
     category: "runtime",
@@ -372,6 +378,7 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "shell_read",
   "shell",
   "shell_remote_write",
+  "shell_remote_publish",
   "shell_destructive",
   "shell_hardline",
   "file_external_read",

@@ -66,7 +66,7 @@ function compatibilityTone(level?: SkillCompatibilityLevel) {
     case "compatible":
       return "workbench-selected-surface text-text-strong ring-border-base/20"
     case "partial":
-      return "bg-icon-warning-base/10 text-icon-warning-base ring-icon-warning-base/12"
+      return "bg-surface-inset-base text-text-base ring-icon-warning-base/22"
     default:
       return "bg-surface-inset-base text-text-weaker ring-border-base/25"
   }
@@ -697,8 +697,8 @@ function SkillDetailRow(props: { label: string; value: string; title?: string; m
 function SkillDetailList(props: { title: string; items: string[]; tone: "warning" | "danger" }) {
   const toneClass = () =>
     props.tone === "warning"
-      ? "bg-icon-warning-base/8 text-icon-warning-base ring-icon-warning-base/12"
-      : "bg-text-diff-delete-base/8 text-text-diff-delete-base ring-text-diff-delete-base/12"
+      ? "bg-surface-inset-base text-text-base ring-icon-warning-base/18"
+      : "bg-text-diff-delete-base/8 text-text-diff-delete-base ring-text-diff-delete-base/16"
 
   return (
     <div class={`skill-detail-notice ${toneClass()}`}>

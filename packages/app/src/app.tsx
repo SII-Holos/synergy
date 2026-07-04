@@ -21,6 +21,7 @@ import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
+import { DesktopThemeSync } from "@/components/desktop-theme-sync"
 
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
@@ -66,7 +67,11 @@ const Session = lazy(async () => {
   signalAppSurfaceReady()
   return session
 })
-const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
+const Loading = () => (
+  <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
+    Loading...
+  </div>
+)
 
 import { proxyPrefix } from "@/utils/proxy"
 
@@ -105,6 +110,7 @@ export function AppBaseProviders(props: ParentProps) {
     <MetaProvider>
       <Font />
       <ThemeProvider>
+        <DesktopThemeSync />
         <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
           <DialogProvider>
             <MarkedProvider>

@@ -33,6 +33,18 @@ export type BrowserNativeViewEvent =
   | { type: "native.console"; pageId: string; level: number; message: string; line?: number; sourceId?: string }
   | { type: "native.error"; pageId: string; code?: number; message: string; url?: string }
 
+export type DesktopThemeSource = "system" | "light" | "dark"
+export type DesktopThemeEffective = "light" | "dark"
+export type DesktopThemeSnapshot = {
+  source: DesktopThemeSource
+  effective: DesktopThemeEffective
+}
+export type DesktopThemeBridge = {
+  get(): Promise<DesktopThemeSnapshot | null>
+  set(source: DesktopThemeSource): Promise<DesktopThemeSnapshot | null>
+  onEvent?(listener: (event: { type: "theme"; snapshot: DesktopThemeSnapshot }) => void): () => void
+}
+
 export type DesktopUpdateMode = "auto" | "notify" | "manual" | "none"
 export type DesktopUpdatePhase =
   | "disabled"
@@ -131,6 +143,9 @@ export type Platform = {
 
   /** Desktop window controls bridge, provided by the desktop shell. */
   desktopWindow?: DesktopWindowBridge
+
+  /** Desktop theme bridge, provided by the desktop shell. */
+  desktopTheme?: DesktopThemeBridge
 
   /** Clipboard bridge, provided by the desktop shell when browser clipboard permissions are not enough. */
   clipboard?: ClipboardBridge

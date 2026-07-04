@@ -6,6 +6,7 @@ import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protoco
 import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
 import { BrowserWebContentsControl, UnsupportedBrowserWebContentsCommandError } from "./browser-webcontents-control.js"
 import { browserProfilePartition } from "./browser-profile.js"
+import { desktopThemeBackground, type DesktopThemeSnapshot } from "./theme.js"
 
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
@@ -19,6 +20,7 @@ export interface BrowserWebRTCHostOptions {
   width?: number
   height?: number
   traceId?: string
+  theme: DesktopThemeSnapshot
 }
 
 interface BrowserHostPageState {
@@ -90,6 +92,11 @@ export class BrowserWebRTCHost {
     this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.pageId}`
   }
 
+  setTheme(theme: DesktopThemeSnapshot): void {
+    this.options = { ...this.options, theme }
+    if (this.browserWindow) this.browserWindow.setBackgroundColor(desktopThemeBackground(theme.effective))
+  }
+
   async start(): Promise<void> {
     this.closed = false
     const width = this.options.width ?? 1280
@@ -102,7 +109,7 @@ export class BrowserWebRTCHost {
       height,
       title: this.browserWindowTitle,
       skipTaskbar: true,
-      backgroundColor: "#111214",
+      backgroundColor: desktopThemeBackground(this.options.theme.effective),
       webPreferences: {
         partition: browserProfilePartition(this.options),
         contextIsolation: true,

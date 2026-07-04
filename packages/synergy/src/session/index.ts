@@ -241,6 +241,9 @@ export namespace Session {
       archived: !!session.time.archived,
       parentID: session.parentID,
       endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+      completionNotice: {
+        unread: session.completionNotice.unread,
+      },
     }
   }
 
@@ -292,6 +295,9 @@ export namespace Session {
     superplan?: SuperPlanSessionInfoType
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
+    completionNotice?: {
+      silent?: boolean
+    }
   }) {
     const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
@@ -303,6 +309,10 @@ export namespace Session {
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
     const controlProfile = input?.parentID ? undefined : input?.controlProfile
+    const completionNotice = {
+      unread: false,
+      silent: input?.completionNotice?.silent ?? parent?.completionNotice.silent ?? false,
+    }
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
@@ -332,6 +342,7 @@ export namespace Session {
       cortex: input?.cortex,
       superplan: input?.superplan,
       workspace,
+      completionNotice,
       time: {
         created: createdAt,
         updated: createdAt,
@@ -542,6 +553,22 @@ export namespace Session {
     return withRuntimeInfo(info)
   })
 
+  export async function clearCompletionNotice(id: string) {
+    const session = await SessionManager.requireSession(id)
+    const scope = session.scope as Scope
+    const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+    const before = await Storage.read<Info>(key)
+    if (!before.completionNotice.unread) return withRuntimeInfo(before)
+
+    const result = await Storage.update<Info>(key, (draft) => {
+      draft.completionNotice.unread = false
+    })
+
+    await SessionNav.upsertNavEntry(toNavEntry(result))
+    await publishInfo(SessionEvent.Updated, result)
+    return withRuntimeInfo(result)
+  }
+
   export async function update(id: string, editor: (session: Info) => void) {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
@@ -563,7 +590,9 @@ export namespace Session {
     if (result.parentID) {
       await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     }
-    await SessionNav.upsertNavEntry(toNavEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result), {
+      preserveActivityAt: before.pendingReply === true && result.pendingReply === true,
+    })
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined

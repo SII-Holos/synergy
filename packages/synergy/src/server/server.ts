@@ -311,6 +311,7 @@ export namespace Server {
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
             else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
+            else if (err.name.startsWith("ProviderAuth")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }

@@ -14,7 +14,7 @@ import { useData } from "../context"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { DiffPreview } from "./tool/diff-preview"
 import { Message, Part } from "./message-part"
@@ -74,7 +74,22 @@ export type SessionTurnTimelineVisualKind =
   | "media-pending"
   | "tool-attachments"
 
-const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response..."
+const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
+
+export function providerPreludeElapsedLabel(started: number | undefined, now: number): string | undefined {
+  if (started == null) return undefined
+
+  const totalSeconds = Math.max(0, Math.floor((now - started) / 1000))
+  const seconds = totalSeconds % 60
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const minutes = totalMinutes % 60
+  const hours = Math.floor(totalMinutes / 60)
+  const mm = minutes.toString().padStart(2, "0")
+  const ss = seconds.toString().padStart(2, "0")
+
+  if (hours > 0) return `${hours}:${mm}:${ss}`
+  return `${mm}:${ss}`
+}
 
 function visibleAttachmentParts(files: AttachmentPart[] | undefined): AttachmentPart[] {
   return (files ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
@@ -252,10 +267,22 @@ function TimelineDisplay(props: { item: SessionTurnDisplayItem; serverUrl: strin
   return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
 }
 
-function ProviderPrelude(props: { text: string }) {
+function ProviderPrelude(props: { text: string; elapsed?: string }) {
   return (
-    <div data-component="provider-prelude" role="status" aria-live="polite">
-      {props.text}
+    <div data-component="provider-prelude" role="status" aria-live="polite" aria-label={props.text}>
+      <span data-slot="provider-prelude-text">{props.text}</span>
+      <Show when={props.elapsed}>
+        {(elapsed) => (
+          <>
+            <span data-slot="provider-prelude-separator" aria-hidden="true">
+              ·
+            </span>
+            <span data-slot="provider-prelude-time" aria-hidden="true">
+              {elapsed()}
+            </span>
+          </>
+        )}
+      </Show>
     </div>
   )
 }
@@ -453,6 +480,11 @@ export function SessionTurn(
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
   const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
+  const [providerPreludeNow, setProviderPreludeNow] = createSignal(Date.now())
+  const providerPreludeStarted = createMemo(() => message()?.time.created)
+  const providerPreludeElapsed = createMemo(() =>
+    providerPreludeElapsedLabel(providerPreludeStarted(), providerPreludeNow()),
+  )
   const showProviderPrelude = createMemo(() =>
     shouldShowProviderPrelude({
       working: working(),
@@ -461,6 +493,17 @@ export function SessionTurn(
       latestAssistantTimelineItems: latestAssistantTimelineItems(),
     }),
   )
+
+  createEffect(() => {
+    if (!showProviderPrelude()) {
+      setProviderPreludeNow(Date.now())
+      return
+    }
+
+    setProviderPreludeNow(Date.now())
+    const timer = setInterval(() => setProviderPreludeNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
+  })
 
   const autoScroll = createAutoScroll({
     working,
@@ -564,7 +607,10 @@ export function SessionTurn(
                         </For>
                         <Show when={showProviderPrelude()}>
                           <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
-                            <ProviderPrelude text={providerPreludeText(sessionStatus())} />
+                            <ProviderPrelude
+                              text={providerPreludeText(sessionStatus())}
+                              elapsed={providerPreludeElapsed()}
+                            />
                           </div>
                         </Show>
                         <Show when={!working() && hasDiffs()}>

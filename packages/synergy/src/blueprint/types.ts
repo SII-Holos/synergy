@@ -19,6 +19,7 @@ export const Info = z
     runMode: z.enum(["current", "new", "worktree"]).optional(),
     parentSessionID: z.string().optional(),
     firstPrompt: z.string().optional(),
+    userPrompt: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
     audit: z

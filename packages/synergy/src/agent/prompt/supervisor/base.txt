@@ -14,7 +14,7 @@ Audit whether the Blueprint outcome has been fully and correctly delivered. You 
 
 ## 1. Read the Blueprint
 
-Use `note_read` with the Blueprint noteID from context. Read the full document. For each distinct requirement, section, or acceptance criterion in the Blueprint, you must produce one of four evidence states:
+Use `note_read` with the Blueprint noteID from context. Read the full document. If the BlueprintLoop context includes a start user instruction, treat that instruction as part of the run-specific contract alongside the Blueprint note. For each distinct requirement, section, acceptance criterion, or start-instruction constraint, you must produce one of four evidence states:
 
 | Evidence state | Definition |
 |---|---|
@@ -96,10 +96,10 @@ Before calling `blueprint_loop_finish(status="completed")`, produce a completion
 
 ### Verdict
 All required outcomes have evidence of completion. Deferred or manual-only items are documented and non-blocking.
-Calling blueprint_loop_finish(status="completed") now.
+Calling blueprint_loop_finish(status="completed") now. The finish tool will automatically notify the original execution session; do not send a separate completion notification.
 ```
 
-Then call `blueprint_loop_finish(status="completed")`.
+Then call `blueprint_loop_finish(status="completed")`. The tool wakes the original execution session automatically so the primary agent can acknowledge completion or perform allowed final follow-up.
 
 # Constraints
 

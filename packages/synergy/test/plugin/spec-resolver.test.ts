@@ -5,6 +5,8 @@ import { pathToFileURL } from "url"
 import { tmpdir } from "../fixture/fixture"
 import { assertCanonicalPluginIdentity, importUrlForEntry, resolvePluginSpec } from "../../src/plugin/spec-resolver"
 
+const encoder = new TextEncoder()
+
 async function writePlugin(dir: string, id = "resolver-plugin") {
   await fs.mkdir(path.join(dir, "src"), { recursive: true })
   await Bun.write(
@@ -25,6 +27,56 @@ async function writePlugin(dir: string, id = "resolver-plugin") {
     JSON.stringify({ name: id, version: "0.1.0", type: "module", main: "./src/index.ts" }, null, 2),
   )
   await Bun.write(path.join(dir, "src", "index.ts"), `export default { id: "${id}", async init() { return {} } }\n`)
+}
+
+function tarHeader(name: string, content: Uint8Array): Uint8Array {
+  const header = new Uint8Array(512)
+  const writeString = (offset: number, length: number, value: string) => {
+    header.set(encoder.encode(value).slice(0, length), offset)
+  }
+  const writeOctal = (offset: number, length: number, value: number) => {
+    const text =
+      value
+        .toString(8)
+        .padStart(length - 1, "0")
+        .slice(-(length - 1)) + "\0"
+    writeString(offset, length, text)
+  }
+
+  writeString(0, 100, name)
+  writeOctal(100, 8, 0o644)
+  writeOctal(108, 8, 0)
+  writeOctal(116, 8, 0)
+  writeOctal(124, 12, content.byteLength)
+  writeOctal(136, 12, 0)
+  header.fill(0x20, 148, 156)
+  writeString(156, 1, "0")
+  writeString(257, 6, "ustar\0")
+  writeString(263, 2, "00")
+
+  let checksum = 0
+  for (const byte of header) checksum += byte
+  writeString(148, 8, checksum.toString(8).padStart(6, "0") + "\0 ")
+  return header
+}
+
+function tarGz(entries: Array<{ name: string; content: string }>): Uint8Array {
+  const chunks: Uint8Array[] = []
+  for (const entry of entries) {
+    const content = encoder.encode(entry.content)
+    chunks.push(tarHeader(entry.name, content), content)
+    const padding = (512 - (content.byteLength % 512)) % 512
+    if (padding) chunks.push(new Uint8Array(padding))
+  }
+  chunks.push(new Uint8Array(1024))
+  const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0)
+  const tar = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    tar.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return Bun.gzipSync(tar)
 }
 
 describe("resolvePluginSpec", () => {
@@ -65,6 +117,14 @@ describe("resolvePluginSpec", () => {
     expect(resolved.pkg).toBe("archive-plugin")
     expect(resolved.manifest.name).toBe("archive-plugin")
     expect(resolved.entryPath.endsWith(path.join("src", "index.ts"))).toBe(true)
+  })
+
+  test("rejects local plugin archives with unsafe entries before extraction", async () => {
+    await using tmp = await tmpdir()
+    const archivePath = path.join(tmp.path, "unsafe-plugin-0.1.0.synergy-plugin.tgz")
+    await Bun.write(archivePath, tarGz([{ name: "../plugin.json", content: "{}" }]))
+
+    await expect(resolvePluginSpec(pathToFileURL(archivePath).href, { install: false })).rejects.toThrow("unsafe path")
   })
 
   test("rejects plugin directories without plugin.json", async () => {

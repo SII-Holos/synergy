@@ -3,9 +3,12 @@ import { Auth } from "../../src/provider/api-key"
 import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { CopilotProvider } from "../../src/provider/copilot"
 import { MiniMaxProvider } from "../../src/provider/minimax"
+import { GitHubProvider } from "../../src/provider/github"
 
 const originalFetch = globalThis.fetch
 const originalSleep = Bun.sleep
+const originalGHToken = process.env.GH_TOKEN
+const originalGITHUBToken = process.env.GITHUB_TOKEN
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -32,9 +35,14 @@ async function reset() {
     CopilotProvider.PROVIDER_ID,
     CopilotProvider.ENTERPRISE_PROVIDER_ID,
     MiniMaxProvider.PROVIDER_ID,
+    GitHubProvider.PROVIDER_ID,
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
+  if (originalGHToken === undefined) delete process.env.GH_TOKEN
+  else process.env.GH_TOKEN = originalGHToken
+  if (originalGITHUBToken === undefined) delete process.env.GITHUB_TOKEN
+  else process.env.GITHUB_TOKEN = originalGITHUBToken
 }
 
 beforeEach(async () => {
@@ -181,6 +189,79 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
   )
 
   expect(models).toEqual(["gpt-5.4-mini", "claude-sonnet-4.6"])
+})
+
+test("github provider device login resolves managed token and reports account status", async () => {
+  const authorize = await GitHubProvider.authorizeDeviceCode(
+    asFetch(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith("/login/device/code")) {
+        const body = init?.body as URLSearchParams
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
+        expect(body.get("scope")).toBe(GitHubProvider.DEVICE_SCOPE)
+        return jsonResponse({
+          device_code: "device-github",
+          user_code: "GH-CODE",
+          verification_uri: "https://github.com/login/device",
+          interval: 1,
+          expires_in: 300,
+        })
+      }
+      if (url.endsWith("/login/oauth/access_token")) {
+        const body = init?.body as URLSearchParams
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
+        expect(body.get("device_code")).toBe("device-github")
+        return jsonResponse({ access_token: "github-managed-token" })
+      }
+      if (url === "https://api.github.com/user") {
+        const headers = new Headers(init?.headers)
+        expect(headers.get("authorization")).toBe("Bearer github-managed-token")
+        return jsonResponse({ login: "octocat", id: 1, html_url: "https://github.com/octocat" })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+  expect(authorize.method).toBe("auto")
+  if (authorize.method !== "auto") throw new Error("expected auto device flow")
+  expect(authorize.instructions).toBe("GH-CODE")
+  const login = await authorize.callback()
+  expect(login.type).toBe("success")
+  if (login.type !== "success" || !("key" in login)) throw new Error("expected api success")
+  expect(login.key).toBe("github-managed-token")
+  expect((login as any).metadata).toEqual({ account: { id: 1, login: "octocat", url: "https://github.com/octocat" } })
+
+  await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "github-managed-token" })
+  const resolved = await GitHubProvider.resolveToken()
+  expect(resolved).toMatchObject({
+    token: "github-managed-token",
+    source: "store",
+    authKind: "api_key",
+  })
+
+  const status = await GitHubProvider.status(
+    asFetch(async (_input, init) => {
+      const headers = new Headers(init?.headers)
+      expect(headers.get("authorization")).toBe("Bearer github-managed-token")
+      return jsonResponse({ login: "octocat", id: 1, html_url: "https://github.com/octocat" })
+    }),
+  )
+  expect(status).toMatchObject({
+    providerID: GitHubProvider.PROVIDER_ID,
+    status: "connected",
+    source: "store",
+    account: { login: "octocat" },
+  })
+})
+
+test("github provider resolves GH_TOKEN before stored credentials", async () => {
+  process.env.GH_TOKEN = "env-github-token"
+  await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-github-token" })
+  const resolved = await GitHubProvider.resolveToken()
+  expect(resolved).toMatchObject({
+    token: "env-github-token",
+    source: "env",
+  })
+  delete process.env.GH_TOKEN
 })
 
 test("minimax user-code oauth refreshes short tokens and injects bearer auth", async () => {

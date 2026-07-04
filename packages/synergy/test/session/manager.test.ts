@@ -6,6 +6,8 @@ import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { tmpdir } from "../fixture/fixture"
 import { Channel } from "../../src/channel"
+import { Bus } from "../../src/bus"
+import { SessionEvent } from "../../src/session/event"
 
 Log.init({ print: false })
 
@@ -138,6 +140,35 @@ describe("SessionManager.getSession", () => {
 
           const statuses = await SessionManager.listStatuses(scope.id)
           expect(statuses[session.id]).toBeUndefined()
+        },
+      })
+    })
+
+    test("release emits updated session info after clearing working state", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const updated: Session.Info[] = []
+          const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
+            if (event.properties.info.id === session.id) updated.push(event.properties.info as Session.Info)
+          })
+
+          try {
+            SessionManager.acquire(session.id)
+            await Session.update(session.id, (draft) => {
+              draft.pendingReply = true
+            })
+            expect(updated.at(-1)?.working?.status).toBe("busy")
+
+            await SessionManager.release(session.id)
+
+            expect(updated.at(-1)?.working).toBeUndefined()
+          } finally {
+            unsub()
+            SessionManager.unregisterRuntime(session.id)
+          }
         },
       })
     })

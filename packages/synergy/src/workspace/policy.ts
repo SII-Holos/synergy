@@ -2,6 +2,7 @@ import path from "path"
 import { realpathSync, lstatSync, readlinkSync } from "fs"
 import { Filesystem } from "../util/filesystem"
 import type { Scope } from "../scope"
+import { isPathContained } from "../util/path-contain"
 
 export interface WorkspacePolicyData {
   activeRoot: string
@@ -125,7 +126,7 @@ export class WorkspacePolicy {
       }
     }
 
-    const insideActive = !path.relative(activeRoot, resolved).startsWith("..")
+    const insideActive = isPathContained(activeRoot, resolved)
 
     if (insideActive) {
       return { boundary: "inside", confidence: "high", reason: "path is inside the active workspace" }
@@ -133,7 +134,7 @@ export class WorkspacePolicy {
 
     if (this.originalCheckout) {
       const oc = path.resolve(this.originalCheckout)
-      if (!path.relative(oc, resolved).startsWith("..")) {
+      if (isPathContained(oc, resolved)) {
         return {
           boundary: "outside",
           confidence: "high",

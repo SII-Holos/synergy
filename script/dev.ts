@@ -212,6 +212,7 @@ function desktopProcess(input: {
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const env: Record<string, string | undefined> = {
+    BUN_BIN: input.bunPath,
     SYNERGY_DESKTOP_CHANNEL: "dev",
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
   }

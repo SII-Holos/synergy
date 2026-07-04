@@ -1,5 +1,6 @@
 import path from "path"
 import { Global } from "@/global"
+import { isPathContained } from "@/util/path-contain"
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
@@ -80,8 +81,7 @@ export namespace Asset {
     if (!isValidId(id)) return undefined
     const assetDir = path.resolve(dir())
     const resolved = path.resolve(assetDir, id)
-    const relative = path.relative(assetDir, resolved)
-    if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined
+    if (!isPathContained(assetDir, resolved)) return undefined
     return resolved
   }
 

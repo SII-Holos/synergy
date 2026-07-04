@@ -1,7 +1,11 @@
 import fs from "fs"
 import os from "os"
 import path from "path"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginManifest,
+  normalizePluginArchiveEntry,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
 import {
   githubReleaseTag,
   githubReleaseAssetUrl,
@@ -133,6 +137,7 @@ export function resolveReleaseAssetUrls(input: {
 }
 
 function extractArchive(tarballPath: string): string {
+  validateArchiveEntries(tarballPath)
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-entry-"))
   const result = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", tmp], { stdout: "pipe", stderr: "pipe" })
   if (result.exitCode !== 0) {
@@ -140,6 +145,22 @@ function extractArchive(tarballPath: string): string {
     throw new Error(`Failed to inspect tarball${stderr ? `: ${stderr}` : ""}`)
   }
   return tmp
+}
+
+function validateArchiveEntries(tarballPath: string) {
+  const result = Bun.spawnSync(["tar", "-tzf", tarballPath], { stdout: "pipe", stderr: "pipe" })
+  if (result.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(result.stderr)
+    throw new Error(`Failed to inspect tarball${stderr ? `: ${stderr}` : ""}`)
+  }
+  for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+    try {
+      normalizePluginArchiveEntry(line)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Plugin tarball contains unsafe path: ${message}`)
+    }
+  }
 }
 
 export function readTarballManifest(tarballPath: string): PluginManifestType {

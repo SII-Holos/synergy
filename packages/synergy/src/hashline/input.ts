@@ -9,6 +9,7 @@ import { HL_FILE_HASH_EXAMPLES, HL_FILE_HASH_LENGTH, HL_FILE_HASH_SEP, HL_FILE_P
 import { parsePatch, parsePatchStreaming } from "./parser"
 import { Tokenizer } from "./tokenizer"
 import type { ApplyResult, BlockResolver, Edit, SplitOptions } from "./types"
+import { isPathContained } from "../util/path-contain"
 
 const TOKENIZER = new Tokenizer()
 
@@ -49,8 +50,7 @@ function normalizeHashlinePath(rawPath: string, cwd?: string): string {
   if (!cwd || !path.isAbsolute(unquoted)) return unquoted
   const relative = path.relative(path.resolve(cwd), path.resolve(unquoted))
   const normalizedRelative = relative.split(path.sep).join("/")
-  const isWithinCwd = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
-  return isWithinCwd ? normalizedRelative || "." : unquoted
+  return isPathContained(cwd, unquoted) ? normalizedRelative || "." : unquoted
 }
 
 interface RawSection {

@@ -2,6 +2,7 @@ import type { Argv } from "yargs"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { Installation } from "../../global/installation"
+import { DesktopInstallation } from "../../global/desktop-installation"
 import { Global } from "../../global"
 import { $ } from "bun"
 import fs from "fs/promises"
@@ -19,6 +20,8 @@ interface RemovalTargets {
   directories: Array<{ path: string; label: string; keep: boolean }>
   shellConfig: string | null
   binary: string | null
+  desktopCliLink: string | null
+  desktopPathEntry: string | null
 }
 
 export const UninstallCommand = {
@@ -96,8 +99,20 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
 
   const shellConfig = null
   const binary = null
+  let desktopCliLink: string | null = null
+  let desktopPathEntry: string | null = null
 
-  return { directories, shellConfig, binary }
+  if (method === "desktop") {
+    const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
+    const context = { platform: process.platform, execPath: process.execPath, realExecPath, env: process.env }
+    const cliLink = await DesktopInstallation.inspectCliLink(context)
+    if (cliLink.path && (cliLink.status === "healthy" || cliLink.status === "broken")) {
+      desktopCliLink = cliLink.path
+    }
+    desktopPathEntry = DesktopInstallation.launcherDirectory(context)
+  }
+
+  return { directories, shellConfig, binary, desktopCliLink, desktopPathEntry }
 }
 
 async function showRemovalSummary(targets: RemovalTargets, method: Installation.Method) {
@@ -124,6 +139,19 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
 
   if (targets.shellConfig) {
     prompts.log.info(`  ✓ Shell PATH in ${shortenPath(targets.shellConfig)}`)
+  }
+
+  if (targets.desktopCliLink) {
+    prompts.log.info(`  ✓ Desktop CLI link: ${shortenPath(targets.desktopCliLink)}`)
+  }
+
+  if (targets.desktopPathEntry) {
+    prompts.log.info(`  ✓ Desktop CLI PATH entry: ${shortenPath(targets.desktopPathEntry)}`)
+  }
+
+  if (method === "desktop") {
+    prompts.log.info(`  ○ Desktop app: ${DesktopInstallation.desktopRemovalHint(process.platform)}`)
+    return
   }
 
   if (method !== "unknown") {
@@ -175,7 +203,31 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     }
   }
 
-  if (method !== "unknown") {
+  if (targets.desktopCliLink) {
+    spinner.start("Removing Desktop CLI link...")
+    const err = await fs.rm(targets.desktopCliLink, { force: true }).catch((e) => e)
+    if (err) {
+      spinner.stop("Failed to remove Desktop CLI link", 1)
+      errors.push(`Desktop CLI link: ${err.message}`)
+    } else {
+      spinner.stop("Removed Desktop CLI link")
+    }
+  }
+
+  if (method === "desktop" && targets.desktopPathEntry && process.platform === "win32") {
+    spinner.start("Removing Desktop CLI PATH entry...")
+    const result = await DesktopInstallation.removeWindowsUserPathEntry(targets.desktopPathEntry).catch((e) => e)
+    if (result instanceof Error) {
+      spinner.stop("Failed to remove Desktop CLI PATH entry", 1)
+      errors.push(`Desktop CLI PATH entry: ${result.message}`)
+    } else if (result.removed) {
+      spinner.stop("Removed Desktop CLI PATH entry")
+    } else {
+      spinner.stop("Desktop CLI PATH entry was already absent")
+    }
+  }
+
+  if (method !== "unknown" && method !== "desktop") {
     const cmds: Record<string, string[]> = {
       npm: ["npm", "uninstall", "-g", "@ericsanchezok/synergy"],
       pnpm: ["pnpm", "uninstall", "-g", "@ericsanchezok/synergy"],

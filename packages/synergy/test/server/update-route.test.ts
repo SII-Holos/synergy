@@ -166,6 +166,34 @@ describe("server update route", () => {
     expect(spawned).toEqual([])
   })
 
+  test("reports Desktop-managed updater guidance for desktop install methods", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest([
+      "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy",
+      "server",
+      "--port",
+      "4096",
+    ])
+    setServerUpdateWorkerControlsForTest({
+      latestVersion: async () => "999.0.0",
+      installMethod: async () => "desktop",
+      spawn(command) {
+        spawned.push(command)
+      },
+    })
+
+    const app = testApp()
+    const response = await app.request("/global/update/check", { method: "POST" })
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.capability).toBe("managed")
+    expect(body.phase).toBe("error")
+    expect(body.updateAvailable).toBe(true)
+    expect(body.error).toBe("This service uses the Synergy Desktop runtime. Update it from the Desktop app.")
+    expect(spawned).toEqual([])
+  })
+
   test("does not start a worker for unsupported managed install methods", async () => {
     process.env.SYNERGY_DAEMON = "1"
     await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
@@ -188,6 +216,36 @@ describe("server update route", () => {
     const body = await response.json()
     expect(body.phase).toBe("error")
     expect(body.error).toBe("Managed service install method cannot be updated from Web.")
+    expect(spawned).toEqual([])
+  })
+
+  test("does not start a worker for Desktop-managed install methods", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest([
+      "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy",
+      "server",
+      "--port",
+      "4096",
+    ])
+    setServerUpdateWorkerControlsForTest({
+      latestVersion: async () => "999.0.0",
+      installMethod: async () => "desktop",
+      spawn(command) {
+        spawned.push(command)
+      },
+    })
+
+    const app = testApp()
+    const response = await app.request("/global/update/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: "999.0.0" }),
+    })
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.phase).toBe("error")
+    expect(body.error).toBe("This service uses the Synergy Desktop runtime. Update it from the Desktop app.")
     expect(spawned).toEqual([])
   })
 

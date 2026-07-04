@@ -183,7 +183,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     if (thinking) args.push("--thinking", thinking)
 
     // The prompt
-    const prompt = context.taskContext ? `${context.taskContext}\n\n${context.prompt}` : context.prompt
+    const prompt = [context.instructions, context.taskContext, context.prompt].filter(Boolean).join("\n\n")
     args.push("-m", prompt)
 
     return args

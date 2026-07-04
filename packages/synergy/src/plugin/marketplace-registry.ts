@@ -1,6 +1,7 @@
 import {
   PluginArtifact,
   PluginManifest,
+  normalizePluginArchiveEntry,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
 import {
@@ -482,25 +483,35 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  function checkRequiredTarballFiles(tarballPath: string) {
+  function inspectTarballEntries(tarballPath: string): Set<string> {
     const result = Bun.spawnSync(["tar", "-tzf", tarballPath], { stdout: "pipe", stderr: "pipe" })
     if (result.exitCode !== 0) {
       const stderr = new TextDecoder().decode(result.stderr)
       throw new Error(`Failed to inspect plugin archive${stderr ? `: ${stderr}` : ""}`)
     }
-    const files = new Set(
-      new TextDecoder()
-        .decode(result.stdout)
-        .split("\n")
-        .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
-        .filter(Boolean),
-    )
+    const files = new Set<string>()
+    for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+      let entry: string | undefined
+      try {
+        entry = normalizePluginArchiveEntry(line)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        throw new Error(`Remote plugin artifact contains unsafe path: ${message}`)
+      }
+      if (entry) files.add(entry)
+    }
+    return files
+  }
+
+  function checkRequiredTarballFiles(tarballPath: string) {
+    const files = inspectTarballEntries(tarballPath)
     for (const required of PluginArtifact.requiredFiles) {
       if (!files.has(required)) throw new Error(`Remote plugin artifact is missing ${required}`)
     }
   }
 
   async function extractArchive(tarballPath: string) {
+    inspectTarballEntries(tarballPath)
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-market-plugin-"))
     const result = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", dir], { stdout: "pipe", stderr: "pipe" })
     if (result.exitCode !== 0) {

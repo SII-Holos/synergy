@@ -1,28 +1,51 @@
-/* Session export dialog — dedicated styles */
+[data-slot="dialog-content"].dialog-session-export [data-slot="dialog-body"] {
+  flex: 0 1 auto;
+  overflow: visible;
+  padding: 0;
+}
 
-/* Body: scrollable content area with proper padding */
 .session-export-body {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 20px;
-  padding: 4px 24px 20px;
-  overflow-y: auto;
-  scrollbar-width: none;
+  gap: 18px;
+  padding: 0 24px 18px;
 }
 
-.session-export-body::-webkit-scrollbar {
-  display: none;
-}
-
-/* Session info card */
-.session-export-card {
+.session-export-summary {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
+  gap: 7px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
-  background: color-mix(in oklch, var(--surface-raised-base) 75%, transparent);
+  background: color-mix(in srgb, var(--dialog-control-bg) 58%, transparent);
+  padding: 14px 15px;
+  box-shadow:
+    inset 0 0 0 1px var(--dialog-border-weak),
+    0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent);
+}
+
+.session-export-summary-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size, 14px);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: var(--type-ui-row-title-line-height, 20px);
+}
+
+.session-export-summary-title span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-export-summary-icon {
+  flex: 0 0 auto;
+  color: var(--icon-weak);
 }
 
 .session-export-meta {
@@ -30,146 +53,61 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-  padding-left: 26px;
-  font-size: 11px;
+  padding-left: 25px;
   color: var(--text-weak);
-}
-
-.session-export-meta-dim {
-  color: var(--text-weaker);
-}
-
-/* Field group */
-.session-export-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  font-size: var(--type-ui-caption-size, 12px);
+  line-height: var(--type-ui-caption-line-height, 16px);
 }
 
 .session-export-label {
-  font-size: 12px;
-  font-weight: 500;
   color: var(--text-weak);
-  padding-left: 2px;
+  font-size: var(--type-ui-caption-size, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: var(--type-ui-caption-line-height, 16px);
 }
 
-/* Mode selector — three equal-width cards in a row */
 .session-export-mode-group {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.session-export-mode-option {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.session-export-mode-option:hover:not(.session-export-mode-option-active) {
-  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
-  background: var(--surface-raised-base);
-}
-
-.session-export-mode-option-active {
-  border-color: color-mix(in oklch, var(--text-interactive-base) 50%, transparent);
-  background: color-mix(in oklch, var(--text-interactive-base) 6%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--text-interactive-base) 20%, transparent);
-}
 .session-export-mode-title {
-  font-size: 13px;
-  font-weight: 500;
   color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size, 14px);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: var(--type-ui-row-title-line-height, 20px);
 }
 
-.session-export-mode-option-active .session-export-mode-title {
-  color: var(--text-interactive-base);
-}
 .session-export-mode-desc {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-weaker);
-}
-
-.session-export-mode-option-active .session-export-mode-desc {
   color: var(--text-weak);
+  font-size: var(--type-ui-caption-size, 12px);
+  line-height: var(--type-ui-caption-line-height, 16px);
 }
 
-/* Footer */
 .session-export-footer {
   display: flex;
-  justify-content: flex-end;
-  padding: 16px 24px;
-  border-top: 1px solid color-mix(in oklch, var(--border-base) 15%, transparent);
-  flex-shrink: 0;
-}
-
-/* Action button — card-style with icon + label + hint */
-.session-export-action {
-  display: flex;
-  width: min(100%, 240px);
-  flex-direction: column;
+  width: 100%;
   align-items: center;
-  gap: 4px;
-  padding: 14px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--dialog-border-weak);
+  padding: 16px 24px 24px;
 }
 
-.session-export-action:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--border-base) 50%, transparent);
-  background: var(--surface-raised-base);
-}
-
-.session-export-action:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 80ms;
-}
-
-.session-export-action:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.session-export-action-primary {
-  border-color: color-mix(in oklch, var(--text-interactive-base) 30%, transparent);
-  background: color-mix(in oklch, var(--text-interactive-base) 5%, transparent);
-}
-
-.session-export-action-primary:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--text-interactive-base) 50%, transparent);
-  background: color-mix(in oklch, var(--text-interactive-base) 10%, transparent);
-}
-.session-export-action-icon {
-  color: var(--text-weak);
-}
-
-.session-export-action-primary .session-export-action-icon {
-  color: var(--text-interactive-base);
-}
-.session-export-action-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.session-export-action-primary .session-export-action-label {
-  color: var(--text-interactive-base);
-}
-
-.session-export-action-hint {
-  font-size: 11px;
+.session-export-hint {
+  min-width: 0;
   color: var(--text-weaker);
-  text-align: center;
-  line-height: 1.3;
+  font-size: var(--type-ui-caption-size, 12px);
+  line-height: var(--type-ui-caption-line-height, 16px);
+}
+
+@media (max-width: 640px) {
+  .session-export-mode-group {
+    grid-template-columns: 1fr;
+  }
+
+  .session-export-footer {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 20px 20px;
+  }
 }

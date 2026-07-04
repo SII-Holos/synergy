@@ -30,6 +30,7 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
+import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -386,6 +387,17 @@ export namespace SessionInvoke {
           log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
         }
 
+        // Drain agent-update items (cortex task completions etc.) for mid-turn
+        // injection.  Materialized with guiding: true so they become synthetic
+        // user messages in the conversation without triggering a redundant
+        // reply cycle — the running turn processes them naturally next step.
+        const agentUpdateItems = await SessionInbox.drainAgentUpdates(sessionID)
+        if (agentUpdateItems.length > 0) {
+          const updates = await materializeInboxItems(sessionID, agentUpdateItems, { guiding: true })
+          msgs.push(...updates.userMessages)
+          log.info("drained agent updates into session", { sessionID, count: agentUpdateItems.length })
+        }
+
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
         if (legacyUserMails.length > 0) {
           const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
@@ -447,10 +459,12 @@ export namespace SessionInvoke {
             buildCortexExecutionContext(sessionID),
           ])
 
+          const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
+
           const context: ExternalAgent.TurnContext = {
             sessionID,
             prompt: MessageV2.extractText(lastUserParts!),
-            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
@@ -618,10 +632,16 @@ export namespace SessionInvoke {
           if (loop) {
             const isAuditSession = sessionBlueprint.loopRole === "audit" || session?.id === loop.auditSessionID
             const loopInstruction = isAuditSession
-              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"], inspect the execution evidence, and decide whether the Blueprint outcome is complete. If changes are required, call blueprint_loop_restart({ loopID: "${loop.id}", reason: "...", completed: "...", remaining: "...", instructions: "..." }). If complete, call blueprint_loop_finish({ loopID: "${loop.id}", status: "completed", summary: "..." }).`
+              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"] and audit the start user instruction when present. Inspect the execution evidence, and decide whether the Blueprint outcome is complete. If changes are required, call blueprint_loop_restart({ loopID: "${loop.id}", reason: "...", completed: "...", remaining: "...", instructions: "..." }). If complete, call blueprint_loop_finish({ loopID: "${loop.id}", status: "completed", summary: "..." }).`
               : agent.name === "synergy-max"
-                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
-                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+            const startUserInstruction = loop.userPrompt
+              ? [
+                  `Start user instruction: ${loop.userPrompt}`,
+                  `This start user instruction is run-specific contract for execution and audit.`,
+                ]
+              : []
             systemParts.push(
               [
                 "<blueprint-loop-context>",
@@ -631,6 +651,7 @@ export namespace SessionInvoke {
                 `Title: ${loop.title}`,
                 `Description: ${loop.description ?? "N/A"}`,
                 `Status: ${loop.status}`,
+                ...startUserInstruction,
                 "",
                 loopInstruction,
                 "</blueprint-loop-context>",
@@ -751,7 +772,7 @@ export namespace SessionInvoke {
         })
         toolResolveTimer.stop()
 
-        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
@@ -896,6 +917,9 @@ export namespace SessionInvoke {
     // on already-finished sessions and incorrectly mark them as pending resume.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
+      if (!abort.aborted && !draft.time.archived && !draft.completionNotice.silent) {
+        draft.completionNotice.unread = true
+      }
     })
 
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))

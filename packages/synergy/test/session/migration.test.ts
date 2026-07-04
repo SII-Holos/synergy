@@ -194,6 +194,72 @@ describe("session migrations", () => {
     })
   })
 
+  test("normalizes completion notices and rebuilds nav entries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const legacy = await Session.create({ title: "Legacy Notice" })
+        const preserved = await Session.create({ title: "Preserved Notice" })
+        const silent = await Session.create({ title: "Silent Notice" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+
+        const legacyKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(legacy.id))
+        const legacyInfo = await Storage.read<any>(legacyKey)
+        delete legacyInfo.completionNotice
+        await Storage.write(legacyKey, legacyInfo)
+
+        const preservedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(preserved.id))
+        await Storage.write(preservedKey, {
+          ...(await Storage.read<any>(preservedKey)),
+          completionNotice: { unread: true, silent: false },
+        })
+
+        const silentKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(silent.id))
+        await Storage.write(silentKey, {
+          ...(await Storage.read<any>(silentKey)),
+          completionNotice: { unread: true, silent: true },
+        })
+
+        await Storage.write(StoragePath.sessionNavIndex(scope), {
+          version: 1,
+          scopeID: tmpScope.id,
+          updatedAt: Date.now(),
+          entries: [
+            {
+              id: legacy.id,
+              scopeID: tmpScope.id,
+              scopeType: "project",
+              title: legacy.title,
+              category: "project",
+              lastActivityAt: legacy.time.updated,
+              pinned: 0,
+              archived: false,
+            },
+          ],
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260703-session-completion-notice")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        expect((await Storage.read<any>(legacyKey)).completionNotice).toEqual({ unread: false, silent: false })
+        expect((await Storage.read<any>(preservedKey)).completionNotice).toEqual({ unread: true, silent: false })
+        expect((await Storage.read<any>(silentKey)).completionNotice).toEqual({ unread: false, silent: true })
+
+        const nav = await Storage.read<any>(StoragePath.sessionNavIndex(scope))
+        expect(nav.entries.find((entry: any) => entry.id === legacy.id).completionNotice).toEqual({ unread: false })
+        expect(nav.entries.find((entry: any) => entry.id === preserved.id).completionNotice).toEqual({ unread: true })
+
+        await Session.remove(legacy.id)
+        await Session.remove(preserved.id)
+        await Session.remove(silent.id)
+      },
+    })
+  })
+
   test("migrates legacy file parts and artifact-only tool metadata to attachments", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

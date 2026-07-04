@@ -219,13 +219,24 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
+  const isSessionIdentityAnchor = (message: UserMessage) => {
+    const metadata = message.metadata
+    if (!metadata) return true
+    const source = metadata.source
+    if (metadata.guided === true && metadata.noReply === true) return false
+    if (metadata.mailbox === true || metadata.channelPush === true) return false
+    if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
+    if (source === "cortex" || source === "mailbox" || source === "agenda") return false
+    if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
+    return true
+  }
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () =>
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
-        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user)
+        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user) && isSessionIdentityAnchor(user)
       }) as UserMessage[],
     emptyUserMessages,
   )
@@ -242,13 +253,15 @@ function SessionPageContent() {
   )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
   const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
+  const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
   createEffect(
     on(
-      () => lastUserMessage()?.id,
+      () => [lastUserMessage()?.id, selectableAgentNames()] as const,
       () => {
         const msg = lastUserMessage()
         if (!msg) return
-        if (msg.agent) local.agent.set(msg.agent)
+        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
+        local.agent.set(msg.agent)
         if (msg.model) local.model.set(msg.model)
       },
     ),
@@ -871,14 +884,14 @@ function SessionPageContent() {
                         <Show
                           when={messagesReady()}
                           fallback={
-                            <div class="flex flex-col items-center justify-center h-full gap-3">
-                              <Spinner class="text-text-weak size-10" />
-                              <span class="text-text-weak text-sm">Loading conversation…</span>
+                            <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
+                              <Spinner class="size-10 text-text-weak" />
+                              <span class="text-sm text-text-weak">Loading conversation…</span>
                             </div>
                           }
                         >
-                          <div class="flex items-center justify-center h-full">
-                            <span class="text-text-weak text-sm">No messages yet</span>
+                          <div class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger">
+                            <span class="text-sm text-text-weak">No messages yet</span>
                           </div>
                         </Show>
                       }
@@ -886,7 +899,7 @@ function SessionPageContent() {
                       <Show
                         when={!mobileReview()}
                         fallback={
-                          <div class="relative h-full overflow-hidden">
+                          <div class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger">
                             <Show
                               when={diffsReady()}
                               fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}

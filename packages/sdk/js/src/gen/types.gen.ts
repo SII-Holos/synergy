@@ -447,6 +447,9 @@ export type SessionNavEntry = {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  completionNotice: {
+    unread: boolean
+  }
 }
 
 export type NavCursor = {
@@ -2674,6 +2677,11 @@ export type PermissionRule = {
 
 export type PermissionRuleset = Array<PermissionRule>
 
+export type SessionCompletionNotice = {
+  unread: boolean
+  silent: boolean
+}
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -2786,6 +2794,7 @@ export type Session = {
     expandedGroups?: Array<string>
     activatedTools?: Array<string>
   }
+  completionNotice?: SessionCompletionNotice
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -3103,7 +3112,11 @@ export type AttachmentPartInput = {
 export type UserMessage = {
   id: string
   sessionID: string
+  visible?: boolean
+  includeInContext?: boolean
+  rootID?: string
   role: "user"
+  isRoot?: boolean
   time: {
     created: number
   }
@@ -3175,6 +3188,9 @@ export type ApiError = {
 export type AssistantMessage = {
   id: string
   sessionID: string
+  visible?: boolean
+  includeInContext?: boolean
+  rootID?: string
   role: "assistant"
   time: {
     created: number
@@ -3734,6 +3750,22 @@ export type ProviderAuthMethod = {
   label: string
 }
 
+export type GitHubAccount = {
+  login: string
+  id?: number
+  url?: string
+}
+
+export type GitHubAuthStatus = {
+  providerID: "github"
+  status: "connected" | "not_configured" | "invalid" | "unverified"
+  source?: "env" | "store"
+  authKind?: "api_key" | "oauth"
+  account?: GitHubAccount
+  failureCode?: string
+  updatedAt?: number
+}
+
 export type ProviderAuthAuthorization = {
   url: string
   method: "auto" | "code"
@@ -3746,7 +3778,7 @@ export type SkillList = {
     description: string
     location: string
     builtin?: boolean
-    source?: "builtin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
+    source?: "builtin" | "plugin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
     scope: "builtin" | "project" | "global" | "workspace" | "external"
     compatibility?: {
       level: "native" | "compatible" | "partial"
@@ -3755,6 +3787,8 @@ export type SkillList = {
     }
     entryFile?: string
     baseDir?: string
+    pluginId?: string
+    pluginName?: string
     references?: Array<string>
     scripts?: Array<string>
   }>
@@ -4271,6 +4305,7 @@ export type BlueprintLoopInfo = {
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
+  userPrompt?: string
   error?: string
   loopIndex?: number
   audit?: {
@@ -7299,6 +7334,9 @@ export type SessionCreateData = {
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
+    completionNotice?: {
+      silent?: boolean
+    }
   }
   path?: never
   query?: {
@@ -7429,6 +7467,9 @@ export type SessionUpdateData = {
     title?: string
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    completionNotice?: {
+      unread: false
+    }
     time?: {
       archived?: number
     }
@@ -9094,6 +9135,55 @@ export type ProviderAuthResponses = {
 }
 
 export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
+
+export type ProviderAuthGithubStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/status"
+}
+
+export type ProviderAuthGithubStatusResponses = {
+  /**
+   * GitHub auth status
+   */
+  200: GitHubAuthStatus
+}
+
+export type ProviderAuthGithubStatusResponse =
+  ProviderAuthGithubStatusResponses[keyof ProviderAuthGithubStatusResponses]
+
+export type ProviderAuthGithubLogoutData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github"
+}
+
+export type ProviderAuthGithubLogoutErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderAuthGithubLogoutError = ProviderAuthGithubLogoutErrors[keyof ProviderAuthGithubLogoutErrors]
+
+export type ProviderAuthGithubLogoutResponses = {
+  /**
+   * GitHub credentials removed
+   */
+  200: boolean
+}
+
+export type ProviderAuthGithubLogoutResponse =
+  ProviderAuthGithubLogoutResponses[keyof ProviderAuthGithubLogoutResponses]
 
 export type ProviderOauthAuthorizeData = {
   body?: {
