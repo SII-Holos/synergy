@@ -396,30 +396,60 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           closeStartProgress()
           showToast({
             type: "error",
-            title: "Failed to send command",
+            title: "Failed to send shell command",
             description: errorMessage(err),
           })
+          rollbackCreatedSession()
           restoreInput()
         })
       return
     }
 
-    if (mode === "command") {
-      const [cmd, ...args] = text.split(/\s+/)
-      if (cmd) {
+    if (text.startsWith("/")) {
+      const [cmdName, ...args] = text.split(" ")
+      const commandName = cmdName.slice(1)
+      const customCommand = sync.data.command.find((c) => c.name === commandName)
+      if (customCommand) {
         clearInput()
-        client.command
-          .execute({
+        client.session
+          .command({
             sessionID: activeSession.id,
+            command: commandName,
+            arguments: args.join(" "),
             agent,
-            model,
-            command: cmd,
-            args,
-            noteAttachments: notes.map((n) => ({
-              noteId: n.noteId,
-              title: n.title,
-              updatedAt: n.updatedAt,
-            })),
+            model: `${model.providerID}/${model.modelID}`,
+            variant,
+            parts: [
+              ...attachments.map(createUploadedAttachmentInputPart),
+              ...notes.map((attachment) => ({
+                id: Identifier.ascending("part"),
+                type: "attachment" as const,
+                mime: "text/plain",
+                url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
+                filename: `${attachment.title || "Untitled"}.md`,
+                model: { mode: "content" as const, text: formatNoteContent(attachment) },
+                metadata: {
+                  kind: "note",
+                  noteId: attachment.noteId,
+                  title: attachment.title || "Untitled",
+                },
+              })),
+              ...sessions.map((attachment) => ({
+                id: Identifier.ascending("part"),
+                type: "attachment" as const,
+                mime: "text/plain",
+                url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
+                filename: `${attachment.title || "session"}.session.txt`,
+                model: { mode: "content" as const, text: formatSessionReference(attachment) },
+                metadata: {
+                  kind: "session",
+                  sessionId: attachment.sessionId,
+                  directory: attachment.directory,
+                  title: attachment.title || "Untitled",
+                  updatedAt: attachment.updatedAt,
+                },
+              })),
+            ],
           })
           .then(() => {
             closeStartProgress()
