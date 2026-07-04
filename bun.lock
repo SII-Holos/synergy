@@ -142,10 +142,10 @@
       "name": "@ericsanchezok/synergy-plugin",
       "version": "1.1.26",
       "dependencies": {
+        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@tsconfig/node22": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",
