@@ -181,8 +181,8 @@
   overflow-y: auto;
   padding: 36px 48px 32px;
   box-sizing: border-box;
-  width: min(100%, 1080px);
-  max-width: 1080px;
+  width: min(100%, 860px);
+  max-width: 860px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-base) 46%, transparent) transparent;
   display: flex;
