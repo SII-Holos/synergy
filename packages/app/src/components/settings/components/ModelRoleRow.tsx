@@ -194,7 +194,7 @@ export function ModelRoleRow(props: {
             )}
           </Show>
         </KobaltePopover>
-        <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
+        <Show when={props.availableVariants.length > 0 && props.onVariantChange && props.summary.role}>
           <select
             class="settings-model-variant"
             value={props.roleVariant ?? ""}
