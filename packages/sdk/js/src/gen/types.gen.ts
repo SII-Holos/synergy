@@ -3460,6 +3460,7 @@ export type TextPartInput = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  origin?: "user" | "system"
   time?: {
     start: number
     end?: number
@@ -3549,6 +3550,13 @@ export type AttachmentPartInput = {
   }
 }
 
+export type OriginUser = {
+  type: string
+  sessionID?: string
+  label?: string
+  detail?: string
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -3575,6 +3583,7 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
+  origin?: OriginUser
   metadata?: {
     [key: string]: unknown
   }
@@ -3673,6 +3682,7 @@ export type TextPart = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  origin?: "user" | "system"
   time?: {
     start: number
     end?: number

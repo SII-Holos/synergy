@@ -24737,6 +24737,10 @@
           "ignored": {
             "type": "boolean"
           },
+          "origin": {
+            "type": "string",
+            "enum": ["user", "system"]
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -24996,6 +25000,24 @@
         },
         "required": ["type", "mime", "url"]
       },
+      "OriginUser": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": ["type"]
+      },
       "UserMessage": {
         "type": "object",
         "properties": {
@@ -25077,6 +25099,9 @@
           },
           "variant": {
             "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/OriginUser"
           },
           "metadata": {
             "type": "object",
@@ -25381,6 +25406,10 @@
           },
           "ignored": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["user", "system"]
           },
           "time": {
             "type": "object",
