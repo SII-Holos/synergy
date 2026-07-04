@@ -30,6 +30,7 @@ export function scopeKeyForNavEntry(entry: Pick<NavEntry, "scopeID" | "scopeType
 }
 
 export function resolveSessionVisualState(store: SessionVisualStore | undefined, entry: NavEntry): SessionVisualState {
+  const unread = entry.completionNotice?.unread
   if (store) {
     const status = store.session_status[entry.id]
     const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
@@ -44,7 +45,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     if (running || childTasksRunning)
       return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
     if (fullSession?.workspace?.type === "git_worktree") {
-      const unread = entry.completionNotice.unread
       return {
         icon: getSemanticIcon("workspace.worktree"),
         label: `Worktree session${unread ? "; response ready" : ""}`,
@@ -53,7 +53,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
       }
     }
     if (entry.parentID) {
-      const unread = entry.completionNotice.unread
       return {
         icon: getSemanticIcon("session.child"),
         label: `Child session${unread ? "; response ready" : ""}`,
@@ -64,7 +63,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   }
 
   if (entry.category === "background") {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.background"),
       label: `Background session${unread ? "; response ready" : ""}`,
@@ -73,7 +71,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   if (entry.category === "channel") {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.channel"),
       label: `Channel session${unread ? "; response ready" : ""}`,
@@ -82,7 +79,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   if (entry.category === "home") {
-    const unread = entry.completionNotice.unread
     return {
       icon: "home",
       label: `Home session${unread ? "; response ready" : ""}`,
@@ -91,7 +87,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.default"),
       label: `Session${unread ? "; response ready" : ""}`,

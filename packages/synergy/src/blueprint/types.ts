@@ -35,6 +35,7 @@ export const Info = z
       updated: z.number(),
       completed: z.number().optional(),
     }),
+    model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
   })
   .meta({ ref: "BlueprintLoopInfo" })
 
