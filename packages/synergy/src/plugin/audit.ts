@@ -15,6 +15,7 @@ export type AuditEventType =
   | "update_blocked"
   | "update_failed_rolled_back"
   | "capability_denied"
+  | "plugin_disabled"
   | "runtime_started"
   | "runtime_killed"
   | "runtime_crashed"

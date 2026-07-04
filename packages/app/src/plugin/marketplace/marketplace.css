@@ -296,6 +296,11 @@
   color: var(--text-success);
 }
 
+.plugin-marketplace-state-disabled {
+  background: var(--surface-warning-soft);
+  color: var(--text-warning);
+}
+
 .plugin-marketplace-install-dot {
   position: absolute;
   top: 0.75rem;

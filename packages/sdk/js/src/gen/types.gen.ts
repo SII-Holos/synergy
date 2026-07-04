@@ -4962,6 +4962,9 @@ export type PluginUiContribution = {
   name?: string
   version: string
   trustTier: "declarative" | "trusted-import" | "sandbox"
+  health?: "loaded" | "disabled"
+  disabledReason?: string
+  disabledPhase?: string
   ui?: {
     [key: string]: unknown
   } | null
@@ -4995,6 +4998,9 @@ export type PluginStatus = {
     verifiedIntegrity: boolean
     reason: string
   }
+  health: "loaded" | "disabled"
+  disabledReason?: string
+  disabledPhase?: "resolve" | "load" | "manifest" | "hook" | "runtime" | "doctor"
   loaded: boolean
   loadError?: string
   manifestValid: boolean
@@ -5067,6 +5073,10 @@ export type ApiPluginInfo = {
   capabilities: Array<string>
   risk: "low" | "medium" | "high"
   permissionsSummary: Array<ApiPluginPermissionItem>
+  health?: "loaded" | "disabled"
+  loaded?: boolean
+  disabledReason?: string
+  disabledPhase?: string
 }
 
 export type ApiPluginDetail = {
@@ -5085,6 +5095,10 @@ export type ApiPluginDetail = {
   capabilities: Array<string>
   risk: "low" | "medium" | "high"
   permissionsSummary: Array<ApiPluginPermissionItem>
+  health?: "loaded" | "disabled"
+  loaded?: boolean
+  disabledReason?: string
+  disabledPhase?: string
 }
 
 export type PluginRuntimeInfo = {

@@ -25,6 +25,16 @@ synergy plugin add npm-package-name
 synergy plugin add github:owner/repo
 ```
 
+Packed archive installs are extracted into a staging directory, validated for `plugin.json` and the runtime entry, then promoted into the archive cache. If a cached archive directory is present but invalid, Synergy rebuilds it from the source archive when possible. Plugin load, manifest, hook, and runtime failures disable only that plugin; built-in tools, other plugins, MCP, and sessions continue running. Plugin list/status APIs expose disabled plugins with `health: "disabled"` and a disabled reason.
+
+Use the doctor command to inspect and repair stale plugin state:
+
+```bash
+synergy plugin doctor --fix
+```
+
+Doctor repairs duplicate config specs, stale lock entries, missing archive cache manifests, missing lockfile resolved paths, and runtime state entries that point at removed plugin directories or entry files. If the source archive is unavailable or invalid, doctor leaves the archive issue marked unfixed so the plugin can be reinstalled from a valid source.
+
 ## Descriptor Contract
 
 Plugin runtime code exports a `PluginDescriptor` object:

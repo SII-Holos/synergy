@@ -28,6 +28,7 @@ async function pluginDirFor(pluginId: string): Promise<string> {
   if (existing) return existing
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${pluginId}-`))
+  await fs.mkdir(path.join(dir, "runtime"), { recursive: true })
   await Bun.write(
     path.join(dir, "plugin.json"),
     JSON.stringify(
@@ -41,6 +42,7 @@ async function pluginDirFor(pluginId: string): Promise<string> {
       2,
     ),
   )
+  await Bun.write(path.join(dir, "runtime", "index.js"), "export default {}\n")
   pluginDirs.set(pluginId, dir)
   return dir
 }
@@ -392,17 +394,22 @@ describe("PluginRuntimeSupervisor", () => {
   describe("restoreRuntimeState", () => {
     test("restores entries from persistence", async () => {
       let loaded = false
+      const pluginId = "restored-plugin"
+      const pluginDir = await pluginDirFor(pluginId)
+      const entryPath = path.join(pluginDir, "runtime", "index.js")
       const persist: RuntimeStatePersistence = {
         save: async () => {},
         load: async () => {
           loaded = true
           return [
             {
-              pluginId: "restored-plugin",
+              pluginId,
               mode: "process",
               state: "stopped",
               restarts: 0,
               startedAt: Date.now(),
+              pluginDir,
+              entryPath,
             },
           ]
         },
@@ -412,8 +419,50 @@ describe("PluginRuntimeSupervisor", () => {
       await supervisor.restoreRuntimeState()
 
       expect(loaded).toBe(true)
-      expect(registry.get("restored-plugin")?.pluginId).toBe("restored-plugin")
-      expect(registry.get("restored-plugin")?.state).toBe("stopped")
+      expect(registry.get(pluginId)?.pluginId).toBe(pluginId)
+      expect(registry.get(pluginId)?.state).toBe("stopped")
+    })
+
+    test("skips persisted entries with missing plugin manifest or entry path", async () => {
+      const pluginId = "valid-restored-plugin"
+      const pluginDir = await pluginDirFor(pluginId)
+      const entryPath = path.join(pluginDir, "runtime", "index.js")
+      const persist: RuntimeStatePersistence = {
+        save: async () => {},
+        load: async () => [
+          {
+            pluginId,
+            mode: "process",
+            state: "ready",
+            restarts: 0,
+            pluginDir,
+            entryPath,
+          },
+          {
+            pluginId: "missing-manifest",
+            mode: "process",
+            state: "ready",
+            restarts: 0,
+            pluginDir: path.join(pluginDir, "missing"),
+            entryPath,
+          },
+          {
+            pluginId: "missing-entry",
+            mode: "process",
+            state: "ready",
+            restarts: 0,
+            pluginDir,
+            entryPath: path.join(pluginDir, "runtime", "missing.js"),
+          },
+        ],
+      }
+      const { supervisor, registry } = createSupervisor({ persist })
+
+      await supervisor.restoreRuntimeState()
+
+      expect(registry.get(pluginId)?.pluginId).toBe(pluginId)
+      expect(registry.get("missing-manifest")).toBeUndefined()
+      expect(registry.get("missing-entry")).toBeUndefined()
     })
 
     test("is a no-op when persistence returns empty", async () => {

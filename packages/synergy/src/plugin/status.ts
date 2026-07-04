@@ -2,10 +2,23 @@ import z from "zod"
 import path from "path"
 import fs from "fs/promises"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { getPlugin, getLoadedPlugins, type LoadedPlugin } from "./loader"
-import * as ManifestReader from "./manifest-reader"
+import {
+  getPlugin,
+  getLoadedPlugins,
+  getDisabledPlugin,
+  getDisabledPlugins,
+  type LoadedPlugin,
+  type DisabledPlugin,
+} from "./loader"
 import * as Capability from "./capability"
-import { findPluginLockEntry, resolveInstalledPluginPolicy, type PluginTrustDecision, type PluginSource } from "./trust"
+import {
+  defaultPluginTrustDecision,
+  derivePluginSource,
+  findPluginLockEntry,
+  resolveInstalledPluginPolicy,
+  type PluginTrustDecision,
+  type PluginSource,
+} from "./trust"
 import { PluginToolId } from "./ids"
 import { Installation } from "../global/installation"
 import { getRuntime } from "../plugin-runtime/supervisor"
@@ -25,6 +38,9 @@ export interface PluginStatus {
   version?: string
   source: PluginSource
   trust: PluginTrustDecision
+  health: "loaded" | "disabled"
+  disabledReason?: string
+  disabledPhase?: string
   loaded: boolean
   loadError?: string
   manifestValid: boolean
@@ -78,6 +94,9 @@ export const PluginStatusSchema = z
       verifiedIntegrity: z.boolean(),
       reason: z.string(),
     }),
+    health: z.enum(["loaded", "disabled"]),
+    disabledReason: z.string().optional(),
+    disabledPhase: z.enum(["resolve", "load", "manifest", "hook", "runtime", "doctor"]).optional(),
     loaded: z.boolean(),
     loadError: z.string().optional(),
     manifestValid: z.boolean(),
@@ -195,11 +214,11 @@ export async function getStatusForLoadedPlugin(
 ): Promise<PluginStatus> {
   const pluginId = plugin.id
   const warnings: PluginStatus["warnings"] = []
-  const manifest = manifestOverride ?? (await ManifestReader.read(plugin.pluginDir))
+  const manifest = manifestOverride ?? plugin.manifest
   const manifestValid = true
 
   // ── Capabilities ──
-  const manifestTools = manifest.contributes?.tools?.map((t) => t.name) ?? []
+  const manifestTools = manifest.contributes?.tools?.map((tool: { name: string }) => tool.name) ?? []
   const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
   const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
 
@@ -219,7 +238,7 @@ export async function getStatusForLoadedPlugin(
   const { source, trust, integrity } = policy
 
   // ── Routes ──
-  const appRoutes = manifest.contributes?.ui?.appRoutes?.map((route) => route.id) ?? []
+  const appRoutes = manifest.contributes?.ui?.appRoutes?.map((route: { id: string }) => route.id) ?? []
 
   // ── Tools ──
   const tools = runtimeToolNames.map((id) => ({
@@ -321,6 +340,7 @@ export async function getStatusForLoadedPlugin(
     version: manifest.version,
     source,
     trust,
+    health: "loaded",
     loaded: true,
     manifestValid,
     integrity,
@@ -339,17 +359,86 @@ export async function getStatusForLoadedPlugin(
   }
 }
 
+export async function getStatusForDisabledPlugin(plugin: DisabledPlugin): Promise<PluginStatus> {
+  const source = plugin.source ?? (plugin.pluginDir ? derivePluginSource(plugin.pluginDir) : "local")
+  const trust = defaultPluginTrustDecision({
+    source,
+    userTrusted: false,
+    verifiedIntegrity: false,
+    devMode: isDevMode(),
+  })
+  const runtimeEntry = getRuntime(plugin.pluginId)
+  const runtime = runtimeEntry
+    ? {
+        mode: runtimeEntry.mode,
+        pid: runtimeEntry.pid,
+        state: runtimeEntry.state,
+        restarts: runtimeEntry.restarts,
+        lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
+        memoryMb: runtimeEntry.memoryMb,
+        limits: runtimeEntry.limits,
+        lastError: runtimeEntry.lastError,
+        runtimeDecision: runtimeEntry.runtimeDecision,
+      }
+    : undefined
+
+  return {
+    id: plugin.pluginId,
+    name: plugin.name ?? plugin.pluginId,
+    source,
+    trust,
+    health: "disabled",
+    disabledReason: plugin.reason,
+    disabledPhase: plugin.phase,
+    loaded: false,
+    loadError: plugin.reason,
+    manifestValid: false,
+    integrity: "failed",
+    permissions: {
+      base: [],
+      tools: {},
+      overallRisk: "low",
+      warnings: [],
+    },
+    appRoutes: [],
+    tools: [],
+    ui: {
+      contributions: 0,
+      errors: [plugin.reason],
+    },
+    stores: {
+      config: false,
+      secrets: await resolveSecretsStore(plugin.pluginId),
+      cacheBytes: await resolveCacheBytes(plugin.pluginId),
+    },
+    runtime,
+    warnings: [
+      {
+        type: "plugin_disabled",
+        message: plugin.reason,
+      },
+    ],
+  }
+}
+
 export async function getStatus(pluginId: string): Promise<PluginStatus | null> {
   const plugin = await getPlugin(pluginId)
-  if (!plugin) return null
-  return getStatusForLoadedPlugin(plugin)
+  if (plugin) return getStatusForLoadedPlugin(plugin)
+  const disabled = await getDisabledPlugin(pluginId)
+  if (disabled) return getStatusForDisabledPlugin(disabled)
+  return null
 }
 
 export async function getAllStatus(): Promise<PluginStatus[]> {
   const loaded = await getLoadedPlugins()
+  const disabled = await getDisabledPlugins()
   const results: PluginStatus[] = []
   for (const p of loaded) {
     const s = await getStatus(p.id)
+    if (s) results.push(s)
+  }
+  for (const p of disabled) {
+    const s = await getStatus(p.pluginId)
     if (s) results.push(s)
   }
   return results

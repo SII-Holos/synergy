@@ -6,6 +6,7 @@ import { Config } from "../../src/config/config"
 import { Global } from "../../src/global"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { doctor } from "../../src/plugin/doctor"
+import { archiveCacheDir } from "../../src/plugin/spec-resolver"
 
 describe("plugin doctor", () => {
   test("fixes duplicate config specs, stale lock entries, and orphan archive caches", async () => {
@@ -68,5 +69,76 @@ describe("plugin doctor", () => {
     expect((await Lockfile.read()).plugins["stale-plugin"]).toBeUndefined()
     expect((await Lockfile.read()).plugins["drift-plugin"]).toBeUndefined()
     expect(fs.existsSync(orphanDir)).toBe(false)
+  })
+
+  test("fixes invalid archive caches, missing lock resolved paths, and stale runtime state", async () => {
+    const fixtureRoot = path.join(Global.Path.state, "doctor-fixtures", `archive-${crypto.randomUUID()}`)
+    const pluginDir = path.join(fixtureRoot, "recover-plugin")
+    fs.mkdirSync(path.join(pluginDir, "runtime"), { recursive: true })
+    fs.writeFileSync(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "recover-plugin",
+        version: "0.1.0",
+        main: "./runtime/index.js",
+        description: "Recover plugin",
+      }),
+    )
+    fs.writeFileSync(path.join(pluginDir, "runtime", "index.js"), "export default { id: 'recover-plugin' }\n")
+    const archivePath = path.join(fixtureRoot, "recover-plugin-0.1.0.synergy-plugin.tgz")
+    const pack = Bun.spawnSync(["tar", "-czf", archivePath, "-C", pluginDir, "."])
+    expect(pack.exitCode).toBe(0)
+
+    const spec = pathToFileURL(archivePath).href
+    const archiveDir = archiveCacheDir(archivePath)
+    fs.rmSync(archiveDir, { recursive: true, force: true })
+    fs.mkdirSync(archiveDir, { recursive: true })
+    const missingResolved = path.join(archiveDir, "runtime", "missing.js")
+    const runtimeStatePath = path.join(Global.Path.data, "plugin-runtime-state.json")
+    fs.mkdirSync(path.dirname(runtimeStatePath), { recursive: true })
+    fs.writeFileSync(
+      runtimeStatePath,
+      JSON.stringify([
+        {
+          pluginId: "recover-plugin",
+          mode: "process",
+          state: "ready",
+          restarts: 0,
+          pluginDir: archiveDir,
+          entryPath: missingResolved,
+        },
+      ]),
+    )
+
+    await Config.domainUpdate(
+      "plugins",
+      {
+        plugin: [spec],
+        pluginMarketplace: { enabled: false },
+      } as any,
+      { mode: "replace-domain" },
+    )
+    await Lockfile.write({
+      version: 1,
+      plugins: {
+        "recover-plugin": {
+          spec,
+          version: "0.1.0",
+          resolved: missingResolved,
+          runtimeMode: "process",
+        },
+      },
+    })
+
+    const result = await doctor({ fix: true })
+    const lockfile = await Lockfile.read()
+    const runtimeState = JSON.parse(fs.readFileSync(runtimeStatePath, "utf8"))
+
+    expect(result.issues.some((issue) => issue.type === "invalid_archive_cache" && issue.fixed)).toBe(true)
+    expect(result.issues.some((issue) => issue.type === "missing_lock_resolved" && issue.fixed)).toBe(true)
+    expect(result.issues.some((issue) => issue.type === "invalid_runtime_state" && issue.fixed)).toBe(true)
+    expect(fs.existsSync(path.join(archiveDir, "plugin.json"))).toBe(true)
+    expect(fs.existsSync(lockfile.plugins["recover-plugin"]!.resolved)).toBe(true)
+    expect(runtimeState).toEqual([])
   })
 })

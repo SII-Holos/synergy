@@ -135,6 +135,13 @@ function runtimeLaunchSignature(input: { pluginDir: string; entryPath: string | 
   )
 }
 
+function persistedRuntimeEntryUsable(entry: PersistedRuntimeEntry): boolean {
+  if (!entry.pluginDir || !entry.entryPath) return false
+  if (!fs.existsSync(path.join(entry.pluginDir, PluginArtifact.manifestFile))) return false
+  if (!fs.existsSync(entry.entryPath)) return false
+  return true
+}
+
 function fallbackRuntimeScope(): IsolatedPluginInputData["scope"] {
   return {
     id: "home",
@@ -420,8 +427,20 @@ export class PluginRuntimeSupervisor {
   }
 
   async restoreRuntimeState(): Promise<void> {
-    const savedState = await this.#persist.load()
+    const loadedState = await this.#persist.load()
+    const savedState = loadedState.filter((entry) => {
+      const usable = persistedRuntimeEntryUsable(entry)
+      if (!usable) {
+        log.warn("skipping invalid restored plugin runtime state", {
+          pluginId: entry.pluginId,
+          pluginDir: entry.pluginDir,
+          entryPath: entry.entryPath,
+        })
+      }
+      return usable
+    })
     this.#registry.restore(savedState)
+    this.#saveState()
     if (savedState.length > 0) {
       log.info("restored runtime state", { count: savedState.length })
     }

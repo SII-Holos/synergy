@@ -29240,6 +29240,16 @@
             "type": "string",
             "enum": ["declarative", "trusted-import", "sandbox"]
           },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
+          },
           "ui": {
             "anyOf": [
               {
@@ -29335,6 +29345,17 @@
               }
             },
             "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string",
+            "enum": ["resolve", "load", "manifest", "hook", "runtime", "doctor"]
           },
           "loaded": {
             "type": "boolean"
@@ -29519,6 +29540,7 @@
           "id",
           "source",
           "trust",
+          "health",
           "loaded",
           "manifestValid",
           "integrity",
@@ -29598,6 +29620,19 @@
             "items": {
               "$ref": "#/components/schemas/ApiPluginPermissionItem"
             }
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
           }
         },
         "required": [
@@ -29682,6 +29717,19 @@
             "items": {
               "$ref": "#/components/schemas/ApiPluginPermissionItem"
             }
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
           }
         },
         "required": [
