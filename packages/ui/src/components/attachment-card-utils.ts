@@ -1,3 +1,4 @@
+import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
   mime: string
   filename?: string
@@ -118,23 +119,46 @@ export function attachmentMeta(file: AttachmentFile): string {
     .join(" · ")
 }
 
-export function attachmentColumnCount(files: AttachmentFile[]): number {
+export function attachmentColumnCount(files: { length: number }): number {
   if (files.length <= 1) return files.length
   if (files.length === 2) return 2
   return 3
 }
 
-export function attachmentColumns(files: AttachmentFile[]): AttachmentFile[][] {
-  const count = attachmentColumnCount(files)
+export function attachmentColumns<T>(items: T[]): T[][] {
+  const count = attachmentColumnCount(items)
   if (count === 0) return []
 
-  const columns: AttachmentFile[][] = Array.from({ length: count }, () => [])
+  const columns: T[][] = Array.from({ length: count }, () => [])
 
-  for (let i = 0; i < files.length; i++) {
-    columns[i % count].push(files[i])
+  for (let i = 0; i < items.length; i++) {
+    columns[i % count].push(items[i])
   }
 
   return columns.filter((column) => column.length > 0)
+}
+
+export function resolveImagePreviewImage(
+  serverUrl: string,
+  file: AttachmentFile,
+  index: number,
+): ImagePreviewImage | undefined {
+  if (!isImageAttachment(file)) return undefined
+  const src = resolveAttachmentUrl(serverUrl, file)
+  if (!src) return undefined
+
+  const filename = file.filename ?? "image"
+  const identity = file.url ?? file.assetId ?? file.localPath ?? filename
+  return {
+    id: `${index}:${identity}`,
+    src,
+    filename,
+    mime: file.mime,
+    size: attachmentSize(file),
+    alt: filename,
+    downloadUrl: src,
+    externalUrl: src,
+  }
 }
 
 export function isImageAttachment(file: AttachmentFile): boolean {
