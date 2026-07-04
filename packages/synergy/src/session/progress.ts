@@ -38,4 +38,35 @@ export namespace SessionProgress {
 
     return !!lastReplyRequiredUser && !hasTerminalReply({ messages, userID: lastReplyRequiredUser.id })
   }
+
+  /**
+   * Determine whether the root message R still needs a model call.
+   * Returns true if there exists a user message U with U.rootID === R.id
+   * (or U itself if root) that does NOT have a terminal assistant after it.
+   */
+  export function needsModelCall(msgs: MessageV2.WithParts[], rootID: string): boolean {
+    // Find all user messages belonging to this root
+    const rootUsers = msgs.filter(
+      (m) =>
+        m.info.role === "user" &&
+        (m.info.isRoot
+          ? m.info.rootID === rootID
+          : m.info.id === rootID || (m.info as MessageV2.User).rootID === rootID),
+    )
+    if (rootUsers.length === 0) return false
+
+    // Get the latest user message in this root group
+    const latestUser = rootUsers[rootUsers.length - 1]
+
+    // Check if there's a terminal assistant that covers it
+    const terminalAssistant = msgs.find(
+      (m) =>
+        m.info.role === "assistant" &&
+        (m.info as MessageV2.Assistant).parentID === latestUser.info.id &&
+        m.info.id > latestUser.info.id &&
+        isTerminalAssistant(m.info as MessageV2.Assistant),
+    )
+
+    return !terminalAssistant
+  }
 }
