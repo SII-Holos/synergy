@@ -110,59 +110,89 @@ export function TimeoutsPanel(props: {
   return (
     <SettingsPage title="Timeouts" description="Agent, provider, and tool timeout controls.">
       <SettingsSection title="Agent">
-        <SettingsFieldGrid>
-          <TextField
-            label="Invoke Timeout"
-            type="number"
-            value={props.runtime.invokeTimeout}
-            placeholder="900"
-            description="Max wall-clock seconds for one agent turn."
-            onChange={(value) => props.onRuntimeChange("invokeTimeout", value)}
-          />
-        </SettingsFieldGrid>
+        <SettingRow
+          title="Invoke Timeout"
+          description="Milliseconds before a task invoke call times out."
+          trailing={
+            <TextField
+              type="number"
+              value={props.runtime.invokeTimeout}
+              placeholder="900"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("invokeTimeout", value)}
+            />
+          }
+        />
       </SettingsSection>
       <SettingsSection title="Provider">
-        <SettingsFieldGrid>
-          <TextField
-            label="TTFB Timeout"
-            type="number"
-            value={props.runtime.providerTtfbTimeout}
-            placeholder="600"
-            onChange={(value) => props.onRuntimeChange("providerTtfbTimeout", value)}
-          />
-          <TextField
-            label="Idle Timeout"
-            type="number"
-            value={props.runtime.providerIdleTimeout}
-            placeholder="180"
-            onChange={(value) => props.onRuntimeChange("providerIdleTimeout", value)}
-          />
-          <TextField
-            label="Wall Timeout"
-            type="number"
-            value={props.runtime.providerWallTimeout}
-            placeholder="0"
-            onChange={(value) => props.onRuntimeChange("providerWallTimeout", value)}
-          />
-        </SettingsFieldGrid>
+        <SettingRow
+          title="TTFB Timeout"
+          description="Milliseconds to wait for the first response byte from a provider."
+          trailing={
+            <TextField
+              type="number"
+              value={props.runtime.providerTtfbTimeout}
+              placeholder="600"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("providerTtfbTimeout", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Idle Timeout"
+          description="Milliseconds of provider inactivity before the connection is dropped."
+          trailing={
+            <TextField
+              type="number"
+              value={props.runtime.providerIdleTimeout}
+              placeholder="180"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("providerIdleTimeout", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Wall Timeout"
+          description="Hard cap in milliseconds for the total provider call duration."
+          trailing={
+            <TextField
+              type="number"
+              value={props.runtime.providerWallTimeout}
+              placeholder="0"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("providerWallTimeout", value)}
+            />
+          }
+        />
       </SettingsSection>
       <SettingsSection title="Tools">
-        <SettingsFieldGrid>
-          <TextField
-            label="Default Tool Timeout"
-            type="number"
-            value={props.runtime.toolDefaultTimeout}
-            placeholder="300"
-            onChange={(value) => props.onRuntimeChange("toolDefaultTimeout", value)}
-          />
-          <TextField
-            label="Tool Overrides"
-            multiline
-            value={props.runtime.toolOverrides}
-            placeholder={"bash=600\nwebfetch=120"}
-            onChange={(value) => props.onRuntimeChange("toolOverrides", value)}
-          />
-        </SettingsFieldGrid>
+        <SettingRow
+          title="Default Tool Timeout"
+          description="Milliseconds before a tool execution attempt times out."
+          trailing={
+            <TextField
+              type="number"
+              value={props.runtime.toolDefaultTimeout}
+              placeholder="300"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("toolDefaultTimeout", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Tool Overrides"
+          description="Per-tool timeout overrides as JSON or key-value pairs."
+          trailing={
+            <TextField
+              type="text"
+              multiline
+              value={props.runtime.toolOverrides}
+              placeholder={"bash=600\nwebfetch=120"}
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("toolOverrides", value)}
+            />
+          }
+        />
       </SettingsSection>
     </SettingsPage>
   )
@@ -175,23 +205,33 @@ export function ObservabilityPanel(props: {
   return (
     <SettingsPage title="Observability" description="Logs, traces, and diagnostics.">
       <SettingsSection title="Logging">
-        <SettingsFieldGrid>
-          <TextField
-            label="Log Level"
-            type="text"
-            value={props.runtime.logLevel}
-            placeholder="info"
-            onChange={(value) => props.onRuntimeChange("logLevel", value)}
-          />
-          <TextField
-            label="Watcher Ignore"
-            multiline
-            value={props.runtime.watcherIgnore}
-            placeholder={"node_modules\n.git"}
-            description="One ignore pattern per line."
-            onChange={(value) => props.onRuntimeChange("watcherIgnore", value)}
-          />
-        </SettingsFieldGrid>
+        <SettingRow
+          title="Log Level"
+          description="Minimum log severity captured by the runtime logger."
+          trailing={
+            <TextField
+              type="text"
+              value={props.runtime.logLevel}
+              placeholder="info"
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("logLevel", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Watcher Ignore"
+          description="Patterns the file watcher should skip, one per line."
+          trailing={
+            <TextField
+              type="text"
+              multiline
+              value={props.runtime.watcherIgnore}
+              placeholder={"node_modules\n.git"}
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("watcherIgnore", value)}
+            />
+          }
+        />
       </SettingsSection>
     </SettingsPage>
   )

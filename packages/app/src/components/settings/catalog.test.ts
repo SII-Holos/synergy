@@ -78,3 +78,11 @@ describe("settings catalog", () => {
     expect(settingsGroupOrder("Plugin Group")).toBeGreaterThan(settingsGroupOrder("System"))
   })
 })
+
+test("developer-only sections are locked to formatter, lsp, and observability", () => {
+  const devSections = BUILTIN_SETTINGS_SECTIONS.filter((s) => s.visibility === "developer")
+  expect(devSections.map((s) => s.id).sort()).toEqual(["formatter", "lsp", "observability"])
+
+  const standardSections = BUILTIN_SETTINGS_SECTIONS.filter((s) => !s.visibility || s.visibility === "standard")
+  expect(standardSections.length).toBe(BUILTIN_SETTINGS_SECTIONS.length - 3)
+})
