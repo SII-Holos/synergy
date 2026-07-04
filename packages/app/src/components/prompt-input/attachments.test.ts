@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { UploadedAttachmentPart } from "@/context/prompt"
+import { buildPromptUploadEntries } from "./attachment-preview"
 import { uploadedPromptAttachmentToFile } from "./attachment-files"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 
@@ -36,6 +37,59 @@ describe("prompt attachment presentation", () => {
     }
 
     expect(uploadedPromptAttachmentToFile(attachment).presentation).toEqual({ renderer: "file", size: "small" })
+  })
+})
+
+describe("prompt attachment image preview grouping", () => {
+  test("builds one preview group for uploaded images in attachment order", () => {
+    const uploads: UploadedAttachmentPart[] = [
+      {
+        type: "attachment",
+        id: "part-first-image",
+        filename: "first.png",
+        mime: "image/png",
+        url: "asset://first.png",
+        size: 100,
+      },
+      {
+        type: "attachment",
+        id: "part-doc",
+        filename: "notes.txt",
+        mime: "text/plain",
+        url: "asset://notes.txt",
+      },
+      {
+        type: "attachment",
+        id: "part-second-image",
+        filename: "second.jpg",
+        mime: "image/jpeg",
+        url: "asset://second.jpg",
+        size: 200,
+      },
+    ]
+
+    const entries = buildPromptUploadEntries("http://localhost:3000", uploads, (serverUrl, file, index) => {
+      if (!file.mime.startsWith("image/")) return undefined
+      const assetPath = file.url?.startsWith("asset://") ? `/asset/${file.url.slice(8)}` : file.url
+      if (!assetPath) return undefined
+      return {
+        id: `${index}:${file.url}`,
+        src: `${serverUrl}${assetPath}`,
+        filename: file.filename ?? "image",
+        mime: file.mime,
+        size: file.size,
+      }
+    })
+    const previewImages = entries.map((entry) => entry.imagePreview).filter(Boolean)
+
+    expect(entries[0]?.imagePreviewIndex).toBe(0)
+    expect(entries[1]?.imagePreviewIndex).toBeUndefined()
+    expect(entries[2]?.imagePreviewIndex).toBe(1)
+    expect(previewImages.map((image) => image?.filename)).toEqual(["first.png", "second.jpg"])
+    expect(previewImages.map((image) => image?.src)).toEqual([
+      "http://localhost:3000/asset/first.png",
+      "http://localhost:3000/asset/second.jpg",
+    ])
   })
 })
 

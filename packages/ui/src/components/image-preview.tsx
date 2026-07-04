@@ -184,40 +184,63 @@ export function ImagePreview(props: ImagePreviewProps) {
               )}
             </Show>
             <div data-slot="image-preview-toolbar">
-              <Show when={current()}>
-                {(image) => (
-                  <>
-                    <button
-                      type="button"
-                      data-component="icon-button"
-                      data-variant="ghost"
-                      aria-label="Zoom out"
-                      title="Zoom out"
-                      disabled={!canZoomOut()}
-                      onClick={() => zoom("out")}
-                    >
-                      <Icon name="minus" size="small" />
-                    </button>
-                    <button
-                      type="button"
-                      data-component="image-preview-zoom"
-                      aria-label="Reset image view"
-                      title="Reset image view"
-                      onClick={resetTransform}
-                    >
-                      {Math.round(scale() * 100)}%
-                    </button>
-                    <button
-                      type="button"
-                      data-component="icon-button"
-                      data-variant="ghost"
-                      aria-label="Zoom in"
-                      title="Zoom in"
-                      disabled={!canZoomIn()}
-                      onClick={() => zoom("in")}
-                    >
-                      <Icon name="plus" size="small" />
-                    </button>
+              <Kobalte.CloseButton
+                data-slot="image-preview-close"
+                data-component="icon-button"
+                data-variant="ghost"
+                aria-label="Close image preview"
+                title="Close image preview"
+              >
+                <Icon name="x" size="small" />
+              </Kobalte.CloseButton>
+            </div>
+          </div>
+          <div data-slot="image-preview-body">
+            <Show
+              when={current()}
+              fallback={
+                <div data-slot="image-preview-fallback">
+                  <Icon name="image" size="normal" />
+                  <span>No image selected</span>
+                </div>
+              }
+            >
+              {(image) => (
+                <>
+                  <div data-slot="image-preview-actions" role="group" aria-label="Image actions">
+                    <div data-slot="image-preview-zoom-group" role="group" aria-label="Zoom controls">
+                      <button
+                        type="button"
+                        data-component="icon-button"
+                        data-variant="ghost"
+                        aria-label="Zoom out"
+                        title="Zoom out"
+                        disabled={!canZoomOut()}
+                        onClick={() => zoom("out")}
+                      >
+                        <Icon name="minus" size="small" />
+                      </button>
+                      <button
+                        type="button"
+                        data-component="image-preview-zoom"
+                        aria-label="Reset image view"
+                        title="Reset image view"
+                        onClick={resetTransform}
+                      >
+                        {Math.round(scale() * 100)}%
+                      </button>
+                      <button
+                        type="button"
+                        data-component="icon-button"
+                        data-variant="ghost"
+                        aria-label="Zoom in"
+                        title="Zoom in"
+                        disabled={!canZoomIn()}
+                        onClick={() => zoom("in")}
+                      >
+                        <Icon name="plus" size="small" />
+                      </button>
+                    </div>
                     <button
                       type="button"
                       data-component="icon-button"
@@ -249,32 +272,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                     >
                       <Icon name="arrow-up-right" size="small" />
                     </button>
-                  </>
-                )}
-              </Show>
-              <Kobalte.CloseButton
-                data-slot="image-preview-close"
-                data-component="icon-button"
-                data-variant="ghost"
-                aria-label="Close image preview"
-                title="Close image preview"
-              >
-                <Icon name="x" size="small" />
-              </Kobalte.CloseButton>
-            </div>
-          </div>
-          <div data-slot="image-preview-body">
-            <Show
-              when={current()}
-              fallback={
-                <div data-slot="image-preview-fallback">
-                  <Icon name="image" size="normal" />
-                  <span>No image selected</span>
-                </div>
-              }
-            >
-              {(image) => (
-                <>
+                  </div>
                   <Show when={canNavigate()}>
                     <button
                       type="button"

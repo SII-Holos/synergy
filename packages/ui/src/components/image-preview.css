@@ -86,11 +86,58 @@
         flex-shrink: 0;
       }
 
+      [data-slot="image-preview-actions"] {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        z-index: 3;
+        max-width: calc(100% - 32px);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--border-weak-base);
+        border-radius: 999px;
+        background: var(--surface-raised-stronger-non-alpha);
+        box-shadow: 0 2px 8px rgba(19, 16, 16, 0.1);
+        transform: translateX(-50%);
+
+        [data-component="icon-button"] {
+          width: 32px;
+          height: 32px;
+          border: 0;
+          color: var(--text-secondary);
+        }
+
+        [data-component="icon-button"]:hover:not(:disabled) [data-slot="icon-svg"],
+        [data-component="icon-button"]:focus:not(:disabled) [data-slot="icon-svg"],
+        [data-component="icon-button"]:active:not(:disabled) [data-slot="icon-svg"] {
+          color: var(--text-primary);
+        }
+
+        [data-component="icon-button"]:disabled {
+          background: transparent;
+          color: var(--text-disabled);
+          cursor: not-allowed;
+          opacity: 0.42;
+
+          [data-slot="icon-svg"] {
+            color: var(--text-disabled);
+          }
+        }
+      }
+
+      [data-slot="image-preview-zoom-group"] {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
       [data-component="image-preview-zoom"] {
-        min-width: 48px;
-        height: 28px;
+        min-width: 52px;
+        height: 32px;
         border: 0;
-        border-radius: var(--radius-sm);
+        border-radius: 999px;
         background: transparent;
         color: var(--text-secondary);
         font-size: 12px;
@@ -99,6 +146,11 @@
 
         &:hover {
           background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        &:active {
+          background: var(--surface-raised-base-active);
           color: var(--text-primary);
         }
 
@@ -183,17 +235,57 @@
       [data-slot="image-preview-nav"] {
         position: absolute;
         top: 50%;
-        z-index: 2;
-        transform: translateY(-50%);
+        z-index: 3;
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--border-weak-base);
+        border-radius: 999px;
         background: var(--surface-raised-stronger-non-alpha);
-        box-shadow: 0 8px 24px rgba(19, 16, 16, 0.18);
+        color: var(--text-secondary);
+        box-shadow: 0 2px 8px rgba(19, 16, 16, 0.1);
+        transform: translateY(-50%);
+
+        &:hover:not(:disabled) {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+
+          [data-slot="icon-svg"] {
+            color: var(--text-primary);
+          }
+        }
+
+        &:focus-visible {
+          outline: 2px solid var(--border-focus);
+          outline-offset: 2px;
+
+          [data-slot="icon-svg"] {
+            color: var(--text-primary);
+          }
+        }
+
+        &:active:not(:disabled) {
+          background: var(--surface-raised-base-active);
+
+          [data-slot="icon-svg"] {
+            color: var(--text-primary);
+          }
+        }
+
+        &:disabled {
+          opacity: 0.34;
+          cursor: default;
+
+          [data-slot="icon-svg"] {
+            color: var(--text-disabled);
+          }
+        }
 
         &[data-side="left"] {
-          left: 12px;
+          left: 16px;
         }
 
         &[data-side="right"] {
-          right: 12px;
+          right: 16px;
         }
       }
     }
@@ -212,9 +304,23 @@
           gap: 8px;
         }
 
-        [data-slot="image-preview-toolbar"] {
-          flex-wrap: wrap;
-          justify-content: flex-end;
+        [data-slot="image-preview-actions"] {
+          bottom: 12px;
+          max-width: calc(100% - 24px);
+          overflow-x: auto;
+        }
+
+        [data-slot="image-preview-nav"] {
+          width: 34px;
+          height: 34px;
+
+          &[data-side="left"] {
+            left: 8px;
+          }
+
+          &[data-side="right"] {
+            right: 8px;
+          }
         }
 
         [data-slot="image-preview-title"] {

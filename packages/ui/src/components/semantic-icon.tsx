@@ -125,6 +125,19 @@ export const SemanticIconToken = {
   "browser.refresh": "refresh-ccw",
   "browser.stop": "circle-stop",
 
+  // Commands
+  "command.undo": "undo-2",
+  "command.redo": "redo-2",
+  "command.compact": "minimize",
+  "command.init": "file-text",
+  "command.review": "scan-eye",
+  "command.commit": "git-merge",
+  "command.rmslop": "sparkles",
+  "command.note": "notebook-pen",
+  "command.continue": "rocket",
+  "command.audit": "microscope",
+  "command.start": "zap",
+
   // Generic actions and state
   "action.add": "plus",
   "action.close": "x",
