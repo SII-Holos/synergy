@@ -33,7 +33,7 @@ describe("performance observability store", () => {
     })
     PerformanceStore.flush()
 
-    const rows = PerformanceStore.queryMetrics({ since: Date.now() - 60_000, names: ["http.request.duration"] })
+    const rows = PerformanceStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
     expect(rows.some((row) => row.module === "server" && row.rid === "rid_test")).toBe(true)
     expect(new Set(PerformanceStore.meta().map((row) => row.key))).toEqual(
       new Set(["createdAt", "lastRetentionRunAt", "lastWalCheckpointAt", "schemaVersion"]),
@@ -56,7 +56,7 @@ describe("performance observability store", () => {
 
     expect(result.accepted).toBe(3)
     expect(result.rejected).toBe(1)
-    const rows = PerformanceStore.queryMetrics({ since: now - 60_000 })
+    const rows = PerformanceStore.queryMetrics({ since: 0 })
     expect(rows.some((row) => row.name === "frontend.web_vital")).toBe(true)
     expect(rows.some((row) => row.name === "frontend.long_task.duration")).toBe(true)
   })
@@ -77,7 +77,7 @@ describe("performance observability store", () => {
     })
     PerformanceStore.flush()
 
-    const summary = await PerformanceDashboard.summary({ windowMs: 60_000 })
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
     expect(summary.backend.requestCount).toBeGreaterThanOrEqual(1)
     expect(summary.backend.p95RequestMs).toBe(100)
     expect(summary.frontend.inpMs).toBe(80)

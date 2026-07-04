@@ -26,6 +26,7 @@ describe("performance routes", () => {
       module: "server",
       labels: { method: "GET", path: "/global/performance/summary", status: 200 },
     })
+    PerformanceStore.flush()
 
     const response = await Server.App().request("/global/performance/summary?windowMs=60000")
     expect(response.status).toBe(200)
