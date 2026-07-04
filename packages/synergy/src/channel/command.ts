@@ -4,6 +4,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
+import { Provider } from "../provider/provider"
 
 export namespace ChannelCommand {
   const log = Log.create({ service: "channel.command" })
@@ -93,6 +94,36 @@ export namespace ChannelCommand {
       },
     },
     {
+      name: "model",
+      triggers: ["/model"],
+      async execute(ctx) {
+        const remainder = ctx.remainder
+        if (!remainder) {
+          return { action: "handled", reply: "Usage: /model <providerID/modelID>" }
+        }
+
+        const [providerID, ...rest] = remainder.split("/")
+        if (!providerID || rest.length === 0) {
+          return {
+            action: "handled",
+            reply: "Invalid model format. Use: /model providerID/modelID (e.g. /model openai/gpt-4o)",
+          }
+        }
+
+        const session = await Session.findForEndpoint(endpointForContext(ctx))
+        if (!session) {
+          return { action: "handled", reply: "No active conversation. Send a message first." }
+        }
+
+        const parsed = Provider.parseModel(remainder)
+        await Session.update(session.id, (draft) => {
+          draft.modelOverride = parsed
+        })
+
+        return { action: "handled", reply: `✅ Model set to ${parsed.providerID}/${parsed.modelID}` }
+      },
+    },
+    {
       name: "help",
       triggers: ["/help", "/commands"],
       async execute() {
@@ -100,6 +131,7 @@ export namespace ChannelCommand {
           action: "handled",
           reply: [
             "Available commands:",
+            "/model <providerID/modelID> — change the model for this conversation",
             "/new — start a new conversation",
             "/status — show the current conversation status",
             "/help — show this command list",

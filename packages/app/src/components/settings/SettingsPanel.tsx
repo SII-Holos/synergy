@@ -34,8 +34,8 @@ import { SandboxIframe } from "@/plugin/sandbox"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-panel.css"
-import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderModel, SettingsState } from "./types"
-import { defaultSettingsState, emptyMcp } from "./types"
+import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderGroup, ProviderModel, SettingsState } from "./types"
+import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
 import { BUILTIN_SETTINGS_IDS, isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
@@ -127,6 +127,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     }
     return list
   })
+
+  const providerGroups = createMemo<ProviderGroup[]>(() => groupByProvider(providerModels()))
 
   const savedModels = createMemo<ModelsStore>(() => {
     const cfg = config()
@@ -507,7 +509,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         return (
           <ChannelsPanel
             channels={settings.channels}
+            providers={providerGroups()}
             onChannelToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
+            onChannelModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
           />
         )
       case "email":

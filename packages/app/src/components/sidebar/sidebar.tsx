@@ -45,6 +45,22 @@ function getStoreForEntry(
   return globalSync.peekScopeState(scopeKey)?.[0]
 }
 
+function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
+  const tone = visual?.tone
+  return {
+    "sb-session-icon-wrap": true,
+    "sb-session-icon-active-tone": tone === "active",
+    "sb-session-icon-waiting-tone": tone === "waiting",
+    "sb-session-icon-worktree-tone": tone === "worktree",
+    "sb-session-icon-muted-tone": tone === "muted",
+    "sb-session-icon-blueprint-tone": tone === "blueprint",
+    "sb-session-icon-blueprint-running-tone": tone === "blueprint-running",
+    "sb-session-icon-blueprint-waiting-tone": tone === "blueprint-waiting",
+    "sb-session-icon-blueprint-audit-tone": tone === "blueprint-audit",
+    "sb-session-icon-pulse": !!visual?.pulse,
+  }
+}
+
 export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
@@ -903,16 +919,24 @@ function SidebarSessionRow(props: {
       <span
         classList={{
           "sb-session-icon-wrap": true,
-          "sb-session-icon-active-tone": visual().tone === "active",
-          "sb-session-icon-waiting-tone": visual().tone === "waiting",
-          "sb-session-icon-worktree-tone": visual().tone === "worktree",
-          "sb-session-icon-muted-tone": visual().tone === "muted",
-          "sb-session-icon-pulse": !!visual().pulse,
+          "sb-session-icon-active-tone": visual()?.tone === "active",
+          "sb-session-icon-waiting-tone": visual()?.tone === "waiting",
+          "sb-session-icon-worktree-tone": visual()?.tone === "worktree",
+          "sb-session-icon-muted-tone": visual()?.tone === "muted",
+          "sb-session-icon-blueprint-tone": visual()?.tone === "blueprint",
+          "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
+          "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
+          "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
+          "sb-session-icon-pulse": !!visual()?.pulse,
         }}
-        title={visual().label}
+        title={visual()?.label ?? ""}
       >
-        <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
-        <Show when={visual().completionUnread}>
+        <Icon
+          name={visual()?.icon ?? "loader"}
+          size="small"
+          class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"}
+        />
+        <Show when={visual()?.completionUnread}>
           <span class="sb-session-completion-dot" />
         </Show>
       </span>

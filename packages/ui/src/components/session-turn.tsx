@@ -99,6 +99,7 @@ export function timelineKindForPart(part: PartType, working: boolean): SessionTu
   if (part.type === "text") return part.text.trim() ? "part" : undefined
   if (part.type === "attachment") return resolveAttachmentPresentation(part).hidden ? undefined : "part"
   if (part.type === "reasoning") return working && part.text.trim() ? "reasoning" : undefined
+  if (part.type === "compaction_recovery") return "part"
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
   if (isToolCardHidden(part)) {
@@ -128,9 +129,14 @@ export function collectSessionTurnTimelineItems(
 
   for (const message of messages) {
     const parts = partsByMessage[message.id] ?? []
+    const hasCompactionRecovery = parts.some((p) => p.type === "compaction_recovery")
     for (const part of parts) {
       const kind = timelineKindForPart(part, working)
       if (!kind) continue
+
+      // When a compaction recovery card is present, suppress raw text parts
+      // so only the structured card renders — no duplicate markdown output.
+      if (hasCompactionRecovery && part.type === "text") continue
 
       if (kind === "media-pending") {
         items.push({ kind, message, part: part as ToolPart })

@@ -752,3 +752,77 @@ describe("session.compaction.selectPartsToPrune", () => {
     expect(withModel).toHaveLength(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.parseCompactionSections
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.parseCompactionSections", () => {
+  test("parses structured markdown with headings and list items", () => {
+    const markdown = [
+      "### What was accomplished",
+      "- Built the user auth module",
+      "- Added login endpoint",
+      "",
+      "### What is currently in progress",
+      "- Fixing the session timeout bug",
+      "- DAG: tests_docs pending",
+      "",
+      "### Next steps",
+      "- Write integration tests",
+      "- Deploy to staging",
+    ].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(3)
+    expect(result[0].heading).toBe("What was accomplished")
+    expect(result[0].items).toEqual(["Built the user auth module", "Added login endpoint"])
+    expect(result[1].heading).toBe("What is currently in progress")
+    expect(result[1].items).toEqual(["Fixing the session timeout bug", "DAG: tests_docs pending"])
+    expect(result[2].heading).toBe("Next steps")
+    expect(result[2].items).toEqual(["Write integration tests", "Deploy to staging"])
+  })
+
+  test("handles empty input as fallback section", () => {
+    const result = SessionCompaction.parseCompactionSections("")
+    expect(result).toHaveLength(1)
+    expect(result[0].heading).toBe("Summary")
+    expect(result[0].items).toEqual([""])
+  })
+
+  test("handles text without headings as fallback section", () => {
+    const result = SessionCompaction.parseCompactionSections("Just some text")
+    expect(result).toHaveLength(1)
+    expect(result[0].heading).toBe("Summary")
+    expect(result[0].items).toEqual(["Just some text"])
+  })
+
+  test("handles headings without any list items", () => {
+    const markdown = ["### Section A", "", "### Section B", "- item 1"].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(2)
+    expect(result[0].heading).toBe("Section A")
+    expect(result[0].items).toEqual([])
+    expect(result[1].heading).toBe("Section B")
+    expect(result[1].items).toEqual(["item 1"])
+  })
+
+  test("ignores non-list, non-heading lines", () => {
+    const markdown = ["### Tasks", "- task 1", "Some prose text here", "- task 2", "More prose"].join("\n")
+
+    const result = SessionCompaction.parseCompactionSections(markdown)
+    expect(result).toHaveLength(1)
+    expect(result[0].items).toEqual(["task 1", "task 2"])
+  })
+
+  test("trims heading text", () => {
+    const result = SessionCompaction.parseCompactionSections("###   Padded Heading   \n- item")
+    expect(result[0].heading).toBe("Padded Heading")
+  })
+
+  test("trims item text", () => {
+    const result = SessionCompaction.parseCompactionSections("### H\n-   padded item   ")
+    expect(result[0].items).toEqual(["padded item"])
+  })
+})

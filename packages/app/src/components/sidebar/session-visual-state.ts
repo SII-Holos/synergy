@@ -6,7 +6,16 @@ import { HOME_SCOPE_KEY } from "@/utils/scope"
 export type SessionVisualState = {
   icon: IconName
   label: string
-  tone: "default" | "active" | "waiting" | "worktree" | "muted"
+  tone:
+    | "default"
+    | "active"
+    | "waiting"
+    | "worktree"
+    | "muted"
+    | "blueprint"
+    | "blueprint-running"
+    | "blueprint-waiting"
+    | "blueprint-audit"
   pulse?: boolean
   completionUnread?: boolean
 }
@@ -16,7 +25,13 @@ export interface SessionVisualStore {
   permission: Record<string, unknown[] | undefined>
   question: Record<string, unknown[] | undefined>
   cortex: { parentSessionID?: string; status?: string }[]
-  session: { id: string; parentID?: string; category?: string; workspace?: { type?: string } }[]
+  session: {
+    id: string
+    parentID?: string
+    category?: string
+    workspace?: { type?: string }
+    blueprint?: { loopID?: string; loopRole?: "execution" | "audit"; planMode?: boolean }
+  }[]
 }
 
 export interface SessionVisualScope {
@@ -30,6 +45,7 @@ export function scopeKeyForNavEntry(entry: Pick<NavEntry, "scopeID" | "scopeType
 }
 
 export function resolveSessionVisualState(store: SessionVisualStore | undefined, entry: NavEntry): SessionVisualState {
+  const unread = entry.completionNotice?.unread
   if (store) {
     const status = store.session_status[entry.id]
     const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
@@ -39,12 +55,28 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     )
     const fullSession = store.session.find((session) => session.id === entry.id)
 
+    if (fullSession?.blueprint?.loopID) {
+      const blueprintIcon = getSemanticIcon("orchestration.blueprint")
+      if (waiting)
+        return { icon: blueprintIcon, label: "Blueprint waiting for you", tone: "blueprint-waiting", pulse: true }
+      if (fullSession.blueprint.loopRole === "audit") {
+        return {
+          icon: "scan-eye",
+          label: "Auditing Blueprint",
+          tone: "blueprint-audit",
+          pulse: running || childTasksRunning ? true : undefined,
+        }
+      }
+      if (running) return { icon: blueprintIcon, label: "Running Blueprint", tone: "blueprint-running", pulse: true }
+      if (childTasksRunning)
+        return { icon: "scan-eye", label: "Auditing Blueprint", tone: "blueprint-audit", pulse: true }
+      return { icon: blueprintIcon, label: "Blueprint session", tone: "blueprint" }
+    }
     if (waiting)
       return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
     if (running || childTasksRunning)
       return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
     if (fullSession?.workspace?.type === "git_worktree") {
-      const unread = entry.completionNotice.unread
       return {
         icon: getSemanticIcon("workspace.worktree"),
         label: `Worktree session${unread ? "; response ready" : ""}`,
@@ -53,7 +85,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
       }
     }
     if (entry.parentID) {
-      const unread = entry.completionNotice.unread
       return {
         icon: getSemanticIcon("session.child"),
         label: `Child session${unread ? "; response ready" : ""}`,
@@ -64,7 +95,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   }
 
   if (entry.category === "background") {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.background"),
       label: `Background session${unread ? "; response ready" : ""}`,
@@ -73,7 +103,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   if (entry.category === "channel") {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.channel"),
       label: `Channel session${unread ? "; response ready" : ""}`,
@@ -82,7 +111,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   if (entry.category === "home") {
-    const unread = entry.completionNotice.unread
     return {
       icon: "home",
       label: `Home session${unread ? "; response ready" : ""}`,
@@ -91,7 +119,6 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   {
-    const unread = entry.completionNotice.unread
     return {
       icon: getSemanticIcon("session.default"),
       label: `Session${unread ? "; response ready" : ""}`,

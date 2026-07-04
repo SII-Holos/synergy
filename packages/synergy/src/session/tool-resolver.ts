@@ -791,7 +791,7 @@ export namespace ToolResolver {
                 PermissionNext.sessionRuleset(input.session),
                 forcedAsk,
               ),
-              signal: toolTiming(ctx).sessionAbort,
+              signal: ctx.abort,
             })
             if (
               (requestMetadata as Record<string, unknown>).workspaceBoundary ||

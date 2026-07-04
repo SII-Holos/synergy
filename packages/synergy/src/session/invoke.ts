@@ -406,11 +406,24 @@ export namespace SessionInvoke {
           log.info("drained legacy user mails into session", { sessionID, count: legacy.userMessages.length })
         }
 
-        const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
-
+        const userModel = lastUser.model
         let agentName = lastUser.agent
 
         const agent = await Agent.get(agentName)
+
+        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch(async () => {
+          log.warn("model not found, falling back to agent model", {
+            agent: agentName,
+            requested: `${userModel.providerID}/${userModel.modelID}`,
+          })
+          const agentModel = agent?.model
+          if (agentModel) {
+            return Provider.getModel(agentModel.providerID, agentModel.modelID)
+          }
+          throw new Error(
+            `Model ${userModel.providerID}/${userModel.modelID} not found and no agent fallback available`,
+          )
+        })
 
         log.info("resolved agent", {
           name: agentName,
