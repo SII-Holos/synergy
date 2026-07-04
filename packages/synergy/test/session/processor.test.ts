@@ -1,6 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
+import { Config } from "../../src/config/config"
+import { ExperienceEncoder } from "../../src/library/experience-encoder"
+import { Plugin } from "../../src/plugin"
+import { Session } from "../../src/session"
+import { LLM } from "../../src/session/llm"
+import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
-import type { MessageV2 } from "../../src/session/message-v2"
 
 function toolPart(
   callID: string,
@@ -128,6 +133,103 @@ describe("SessionProcessor.streamToolErrorOutcome", () => {
       expect(outcome.metadata?.toolDiagnostic.code).toBe("invalid_arguments")
       expect(outcome.error).toContain("could not be accepted")
     }
+  })
+})
+
+describe("SessionProcessor tracked execution settlement", () => {
+  test("settles a completed tool outcome even when the stream omits tool-result", async () => {
+    const originalStream = LLM.stream
+    const originalUpdatePart = Session.updatePart
+    const originalParts = MessageV2.parts
+    const originalUpdateMessage = Session.updateMessage
+    const originalUpdateLastExchange = Session.updateLastExchange
+    const originalConfigCurrent = Config.current
+    const originalPluginTrigger = Plugin.trigger
+    const originalExperienceComplete = ExperienceEncoder.onComplete
+    const parts = new Map<string, MessageV2.Part>()
+    let processor!: SessionProcessor.Info
+
+    try {
+      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
+        const part = "part" in input ? input.part : input
+        parts.set(part.id, part)
+        return part
+      })
+      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
+      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
+      ;(Session.updateLastExchange as any) = mock(async () => {})
+      ;(Config.current as any) = mock(async () => ({ experimental: {} }))
+      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
+      ;(LLM.stream as any) = mock(async () => ({
+        fullStream: (async function* () {
+          yield { type: "start" }
+          yield {
+            type: "tool-call",
+            toolCallId: "call_done",
+            toolName: "bash",
+            input: { command: "git log --oneline -10" },
+          }
+          processor.trackExecution(
+            "call_done",
+            Promise.resolve({
+              status: "completed",
+              input: { command: "git log --oneline -10" },
+              result: {
+                output: "abc123 first commit\n",
+                title: "Recent commits",
+                metadata: { exit: 0 },
+              },
+            }),
+          )
+        })(),
+      }))
+
+      processor = SessionProcessor.create({
+        assistantMessage: {
+          id: "msg_assistant",
+          sessionID: "ses_test",
+          role: "assistant",
+          parentID: "msg_user",
+          modelID: "test-model",
+          providerID: "test-provider",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 0 },
+        },
+        sessionID: "ses_test",
+        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
+        abort: new AbortController().signal,
+      })
+
+      await processor.process({} as any)
+
+      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.state.output).toBe("abc123 first commit\n")
+        expect(tool.state.metadata.exit).toBe(0)
+      }
+    } finally {
+      ;(LLM.stream as any) = originalStream
+      ;(Session.updatePart as any) = originalUpdatePart
+      ;(MessageV2.parts as any) = originalParts
+      ;(Session.updateMessage as any) = originalUpdateMessage
+      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
+      ;(Config.current as any) = originalConfigCurrent
+      ;(Plugin.trigger as any) = originalPluginTrigger
+      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    }
+  })
+})
+
+describe("SessionProcessor.unresolvedToolError", () => {
+  test("reserves aborted wording for true fast aborts", () => {
+    expect(SessionProcessor.unresolvedToolError(true)).toBe("Tool execution aborted")
+    expect(SessionProcessor.unresolvedToolError(false)).toBe("Tool execution did not return a final result")
   })
 })
 
