@@ -1106,6 +1106,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onCommand={(id) => command.trigger(id)}
             onRuntimeCommand={runRuntimeCommand}
             commandsDisabled={working()}
+            commands={command.options}
           />
         </div>
       </Show>
