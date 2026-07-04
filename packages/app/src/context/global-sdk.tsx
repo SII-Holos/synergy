@@ -3,6 +3,7 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
+import { startBrowserPerformanceMetrics, stopBrowserPerformanceMetrics } from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
 
 const PING_INTERVAL = 20_000
@@ -179,6 +180,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()
       flush()
+      stopBrowserPerformanceMetrics()
     })
 
     const platform = usePlatform()
@@ -187,6 +189,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       fetch: platform.fetch,
       throwOnError: true,
     })
+
+    startBrowserPerformanceMetrics({ url: server.url, client: sdk })
 
     return { url: server.url, client: sdk, event: emitter, connected, disconnectedAt }
   },

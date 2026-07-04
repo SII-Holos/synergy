@@ -4,6 +4,9 @@ import { Global } from "../global"
 import { Lock } from "../util/lock"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
+import { PerformanceIssues } from "@/performance/issues"
+import { PerformanceMetrics } from "@/performance/metrics"
+import { PerformanceResources } from "@/performance/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
@@ -22,74 +25,97 @@ export namespace Storage {
   export async function remove(key: string[]) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    await fs.unlink(target).catch(() => {})
-    await pruneEmptyParents(path.dirname(target), dir)
+    return measureStorage("remove", key, async () => {
+      await fs.unlink(target).catch(() => {})
+      await pruneEmptyParents(path.dirname(target), dir)
+    })
   }
 
   export async function read<T>(key: string[]) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.read(target)
-      const result = await Bun.file(target).json()
-      return result as T
-    })
+    return measureStorage("read", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.read(target)
+        const file = Bun.file(target)
+        const result = await file.json()
+        const size = file.size
+        PerformanceResources.addRead(size)
+        return result as T
+      }),
+    )
   }
 
   export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
     const dir = resolveDir()
-    const result: (T | undefined)[] = new Array(keys.length)
-    let next = 0
-    const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
-      while (next < keys.length) {
-        const index = next++
-        const key = keys[index]
-        const target = path.join(dir, ...key) + ".json"
-        try {
-          using _ = await Lock.read(target)
-          result[index] = (await Bun.file(target).json()) as T
-        } catch {
-          result[index] = undefined
+    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], async () => {
+      const result: (T | undefined)[] = new Array(keys.length)
+      let next = 0
+      let readBytes = 0
+      const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
+        while (next < keys.length) {
+          const index = next++
+          const key = keys[index]
+          const target = path.join(dir, ...key) + ".json"
+          try {
+            using _ = await Lock.read(target)
+            const file = Bun.file(target)
+            result[index] = (await file.json()) as T
+            readBytes += file.size
+          } catch {
+            result[index] = undefined
+          }
         }
-      }
+      })
+      await Promise.all(workers)
+      if (readBytes) PerformanceResources.addRead(readBytes)
+      return result
     })
-    await Promise.all(workers)
-    return result
   }
 
   export async function update<T>(key: string[], fn: (draft: T) => void) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.write(target)
-      const content = await Bun.file(target).json()
-      fn(content)
-      await writeJsonAtomic(target, content)
-      return content as T
-    })
+    return measureStorage("update", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        const content = await Bun.file(target).json()
+        fn(content)
+        const bytes = byteLength(JSON.stringify(content, null, 2))
+        await writeJsonAtomic(target, content)
+        PerformanceResources.addWrite(bytes)
+        return content as T
+      }),
+    )
   }
 
   export async function write<T>(key: string[], content: T) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.write(target)
-      await writeJsonAtomic(target, content)
-    })
+    return measureStorage("write", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        const bytes = byteLength(JSON.stringify(content, null, 2))
+        await writeJsonAtomic(target, content)
+        PerformanceResources.addWrite(bytes)
+      }),
+    )
   }
 
   export async function scan(prefix: string[]): Promise<string[]> {
     const dir = resolveDir()
     const target = path.join(dir, ...prefix)
-    try {
-      const entries = await fs.readdir(target)
-      return entries
-        .filter((e) => !isTempFile(e))
-        .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
-        .sort()
-    } catch {
-      return []
-    }
+    return measureStorage("scan", prefix, async () => {
+      try {
+        const entries = await fs.readdir(target)
+        return entries
+          .filter((e) => !isTempFile(e))
+          .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
+          .sort()
+      } catch {
+        return []
+      }
+    })
   }
 
   export async function removeTree(prefix: string[]) {
@@ -112,6 +138,58 @@ export namespace Storage {
     }
   }
 
+  async function measureStorage<T>(operation: string, key: string[], body: () => Promise<T>) {
+    const start = performance.now()
+    let status = "ok"
+    try {
+      return await body()
+    } catch (error) {
+      status = "error"
+      PerformanceIssues.raise({
+        code: "PERF_STORAGE_OPERATION_ERROR",
+        severity: "warning",
+        module: "storage",
+        title: "Storage operation failed",
+        message: `${operation} failed for ${key[0] ?? "root"}`,
+        evidence: {
+          operation,
+          keyPrefix: key[0] ?? "root",
+          errorName: error instanceof Error ? error.name : "unknown",
+        },
+      })
+      throw error
+    } finally {
+      const durationMs = performance.now() - start
+      PerformanceMetrics.record({
+        name: "storage.operation.duration",
+        value: durationMs,
+        unit: "ms",
+        module: "storage",
+        labels: { operation, keyPrefix: key[0] ?? "root", status },
+      })
+      PerformanceMetrics.record({
+        name: "storage.operation.count",
+        value: 1,
+        unit: "count",
+        module: "storage",
+        labels: { operation, status },
+      })
+      if (status === "error") {
+        PerformanceMetrics.record({
+          name: "storage.operation.error",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { operation },
+        })
+      }
+    }
+  }
+
+  function byteLength(value: string) {
+    return new TextEncoder().encode(value).byteLength
+  }
+
   async function withErrorHandling<T>(body: () => Promise<T>) {
     return body().catch((e) => {
       if (!(e instanceof Error)) throw e
@@ -126,22 +204,24 @@ export namespace Storage {
   const glob = new Bun.Glob("**/*")
   export async function list(prefix: string[]) {
     const dir = resolveDir()
-    try {
-      const result = await Array.fromAsync(
-        glob.scan({
-          cwd: path.join(dir, ...prefix),
-          onlyFiles: true,
-        }),
-      ).then((results) =>
-        results
-          .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
-          .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
-      )
-      result.sort()
-      return result
-    } catch {
-      return []
-    }
+    return measureStorage("list", prefix, async () => {
+      try {
+        const result = await Array.fromAsync(
+          glob.scan({
+            cwd: path.join(dir, ...prefix),
+            onlyFiles: true,
+          }),
+        ).then((results) =>
+          results
+            .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
+            .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
+        )
+        result.sort()
+        return result
+      } catch {
+        return []
+      }
+    })
   }
 
   async function writeJsonAtomic(target: string, content: unknown) {

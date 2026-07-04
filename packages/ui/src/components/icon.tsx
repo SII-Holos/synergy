@@ -180,8 +180,9 @@ import {
   Users,
   X,
   Zap,
-  Github,
+  Wrench,
   Workflow,
+  Github,
 } from "lucide-solid"
 
 const icons = {
@@ -366,6 +367,7 @@ const icons = {
   workflow: Workflow,
   "worktree-enter": GitFork,
   "worktree-leave": ArrowLeft,
+  wrench: Wrench,
   "worktree-list": LayoutGrid,
 }
 

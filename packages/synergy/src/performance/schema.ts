@@ -1,0 +1,442 @@
+import z from "zod"
+
+export namespace PerformanceSchema {
+  export const Source = z
+    .enum(["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"])
+    .meta({ ref: "PerfSource" })
+  export type Source = z.infer<typeof Source>
+
+  export const Module = z
+    .enum([
+      "server",
+      "session",
+      "llm",
+      "tool",
+      "enforcement",
+      "storage",
+      "library",
+      "process",
+      "pty",
+      "browser",
+      "frontend",
+      "desktop",
+      "observability",
+    ])
+    .meta({ ref: "PerfModule" })
+  export type Module = z.infer<typeof Module>
+
+  export const Unit = z
+    .enum(["ms", "bytes", "count", "ratio", "percent", "microseconds", "tokens"])
+    .meta({ ref: "PerfUnit" })
+  export type Unit = z.infer<typeof Unit>
+
+  export const LabelValue = z
+    .union([z.string().max(512), z.number(), z.boolean(), z.null()])
+    .meta({ ref: "PerfLabelValue" })
+  export const Labels = z.record(z.string().max(64), LabelValue).default({}).meta({ ref: "PerfLabels" })
+
+  export const Metric = z
+    .object({
+      metricId: z.string(),
+      time: z.number(),
+      iso: z.string(),
+      name: z.string(),
+      value: z.number(),
+      unit: Unit,
+      source: Source,
+      module: Module,
+      scopeID: z.string().optional(),
+      sessionID: z.string().optional(),
+      messageID: z.string().optional(),
+      callID: z.string().optional(),
+      traceId: z.string().optional(),
+      spanId: z.string().optional(),
+      parentSpanId: z.string().optional(),
+      rid: z.string().optional(),
+      processId: z.string().optional(),
+      pid: z.number().int().optional(),
+      tool: z.string().optional(),
+      labels: Labels,
+      sampleRate: z.number().min(0).max(1).default(1),
+    })
+    .meta({ ref: "PerfMetric" })
+  export type Metric = z.infer<typeof Metric>
+
+  export const SpanStatus = z.enum(["ok", "error", "cancelled", "timeout"]).meta({ ref: "PerfSpanStatus" })
+  export type SpanStatus = z.infer<typeof SpanStatus>
+  export const Span = z
+    .object({
+      traceId: z.string(),
+      spanId: z.string(),
+      parentSpanId: z.string().optional(),
+      name: z.string(),
+      module: Module,
+      source: Source,
+      startTime: z.number(),
+      endTime: z.number().optional(),
+      durationMs: z.number().optional(),
+      status: SpanStatus.default("ok"),
+      errorCode: z.string().optional(),
+      errorMessage: z.string().optional(),
+      scopeID: z.string().optional(),
+      sessionID: z.string().optional(),
+      messageID: z.string().optional(),
+      callID: z.string().optional(),
+      rid: z.string().optional(),
+      processId: z.string().optional(),
+      pid: z.number().int().optional(),
+      tool: z.string().optional(),
+      attributes: Labels,
+    })
+    .meta({ ref: "PerfSpan" })
+  export type Span = z.infer<typeof Span>
+
+  export const ResourceSample = z
+    .object({
+      sampleId: z.string(),
+      time: z.number(),
+      iso: z.string(),
+      source: Source,
+      process: z.object({ pid: z.number().int().optional(), processId: z.string().optional(), role: z.string() }),
+      cpu: z
+        .object({
+          userMicros: z.number().optional(),
+          systemMicros: z.number().optional(),
+          utilizationRatio: z.number().optional(),
+        })
+        .default({}),
+      memory: z
+        .object({
+          rssBytes: z.number().optional(),
+          heapTotalBytes: z.number().optional(),
+          heapUsedBytes: z.number().optional(),
+          externalBytes: z.number().optional(),
+          arrayBuffersBytes: z.number().optional(),
+        })
+        .default({}),
+      eventLoop: z.object({ lagMs: z.number().optional(), sampleWindowMs: z.number() }),
+      io: z
+        .object({
+          appReadBytes: z.number().optional(),
+          appWrittenBytes: z.number().optional(),
+          appReadOps: z.number().optional(),
+          appWriteOps: z.number().optional(),
+          osReadBytes: z.number().optional(),
+          osWrittenBytes: z.number().optional(),
+          osAvailable: z.boolean().default(false),
+        })
+        .default({ osAvailable: false }),
+      scopeID: z.string().optional(),
+      sessionID: z.string().optional(),
+      traceId: z.string().optional(),
+      labels: Labels,
+    })
+    .meta({ ref: "PerfResourceSample" })
+  export type ResourceSample = z.infer<typeof ResourceSample>
+
+  export const IssueSeverity = z.enum(["info", "warning", "error", "critical"]).meta({ ref: "PerfIssueSeverity" })
+  export const IssueStatus = z.enum(["open", "resolved", "suppressed"]).meta({ ref: "PerfIssueStatus" })
+  export type IssueSeverity = z.infer<typeof IssueSeverity>
+  export type IssueStatus = z.infer<typeof IssueStatus>
+  export const Issue = z
+    .object({
+      issueId: z.string(),
+      time: z.number(),
+      iso: z.string(),
+      severity: IssueSeverity,
+      status: IssueStatus.default("open"),
+      code: z.string(),
+      title: z.string(),
+      message: z.string(),
+      recommendation: z.string().optional(),
+      module: Module,
+      traceId: z.string().optional(),
+      spanId: z.string().optional(),
+      sessionID: z.string().optional(),
+      messageID: z.string().optional(),
+      callID: z.string().optional(),
+      rid: z.string().optional(),
+      evidence: Labels,
+      firstSeenTime: z.number(),
+      lastSeenTime: z.number(),
+      occurrenceCount: z.number().int(),
+      fingerprint: z.string(),
+    })
+    .meta({ ref: "PerfIssue" })
+  export type Issue = z.infer<typeof Issue>
+
+  export const RankedItem = z
+    .object({
+      id: z.string(),
+      label: z.string(),
+      module: Module.optional(),
+      value: z.number(),
+      unit: Unit,
+      traceId: z.string().optional(),
+      sessionID: z.string().optional(),
+      tool: z.string().optional(),
+      status: z.string().optional(),
+    })
+    .meta({ ref: "PerfRankedItem" })
+  export type RankedItem = z.infer<typeof RankedItem>
+
+  export const DashboardSummary = z
+    .object({
+      generatedAt: z.string(),
+      windowMs: z.number(),
+      health: z.object({
+        status: z.enum(["healthy", "degraded", "critical", "unknown"]),
+        score: z.number(),
+        openIssueCount: z.number().int(),
+        criticalIssueCount: z.number().int(),
+      }),
+      backend: z.object({
+        requestCount: z.number().int(),
+        errorRate: z.number(),
+        p50RequestMs: z.number().optional(),
+        p95RequestMs: z.number().optional(),
+        p99RequestMs: z.number().optional(),
+        activeSessions: z.number().int(),
+        pendingSessions: z.number().int(),
+      }),
+      resources: z.object({
+        rssBytes: z.number().optional(),
+        heapUsedBytes: z.number().optional(),
+        heapTotalBytes: z.number().optional(),
+        cpuUtilizationRatio: z.number().optional(),
+        eventLoopLagP95Ms: z.number().optional(),
+        appReadBytes: z.number().optional(),
+        appWrittenBytes: z.number().optional(),
+        appReadOps: z.number().int().optional(),
+        appWriteOps: z.number().int().optional(),
+      }),
+      sessions: z.object({
+        turnCount: z.number().int(),
+        p95TurnMs: z.number().optional(),
+        llmCallCount: z.number().int(),
+        toolCallCount: z.number().int(),
+      }),
+      frontend: z.object({
+        inpMs: z.number().optional(),
+        lcpMs: z.number().optional(),
+        cls: z.number().optional(),
+        fcpMs: z.number().optional(),
+        ttfbMs: z.number().optional(),
+        longTaskCount: z.number().int(),
+        resourceP95Ms: z.number().optional(),
+      }),
+      runtime: z.object({
+        alive: z.boolean().optional(),
+        healthy: z.boolean().optional(),
+        pid: z.number().int().optional(),
+        mode: z.string().optional(),
+        traceFiles: z.number().int(),
+        recentErrors: z.number().int(),
+        pendingSessions: z.number().int(),
+      }),
+      top: z.object({
+        slowRoutes: z.array(RankedItem),
+        slowSessions: z.array(RankedItem),
+        slowTools: z.array(RankedItem),
+        slowProviders: z.array(RankedItem),
+        slowStorage: z.array(RankedItem),
+        slowLibrary: z.array(RankedItem),
+        slowFrontend: z.array(RankedItem),
+      }),
+      issues: z.array(Issue),
+    })
+    .meta({ ref: "PerfDashboardSummary" })
+  export type DashboardSummary = z.infer<typeof DashboardSummary>
+
+  export const TimelineQuery = z
+    .object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      bucketMs: z.coerce.number().int().positive().optional(),
+      metric: z.union([z.string(), z.array(z.string())]).optional(),
+      scopeID: z.string().optional(),
+      sessionID: z.string().optional(),
+      tool: z.string().optional(),
+      providerID: z.string().optional(),
+      module: Module.optional(),
+      windowMs: z.coerce.number().int().positive().optional(),
+    })
+    .meta({ ref: "PerfTimelineQuery" })
+  export type TimelineQuery = z.infer<typeof TimelineQuery>
+
+  export const TimelinePoint = z
+    .object({ time: z.number(), value: z.number().nullable() })
+    .meta({ ref: "PerfTimelinePoint" })
+  export const TimelineSeries = z
+    .object({
+      name: z.string(),
+      unit: Unit,
+      module: Module.optional(),
+      source: Source.optional(),
+      points: z.array(TimelinePoint),
+    })
+    .meta({ ref: "PerfTimelineSeries" })
+  export const Timeline = z
+    .object({
+      generatedAt: z.string(),
+      from: z.number(),
+      to: z.number(),
+      bucketMs: z.number(),
+      series: z.array(TimelineSeries),
+    })
+    .meta({ ref: "PerfTimeline" })
+  export type Timeline = z.infer<typeof Timeline>
+
+  export const TraceListQuery = z
+    .object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.coerce.number().int().positive().max(200).optional(),
+      cursor: z.string().optional(),
+      kind: z.enum(["request", "session", "agent", "tool", "provider", "runtime", "storage", "frontend"]).optional(),
+      status: SpanStatus.optional(),
+      minDurationMs: z.coerce.number().nonnegative().optional(),
+      scopeID: z.string().optional(),
+      sessionID: z.string().optional(),
+    })
+    .meta({ ref: "PerfTraceListQuery" })
+  export type TraceListQuery = z.infer<typeof TraceListQuery>
+
+  export const TraceListItem = z
+    .object({
+      traceId: z.string(),
+      kind: z.string(),
+      name: z.string(),
+      status: SpanStatus,
+      startedAt: z.string(),
+      endedAt: z.string().optional(),
+      durationMs: z.number().optional(),
+      module: Module,
+      source: Source,
+      sessionID: z.string().optional(),
+      scopeID: z.string().optional(),
+      rid: z.string().optional(),
+      tool: z.string().optional(),
+      errorCode: z.string().optional(),
+      redactionApplied: z.boolean(),
+    })
+    .meta({ ref: "PerfTraceListItem" })
+  export type TraceListItem = z.infer<typeof TraceListItem>
+
+  export const TraceList = z
+    .object({ generatedAt: z.string(), items: z.array(TraceListItem), nextCursor: z.string().optional() })
+    .meta({ ref: "PerfTraceList" })
+  export type TraceList = z.infer<typeof TraceList>
+
+  export const TraceEvent = z
+    .object({
+      time: z.number(),
+      iso: z.string(),
+      type: z.string(),
+      level: z.string().optional(),
+      traceId: z.string().optional(),
+      sessionID: z.string().optional(),
+      messageID: z.string().optional(),
+      callID: z.string().optional(),
+      rid: z.string().optional(),
+      tool: z.string().optional(),
+      processId: z.string().optional(),
+      pid: z.number().int().optional(),
+      dataKeys: z.array(z.string()).default([]),
+      redactionApplied: z.boolean(),
+    })
+    .meta({ ref: "PerfTraceEvent" })
+  export type TraceEvent = z.infer<typeof TraceEvent>
+
+  export const TraceDetail = z
+    .object({
+      generatedAt: z.string(),
+      traceId: z.string(),
+      root: Span.optional(),
+      spans: z.array(Span),
+      events: z.array(TraceEvent),
+      redaction: z.object({ applied: z.boolean(), omittedAttributes: z.number().int() }),
+    })
+    .meta({ ref: "PerfTraceDetail" })
+  export type TraceDetail = z.infer<typeof TraceDetail>
+
+  export const BrowserMetric = z
+    .object({
+      name: z.string().max(96),
+      value: z.number(),
+      unit: Unit,
+      time: z.number().optional(),
+      labels: Labels.optional(),
+    })
+    .meta({ ref: "PerfBrowserMetric" })
+  export type BrowserMetric = z.infer<typeof BrowserMetric>
+
+  export const BrowserMetricBatch = z
+    .object({
+      batchId: z.string().optional(),
+      sentAt: z.number(),
+      page: z
+        .object({
+          routeName: z.string().optional(),
+          pathTemplate: z.string().optional(),
+          sessionID: z.string().optional(),
+          scopeID: z.string().optional(),
+        })
+        .default({}),
+      metrics: z.array(BrowserMetric).max(100),
+      resourceEntries: z
+        .array(
+          z.object({
+            name: z.string().max(2048),
+            initiatorType: z.string().max(64).optional(),
+            startTime: z.number(),
+            duration: z.number(),
+            transferSize: z.number().optional(),
+            encodedBodySize: z.number().optional(),
+            decodedBodySize: z.number().optional(),
+          }),
+        )
+        .max(100)
+        .optional(),
+      longTasks: z
+        .array(z.object({ startTime: z.number(), duration: z.number(), attribution: z.string().max(128).optional() }))
+        .max(100)
+        .optional(),
+    })
+    .meta({ ref: "PerfBrowserMetricBatch" })
+  export type BrowserMetricBatch = z.infer<typeof BrowserMetricBatch>
+
+  export const BrowserMetricIngestResult = z
+    .object({ batchId: z.string(), accepted: z.number().int(), rejected: z.number().int(), receivedAt: z.string() })
+    .meta({ ref: "PerfBrowserMetricIngestResult" })
+  export type BrowserMetricIngestResult = z.infer<typeof BrowserMetricIngestResult>
+
+  export const Config = z
+    .object({
+      enabled: z.boolean(),
+      samplingRate: z.number(),
+      metricRetentionMs: z.number(),
+      traceRetentionMs: z.number(),
+      resourceSampleIntervalMs: z.number(),
+      slowTraceThresholdMs: z.number(),
+      maxTraceEvents: z.number(),
+      maxTimelineBuckets: z.number(),
+      maxTraceListLimit: z.number(),
+      maxAttributeStringLength: z.number(),
+      dashboardRefreshMs: z.number(),
+      sseHeartbeatMs: z.number(),
+      sseBufferSize: z.number(),
+      perClientSseQueueSize: z.number(),
+      rateLimits: z.record(z.string(), z.number()).default({}),
+      redactAttributeKeys: z.array(z.string()),
+      storage: z.object({
+        sqliteEnabled: z.boolean(),
+        jsonlMirrorEnabled: z.boolean(),
+        maxSqliteBytes: z.number(),
+        walCheckpointIntervalMs: z.number(),
+      }),
+      thresholds: z.record(z.string(), z.number()),
+    })
+    .meta({ ref: "PerfConfig" })
+  export type Config = z.infer<typeof Config>
+}

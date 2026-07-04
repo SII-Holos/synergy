@@ -70,14 +70,28 @@ import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
+import { PerformanceRoute } from "./performance-route"
 import { Observability } from "@/observability"
+import { PerformanceIssues } from "@/performance/issues"
+import { ServerSseMetrics } from "./sse-metrics"
+import { PerformanceMetrics } from "@/performance/metrics"
+import { PerformanceSpans } from "@/performance/spans"
+import { PerformanceRedaction } from "@/performance/redact"
+import { PerformanceConfig } from "@/performance/config"
+import { PerformanceResources } from "@/performance/resources"
 import { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, DEFAULT_SERVER_URL } from "./defaults"
+import { PerformanceRetention } from "@/performance/retention"
 import { UpdateRoute } from "./update-route"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 RuntimeReload.startAutoReload()
+void Config.current()
+  .then((config) => PerformanceConfig.refresh(config))
+  .catch(() => PerformanceConfig.refresh())
+PerformanceResources.start()
+PerformanceRetention.schedule()
 
 export namespace Server {
   export const DEFAULT_PORT = DEFAULT_SERVER_PORT
@@ -321,28 +335,85 @@ export namespace Server {
         })
         .use(async (c, next) => {
           const reqPath = c.req.path
+          const routePath = PerformanceRedaction.routePath(reqPath)
           const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
+          const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
           const start = Date.now()
           const requestId = crypto.randomUUID().slice(0, 8)
+          const span = skipPerformance
+            ? undefined
+            : PerformanceSpans.start({
+                name: "http.request",
+                module: "server",
+                rid: requestId,
+                attributes: { method: c.req.method, route: routePath },
+              })
+          const requestLength = Number(c.req.header("content-length") ?? 0)
+          if (span && Number.isFinite(requestLength) && requestLength > 0) {
+            PerformanceMetrics.record({
+              name: "http.request.size",
+              value: requestLength,
+              unit: "bytes",
+              module: "server",
+              rid: requestId,
+              labels: { method: c.req.method, route: routePath },
+            })
+          }
           try {
             await next()
           } finally {
+            const duration = Date.now() - start
+            const status = c.res.status
+            if (span) {
+              PerformanceSpans.end(span, {
+                status: status >= 500 ? "error" : "ok",
+                attributes: { method: c.req.method, route: routePath, status },
+              })
+            }
+            const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+            if (span && Number.isFinite(responseLength) && responseLength > 0) {
+              PerformanceMetrics.record({
+                name: "http.response.size",
+                value: responseLength,
+                unit: "bytes",
+                module: "server",
+                traceId: span.traceId,
+                spanId: span.spanId,
+                rid: requestId,
+                labels: { method: c.req.method, route: routePath, status },
+              })
+            }
+            if (span && (status >= 500 || duration >= 1000)) {
+              PerformanceIssues.raise({
+                code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
+                severity: status >= 500 ? "error" : "warning",
+                module: "server",
+                title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
+                message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
+                recommendation: "Open the trace detail to identify the owning server route or downstream module.",
+                traceId: span.traceId,
+                spanId: span.spanId,
+                rid: requestId,
+                evidence: { method: c.req.method, route: routePath, status, durationMs: duration },
+              })
+            }
             if (!skipLogging) {
               log.info("request", {
                 rid: requestId,
                 method: c.req.method,
                 path: reqPath,
-                status: c.res.status,
-                duration: Date.now() - start,
+                status,
+                duration,
               })
               void Observability.emit("http.request", {
                 rid: requestId,
-                level: c.res.status >= 500 ? "error" : c.res.status >= 400 ? "warn" : "info",
+                traceId: span?.traceId,
+                level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
                 data: {
                   method: c.req.method,
-                  path: reqPath,
-                  status: c.res.status,
-                  duration: Date.now() - start,
+                  route: routePath,
+                  status,
+                  duration,
                 },
               })
             }
@@ -482,6 +553,7 @@ export namespace Server {
         .route("/global/stats", StatsRoute)
         .route("/global/update", UpdateRoute)
         .route("/global", ObservabilityRoute)
+        .route("/global", PerformanceRoute)
         .get(
           "/global/event/ws",
           (() => {
@@ -1173,6 +1245,8 @@ export namespace Server {
             c.header("X-Accel-Buffering", "no")
             c.header("Cache-Control", "no-cache, no-transform")
             return streamSSE(c, async (stream) => {
+              const connectedAt = Date.now()
+              ServerSseMetrics.open("events")
               stream.writeSSE({
                 data: JSON.stringify({
                   type: "server.connected",
@@ -1180,9 +1254,13 @@ export namespace Server {
                 }),
               })
               const unsub = Bus.subscribeAll(async (event) => {
-                await stream.writeSSE({
-                  data: JSON.stringify(event),
-                })
+                await stream
+                  .writeSSE({
+                    data: JSON.stringify(event),
+                  })
+                  .catch(() => {
+                    ServerSseMetrics.writeFailure("events")
+                  })
                 if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
                 }
@@ -1190,17 +1268,21 @@ export namespace Server {
 
               // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
               const heartbeat = setInterval(() => {
-                stream.writeSSE({
-                  data: JSON.stringify({
-                    type: "server.heartbeat",
-                    properties: {},
-                  }),
-                })
+                void stream
+                  .writeSSE({
+                    data: JSON.stringify({
+                      type: "server.heartbeat",
+                      properties: {},
+                    }),
+                  })
+                  .then(() => ServerSseMetrics.heartbeat("events"))
+                  .catch(() => ServerSseMetrics.writeFailure("events", "heartbeat"))
               }, 30000)
 
               await new Promise<void>((resolve) => {
                 stream.onAbort(() => {
                   clearInterval(heartbeat)
+                  ServerSseMetrics.duration("events", connectedAt)
                   unsub()
                   resolve()
                   log.info("event disconnected")

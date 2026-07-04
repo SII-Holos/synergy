@@ -297,6 +297,71 @@ export const ObservabilityConfig = z
       .positive()
       .optional()
       .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+    performance: z
+      .object({
+        enabled: z.boolean().optional().describe("Enable structured local performance metrics and traces"),
+        samplingRate: z.number().min(0).max(1).optional().describe("Default performance metric sampling rate"),
+        metricRetentionMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Milliseconds to retain raw performance metrics"),
+        traceRetentionMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Milliseconds to retain performance spans and trace details"),
+        resourceSampleIntervalMs: z.number().int().positive().optional().describe("Runtime resource sampling interval"),
+        slowTraceThresholdMs: z.number().int().positive().optional().describe("Default slow trace issue threshold"),
+        maxTraceEvents: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum related events returned for a trace detail"),
+        maxTimelineBuckets: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum timeline buckets returned to the dashboard"),
+        maxTraceListLimit: z.number().int().positive().optional().describe("Maximum trace list rows returned"),
+        maxAttributeStringLength: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum redacted attribute string length"),
+        dashboardRefreshMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Performance dashboard polling refresh interval"),
+        sseHeartbeatMs: z.number().int().positive().optional().describe("Performance SSE heartbeat interval"),
+        sseBufferSize: z.number().int().positive().optional().describe("Performance event stream replay buffer size"),
+        perClientSseQueueSize: z.number().int().positive().optional().describe("Per-client performance SSE queue size"),
+        redactAttributeKeys: z
+          .array(z.string())
+          .optional()
+          .describe("Additional performance telemetry attribute keys to redact"),
+        rateLimits: z.record(z.string(), z.number().int().positive()).optional(),
+        storage: z
+          .object({
+            sqliteEnabled: z.boolean().optional(),
+            jsonlMirrorEnabled: z.boolean().optional(),
+            maxSqliteBytes: z.number().int().positive().optional(),
+            walCheckpointIntervalMs: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+        thresholds: z.record(z.string(), z.number().positive()).optional(),
+      })
+      .strict()
+      .optional()
+      .describe("Structured local performance observability settings"),
   })
   .strict()
   .meta({ ref: "ObservabilityConfig" })

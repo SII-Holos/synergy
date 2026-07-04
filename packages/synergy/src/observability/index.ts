@@ -1,6 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "@/global"
+import { PerformanceWriter } from "@/performance/writer"
 
 export namespace Observability {
   const TRACE_DIR = path.join(Global.Path.state, "observability", "traces")
@@ -72,13 +73,16 @@ export namespace Observability {
       iso: new Date().toISOString(),
       data: input.data ? sanitizeRecord(input.data) : undefined,
     }
-    await fs.mkdir(TRACE_DIR, { recursive: true }).catch(() => {})
-    await fs.appendFile(fileForDate(), JSON.stringify(event) + "\n", "utf8").catch(() => {})
+    PerformanceWriter.append(fileForDate(), JSON.stringify(event) + "\n")
     scheduleCleanup()
     return event
   }
 
+  export async function flush() {
+    await PerformanceWriter.flush()
+  }
   export async function listFiles() {
+    await flush()
     const entries = await fs.readdir(TRACE_DIR).catch((): string[] => [])
     return entries
       .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
@@ -87,6 +91,7 @@ export namespace Observability {
   }
 
   export async function query(input: Query = {}) {
+    await flush()
     const limit = Math.max(1, Math.min(input.limit ?? 500, 5000))
     const files = (await listFiles()).reverse()
     const result: Event[] = []
@@ -112,6 +117,7 @@ export namespace Observability {
   }
 
   export async function cleanup(opts?: { retentionDays?: number; maxBytes?: number }) {
+    await flush()
     const retentionDays = opts?.retentionDays ?? DEFAULT_RETENTION_DAYS
     const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES
     const files = await listFiles()
