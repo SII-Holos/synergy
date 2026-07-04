@@ -18,6 +18,13 @@ const parameters = z
     message: "Provide at least one group or tool to expand.",
   })
 
+interface ExpandToolsIssues {
+  unknownGroups: string[]
+  unknownTools: string[]
+  groupToolInputs: Array<{ tool: string; group: string }>
+  permissionHidden: string[]
+}
+
 export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
   description: [
     "Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared.",
@@ -25,13 +32,13 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
     "Known built-in groups:",
     ToolExposure.groupTable(),
     "Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool.",
-    "Important timing: expanded tools become visible when Synergy builds the tool list for the next model request. They cannot appear in later tool calls inside the current model request.",
+    "After expand_tools returns, use the listed tools directly. Tools omitted from the list may still be hidden by permissions, user settings, policy, or runtime availability.",
   ].join("\n\n"),
   parameters,
   formatValidationError(error) {
     return [
       `The expand_tools tool was called with invalid arguments: ${error.message}`,
-      'Next step: call expand_tools with at least one group or tool, for example {"groups":["browser"],"reason":"verify the local UI"}.',
+      'Call expand_tools with at least one group or tool, for example {"groups":["browser"],"reason":"verify the local UI"}.',
     ].join("\n")
   },
   async execute(params: z.infer<typeof parameters>, ctx) {
@@ -136,8 +143,13 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
     const updatedVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: updatedState })
     const currentVisibleToolSet = new Set(currentVisibleTools)
     const newlyVisibleTools = updatedVisibleTools.filter((toolID) => !currentVisibleToolSet.has(toolID))
+    const updatedVisibleToolSet = new Set(updatedVisibleTools)
+    const requestedGroupTools = requestedGroups.flatMap((groupID) => groupByID.get(groupID)?.tools ?? [])
+    const availableRequestedTools = ToolExposure.unique(
+      [...requestedGroupTools, ...requestedTools].filter((toolID) => updatedVisibleToolSet.has(toolID)),
+    )
     const availableNextStep = changed || alreadyActive.length > 0
-    const issues = {
+    const issues: ExpandToolsIssues = {
       unknownGroups,
       unknownTools,
       groupToolInputs,
@@ -159,6 +171,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       newlyExpandedGroups,
       newlyActivatedTools,
       newlyVisibleTools,
+      availableRequestedTools,
       visibleToolCount: updatedVisibleTools.length,
       alreadyActive: ToolExposure.unique(alreadyActive),
       availableNextStep,
@@ -167,44 +180,78 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       guidance,
     }
 
+    const output = formatOutput({
+      changed,
+      reason: params.reason,
+      availableRequestedTools,
+      issues,
+      availableGroups: catalog.groups.map((group) => group.id),
+    })
+
     return {
       title: changed ? "Tools expanded" : "Tool expansion checked",
-      output: [
-        changed
-          ? "Tool visibility state was updated for this session."
-          : "No new tool visibility state was added; requested capabilities were already active or need a corrected request.",
-        "",
-        `availableNextStep: ${availableNextStep}`,
-        "availableOn: next_model_request",
-        params.reason ? `Reason recorded: ${params.reason}` : undefined,
-        "",
-        `expandedGroups: ${result.expandedGroups.length ? result.expandedGroups.join(", ") : "(none)"}`,
-        `activatedTools: ${result.activatedTools.length ? result.activatedTools.join(", ") : "(none)"}`,
-        result.newlyVisibleTools.length ? `newlyVisibleTools: ${result.newlyVisibleTools.join(", ")}` : undefined,
-        `visibleToolCount: ${result.visibleToolCount}`,
-        result.alreadyActive.length ? `alreadyActive: ${result.alreadyActive.join(", ")}` : undefined,
-        issues.unknownGroups.length
-          ? `unknownGroups: ${issues.unknownGroups.join(", ")}. Available groups: ${catalog.groups.map((group) => group.id).join(", ")}.`
-          : undefined,
-        issues.unknownTools.length
-          ? `unknownTools: ${issues.unknownTools.join(", ")}. Next step: call search_tools with the capability or tool name.`
-          : undefined,
-        issues.groupToolInputs.length
-          ? `group tools passed individually: ${issues.groupToolInputs
-              .map((item) => `${item.tool} -> expand_tools({ groups: ["${item.group}"] })`)
-              .join(", ")}.`
-          : undefined,
-        issues.permissionHidden.length
-          ? `permissionHidden: ${issues.permissionHidden.join(", ")}. Expansion cannot override permissions; choose another tool or ask the user to adjust permissions.`
-          : undefined,
-        guidance !== DEFAULT_GUIDANCE ? `guidance: ${guidance}` : undefined,
-      ]
-        .filter((line): line is string => line !== undefined)
-        .join("\n"),
+      output,
       metadata: result as Record<string, any>,
     }
   },
 }))
+function formatOutput(input: {
+  changed: boolean
+  reason?: string
+  availableRequestedTools: string[]
+  issues: ExpandToolsIssues
+  availableGroups: string[]
+}) {
+  const hasIssues =
+    input.issues.unknownGroups.length > 0 ||
+    input.issues.unknownTools.length > 0 ||
+    input.issues.groupToolInputs.length > 0 ||
+    input.issues.permissionHidden.length > 0
+  const status = input.changed
+    ? hasIssues
+      ? "Tool visibility was partially updated."
+      : "Tool visibility was updated."
+    : input.availableRequestedTools.length > 0
+      ? "Requested tools are already available."
+      : "No requested tools were made available."
+
+  const issueLines = formatIssueLines(input.issues, input.availableGroups)
+
+  return [
+    status,
+    input.reason ? `Reason: ${input.reason}` : undefined,
+    input.availableRequestedTools.length > 0 ? "" : undefined,
+    input.availableRequestedTools.length > 0 ? "You can call these tools directly:" : undefined,
+    input.availableRequestedTools.length > 0 ? input.availableRequestedTools.join(", ") : undefined,
+    issueLines.length > 0 ? "" : undefined,
+    ...issueLines,
+  ]
+    .filter((line): line is string => line !== undefined)
+    .join("\n")
+}
+
+function formatIssueLines(issues: ExpandToolsIssues, availableGroups: string[]) {
+  const lines: string[] = []
+  if (issues.unknownGroups.length > 0) {
+    lines.push(`Unknown groups: ${issues.unknownGroups.join(", ")}. Available groups: ${availableGroups.join(", ")}.`)
+  }
+  if (issues.unknownTools.length > 0) {
+    lines.push(`Unknown tools: ${issues.unknownTools.join(", ")}. Use search_tools with the capability or tool name.`)
+  }
+  if (issues.groupToolInputs.length > 0) {
+    lines.push(
+      `Expand group-scoped tools by group: ${issues.groupToolInputs
+        .map((item) => `${item.tool} -> expand_tools({ groups: ["${item.group}"] })`)
+        .join(", ")}.`,
+    )
+  }
+  if (issues.permissionHidden.length > 0) {
+    lines.push(
+      `Unavailable because permissions, user tool settings, or policy hide them: ${issues.permissionHidden.join(", ")}.`,
+    )
+  }
+  return lines
+}
 
 function guidanceFor(input: {
   requestedGroups: string[]
@@ -240,4 +287,4 @@ function guidanceFor(input: {
   return lines.join("\n")
 }
 
-const DEFAULT_GUIDANCE = "Continue with the newly visible tools on the next model request or later turn."
+const DEFAULT_GUIDANCE = "Use the listed tools directly."
