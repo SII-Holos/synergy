@@ -1373,7 +1373,7 @@ export const Info = z
       )
       .optional(),
     role_variant: z
-      .record(ModelRole, z.string())
+      .record(z.string(), z.string())
       .optional()
       .describe(
         "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
