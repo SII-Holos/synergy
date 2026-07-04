@@ -1,6 +1,7 @@
+import { resolveTerminalCwd } from "./terminal-cwd"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { Persist, persisted } from "@/utils/persist"
@@ -37,13 +38,27 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
     }),
   )
 
+  async function resolveCwd(): Promise<string | undefined> {
+    if (!id) return undefined
+    try {
+      const { data } = await sdk.client.session.get({ sessionID: id })
+      return resolveTerminalCwd(data)
+    } catch {
+      return undefined
+    }
+  }
+
   return {
     ready,
     all: createMemo(() => Object.values(store.all)),
     active: createMemo(() => store.active),
     async new() {
       try {
-        const pty = await sdk.client.pty.create({ title: `Terminal ${store.all.length + 1}` })
+        const cwd = await resolveCwd()
+        const pty = await sdk.client.pty.create({
+          title: `Terminal ${store.all.length + 1}`,
+          ...(cwd ? { cwd } : {}),
+        })
         const id = pty.data?.id
         if (!id) return undefined
         const next = {
@@ -74,9 +89,11 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
       const index = store.all.findIndex((x) => x.id === id)
       const pty = store.all[index]
       if (!pty) return
+      const cwd = await resolveCwd()
       const clone = await sdk.client.pty
         .create({
           title: pty.title,
+          ...(cwd ? { cwd } : {}),
         })
         .catch((e) => {
           console.error("Failed to clone terminal", e)
@@ -95,19 +112,15 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
       setStore("active", id)
     },
     async close(id: string) {
-      batch(() => {
-        setStore(
-          "all",
-          store.all.filter((x) => x.id !== id),
-        )
-        if (store.active === id) {
-          const index = store.all.findIndex((f) => f.id === id)
-          const previous = store.all[Math.max(0, index - 1)]
-          setStore("active", previous?.id)
-        }
-      })
       await sdk.client.pty.remove({ ptyID: id }).catch((e) => {
         console.error("Failed to close terminal", e)
+      })
+      setTimeout(() => {
+        const remaining = store.all.filter((x) => x.id !== id)
+        setStore("all", remaining)
+        if (store.active === id) {
+          setStore("active", remaining[remaining.length - 1]?.id)
+        }
       })
     },
     move(id: string, to: number) {

@@ -435,7 +435,11 @@ export namespace Cortex {
       taskWaiters.delete(taskID)
       log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
     } else if (task.notifyParentOnComplete !== false) {
-      notifyParentSession(task)
+      if (SessionManager.isRunning(task.parentSessionID)) {
+        log.info("skipping parent notification: session is mid-turn", { taskID: task.id })
+      } else {
+        notifyParentSession(task)
+      }
     } else {
       log.info("task parent notification suppressed", { taskID })
     }
