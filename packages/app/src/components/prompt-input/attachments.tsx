@@ -1,9 +1,10 @@
 import type { Accessor } from "solid-js"
-import { For } from "solid-js"
+import { createMemo, For } from "solid-js"
 import type { NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
-import { AttachmentCard } from "@ericsanchezok/synergy-ui/attachment-card"
+import { AttachmentCard, resolveImagePreviewImage } from "@ericsanchezok/synergy-ui/attachment-card"
+import type { ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { uploadedPromptAttachmentToFile } from "./attachment-files"
+import { buildPromptUploadEntries } from "./attachment-preview"
 
 export function PromptAttachments(props: {
   uploads: Accessor<UploadedAttachmentPart[]>
@@ -17,15 +18,32 @@ export function PromptAttachments(props: {
     props.removeAttachment(id)
   }
 
+  const uploadEntries = createMemo(() =>
+    buildPromptUploadEntries(props.serverUrl, props.uploads(), resolveImagePreviewImage),
+  )
+  const previewImages = createMemo(() =>
+    uploadEntries()
+      .map((entry) => entry.imagePreview)
+      .filter((image): image is ImagePreviewImage => Boolean(image)),
+  )
+
   return (
     <div class="flex flex-wrap gap-2 px-3 pt-3">
-      <For each={props.uploads()}>
-        {(attachment) => (
+      <For each={uploadEntries()}>
+        {(entry) => (
           <div class="relative group w-56 max-w-full">
-            <AttachmentCard file={uploadedPromptAttachmentToFile(attachment)} serverUrl={props.serverUrl} />
+            <AttachmentCard
+              file={entry.file}
+              serverUrl={props.serverUrl}
+              imagePreview={
+                entry.imagePreviewIndex !== undefined
+                  ? { images: previewImages(), index: entry.imagePreviewIndex }
+                  : undefined
+              }
+            />
             <button
               type="button"
-              onClick={(event) => remove(event, attachment.id)}
+              onClick={(event) => remove(event, entry.attachment.id)}
               class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
             >
               <Icon name="x" class="size-3 text-text-weak" />
