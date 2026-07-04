@@ -137,6 +137,7 @@ export namespace MessageV2 {
     text: z.string(),
     synthetic: z.boolean().optional(),
     ignored: z.boolean().optional(),
+    origin: z.enum(["user", "system"]).optional(),
     time: z
       .object({
         start: z.number(),
@@ -423,6 +424,16 @@ export namespace MessageV2 {
   })
   export type ToolPart = z.infer<typeof ToolPart>
 
+  export const OriginUser = z
+    .object({
+      type: z.string(),
+      sessionID: z.string().optional(),
+      label: z.string().optional(),
+      detail: z.string().optional(),
+    })
+    .meta({ ref: "OriginUser" })
+  export type OriginUser = z.infer<typeof OriginUser>
+
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
@@ -452,6 +463,7 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    origin: OriginUser.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
     ref: "UserMessage",
