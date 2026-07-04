@@ -1,0 +1,11 @@
+Audit your recent changes — list issues only, do NOT fix them yet. Evaluate along these axes:
+
+1. Readability — are names self-describing? Does each unit have a single clear responsibility, or does it scatter related concerns?
+2. Structural hygiene — dead code, leftover transitional code, unused imports, stale layers, speculative abstraction? Flag anything that doesn't earn its place.
+3. Design integrity — unnecessary wrappers, indirection, functions that add callsite depth without clarity or reuse? Every layer must justify itself.
+4. Error handling — are error paths covered? Are null, empty, boundary, and failure states handled explicitly?
+5. Consistency — do naming, error handling, module layout, and imports match surrounding conventions?
+
+Be specific — cite file names, line ranges, and concrete examples. I'll review your findings before deciding what to fix.
+
+$ARGUMENTS

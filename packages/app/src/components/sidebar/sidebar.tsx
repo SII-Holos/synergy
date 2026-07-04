@@ -335,17 +335,17 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </div>
 
-      {/* Action buttons (expanded only) */}
-      <Show when={isExpanded()}>
-        <div class="sb-actions">
-          <Tooltip value="New session" placement="right">
-            <button type="button" class="sb-action-btn" onClick={handleNewSession}>
-              <Icon name="square-pen" size="normal" />
+      {/* Action buttons */}
+      <div class="sb-actions">
+        <Tooltip value="New session" placement="right">
+          <button type="button" class="sb-action-btn" aria-label="New session" onClick={handleNewSession}>
+            <Icon name={getSemanticIcon("session.new")} size="normal" />
+            <Show when={isExpanded()}>
               <span class="sb-action-label">New</span>
-            </button>
-          </Tooltip>
-        </div>
-      </Show>
+            </Show>
+          </button>
+        </Tooltip>
+      </div>
 
       {/* Global feature buttons */}
       <div class="sb-globals">

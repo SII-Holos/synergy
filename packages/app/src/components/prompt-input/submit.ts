@@ -34,6 +34,7 @@ import {
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
+import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import {
   SessionStartProgressDialog,
@@ -426,46 +427,18 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const customCommand = sync.data.command.find((c) => c.name === commandName)
       if (customCommand) {
         clearInput()
-        client.session
-          .command({
-            sessionID: activeSession.id,
-            command: commandName,
-            arguments: args.join(" "),
-            agent,
-            model: `${model.providerID}/${model.modelID}`,
-            variant,
-            parts: [
-              ...attachments.map(createUploadedAttachmentInputPart),
-              ...notes.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-                filename: `${attachment.title || "Untitled"}.md`,
-                model: { mode: "content" as const, text: formatNoteContent(attachment) },
-                metadata: {
-                  kind: "note",
-                  noteId: attachment.noteId,
-                  title: attachment.title || "Untitled",
-                },
-              })),
-              ...sessions.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
-                filename: `${attachment.title || "session"}.session.txt`,
-                model: { mode: "content" as const, text: formatSessionReference(attachment) },
-                metadata: {
-                  kind: "session",
-                  sessionId: attachment.sessionId,
-                  directory: attachment.directory,
-                  title: attachment.title || "Untitled",
-                  updatedAt: attachment.updatedAt,
-                },
-              })),
-            ],
-          })
+        sendSessionCommand({
+          client,
+          sessionID: activeSession.id,
+          command: commandName,
+          arguments: args.join(" "),
+          agent,
+          model,
+          variant,
+          attachments,
+          notes,
+          sessions,
+        })
           .then(() => {
             closeStartProgress()
           })

@@ -708,7 +708,7 @@ ToolRegistry.register({
           icon: "tool-expand",
           title: "Expand Tools",
           subtitle: target(),
-          tags: props.metadata?.availableNextStep ? [{ label: "Next step" }] : undefined,
+          tags: props.metadata?.availableRequestedTools?.length ? [{ label: "Ready" }] : undefined,
         }}
       >
         <Show when={props.output}>

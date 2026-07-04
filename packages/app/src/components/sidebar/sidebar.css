@@ -156,6 +156,17 @@
   background: var(--sb-hover-bg);
 }
 
+.sb-collapsed .sb-actions {
+  padding: 4px 8px;
+}
+
+.sb-collapsed .sb-action-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
 .sb-action-label {
   font-size: var(--font-size-small);
   font-weight: 500;
