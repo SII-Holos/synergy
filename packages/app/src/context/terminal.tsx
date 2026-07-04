@@ -2,7 +2,7 @@ import { resolveTerminalCwd } from "./terminal-cwd"
 import { useGlobalSync } from "./global-sync"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { Persist, persisted } from "@/utils/persist"
@@ -108,19 +108,15 @@ function createTerminalSession(
       setStore("active", id)
     },
     async close(id: string) {
-      batch(() => {
-        setStore(
-          "all",
-          store.all.filter((x) => x.id !== id),
-        )
-        if (store.active === id) {
-          const index = store.all.findIndex((f) => f.id === id)
-          const previous = store.all[Math.max(0, index - 1)]
-          setStore("active", previous?.id)
-        }
-      })
       await sdk.client.pty.remove({ ptyID: id }).catch((e) => {
         console.error("Failed to close terminal", e)
+      })
+      setTimeout(() => {
+        const remaining = store.all.filter((x) => x.id !== id)
+        setStore("all", remaining)
+        if (store.active === id) {
+          setStore("active", remaining[remaining.length - 1]?.id)
+        }
       })
     },
     move(id: string, to: number) {
