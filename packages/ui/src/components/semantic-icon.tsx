@@ -71,6 +71,7 @@ export const SemanticIconToken = {
   "settings.lsp": "braces",
   "settings.observability": "stethoscope",
   "settings.performance": "radar",
+  "perf.dashboard": "radar",
   "settings.diagnostics": "activity",
   "perf.health": "heart-pulse",
   "perf.cpu": "circuit-board",

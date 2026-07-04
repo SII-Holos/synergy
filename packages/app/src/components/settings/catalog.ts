@@ -34,7 +34,6 @@ export const BUILTIN_SETTINGS_IDS = [
   "formatter",
   "lsp",
   "observability",
-  "performance",
   "import",
   "config-files",
 ] as const
@@ -274,16 +273,6 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "Raw logs, traces, telemetry collection, and runtime configuration.",
     ["log", "trace", "telemetry", "collection"],
     { domainIds: ["general", "runtime"], visibility: "developer" },
-  ),
-  section(
-    "performance",
-    "Performance",
-    "Runtime",
-    70,
-    "settings.performance",
-    "Live runtime resource usage, latency, traces, and performance issues.",
-    ["performance", "cpu", "memory", "latency", "trace", "browser"],
-    ["runtime"],
   ),
   section("import", "Import", "System", 10, "settings.import", "Import selected config domains.", ["import", "config"]),
   section("config-files", "Config Files", "System", 20, "settings.configFiles", "Open canonical config domain files.", [

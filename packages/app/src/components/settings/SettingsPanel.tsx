@@ -54,7 +54,6 @@ import { ImportPanel } from "./panels/ImportPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
-import { PerformancePanel } from "./panels/PerformancePanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
@@ -625,8 +624,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
           />
         )
-      case "performance":
-        return <PerformancePanel />
       case "import":
         return <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />
       case "config-files":
