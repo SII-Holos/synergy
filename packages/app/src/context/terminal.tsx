@@ -1,3 +1,5 @@
+import { resolveTerminalCwd } from "./terminal-cwd"
+import { useGlobalSync } from "./global-sync"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { batch, createMemo, createRoot, onCleanup } from "solid-js"
@@ -24,7 +26,12 @@ type TerminalCacheEntry = {
   dispose: VoidFunction
 }
 
-function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: string | undefined) {
+function createTerminalSession(
+  sdk: ReturnType<typeof useSDK>,
+  dir: string,
+  id: string | undefined,
+  getWorkspaceCwd: () => string | undefined,
+) {
   const legacy = `${dir}/terminal${id ? "/" + id : ""}.v1`
 
   const [store, setStore, _, ready] = persisted(
@@ -43,7 +50,11 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
     active: createMemo(() => store.active),
     async new() {
       try {
-        const pty = await sdk.client.pty.create({ title: `Terminal ${store.all.length + 1}` })
+        const cwd = getWorkspaceCwd()
+        const pty = await sdk.client.pty.create({
+          title: `Terminal ${store.all.length + 1}`,
+          ...(cwd ? { cwd } : {}),
+        })
         const id = pty.data?.id
         if (!id) return undefined
         const next = {
@@ -74,9 +85,11 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
       const index = store.all.findIndex((x) => x.id === id)
       const pty = store.all[index]
       if (!pty) return
+      const cwd = getWorkspaceCwd()
       const clone = await sdk.client.pty
         .create({
           title: pty.title,
+          ...(cwd ? { cwd } : {}),
         })
         .catch((e) => {
           console.error("Failed to clone terminal", e)
@@ -129,6 +142,15 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   init: () => {
     const sdk = useSDK()
     const params = useParams()
+    const globalSync = useGlobalSync()
+
+    const getWorkspaceCwd = (): string | undefined => {
+      const sessionID = params.id
+      if (!sessionID || !params.dir) return undefined
+      const [store] = globalSync.ensureScopeState(params.dir)
+      const session = store.session.find((s) => s.id === sessionID)
+      return resolveTerminalCwd(session)
+    }
     const cache = new Map<string, TerminalCacheEntry>()
 
     const disposeAll = () => {
@@ -160,7 +182,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createTerminalSession(sdk, dir, id),
+        value: createTerminalSession(sdk, dir, id, getWorkspaceCwd),
         dispose,
       }))
 
