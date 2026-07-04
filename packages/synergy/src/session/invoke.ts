@@ -507,6 +507,8 @@ export namespace SessionInvoke {
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
             parentID: lastUser.id,
+            rootID: lastUser.id,
+            visible: true,
             role: "assistant",
             mode: agent.name,
             agent: agent.name,
@@ -898,6 +900,10 @@ export namespace SessionInvoke {
               time: { created: Date.now() },
               agent: lastUser.agent,
               model: lastUser.model,
+              origin: { type: "system" },
+              isRoot: false,
+              rootID: lastUser.id,
+              visible: true,
               summary: { title: "Emergency compaction", diffs: [] },
             })
             await Session.updatePart({
@@ -1063,9 +1069,12 @@ export namespace SessionInvoke {
   }
 
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
+    const abortedParentID = Identifier.ascending("message")
     const assistantMessage = (await Session.updateMessage({
       id: Identifier.ascending("message"),
-      parentID: Identifier.ascending("message"),
+      parentID: abortedParentID,
+      rootID: abortedParentID,
+      visible: true,
       role: "assistant",
       mode: "unknown",
       agent: "unknown",
@@ -1118,6 +1127,8 @@ export namespace SessionInvoke {
       role: "assistant",
       sessionID,
       parentID,
+      rootID: parentID,
+      visible: true,
       agent: mail.agentID ?? "unknown",
       mode: mail.agentID ?? "unknown",
       path: {
@@ -1529,6 +1540,10 @@ export namespace SessionInvoke {
       time: { created: Date.now() },
       agent: agentName,
       model: parsedModel,
+      origin: { type: "user" },
+      isRoot: true,
+      rootID: userID,
+      visible: true,
       metadata,
     })
     await Session.updatePart({
@@ -1536,6 +1551,7 @@ export namespace SessionInvoke {
       messageID: user.id,
       sessionID: input.sessionID,
       type: "text",
+      origin: "user",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
     })
 
@@ -1543,6 +1559,8 @@ export namespace SessionInvoke {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
       parentID: user.id,
+      rootID: user.id,
+      visible: true,
       role: "assistant",
       mode: agentName,
       agent: agentName,

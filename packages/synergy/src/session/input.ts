@@ -153,6 +153,18 @@ export function isSessionIdentityAnchor(item: Pick<MessageV2.WithParts, "info">)
   return true
 }
 
+function deriveOrigin(metadata: Record<string, any> | undefined): MessageV2.OriginUser | undefined {
+  if (!metadata) return { type: "user" }
+  const source = metadata.source
+  if (source === "cortex") return { type: "cortex", sessionID: metadata.sourceSessionID }
+  if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID: metadata.sourceSessionID }
+  if (typeof source === "string" && source.startsWith("blueprint_loop_")) return { type: "blueprint", detail: source }
+  if (metadata.channelPush) return { type: "channel" }
+  if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim())
+    return { type: "forward", sessionID: metadata.sourceSessionID }
+  return { type: "user" }
+}
+
 export async function createUserMessage(input: InvokeInput) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
@@ -179,8 +191,13 @@ export async function createUserMessage(input: InvokeInput) {
     agentName: agent.name,
   })
   const externalMetadata = PlanModeUserWrapper.stripReservedMetadata(input.metadata)
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const origin = deriveOrigin(input.metadata)
+  const isRoot = input.noReply !== true
+  const rootID = messageID
+
   const info: MessageV2.Info = {
-    id: input.messageID ?? Identifier.ascending("message"),
+    id: messageID,
     role: "user",
     sessionID: input.sessionID,
     time: {
@@ -192,6 +209,10 @@ export async function createUserMessage(input: InvokeInput) {
     system: input.system,
     variant: input.variant,
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
+    origin,
+    isRoot,
+    rootID,
+    visible: true,
     metadata: {
       ...(input.noReply === true ? { noReply: true } : {}),
       ...externalMetadata,
@@ -621,6 +642,9 @@ export async function createUserMessage(input: InvokeInput) {
   }
 
   for (const part of parts) {
+    if (part.type === "text" && !part.origin) {
+      ;(part as MessageV2.TextPart).origin = part.synthetic ? "system" : "user"
+    }
     await Session.updatePart(part)
   }
   await Session.updateMessage(info)

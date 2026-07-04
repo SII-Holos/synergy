@@ -56,8 +56,9 @@ async function shellInSession(input: ShellInput) {
 
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))
+  const userMsgID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
-    id: Identifier.ascending("message"),
+    id: userMsgID,
     sessionID: input.sessionID,
     time: {
       created: Date.now(),
@@ -68,6 +69,10 @@ async function shellInSession(input: ShellInput) {
       providerID: model.providerID,
       modelID: model.modelID,
     },
+    origin: { type: "user" },
+    isRoot: true,
+    rootID: userMsgID,
+    visible: true,
   }
   await Session.updateMessage(userMsg)
   const userPart: MessageV2.Part = {
@@ -77,6 +82,7 @@ async function shellInSession(input: ShellInput) {
     sessionID: input.sessionID,
     text: "The following tool was executed by the user",
     synthetic: true,
+    origin: "system",
   }
   await Session.updatePart(userPart)
 
@@ -84,6 +90,8 @@ async function shellInSession(input: ShellInput) {
     id: Identifier.ascending("message"),
     sessionID: input.sessionID,
     parentID: userMsg.id,
+    rootID: userMsg.id,
+    visible: true,
     mode: input.agent,
     agent: input.agent,
     cost: 0,

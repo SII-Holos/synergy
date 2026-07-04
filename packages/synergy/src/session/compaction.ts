@@ -203,6 +203,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "text",
       text: summary,
+      origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
     msg.error = undefined
@@ -398,6 +399,8 @@ export namespace SessionCompaction {
       id: Identifier.ascending("message"),
       role: "assistant",
       parentID: input.parentID,
+      rootID: input.parentID,
+      visible: true,
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
@@ -531,6 +534,10 @@ export namespace SessionCompaction {
         },
         agent: userMessage.agent,
         model: userMessage.model,
+        origin: { type: "system" },
+        isRoot: false,
+        rootID: input.parentID,
+        visible: true,
         summary: { title: "Compaction complete", diffs: [] },
         ...(anchor
           ? {
@@ -547,6 +554,7 @@ export namespace SessionCompaction {
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
+        origin: "system",
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
@@ -557,6 +565,7 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
+          origin: "system",
           text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })
