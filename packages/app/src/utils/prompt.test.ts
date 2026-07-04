@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Part } from "@ericsanchezok/synergy-sdk"
-import { createPromptDraftSnapshot, extractPromptDraft } from "./prompt"
+import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot, extractPromptDraft } from "./prompt"
 
 const uploaded = {
   type: "attachment" as const,
@@ -78,6 +78,24 @@ describe("prompt draft restore", () => {
     })
 
     expect(snapshot.context).toEqual({ activeTab: true, items: [] })
+  })
+
+  test("submit failure restore preserves the exact pre-submit active tab context", () => {
+    const undoSnapshot = createPromptDraftSnapshot({
+      prompt: [{ type: "text", content: "use file", start: 0, end: 8 }],
+      context: { activeTab: true, items: [] },
+      activeFile: "src/current.ts",
+    })
+    const failureSnapshot = createSubmitFailureRestoreSnapshot({
+      prompt: [{ type: "text", content: "use file", start: 0, end: 8 }],
+      context: { activeTab: true, items: [] },
+    })
+
+    expect(undoSnapshot.context).toEqual({
+      activeTab: false,
+      items: [{ type: "file", path: "src/current.ts", selection: undefined }],
+    })
+    expect(failureSnapshot.context).toEqual({ activeTab: true, items: [] })
   })
 
   test("invalid prompt draft metadata falls back without throwing", () => {

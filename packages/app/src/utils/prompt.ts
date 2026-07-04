@@ -367,6 +367,13 @@ export function createPromptDraftSnapshot(input: {
   }
 }
 
+export function createSubmitFailureRestoreSnapshot(input: {
+  prompt: Prompt
+  context: PromptContextSnapshot
+}): PromptDraftSnapshot {
+  return createPromptDraftSnapshot(input)
+}
+
 export function extractPromptDraft(input: {
   message?: PromptDraftMetadataMessage
   parts: Part[]

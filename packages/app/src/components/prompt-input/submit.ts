@@ -33,7 +33,7 @@ import {
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
-import { createPromptDraftSnapshot } from "@/utils/prompt"
+import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import {
   SessionStartProgressDialog,
@@ -156,6 +156,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       prompt: currentPrompt,
       context: currentContext,
       activeFile: input.activeFile(),
+    })
+    const failureRestoreSnapshot = createSubmitFailureRestoreSnapshot({
+      prompt: currentPrompt,
+      context: currentContext,
     })
 
     const blueprintSlot = input.localArmedLoop()
@@ -328,13 +332,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const restoreInput = () => {
-      prompt.set(draftSnapshot.prompt, inlineLength(draftSnapshot.prompt))
-      prompt.context.set(draftSnapshot.context)
+      prompt.set(failureRestoreSnapshot.prompt, inlineLength(failureRestoreSnapshot.prompt))
+      prompt.context.set(failureRestoreSnapshot.context)
       input.setStore("mode", mode)
       input.setStore("popover", null)
       requestAnimationFrame(() => {
         input.editor().focus()
-        setCursorPosition(input.editor(), inlineLength(draftSnapshot.prompt))
+        setCursorPosition(input.editor(), inlineLength(failureRestoreSnapshot.prompt))
         input.queueScroll()
       })
     }
