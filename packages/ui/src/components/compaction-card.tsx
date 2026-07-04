@@ -51,7 +51,7 @@ const CompactionCard: Component<MessagePartProps> = (props) => {
               <Icon name={getSemanticIcon("settings.compaction")} size="small" />
               <span data-slot="compaction-card-title">Session Compacted</span>
               <Show when={p().pendingDagCount != null && p().pendingDagCount > 0}>
-                <span data-slot="compaction-card-badge">{p().pendingDagCount} pending</span>
+                <span data-slot="compaction-card-badge">{p().pendingDagCount!} pending</span>
               </Show>
             </div>
             <div data-slot="compaction-card-header-right">
