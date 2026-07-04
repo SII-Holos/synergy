@@ -34,6 +34,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         const part = payload.properties.part
         return `message.part.updated:${directory}:${part.messageID}:${part.id}`
       }
+      if (payload.type === "blueprint_loop.updated") {
+        const loop = payload.properties.loop
+        return `blueprint_loop.updated:${directory}:${loop.id}`
+      }
     }
 
     const flush = () => {

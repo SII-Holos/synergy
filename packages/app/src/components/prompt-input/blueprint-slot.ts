@@ -6,12 +6,48 @@ export type BlueprintSlotDisplay = {
   mode: string
 }
 
-type DisplayLoop = Pick<BlueprintLoopInfo, "id" | "noteID" | "title" | "runMode" | "status">
+export type BlueprintDisplayLoop = Pick<
+  BlueprintLoopInfo,
+  "id" | "noteID" | "title" | "runMode" | "status" | "sessionID"
+>
+
+type DisplayLoop = BlueprintDisplayLoop
 
 const TERMINAL_BLUEPRINT_LOOP_STATUSES = new Set(["completed", "failed", "cancelled"])
 
 export function isTerminalBlueprintLoopStatus(status?: string | null) {
   return !!status && TERMINAL_BLUEPRINT_LOOP_STATUSES.has(status)
+}
+
+export function resolveEffectiveBlueprintActiveLoopID(input: {
+  sessionID?: string | null
+  sessionActiveLoopID?: string | null
+  optimisticLoopID?: string | null
+  sessionLoop?: Pick<BlueprintDisplayLoop, "id" | "sessionID" | "status"> | null
+}): string | undefined {
+  // 1. Prefer sessionActiveLoopID when present.
+  if (input.sessionActiveLoopID) return input.sessionActiveLoopID
+
+  // 2. Bridge: sessionLoop is non-terminal and belongs to current session.
+  if (
+    input.sessionLoop &&
+    !isTerminalBlueprintLoopStatus(input.sessionLoop.status) &&
+    input.sessionLoop.sessionID === input.sessionID
+  ) {
+    return input.sessionLoop.id
+  }
+
+  // 3. Optimistic loop ID matches sessionLoop and sessionLoop is non-terminal.
+  if (
+    input.optimisticLoopID &&
+    input.sessionLoop &&
+    input.sessionLoop.id === input.optimisticLoopID &&
+    !isTerminalBlueprintLoopStatus(input.sessionLoop.status)
+  ) {
+    return input.sessionLoop.id
+  }
+
+  return undefined
 }
 
 export function resolveBlueprintSlotDisplay(input: {

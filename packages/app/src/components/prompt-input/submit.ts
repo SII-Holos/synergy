@@ -339,9 +339,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (blueprintSlot && mode === "normal") {
       input.setBlueprintLoading(true)
       let createdLoopID: string | undefined
+      let loopID: string | undefined
       try {
         const userText = text.trim()
-        let loopID: string
         if (blueprintSlot.type === "pending") {
           const result = await sdk.client.blueprint.loop.create({
             blueprintLoopCreateInput: {
@@ -359,8 +359,21 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           loopID = blueprintSlot.loopID
         }
 
+        // Optimistically bind the loop to current session so toolbar slot
+        // never disappears between create and the server-authored session.updated.
+        if (activeSession.id) {
+          sync.set(
+            produce((draft) => {
+              const session = draft.session.find((item) => item.id === activeSession.id)
+              if (session) {
+                session.blueprint = { ...session.blueprint, loopID, loopRole: "execution" as const, planMode: false }
+              }
+            }),
+          )
+        }
+
         clearInput()
-        await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
+        await sdk.client.blueprint.loop.start({ id: loopID!, userPrompt: userText || undefined })
         closeStartProgress()
       } catch (err) {
         if (createdLoopID) {
@@ -373,6 +386,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           description: errorMessage(err),
         })
         rollbackCreatedSession()
+        // Clear optimistic session binding on failure.
+        if (loopID && activeSession.id) {
+          sync.set(
+            produce((draft) => {
+              const session = draft.session.find((item) => item.id === activeSession.id)
+              if (session && session.blueprint?.loopID === loopID) {
+                session.blueprint = { ...session.blueprint, loopID: undefined }
+              }
+            }),
+          )
+        }
         restoreInput()
       } finally {
         input.setBlueprintLoading(false)

@@ -41,6 +41,10 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     completionTimer = undefined
   }
 
+  const blueprintLoopActive = createMemo(
+    () => !!sync.data.session.find((s) => s.id === props.sessionID)?.blueprint?.loopID,
+  )
+
   const dagNodes = createMemo(() => sync.data.dag[props.sessionID])
   const todos = createMemo(() => sync.data.todo[props.sessionID])
   const dagList = createMemo(() => dagNodes() ?? [])
@@ -79,7 +83,7 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     clearCompletionTimer()
 
     if (current.status === "hidden") {
-      if (state.visible && !state.exiting) {
+      if (state.visible && !state.exiting && !blueprintLoopActive()) {
         setState("exiting", true)
         completionTimer = setTimeout(() => {
           setState({ expanded: false, visible: false, exiting: false })
@@ -91,8 +95,8 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     }
     setState("visible", true)
 
-    // Complete → fade out after delay
-    if (current.status === "complete" && !state.expanded) {
+    // Complete → fade out after delay (but keep visible during blueprint loop)
+    if (current.status === "complete" && !state.expanded && !blueprintLoopActive()) {
       completionTimer = setTimeout(() => {
         setState("exiting", true)
         completionTimer = setTimeout(() => {
@@ -115,7 +119,7 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
   const setExpanded = (expanded: boolean) => {
     clearCompletionTimer()
     setState("expanded", expanded)
-    if (!expanded && snapshot().status === "complete") {
+    if (!expanded && snapshot().status === "complete" && !blueprintLoopActive()) {
       completionTimer = setTimeout(() => {
         setState("exiting", true)
         completionTimer = setTimeout(() => {

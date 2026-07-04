@@ -75,6 +75,7 @@ import {
   blueprintRequestErrorMessage,
   isTerminalBlueprintLoopStatus,
   resolveBlueprintSlotDisplay,
+  resolveEffectiveBlueprintActiveLoopID,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
@@ -105,6 +106,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const [optimisticLoopID, setOptimisticLoopID] = createSignal<string | null>(null)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
@@ -119,7 +121,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
-  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
+  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!effectiveActiveLoopID())
   const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
@@ -163,10 +165,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sessionLoopSource,
       (source) => {
         const loop = untrack(sessionLoop)
-        if (!source || (loop && loop.id !== source.loopID)) mutateSessionLoop(null)
+        if (!source) {
+          // Only clear if current loop doesn't already belong to this session.
+          if (loop && loop.sessionID !== params.id) mutateSessionLoop(null)
+          return
+        }
+        if (loop && loop.id !== source.loopID) mutateSessionLoop(null)
       },
       { defer: true },
     ),
+  )
+
+  const effectiveActiveLoopID = createMemo(() =>
+    resolveEffectiveBlueprintActiveLoopID({
+      sessionID: params.id,
+      sessionActiveLoopID: params.id ? info()?.blueprint?.loopID : undefined,
+      optimisticLoopID: optimisticLoopID(),
+      sessionLoop: sessionLoop(),
+    }),
   )
 
   const getBlueprintSlotStatusLabel = (status: string) => {
@@ -256,21 +272,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
+    // Accept events for the current session, even if activeLoopID hasn't arrived yet.
+    const isCurrentSession = loop.sessionID === params.id
     const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
     const displayedLoopID = untrack(sessionLoop)?.id
-    if (loop.id !== activeLoopID && loop.id !== displayedLoopID) return
 
-    // Terminal: clear whichever reference matched
+    // Ignore events for other sessions when we have no matching reference.
+    if (!isCurrentSession && loop.id !== activeLoopID && loop.id !== displayedLoopID) return
+
+    // Terminal: clear whichever reference matched.
     if (isTerminalBlueprintLoopStatus(loop.status)) {
-      if (loop.id === activeLoopID) clearVisibleSessionLoop(params.id, loop.id)
-      else if (loop.id === displayedLoopID) mutateSessionLoop(null)
+      if (loop.id === activeLoopID || (isCurrentSession && loop.id === displayedLoopID)) {
+        clearVisibleSessionLoop(params.id, loop.id)
+      } else if (loop.id === displayedLoopID) {
+        mutateSessionLoop(null)
+      }
+      setOptimisticLoopID(null)
       return
     }
 
-    // Non-terminal: always update the display. Don't clear first — the
-    // session binding (activeLoopID) may arrive after the loop event,
-    // and clearing would cause a visible flicker.
+    // Non-terminal: update display and set optimistic ID.
     mutateSessionLoop(loop)
+    if (isCurrentSession) setOptimisticLoopID(loop.id)
   }
 
   const unsubBlueprintLoopUpdated = sdk.event.on("blueprint_loop.updated", (event) => {
@@ -364,11 +387,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return resolveBlueprintSlotDisplay({
       localSlot: localArmedLoop(),
       sessionLoop: sessionLoop(),
-      activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
+      activeLoopID: effectiveActiveLoopID(),
     })
   })
 
-  const canSubmit = createMemo(() => prompt.dirty() || working() || !!localArmedLoop())
+  const submitWorking = createMemo(() => {
+    if (working()) return true
+    const bp = displayedBlueprintLoop()
+    return !!(bp && bp.mode === "running")
+  })
+  const canSubmit = createMemo(() => prompt.dirty() || submitWorking() || !!localArmedLoop())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
   createEffect(
@@ -377,6 +405,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       () => {
         cancelLongPress()
         setLocalArmedLoop(null)
+        setOptimisticLoopID(null)
       },
       { defer: true },
     ),
@@ -1448,7 +1477,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   inactive={!canSubmit()}
                   value={
                     <Switch>
-                      <Match when={working() && !prompt.dirty()}>
+                      <Match when={submitWorking() && !prompt.dirty()}>
                         <div class="flex items-center gap-2">
                           <span>Stop</span>
                           <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
@@ -1466,7 +1495,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     type="submit"
                     disabled={!canSubmit()}
-                    icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
+                    icon={submitWorking() && !prompt.dirty() ? "square" : "arrow-up"}
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />
