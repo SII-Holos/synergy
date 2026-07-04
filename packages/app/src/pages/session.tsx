@@ -260,6 +260,7 @@ function SessionPageContent() {
   // ── Root message derivation layer ───────────────────────────────────
   // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
   // heuristics with orthogonal isRoot/visible/rootID/origin fields.
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyUserMessages: UserMessage[] = []
   const rootMessages = createMemo(
     () =>
@@ -321,6 +322,7 @@ function SessionPageContent() {
     return msgs.filter((message) => message.id >= firstID)
   }, emptyUserMessages)
 
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyTimeline: Message[] = []
   const isActionCommandMessage = (message: Message) => {
     const metadata = message.metadata as
