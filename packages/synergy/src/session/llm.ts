@@ -166,7 +166,7 @@ export namespace LLM {
       input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
     let variant: Record<string, any> = {}
     if (!input.small && input.model.variants && Object.keys(input.model.variants).length > 0 && effectiveVariant) {
-      if (input.model.variants[effectiveVariant]) {
+      if (Object.prototype.hasOwnProperty.call(input.model.variants, effectiveVariant)) {
         variant = input.model.variants[effectiveVariant]
       } else {
         l.warn("configured variant not available for model", {
