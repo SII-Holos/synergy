@@ -1,5 +1,19 @@
 @import "@ericsanchezok/synergy-ui/styles/tailwind";
 
+html:not([data-color-scheme]),
+html:not([data-color-scheme]) body,
+html:not([data-color-scheme]) #root {
+  background: var(--synergy-boot-bg, #fafafa);
+  color: var(--synergy-boot-text, var(--text-base));
+}
+
+html[data-color-scheme],
+html[data-color-scheme] body,
+html[data-color-scheme] #root {
+  background: var(--background-stronger, var(--synergy-boot-bg, #fafafa));
+  color: var(--text-base, var(--synergy-boot-text));
+}
+
 a {
   cursor: default;
 }

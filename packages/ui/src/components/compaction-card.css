@@ -1,0 +1,220 @@
+[data-component="compaction-card"] {
+  width: 100%;
+  min-width: 0;
+  margin-top: 6px;
+  border: 1px solid var(--color-border-base);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised-base);
+  overflow: hidden;
+}
+
+/* ── Collapsed header ── */
+
+[data-slot="compaction-card-header"] {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--surface-raised-base-hover);
+  }
+}
+
+[data-slot="compaction-card-header-left"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-slot="compaction-card-header-left"] [data-slot="icon-svg"] {
+  color: var(--icon-info-base);
+  flex-shrink: 0;
+}
+
+[data-slot="compaction-card-title"] {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-base);
+  white-space: nowrap;
+}
+
+[data-slot="compaction-card-badge"] {
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-on-warning-base);
+  background: var(--color-surface-warning-weak);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-slot="compaction-card-header-right"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+[data-slot="compaction-card-time"] {
+  font-size: 0.75rem;
+  color: var(--color-text-weak);
+  white-space: nowrap;
+}
+
+[data-slot="compaction-card-arrow"] [data-slot="icon-svg"] {
+  color: var(--icon-weak);
+  transition: transform 0.2s ease;
+}
+
+[data-expanded] [data-slot="compaction-card-arrow"] [data-slot="icon-svg"] {
+  transform: rotate(90deg);
+}
+
+/* ── Expanded content ── */
+
+[data-slot="compaction-card-content"] {
+  padding: 4px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Warning banner ── */
+
+[data-slot="compaction-card-warning"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--color-surface-warning-weak);
+  border-radius: var(--radius-sm);
+}
+
+[data-slot="compaction-card-warning"] [data-slot="icon-svg"] {
+  color: var(--icon-warning-base);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+[data-slot="compaction-card-warning-text"] {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-text-on-warning-base);
+}
+
+/* ── Summary markdown ── */
+
+[data-slot="compaction-card-summary"] {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-base);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+[data-slot="compaction-card-summary"] {
+  & > *:first-child {
+    margin-top: 0;
+  }
+  & > *:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* ── Sections ── */
+
+[data-slot="compaction-card-section"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+[data-slot="compaction-card-section-heading"] {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-weak);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+  padding: 0;
+}
+
+[data-slot="compaction-card-section-item"] {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+[data-slot="compaction-card-bullet"] {
+  color: var(--color-text-weaker);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+[data-slot="compaction-card-section-item-text"] {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-base);
+  min-width: 0;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+[data-slot="compaction-card-section-item-text"] {
+  & > *:first-child {
+    margin-top: 0;
+  }
+  & > *:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* ── Next step callout ── */
+
+[data-slot="compaction-card-next-step"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--color-surface-info-weak);
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+}
+
+[data-slot="compaction-card-next-step"] [data-slot="icon-svg"] {
+  color: var(--icon-info-base);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+[data-slot="compaction-card-next-step-content"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+[data-slot="compaction-card-next-step-label"] {
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-weak);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+[data-slot="compaction-card-next-step-text"] {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-text-base);
+}
