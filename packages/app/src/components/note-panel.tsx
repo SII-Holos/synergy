@@ -1089,6 +1089,25 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     setLastClickedID(null)
   }
 
+  async function batchDelete() {
+    const ids = [...selectedNotes()]
+    confirm.show({
+      ...deleteArchivedNoteConfirm(ids.length),
+      onConfirm: async () => {
+        setBatchBusy(true)
+        try {
+          await sdk.client.note.batch({ ids, action: "delete", directory: directory() })
+        } catch (e) {
+          console.error("Batch delete failed", e)
+        }
+        setSelectedNotes(new Set<string>())
+        setSelecting(false)
+        await refetch()
+        setBatchBusy(false)
+      },
+    })
+  }
+
   createEffect(() => {
     if (!selecting()) return
     function onKey(e: KeyboardEvent) {
@@ -1218,14 +1237,24 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       </button>
                     }
                   >
-                    <button
-                      type="button"
-                      class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all hover:bg-surface-raised-base-hover text-text-base ring-border-base/35"
-                      onClick={batchUnarchive}
-                      disabled={batchBusy()}
-                    >
-                      Restore ({selectedNotes().size})
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all hover:bg-surface-raised-base-hover text-text-base ring-border-base/35"
+                        onClick={batchUnarchive}
+                        disabled={batchBusy()}
+                      >
+                        Restore ({selectedNotes().size})
+                      </button>
+                      <button
+                        type="button"
+                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
+                        onClick={batchDelete}
+                        disabled={batchBusy()}
+                      >
+                        Delete ({selectedNotes().size})
+                      </button>
+                    </>
                   </Show>
                 </Show>
                 <button
