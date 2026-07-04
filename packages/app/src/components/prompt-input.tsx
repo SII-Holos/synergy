@@ -394,7 +394,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const submitWorking = createMemo(() => {
     if (working()) return true
     const bp = displayedBlueprintLoop()
-    return !!(bp && bp.mode === "running")
+    return !!(bp && !isTerminalBlueprintLoopStatus(bp.mode))
   })
   const canSubmit = createMemo(() => prompt.dirty() || submitWorking() || !!localArmedLoop())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
