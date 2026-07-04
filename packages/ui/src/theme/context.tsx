@@ -34,6 +34,10 @@ function ensurePluginThemeLinkElement(): HTMLLinkElement {
   return element
 }
 
+function applyBootShellColorScheme(mode: "light" | "dark") {
+  document.documentElement.dataset.synergyColorScheme = mode
+}
+
 function applyThemeCss(mode: "light" | "dark") {
   const isDark = mode === "dark"
   const variant = isDark ? synergyTheme.dark : synergyTheme.light
@@ -48,6 +52,7 @@ function applyThemeCss(mode: "light" | "dark") {
 
   ensureThemeStyleElement().textContent = fullCss
   document.documentElement.dataset.colorScheme = mode
+  applyBootShellColorScheme(mode)
 }
 
 function applyPluginThemeCss(themeId: string) {

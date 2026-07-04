@@ -1,10 +1,13 @@
 import { Config } from "@/config/config"
+import { Log } from "@/util/log"
 import { AccountUsage } from "./usage"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 import { ProviderProfile } from "./profile"
 
 export namespace ProviderUsage {
+  const log = Log.create({ service: "provider.usage" })
+
   export async function get(providerID: string): Promise<AccountUsage.Snapshot> {
     registerBuiltinProviderProfiles()
     const profile = ProviderProfile.get(providerID)
@@ -25,7 +28,12 @@ export namespace ProviderUsage {
       if (enabled && !enabled.has(providerID)) continue
       const profile = ProviderProfile.get(providerID)
       if (!profile?.fetchUsage) continue
-      result[providerID] = await get(providerID)
+      try {
+        result[providerID] = await get(providerID)
+      } catch (error) {
+        result[providerID] = AccountUsage.error(providerID, "Failed to load usage data.")
+        log.error("provider usage fetch failed", { providerID, error })
+      }
     }
     return result
   }
