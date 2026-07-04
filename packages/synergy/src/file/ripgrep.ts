@@ -12,6 +12,40 @@ import { Log } from "@/util/log"
 
 export namespace Ripgrep {
   const log = Log.create({ service: "ripgrep" })
+  const TERMINATE_GRACE_MS = 500
+  const TERMINATE_HARD_WAIT_MS = 1_000
+  type RipgrepProcess = ReturnType<typeof Bun.spawn>
+
+  async function waitExited(proc: RipgrepProcess, timeoutMs: number) {
+    return Promise.race([
+      proc.exited.then(
+        () => true,
+        () => true,
+      ),
+      Bun.sleep(timeoutMs).then(() => false),
+    ])
+  }
+
+  async function terminate(proc: RipgrepProcess) {
+    proc.kill()
+    if (await waitExited(proc, TERMINATE_GRACE_MS)) return
+
+    if (process.platform === "win32" && proc.pid) {
+      const killer = Bun.spawn(["taskkill", "/pid", String(proc.pid), "/f", "/t"], {
+        stdout: "ignore",
+        stderr: "ignore",
+      })
+      await Promise.race([
+        killer.exited.catch(() => undefined),
+        Bun.sleep(TERMINATE_HARD_WAIT_MS),
+      ])
+    } else {
+      proc.kill("SIGKILL")
+    }
+
+    await waitExited(proc, TERMINATE_HARD_WAIT_MS)
+  }
+
   const Stats = z.object({
     elapsed: z.object({
       secs: z.number(),
@@ -247,19 +281,37 @@ export namespace Ripgrep {
       maxBuffer: 1024 * 1024 * 20,
     })
 
-    // Wire abort signal to kill the subprocess
-    const onAbort = () => proc.kill()
-    input.signal?.addEventListener("abort", onAbort, { once: true })
-
     const reader = proc.stdout.getReader()
+    let stoppedEarly = false
+    let terminatePromise: Promise<void> | undefined
+    const requestTerminate = () => {
+      terminatePromise ??= terminate(proc)
+      return terminatePromise
+    }
+
+    const onAbort = () => {
+      stoppedEarly = true
+      void reader.cancel().catch(() => {})
+      void requestTerminate()
+    }
+    input.signal?.addEventListener("abort", onAbort, { once: true })
+    if (input.signal?.aborted) onAbort()
+
     const decoder = new TextDecoder()
     let buffer = ""
+    let reachedEnd = false
 
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
-        if (input.signal?.aborted) break
+        if (done) {
+          reachedEnd = !stoppedEarly && !input.signal?.aborted
+          break
+        }
+        if (input.signal?.aborted) {
+          stoppedEarly = true
+          break
+        }
 
         buffer += decoder.decode(value, { stream: true })
         // Handle both Unix (\n) and Windows (\r\n) line endings
@@ -274,9 +326,21 @@ export namespace Ripgrep {
       // Don't yield partial buffer on abort — content may be incomplete
       if (buffer && !input.signal?.aborted) yield buffer
     } finally {
-      input.signal?.removeEventListener("abort", onAbort)
-      reader.releaseLock()
-      await proc.exited
+      if (!reachedEnd) {
+        stoppedEarly = true
+        void reader.cancel().catch(() => {})
+        await requestTerminate()
+      }
+      try {
+        reader.releaseLock()
+      } catch {
+        // The reader may already be released by cancellation on abort.
+      }
+      try {
+        if (reachedEnd) await proc.exited
+      } finally {
+        input.signal?.removeEventListener("abort", onAbort)
+      }
     }
   }
 
