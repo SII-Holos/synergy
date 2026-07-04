@@ -7,6 +7,7 @@ import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
+import { inlineLength } from "@/components/prompt-input/content"
 import { extractPromptDraft } from "@/utils/prompt"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
@@ -211,10 +212,7 @@ export function useSessionCommands(params: {
         const parts = sync.data.part[message.id]
         if (parts) {
           const restored = extractPromptDraft({ message, parts, directory: sdk.directory })
-          prompt.set(
-            restored.prompt,
-            restored.prompt.reduce((total, part) => total + ("content" in part ? part.content.length : 0), 0),
-          )
+          prompt.set(restored.prompt, inlineLength(restored.prompt))
           prompt.context.set(restored.context)
         }
         const priorMessage = userMessages().findLast((x) => x.id < message.id)
