@@ -35,6 +35,39 @@ function clonePresentation(value: unknown) {
   }
 }
 
+export function sanitizeContextItemsValue(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  const items: Record<string, unknown>[] = []
+  for (const item of value) {
+    if (!isRecord(item)) continue
+    if (item.type !== "file") continue
+    const path = stringValue(item.path)
+    if (!path) continue
+    const selection = isRecord(item.selection) ? item.selection : undefined
+    items.push({
+      type: "file",
+      path,
+      selection: selection
+        ? {
+            startLine: numberValue(selection.startLine),
+            startChar: numberValue(selection.startChar),
+            endLine: numberValue(selection.endLine),
+            endChar: numberValue(selection.endChar),
+          }
+        : undefined,
+    })
+  }
+  return items
+}
+
+export function sanitizePromptContextValue(value: unknown) {
+  if (!isRecord(value)) return { activeTab: true, items: [] }
+  return {
+    activeTab: typeof value.activeTab === "boolean" ? value.activeTab : true,
+    items: sanitizeContextItemsValue(value.items),
+  }
+}
+
 function sanitizePromptPart(part: unknown): Record<string, unknown> | undefined {
   if (!isRecord(part)) return undefined
   const type = part.type
@@ -130,5 +163,6 @@ export function sanitizePromptStateValue(value: unknown) {
   return {
     ...value,
     prompt: sanitizePromptValue(value.prompt),
+    context: sanitizePromptContextValue(value.context),
   }
 }
