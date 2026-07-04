@@ -48,6 +48,15 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
     const newVal = state.models[role.key]
     if (newVal !== origVal) patch[role.key] = newVal || undefined
   }
+  const origVariant = (cfg as Record<string, unknown>).role_variant as Record<string, string> | undefined
+  const variants = state.roleVariant
+  const cleanedVariant: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(variants)) {
+    if (variant) cleanedVariant[role] = variant
+  }
+  if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
+    patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
+  }
 }
 
 function buildProviderPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {

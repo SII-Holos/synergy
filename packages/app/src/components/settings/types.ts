@@ -5,6 +5,7 @@ export type ProviderModel = {
   providerName: string
   modelId: string
   modelName: string
+  variantKeys: string[]
 }
 
 export type ModelKey =
@@ -173,7 +174,7 @@ export type DialogSettingsProps = {
 export type ProviderGroup = {
   providerId: string
   providerName: string
-  models: Array<{ id: string; name: string }>
+  models: Array<{ id: string; name: string; variantKeys: string[] }>
 }
 
 export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
@@ -184,7 +185,7 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
       group = { providerId: item.providerId, providerName: item.providerName, models: [] }
       map.set(item.providerId, group)
     }
-    group.models.push({ id: item.modelId, name: item.modelName })
+    group.models.push({ id: item.modelId, name: item.modelName, variantKeys: item.variantKeys })
   }
   return Array.from(map.values())
 }
@@ -267,6 +268,7 @@ export type SettingsState = {
   runtime: RuntimeStore
   email: EmailSettings
   channels: ChannelSettings
+  roleVariant: Record<string, string>
 }
 
 export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState {
@@ -348,5 +350,6 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
     channels: {
       feishuAccounts: [],
     },
+    roleVariant: {},
   }
 }

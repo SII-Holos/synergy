@@ -883,6 +883,32 @@
   color: var(--icon-weak);
 }
 
+.settings-model-variant {
+  width: min(100%, 300px);
+  max-width: 300px;
+  min-height: 36px;
+  justify-self: end;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-input-bg);
+  color: var(--text-base);
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  outline: none;
+  appearance: auto;
+}
+
+.settings-model-variant:hover {
+  background: var(--settings-input-bg-hover);
+  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+}
+
+.settings-model-variant:focus {
+  box-shadow: var(--settings-focus-ring);
+}
+
 .settings-model-picker-popover {
   width: min(360px, calc(100vw - 32px));
   height: 360px;

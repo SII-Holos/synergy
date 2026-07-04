@@ -39,8 +39,11 @@ export function ModelRoleRow(props: {
   draftModels: ModelsStore
   savedModels: ModelsStore
   providers: ProviderGroup[]
+  roleVariant?: string
+  availableVariants: string[]
   popoverLayer?: HTMLElement
   onChange: (key: ModelKey, value: string) => void
+  onVariantChange?: (variant: string) => void
 }) {
   const [pickerOpen, setPickerOpen] = createSignal(false)
 
@@ -190,6 +193,16 @@ export function ModelRoleRow(props: {
           )}
         </Show>
       </KobaltePopover>
+      <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
+        <select
+          class="settings-model-variant"
+          value={props.roleVariant ?? ""}
+          onChange={(e) => props.onVariantChange?.(e.currentTarget.value)}
+        >
+          <option value="">Default</option>
+          <For each={props.availableVariants}>{(variant) => <option value={variant}>{variant}</option>}</For>
+        </select>
+      </Show>
     </div>
   )
 }
