@@ -230,6 +230,10 @@ function SessionPageContent() {
     if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
     return true
   }
+  const isBlueprintContinuation = (message: UserMessage) => {
+    const source = message.metadata?.source
+    return typeof source === "string" && source === "blueprint_loop_continuation"
+  }
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
     () =>
@@ -247,7 +251,7 @@ function SessionPageContent() {
         if (m.role !== "user") return false
         const user = m as UserMessage
         if (isGuidedContextUserMessage(user)) return false
-        return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
+        return (!user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)) && !isBlueprintContinuation(user)
       }) as UserMessage[],
     emptyUserMessages,
   )
