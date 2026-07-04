@@ -6,6 +6,8 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
 import { SegmentPill } from "./SegmentPill"
+import { SettingsSubsection } from "./SettingsPrimitives"
+import { SettingRow } from "./SettingRow"
 
 export function McpCard(props: {
   entry: McpEntry
@@ -65,18 +67,24 @@ export function McpCard(props: {
       </div>
 
       <Show when={expanded()}>
-        <div class="settings-mcp-card-body">
-          <div class="settings-integration-form-grid settings-integration-form-grid-two">
-            <TextField
-              type="text"
-              label="Server name"
-              placeholder="filesystem"
-              description="Used in menus, logs, and saved configuration."
-              value={props.entry.key}
-              onChange={(value) => props.onChange("key", value)}
-            />
-            <div class="settings-integration-field">
-              <span class="settings-integration-field-label">Connection type</span>
+        <SettingsSubsection>
+          <TextField
+            type="text"
+            label="Server name"
+            placeholder="filesystem"
+            description="Used in menus, logs, and saved configuration."
+            value={props.entry.key}
+            onChange={(value) => props.onChange("key", value)}
+          />
+
+          <SettingRow
+            title="Connection type"
+            description={
+              props.entry.type === "local"
+                ? "Starts a command on this machine."
+                : "Connects to an HTTP or SSE endpoint."
+            }
+            trailing={
               <SegmentPill
                 value={props.entry.type}
                 options={[
@@ -85,13 +93,8 @@ export function McpCard(props: {
                 ]}
                 onChange={(value) => props.onChange("type", value)}
               />
-              <span class="settings-integration-field-description">
-                {props.entry.type === "local"
-                  ? "Starts a command on this machine."
-                  : "Connects to an HTTP or SSE endpoint."}
-              </span>
-            </div>
-          </div>
+            }
+          />
 
           <Show when={props.entry.type === "local"}>
             <TextField
@@ -141,7 +144,7 @@ export function McpCard(props: {
             value={props.entry.timeout}
             onChange={(value) => props.onChange("timeout", value)}
           />
-        </div>
+        </SettingsSubsection>
       </Show>
     </section>
   )

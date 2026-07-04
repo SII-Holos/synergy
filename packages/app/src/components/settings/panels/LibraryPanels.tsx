@@ -1,9 +1,9 @@
-import type { JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
-import { SettingsPage } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingRow"
 import type { LibrarySettingsStore } from "../types"
 
 const similarityOptions: SettingsStepOption[] = [
@@ -44,31 +44,43 @@ export function LearningPanel(props: {
 }) {
   return (
     <SettingsPage title="Learning" description="Decide how Synergy captures and maintains library knowledge.">
-      <div class="settings-library-shell">
-        <LibrarySection
-          title="Capture"
-          description="Keep the library useful without turning these controls into raw configuration."
-        >
-          <LibrarySwitchRow
-            iconToken="settings.learning"
-            title="Learn from interactions"
-            description="Create and curate memories from useful conversation context."
-            checked={props.library.learning !== "false"}
-            onChange={(value) => props.onLibraryChange("learning", value ? "true" : "false")}
-            onLabel="Learning"
-            offLabel="Paused"
-          />
-          <LibrarySwitchRow
-            iconToken="settings.experience"
-            title="Autonomous routines"
-            description="Allow reflection and planning jobs to run quietly in the background."
-            checked={props.library.autonomy !== "false"}
-            onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
-            onLabel="Automatic"
-            offLabel="Manual"
-          />
-        </LibrarySection>
-      </div>
+      <SettingsSection
+        title="Capture"
+        description="Keep the library useful without turning these controls into raw configuration."
+      >
+        <SettingRow
+          title="Learn from interactions"
+          description="Create and curate memories from useful conversation context."
+          trailing={
+            <>
+              <span class="settings-row-state">{props.library.learning !== "false" ? "Learning" : "Paused"}</span>
+              <Switch
+                checked={props.library.learning !== "false"}
+                hideLabel
+                onChange={(value) => props.onLibraryChange("learning", value ? "true" : "false")}
+              >
+                Learn from interactions
+              </Switch>
+            </>
+          }
+        />
+        <SettingRow
+          title="Autonomous routines"
+          description="Allow reflection and planning jobs to run quietly in the background."
+          trailing={
+            <>
+              <span class="settings-row-state">{props.library.autonomy !== "false" ? "Automatic" : "Manual"}</span>
+              <Switch
+                checked={props.library.autonomy !== "false"}
+                hideLabel
+                onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
+              >
+                Autonomous routines
+              </Switch>
+            </>
+          }
+        />
+      </SettingsSection>
     </SettingsPage>
   )
 }
@@ -79,33 +91,41 @@ export function MemoryPanel(props: {
 }) {
   return (
     <SettingsPage title="Memory" description="Tune how Synergy recalls curated memory while you work.">
-      <div class="settings-library-shell">
-        <LibrarySection
-          title="Recall"
-          description="Adjust precision and volume for contextual memories that are brought into a session."
-        >
-          <LibraryStepRow
-            title="Match strictness"
-            description="Higher values keep recalled memories closer to the current context."
-            value={props.library.memorySimThreshold}
-            options={similarityOptions}
-            lowLabel="Broader"
-            highLabel="Stricter"
-            ariaLabel="Memory match strictness"
-            onChange={(value) => props.onLibraryChange("memorySimThreshold", value)}
-          />
-          <LibraryStepRow
-            title="Memories per category"
-            description="Limit how many memories each category can contribute."
-            value={props.library.memoryTopK}
-            options={memoryCountOptions}
-            lowLabel="Less context"
-            highLabel="More context"
-            ariaLabel="Memories per category"
-            onChange={(value) => props.onLibraryChange("memoryTopK", value)}
-          />
-        </LibrarySection>
-      </div>
+      <SettingsSection
+        title="Recall"
+        description="Adjust precision and volume for contextual memories that are brought into a session."
+      >
+        <SettingRow
+          title="Match strictness"
+          description="Higher values keep recalled memories closer to the current context."
+          trailing={
+            <SettingsStepScale
+              value={props.library.memorySimThreshold}
+              options={similarityOptions}
+              lowLabel="Broader"
+              highLabel="Stricter"
+              ariaLabel="Memory match strictness"
+              summary={(option) => `${option.label} ${option.value}`}
+              onChange={(value) => props.onLibraryChange("memorySimThreshold", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Memories per category"
+          description="Limit how many memories each category can contribute."
+          trailing={
+            <SettingsStepScale
+              value={props.library.memoryTopK}
+              options={memoryCountOptions}
+              lowLabel="Less context"
+              highLabel="More context"
+              ariaLabel="Memories per category"
+              summary={(option) => `${option.label} ${option.value}`}
+              onChange={(value) => props.onLibraryChange("memoryTopK", value)}
+            />
+          }
+        />
+      </SettingsSection>
     </SettingsPage>
   )
 }
@@ -116,116 +136,55 @@ export function ExperiencePanel(props: {
 }) {
   return (
     <SettingsPage title="Experience" description="Tune how Synergy reuses past task patterns and tries alternatives.">
-      <div class="settings-library-shell">
-        <LibrarySection title="Retrieval" description="Choose how many past patterns should influence future work.">
-          <LibraryStepRow
-            title="Match strictness"
-            description="Higher values keep recalled experiences closer to the current task."
-            value={props.library.experienceSimThreshold}
-            options={similarityOptions}
-            lowLabel="Broader"
-            highLabel="Stricter"
-            ariaLabel="Experience match strictness"
-            onChange={(value) => props.onLibraryChange("experienceSimThreshold", value)}
-          />
-          <LibraryStepRow
-            title="Experiences to recall"
-            description="Set how many past examples can be considered at once."
-            value={props.library.experienceTopK}
-            options={experienceCountOptions}
-            lowLabel="Fewer"
-            highLabel="More"
-            ariaLabel="Experiences to recall"
-            onChange={(value) => props.onLibraryChange("experienceTopK", value)}
-          />
-        </LibrarySection>
-
-        <LibrarySection title="Exploration" description="Control how often Synergy tries a less familiar path.">
-          <LibraryStepRow
-            title="Exploration rate"
-            description="Chance of exploring alternatives instead of using the best-known pattern."
-            value={props.library.experienceEpsilon}
-            options={explorationOptions}
-            lowLabel="Stable"
-            highLabel="Exploratory"
-            ariaLabel="Experience exploration rate"
-            onChange={(value) => props.onLibraryChange("experienceEpsilon", value)}
-          />
-        </LibrarySection>
-      </div>
-    </SettingsPage>
-  )
-}
-
-function LibrarySection(props: { title: string; description: string; children: JSX.Element }) {
-  return (
-    <section class="settings-library-section">
-      <div class="settings-library-section-heading">
-        <h2>{props.title}</h2>
-        <p>{props.description}</p>
-      </div>
-      <div class="settings-library-list">{props.children}</div>
-    </section>
-  )
-}
-
-function LibrarySwitchRow(props: {
-  iconToken: SemanticIconTokenName
-  title: string
-  description: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-  onLabel: string
-  offLabel: string
-}) {
-  return (
-    <div class="settings-library-row settings-library-toggle-row">
-      <div class="settings-library-copy">
-        <span class="settings-library-row-icon">
-          <Icon name={getSemanticIcon(props.iconToken)} size="small" />
-        </span>
-        <div class="min-w-0">
-          <div class="settings-library-row-title">{props.title}</div>
-          <div class="settings-library-row-description">{props.description}</div>
-        </div>
-      </div>
-      <div class="settings-library-toggle-control">
-        <span class="settings-library-state">{props.checked ? props.onLabel : props.offLabel}</span>
-        <Switch checked={props.checked} hideLabel onChange={props.onChange}>
-          {props.title}
-        </Switch>
-      </div>
-    </div>
-  )
-}
-
-function LibraryStepRow(props: {
-  title: string
-  description: string
-  value: string
-  options: SettingsStepOption[]
-  lowLabel: string
-  highLabel: string
-  ariaLabel: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <div class="settings-library-row">
-      <div class="settings-library-copy settings-library-copy-plain">
-        <div class="settings-library-row-title">{props.title}</div>
-        <div class="settings-library-row-description">{props.description}</div>
-      </div>
-      <div class="settings-library-step-control">
-        <SettingsStepScale
-          value={props.value}
-          options={props.options}
-          ariaLabel={props.ariaLabel}
-          summary={(option) => `${option.label} ${option.value}`}
-          lowLabel={props.lowLabel}
-          highLabel={props.highLabel}
-          onChange={props.onChange}
+      <SettingsSection title="Retrieval" description="Choose how many past patterns should influence future work.">
+        <SettingRow
+          title="Match strictness"
+          description="Higher values keep recalled experiences closer to the current task."
+          trailing={
+            <SettingsStepScale
+              value={props.library.experienceSimThreshold}
+              options={similarityOptions}
+              lowLabel="Broader"
+              highLabel="Stricter"
+              ariaLabel="Experience match strictness"
+              summary={(option) => `${option.label} ${option.value}`}
+              onChange={(value) => props.onLibraryChange("experienceSimThreshold", value)}
+            />
+          }
         />
-      </div>
-    </div>
+        <SettingRow
+          title="Experiences to recall"
+          description="Set how many past examples can be considered at once."
+          trailing={
+            <SettingsStepScale
+              value={props.library.experienceTopK}
+              options={experienceCountOptions}
+              lowLabel="Fewer"
+              highLabel="More"
+              ariaLabel="Experiences to recall"
+              summary={(option) => `${option.label} ${option.value}`}
+              onChange={(value) => props.onLibraryChange("experienceTopK", value)}
+            />
+          }
+        />
+      </SettingsSection>
+      <SettingsSection title="Exploration" description="Control how often Synergy tries a less familiar path.">
+        <SettingRow
+          title="Exploration rate"
+          description="Chance of exploring alternatives instead of using the best-known pattern."
+          trailing={
+            <SettingsStepScale
+              value={props.library.experienceEpsilon}
+              options={explorationOptions}
+              lowLabel="Stable"
+              highLabel="Exploratory"
+              ariaLabel="Experience exploration rate"
+              summary={(option) => `${option.label} ${option.value}`}
+              onChange={(value) => props.onLibraryChange("experienceEpsilon", value)}
+            />
+          }
+        />
+      </SettingsSection>
+    </SettingsPage>
   )
 }
