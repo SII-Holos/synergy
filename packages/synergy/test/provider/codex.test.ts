@@ -324,7 +324,7 @@ test("provider catalog includes OpenAI Codex before login", async () => {
   expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
   expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
   expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
-  expect(catalog.openai.models["gpt-5.5"].limit.context).toBe(1_050_000)
+  expect(codex.models["gpt-5.5"].provider?.npm).toBe("@ai-sdk/openai")
 })
 
 test("logged-in Codex provider applies fallback context when live metadata omits context_window", async () => {
