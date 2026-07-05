@@ -34,7 +34,7 @@ import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
 import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
-import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
+import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
 import { hasVisibleUserMessageContent } from "./user-message-utils"
 
@@ -231,15 +231,9 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
-/**
- * @deprecated Use isRoot/rootID/visible fields instead.
- * Kept for backward compat with old sessions that lack rootID.
- */
-export function isGuidedContextUserMessage(message: Pick<UserMessage, "metadata">): boolean {
-  const msg = message as UserMessage
-  if (msg.isRoot !== undefined) return msg.isRoot === false && msg.visible !== false
-  const metadata = message.metadata
-  return metadata?.guided === true && metadata?.noReply === true
+/** A non-root, visible user message rendered as an inline chip inside its turn. */
+export function isGuidedContextUserMessage(message: Pick<UserMessage, "isRoot" | "visible">): boolean {
+  return message.isRoot === false && message.visible !== false
 }
 
 export type SessionTurnDisplayMessage = AssistantMessage | UserMessage
@@ -280,12 +274,8 @@ export function collectMessagesForTurnDisplay(
   if (!userMessage || userMessage.role !== "user") return []
 
   const user = userMessage as UserMessage
-  const rootID = user.rootID
-
-  // If this message has no rootID field, fall back to old parentID-based logic
-  if (rootID === undefined) {
-    return collectMessagesForTurnDisplayLegacy(messages, userMessageID)
-  }
+  // Canonicalized on the backend read path; self-reference as a defensive default.
+  const rootID = user.rootID ?? user.id
 
   const result: SessionTurnDisplayMessage[] = []
 
@@ -310,47 +300,6 @@ export function collectMessagesForTurnDisplay(
   }
 
   return result
-}
-
-/** Legacy parentID-based fallback when rootID fields are absent */
-function collectMessagesForTurnDisplayLegacy(
-  messages: MessageType[],
-  userMessageID: string,
-): SessionTurnDisplayMessage[] {
-  const search = Binary.search(messages, userMessageID, (m) => m.id)
-  if (!search.found) return []
-
-  const userMessage = messages[search.index]
-  if (!userMessage || userMessage.role !== "user") return []
-
-  const validParentIDs = new Set([userMessage.id])
-  const result: SessionTurnDisplayMessage[] = []
-  for (let i = search.index + 1; i < messages.length; i++) {
-    const item = messages[i]
-    if (!item) continue
-    if (item.role === "user") {
-      const user = item as UserMessage
-      if (isInlineContextUserMessageLegacy(user)) {
-        if (user.metadata?.synthetic && hasSpecialUserMessageRenderer(user)) break
-        validParentIDs.add(user.id)
-        if (isGuidedContextUserMessageLegacy(user)) result.push(user)
-        continue
-      }
-      break
-    }
-    if (item.role === "assistant" && validParentIDs.has((item as AssistantMessage).parentID))
-      result.push(item as AssistantMessage)
-  }
-  return result
-}
-
-function isInlineContextUserMessageLegacy(message: UserMessage): boolean {
-  return message.metadata?.synthetic === true || isGuidedContextUserMessageLegacy(message)
-}
-
-function isGuidedContextUserMessageLegacy(message: Pick<UserMessage, "metadata">): boolean {
-  const metadata = message.metadata
-  return metadata?.guided === true && metadata?.noReply === true
 }
 
 export function collectAssistantMessagesForTurn(messages: MessageType[], userMessageID: string): AssistantMessage[] {
@@ -663,8 +612,7 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           // Use old metadata-based guided detection as fallback when isRoot/rootID absent
-          const isNonRoot = userMsg.isRoot !== undefined ? !userMsg.isRoot : isGuidedContextUserMessage(userMsg)
-          if (isNonRoot) {
+          if (userMsg.isRoot === false) {
             result.push({
               kind: "non-root-user",
               message: userMsg,

@@ -54,7 +54,11 @@ const {
   timelineVisualKind,
 } = await import("./session-turn")
 
-function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
+function user(
+  id: string,
+  opts?: { isRoot?: boolean; rootID?: string; visible?: boolean; metadata?: UserMessage["metadata"] },
+): UserMessage {
+  const isRoot = opts?.isRoot ?? true
   return {
     id,
     sessionID: "session",
@@ -62,7 +66,10 @@ function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
     time: { created: 1 },
     agent: "synergy",
     model: { providerID: "provider", modelID: "model" },
-    metadata,
+    isRoot,
+    rootID: opts?.rootID ?? id,
+    visible: opts?.visible ?? true,
+    metadata: opts?.metadata,
   } as UserMessage
 }
 
@@ -76,6 +83,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     sessionID: "session",
     role: "assistant",
     parentID,
+    rootID: parentID,
     mode: "test",
     agent: "synergy",
     path: { cwd: "/tmp", root: "/tmp" },
@@ -224,7 +232,7 @@ describe("session turn assistant collection", () => {
   test("keeps guided inbox context inside the active turn", () => {
     const firstUser = user("msg_001_user")
     const toolStep = assistantFor("msg_002_assistant_tool", firstUser.id)
-    const guided = user("msg_003_user_guided", { guided: true, noReply: true })
+    const guided = user("msg_003_user_guided", { isRoot: false, rootID: firstUser.id })
     const final = assistantFor("msg_004_assistant_final", firstUser.id)
 
     expect(isGuidedContextUserMessage(guided)).toBe(true)
@@ -258,7 +266,11 @@ describe("session turn assistant collection", () => {
     await import("./special-user-message")
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
-    const boundary = user("msg_003_boundary", { synthetic: true, compactionBoundary: true })
+    const boundary = user("msg_003_boundary", {
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true },
+    })
     const compaction = compactionAssistant("msg_004_compaction", boundary.id)
 
     expect(
@@ -276,7 +288,7 @@ describe("session turn assistant collection", () => {
   })
 
   test("hides synthetic compaction chrome while keeping the recovery card", () => {
-    const compactionUser = user("msg_compaction", { synthetic: true })
+    const compactionUser = user("msg_compaction", { visible: false, metadata: { synthetic: true } })
     const recovery = compactionRecoveryPart("recovery", compactionUser.id)
     const parts = [
       { ...textPart("synthetic-continue", compactionUser.id, "Continue if you have next steps"), synthetic: true },
@@ -302,9 +314,9 @@ describe("session turn assistant collection", () => {
       summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] },
     } as UserMessage
     const boundary = user("msg_boundary", {
-      synthetic: true,
-      compactionBoundary: true,
-      compactionParentID: parent.id,
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true, compactionParentID: parent.id },
     })
     const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
 
