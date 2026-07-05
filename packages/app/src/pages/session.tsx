@@ -228,14 +228,18 @@ function SessionPageContent() {
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return
     const targetMsg = message
+    const targetID = targetMsg.id
     const sessionID = params.id
+    if (!sessionID) return
     dialog.push(() => (
       <DialogRewindConfirm
         cutMessage={targetMsg}
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
         partsByMessage={sync.data.part}
         onRewind={async (cutMessageID, restoreFiles) => {
-          if (!sessionID) return
+          if (!sessionID || !cutMessageID) return
+          // eslint-disable-next-line no-console
+          console.log("[rewind] calling session.rollback", { sessionID, cutMessageID })
           // Abort if running. After abort, give the runtime a moment to settle
           // so assertIdle in rollback doesn't reject with BusyError.
           if (status().type !== "idle") {
@@ -247,7 +251,7 @@ function SessionPageContent() {
             await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
           }
           // Backfill prompt from the cut message per spec §3.5
-          const cutParts = sync.data.part[targetMsg.id]
+          const cutParts = sync.data.part[targetID]
           if (cutParts) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
             prompt.set(restored.prompt, inlineLength(restored.prompt))
