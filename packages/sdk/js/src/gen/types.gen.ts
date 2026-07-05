@@ -3159,6 +3159,7 @@ export type SessionHistoryInfo = {
     messageID?: string
     droppedMessageIDs: Array<string>
     droppedUserMessageIDs: Array<string>
+    cutMessageID?: string
     files: Array<string>
     patchPartIDs: Array<string>
     canUnrollback: boolean
@@ -3441,60 +3442,6 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
-export type SessionInboxItemSource = {
-  type: string
-  label?: string
-  [key: string]: unknown | string | undefined
-}
-
-export type SessionInboxItem = {
-  id: string
-  sessionID: string
-  kind: "queued_user" | "guiding" | "agent_update"
-  state: "queued" | "guiding"
-  deliveryTarget: "after_turn" | "next_model_call"
-  summary: {
-    title: string
-    preview?: string
-  }
-  detail?: {
-    text?: string
-    attachments?: Array<string>
-  }
-  source: SessionInboxItemSource
-  time: {
-    created: number
-    updated?: number
-  }
-  orderKey: string
-  messageID?: string
-}
-
-export type SessionInputResult =
-  | {
-      status: "started"
-      messageID: string
-    }
-  | {
-      status: "queued"
-      item: SessionInboxItem
-    }
-
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
 export type AttachmentSourceText = {
   value: string
   start: number
@@ -3560,6 +3507,119 @@ export type AttachmentModelPolicy =
       mode: "none"
     }
 
+export type OriginUser = {
+  type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
+  sessionID?: string
+  pluginID?: string
+  label?: string
+  detail?: string
+}
+
+export type SessionInboxItemSource = {
+  type: string
+  label?: string
+  [key: string]: unknown | string | undefined
+}
+
+export type SessionInboxItem = {
+  id: string
+  sessionID: string
+  mode: "task" | "steer" | "context"
+  message?: {
+    role?: "user" | "assistant"
+    parts: Array<
+      | {
+          id?: string
+          type: "text"
+          text: string
+          synthetic?: boolean
+          origin?: "user" | "system"
+          time?: {
+            start: number
+            end?: number
+          }
+          metadata?: {
+            [key: string]: unknown
+          }
+        }
+      | {
+          id?: string
+          type: "attachment"
+          mime: string
+          filename?: string
+          url: string
+          localPath?: string
+          source?: AttachmentSource
+          presentation?: AttachmentPresentation
+          model?: AttachmentModelPolicy
+          metadata?: {
+            [key: string]: unknown
+          }
+        }
+    >
+    agent?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    origin?: OriginUser
+    visible?: boolean
+    metadata?: {
+      [key: string]: unknown
+    }
+    summary?: {
+      title?: string
+      body?: string
+    }
+    system?: string
+    tools?: {
+      [key: string]: boolean
+    }
+    variant?: string
+  }
+  summaryPreview?: string
+  summary: {
+    title: string
+    preview?: string
+  }
+  detail?: {
+    text?: string
+    attachments?: Array<string>
+  }
+  source: SessionInboxItemSource
+  time: {
+    created: number
+    updated?: number
+  }
+  orderKey: string
+  messageID: string
+}
+
+export type SessionInputResult =
+  | {
+      status: "started"
+      messageID: string
+    }
+  | {
+      status: "queued"
+      item: SessionInboxItem
+    }
+
+export type TextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  origin?: "user" | "system"
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
 export type AttachmentPartInput = {
   id?: string
   type: "attachment"
@@ -3601,6 +3661,7 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
+  origin?: OriginUser
   metadata?: {
     [key: string]: unknown
   }
@@ -3698,7 +3759,7 @@ export type TextPart = {
   type: "text"
   text: string
   synthetic?: boolean
-  ignored?: boolean
+  origin?: "user" | "system"
   time?: {
     start: number
     end?: number
@@ -3925,6 +3986,7 @@ export type SessionRollbackEvent = {
   numTurns: number
   droppedMessageIDs: Array<string>
   droppedUserMessageIDs: Array<string>
+  cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
 }
@@ -3946,6 +4008,7 @@ export type SessionRollbackSummary = {
   messageID?: string
   droppedMessageIDs: Array<string>
   droppedUserMessageIDs: Array<string>
+  cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
   canUnrollback: boolean
@@ -9145,7 +9208,8 @@ export type SessionShellResponse = SessionShellResponses[keyof SessionShellRespo
 
 export type SessionRollbackData = {
   body?: {
-    numTurns: number
+    numTurns?: number
+    cutMessageID?: string
   }
   path: {
     sessionID: string

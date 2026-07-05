@@ -612,24 +612,37 @@ describe("tool.bash output cap", () => {
           },
           ctx,
         )
-        expect(result.metadata.background).toBe(true)
-        const processId = result.metadata.processId as string
-        expect(processId).toBeTruthy()
-
-        // Wait for process to finish
-        const proc = ProcessRegistry.get(processId)
-        if (proc) {
-          // Wait up to 10s for exit
+        // On a fast machine 300K of "x" may complete before auto-background
+        // fires, returning via the foreground path without processId. Verify the
+        // output cap through whichever path was taken.
+        const processId = result.metadata.processId as string | undefined
+        if (processId) {
+          let output: string | undefined
+          let tail: string | undefined
           for (let i = 0; i < 50; i++) {
-            if (proc.exited) break
+            const done = ProcessRegistry.getFinished(processId)
+            if (done) {
+              output = done.output
+              tail = done.tail
+              break
+            }
+            const running = ProcessRegistry.get(processId)
+            if (running?.exited) {
+              output = running.output
+              tail = running.tail
+              break
+            }
             await Bun.sleep(200)
           }
-          expect(proc.output.length).toBeLessThanOrEqual(200_000)
-          expect(proc.tail.length).toBeLessThanOrEqual(2_000)
+          expect(output).toBeDefined()
+          expect(output!.length).toBe(200_000)
+          expect(tail!.length).toBeLessThanOrEqual(2_000)
+          ProcessRegistry.remove(processId)
+        } else {
+          // Foreground path: the output field is already capped via appendOutput.
+          expect(result.metadata.output).toBeDefined()
+          expect(result.metadata.output!.length).toBeLessThanOrEqual(200_000)
         }
-
-        // Clean up
-        ProcessRegistry.remove(processId)
       },
     })
     ProcessRegistry.reset()

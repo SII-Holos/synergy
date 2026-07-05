@@ -494,7 +494,7 @@ export namespace Channel {
           if (role !== "assistant") return
 
           if (part.type === "text") {
-            if (part.ignored || part.synthetic || !part.text.trim()) return
+            if (MessageV2.isSystemPart(part) || !part.text.trim()) return
             if (activeTextMessageId !== part.messageID) {
               activeTextMessageId = part.messageID
             }
@@ -594,7 +594,7 @@ export namespace Channel {
   function extractResponseText(parts: MessageV2.Part[]): string {
     return parts
       .filter((p): p is MessageV2.TextPart => p.type === "text")
-      .filter((p) => !p.ignored && !p.synthetic && p.text.trim().length > 0)
+      .filter((p) => !MessageV2.isSystemPart(p) && p.text.trim().length > 0)
       .map((p) => p.text)
       .join("\n")
   }

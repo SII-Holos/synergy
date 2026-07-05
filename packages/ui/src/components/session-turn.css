@@ -6,6 +6,86 @@
   align-items: flex-start;
   justify-content: flex-start;
 
+  /* ── Rewind button ────────────────────────────── */
+  [data-slot="session-turn-rewind-button"] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: var(--font-size-x-small);
+    color: var(--text-subtle);
+    background: transparent;
+    /* Stay out of the way until the turn is hovered or the button is focused. */
+    opacity: 0;
+    transition:
+      opacity var(--motion-duration-fast) var(--motion-ease-standard),
+      background var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--background-weak);
+      color: var(--text-interactive-base);
+    }
+
+    &:active {
+      background: var(--background-base);
+    }
+
+    &:focus-visible {
+      opacity: 1;
+      outline: 1px solid var(--border-interactive-base);
+      outline-offset: 1px;
+    }
+
+    & [data-component="icon"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  [data-slot="session-turn-rewind-wrapper"]:hover [data-slot="session-turn-rewind-button"] {
+    opacity: 1;
+  }
+
+  [data-slot="session-turn-rewind-button"][data-rollback-active="true"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  /* Right-aligned user bubbles (root turns + user steer messages): the bubble
+     aligns to a shared right edge and the hover-revealed rewind button floats in
+     a reserved gutter just outside it — so a steer bubble (no button) and a root
+     bubble (with button) line up identically, and the button never pushes or
+     overlaps the bubble. */
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding-inline-end: 28px;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] [data-slot="session-turn-rewind-button"] {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 4px;
+    padding: 4px;
+
+    & span {
+      display: none;
+    }
+  }
+
   [data-slot="session-turn-content"] {
     flex-grow: 1;
     width: 100%;
@@ -71,14 +151,63 @@
   }
 
   [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
+  [data-slot="session-turn-chip"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--background-weak);
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    line-height: 1;
+  }
+
+  /* Injected (non-root) message chip: a compact, origin-tinted pill so a
+     mid-run steer / notification reads distinctly from a real user turn. */
+  [data-slot="session-turn-chip"] {
+    align-self: flex-start;
+    padding: 3px 9px;
+    font-size: var(--font-size-x-small);
+    border: 1px solid var(--border-weak);
+    color: var(--text-subtle);
+
+    & [data-component="icon"] {
+      width: 12px;
+      height: 12px;
+      color: var(--chip-accent, var(--text-subtle));
+    }
+  }
+
+  [data-slot="session-turn-chip"][data-origin="cortex"] {
+    --chip-accent: var(--text-interactive-base);
+  }
+  [data-slot="session-turn-chip"][data-origin="blueprint"] {
+    --chip-accent: var(--text-success, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip"][data-origin="channel"] {
+    --chip-accent: var(--text-warning, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip-label"] {
+    font-weight: var(--font-weight-medium);
+  }
+
   [data-slot="session-turn-timeline-item"]:is(
     [data-kind="text"],
     [data-kind="reasoning"],
-    [data-kind="guided-user"],
+    [data-kind="non-root-user"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);
     margin-inline: auto;
+  }
+
+  /* A user's steer message is a right-aligned user bubble, not part of the
+     centered assistant reading column — it must span the full turn width so its
+     bubble flushes to the same right edge as the root turn's bubble. */
+  [data-slot="session-turn-timeline-item"][data-kind="guided-user"] {
+    max-width: 100%;
+    margin-inline: 0;
   }
 
   [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {

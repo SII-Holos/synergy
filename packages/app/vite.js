@@ -11,10 +11,6 @@ const virtuaSolidEntry = path.join(path.dirname(virtuaPackagePath), "lib/solid/i
 
 const sdkRoot = path.resolve(fileURLToPath(new URL("../sdk/js", import.meta.url)))
 const pluginRoot = path.resolve(fileURLToPath(new URL("../plugin", import.meta.url)))
-const sdkDistComplete =
-  fs.existsSync(path.join(sdkRoot, "dist/index.js")) &&
-  fs.existsSync(path.join(sdkRoot, "dist/client.js")) &&
-  fs.existsSync(path.join(sdkRoot, "dist/server.js"))
 const pluginDistComplete =
   fs.existsSync(path.join(pluginRoot, "dist/index.js")) &&
   fs.existsSync(path.join(pluginRoot, "dist/artifact.js")) &&
@@ -27,13 +23,18 @@ const sdkGenSourceExists =
   fs.existsSync(path.join(sdkRoot, "src/gen/client/client.gen.ts"))
 
 /**
- * Use SDK sources during dev so Vite cannot serve stale workspace dist files.
+ * Always resolve the workspace SDK from its TypeScript sources when they exist,
+ * for both `serve` (dev) and `build` (production). The compiled `dist/` is a
+ * gitignored build artifact that easily lags `src/gen` (e.g. after the OpenAPI
+ * client is regenerated but dist isn't rebuilt), which silently drops newly
+ * added request fields from the bundled client. Compiling from source removes
+ * that entire class of stale-dist bugs; falls back to the published dist only
+ * when sources are absent (e.g. a packaged install).
  *
  * @returns {import("vite").Alias[]}
  */
-function sdkAliases(command) {
+function sdkAliases() {
   if (!sdkGenSourceExists) return []
-  if (command !== "serve" && sdkDistComplete) return []
   return [
     { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
     { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
@@ -51,7 +52,7 @@ const pluginAliases = pluginDistComplete
 export default [
   {
     name: "synergy-app:config",
-    config(_config, env) {
+    config(_config, _env) {
       return {
         resolve: {
           alias: [
@@ -63,7 +64,7 @@ export default [
               find: "@",
               replacement: fileURLToPath(new URL("./src", import.meta.url)),
             },
-            ...sdkAliases(env.command),
+            ...sdkAliases(),
             ...pluginAliases,
           ],
         },

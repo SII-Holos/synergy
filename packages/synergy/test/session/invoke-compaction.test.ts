@@ -219,22 +219,15 @@ describe.serial("SessionInvoke preflight compaction", () => {
           const [compactionPart] = interceptedCompactionParts
           expect(compactionPart.sessionID).toBe(sessionID)
           expect(compactionPart.auto).toBe(true)
-          expect(compactionPart.messageID).not.toBe(user.id)
+          // The compaction part is attached to the task root R (= the user
+          // message here), not a separate synthetic boundary (issue #281 §7).
+          expect(compactionPart.messageID).toBe(user.id)
 
-          const boundary = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
-          expect(boundary.info?.role).toBe("user")
-          if (boundary.info?.role !== "user") throw new Error("expected compaction boundary user")
-          expect(boundary.info.summary?.title).toBe("Compaction requested")
-          expect(boundary.info.metadata?.synthetic).toBe(true)
-          expect(boundary.info.metadata?.compactionBoundary).toBe(true)
-          expect(boundary.info.metadata?.compactionParentID).toBe(user.id)
-          expect(boundary.parts).toEqual([
-            expect.objectContaining({
-              type: "compaction",
-              auto: true,
-              messageID: compactionPart.messageID,
-            }),
-          ])
+          const root = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
+          expect(root.info?.role).toBe("user")
+          expect(root.parts).toEqual(
+            expect.arrayContaining([expect.objectContaining({ type: "compaction", auto: true, messageID: user.id })]),
+          )
           expect(processCalled).not.toHaveBeenCalled()
         },
       })
@@ -656,7 +649,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(compacted.map((msg) => msg.info.id)).toEqual(["msg_boundary", "msg_summary", "msg_continue"])
   })
 
-  test("resolves the compaction anchor from the real user before a synthetic boundary", () => {
+  test("resolves the compaction anchor from the task root by id", () => {
     const sessionID = "ses_test"
     const realUser = testUser({
       id: "msg_real_user",
@@ -664,28 +657,9 @@ describe.serial("SessionInvoke preflight compaction", () => {
       created: 1,
       text: "Polish the account settings UI.",
     })
-    const boundary = testUser({
-      id: "msg_boundary",
-      sessionID,
-      created: 2,
-      summaryTitle: "Compaction requested",
-      metadata: {
-        synthetic: true,
-        compactionBoundary: true,
-        compactionParentID: realUser.info.id,
-      },
-      parts: [
-        {
-          id: "prt_boundary_compaction",
-          sessionID,
-          messageID: "msg_boundary",
-          type: "compaction",
-          auto: true,
-        },
-      ],
-    })
-
-    const anchor = SessionCompaction.resolveAnchor([realUser, boundary], boundary.info.id)
+    // The compaction part now lives on the root itself, so the loop passes the
+    // root id as parentID and the anchor is that root's text (issue #281 §7).
+    const anchor = SessionCompaction.resolveAnchor([realUser], realUser.info.id)
 
     expect(anchor).toEqual({
       text: "Polish the account settings UI.",

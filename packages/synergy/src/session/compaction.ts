@@ -132,9 +132,7 @@ export namespace SessionCompaction {
     const sections: string[] = []
 
     const recentUsers = messages
-      .filter(
-        (m) => m.info.role === "user" && !m.parts.some((p) => p.type === "text" && "synthetic" in p && p.synthetic),
-      )
+      .filter((m) => m.info.role === "user" && !m.parts.some((p) => MessageV2.isSystemPart(p) && p.type === "text"))
       .slice(-3)
       .map((m) => {
         const text = m.parts
@@ -203,6 +201,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "text",
       text: summary,
+      origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
     msg.error = undefined
@@ -284,7 +283,6 @@ export namespace SessionCompaction {
 
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
-  const ANCHOR_METADATA_KEY = "compactionAnchor"
 
   type Anchor = {
     text: string
@@ -292,7 +290,7 @@ export namespace SessionCompaction {
   }
 
   function realUserText(msg: MessageV2.WithParts): string | undefined {
-    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic && !p.ignored)
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
     if (textParts.length === 0) return undefined
     const text = textParts
       .map((p) => p.text)
@@ -305,47 +303,18 @@ export namespace SessionCompaction {
     return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
   }
 
-  function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
-    if (msg.info.role !== "user") return false
-    const metadata = msg.info.metadata
-    return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
-  }
-
-  function carriedAnchor(msg: MessageV2.WithParts): Anchor | undefined {
-    if (msg.info.role !== "user") return undefined
-    const value = msg.info.metadata?.[ANCHOR_METADATA_KEY]
-    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-    const text = typeof value.text === "string" ? value.text.trim() : undefined
-    if (!text) return undefined
-    const sourceMessageID = typeof value.sourceMessageID === "string" ? value.sourceMessageID : undefined
-    return { text, sourceMessageID }
-  }
-
   /**
-   * Preserve the active user request across compaction. Prefer the compaction
-   * parent when it is a real reply-requesting user message; synthetic, no-reply,
-   * and guided context messages fall back to the latest earlier real request.
+   * Preserve the active task's request across compaction (issue #281 §7).
+   * The compaction parent is the task root R, so this is an O(1) lookup by id:
+   * take R's user-authored text, falling back to its summary title. No backward
+   * scan, no carried-anchor metadata — the root is a persisted message reachable
+   * by rootID even after it leaves the context window.
    */
   export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
-    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
-    const parentText = parent ? realUserText(parent) : undefined
-    if (parent && parentText) return { text: parentText, sourceMessageID: parent.info.id }
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (!isAnchorEligibleUser(msg)) continue
-      if (msg.info.id === parentID) continue
-      const text = realUserText(msg)
-      if (!text) continue
-      return { text, sourceMessageID: msg.info.id }
-    }
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const anchor = carriedAnchor(messages[i])
-      if (anchor) return anchor
-    }
-
-    return undefined
+    const root = messages.find((m) => m.info.id === parentID && m.info.role === "user")
+    if (!root) return undefined
+    const text = realUserText(root) ?? (root.info as MessageV2.User).summary?.title?.trim()
+    return text ? { text, sourceMessageID: root.info.id } : undefined
   }
 
   export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
@@ -375,6 +344,8 @@ export namespace SessionCompaction {
       id: Identifier.ascending("message"),
       role: "assistant",
       parentID: input.parentID,
+      rootID: input.parentID,
+      visible: true,
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
@@ -504,14 +475,11 @@ export namespace SessionCompaction {
         },
         agent: userMessage.agent,
         model: userMessage.model,
+        origin: { type: "compaction", detail: "auto_continue" },
+        isRoot: false,
+        rootID: input.parentID,
+        visible: false,
         summary: { title: "Compaction complete", diffs: [] },
-        ...(anchor
-          ? {
-              metadata: {
-                [ANCHOR_METADATA_KEY]: anchor,
-              },
-            }
-          : {}),
       })
       const now = Date.now()
       await Session.updatePart({
@@ -520,6 +488,7 @@ export namespace SessionCompaction {
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
+        origin: "system",
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
@@ -530,6 +499,7 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
+          origin: "system",
           text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })

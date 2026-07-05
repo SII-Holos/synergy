@@ -18,6 +18,7 @@ import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
 
@@ -1116,7 +1117,7 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
       const event = await Session.rollback({ sessionID, ...body })
       return c.json(event)
     },
@@ -1162,8 +1163,14 @@ export const SessionRoute = new Hono()
         const event = await Session.unrollback({ sessionID, ...parsed })
         return c.json(event)
       } catch (error) {
+        log.warn("session.unrollback failed", {
+          sessionID,
+          error: error instanceof Error ? error.message : String(error),
+        })
         if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
-        throw error
+        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
       }
     },
   )

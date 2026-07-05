@@ -413,6 +413,10 @@ export const LocalBashBackend: BashBackend = {
       const exitSignal = timedOut ? "SIGTERM" : signal
       if (regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, exitSignal)
+      } else if (backgroundAfterSeconds > 0) {
+        // Process finished before the auto-background timer fired; still
+        // persist through markExited so tests and callers can find it.
+        ProcessRegistry.markExited(regProc, code, exitSignal)
       } else {
         ProcessRegistry.remove(regProc.id)
       }

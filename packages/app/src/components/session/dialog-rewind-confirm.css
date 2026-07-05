@@ -1,0 +1,98 @@
+.rewind-confirm-dialog {
+  [data-slot="dialog-body"] {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+.rewind-confirm-counts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-medium, 8px);
+  background: var(--background-weak);
+}
+
+.rewind-confirm-count-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-size-small);
+  color: var(--text-base);
+
+  & [data-component="icon"] {
+    flex-shrink: 0;
+    margin-inline-end: 2px;
+    color: var(--text-subtle);
+  }
+}
+
+.rewind-confirm-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 24px;
+}
+
+.rewind-confirm-file-item {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--background-weak);
+  font-size: var(--font-size-x-small);
+  color: var(--text-weak);
+  font-family: var(--font-family-mono);
+}
+
+.rewind-confirm-file-more {
+  font-size: var(--font-size-x-small);
+  color: var(--text-subtle);
+  padding: 1px 4px;
+}
+
+.rewind-confirm-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--font-size-small);
+  color: var(--text-base);
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    flex-shrink: 0;
+    margin-top: 2px;
+    accent-color: var(--accent-base);
+  }
+}
+
+.rewind-confirm-checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rewind-confirm-checkbox-hint {
+  font-size: var(--font-size-x-small);
+  color: var(--text-subtle);
+  line-height: var(--line-height-base, 1.4);
+}
+
+.rewind-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rewind-confirm-button[data-tone="danger"] {
+  --button-background: var(--danger-background, var(--red-600));
+  --button-color: var(--danger-color, white);
+}
+
+.rewind-confirm-spinner {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}

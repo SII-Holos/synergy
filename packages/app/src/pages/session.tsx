@@ -1,6 +1,5 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { isGuidedContextUserMessage } from "@ericsanchezok/synergy-ui/session-turn"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -22,9 +21,11 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Session, SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
+import { extractPromptDraft } from "@/utils/prompt"
+import { inlineLength } from "@/components/prompt-input/content"
 import { getDraggableId } from "@/utils/solid-dnd"
 import { SessionReviewTab } from "@/components/session"
 
@@ -52,6 +53,8 @@ import {
 } from "@/components/session/worktree-session"
 import { WorktreeTransitionContent } from "@/components/session/worktree-transition-dialog"
 import { worktreeTransition, clearWorktreeTransition } from "@/components/session/worktree-progress-signals"
+import { RollbackBanner } from "@/components/session/rollback-banner"
+import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 
 const handoff = {
   prompt: "",
@@ -194,10 +197,39 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
-  const hiddenMessageIDs = createMemo(() => new Set(rollback()?.droppedMessageIDs ?? []))
+  const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
+  const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  // A fresh rewind (new rollback event id) always shows its banner, even if a
+  // previous banner was dismissed.
+  createEffect(
+    on(
+      () => rollback()?.id,
+      () => setRollbackDismissed(false),
+      { defer: true },
+    ),
+  )
+  const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
+  const hiddenMessageIDs = createMemo(() => {
+    const rb = rollback()
+    if (!rb) return null as { cutMessageID: string } | null | Set<string>
+    // While redo is still possible, use prefix-cut: hide the cut message and
+    // everything after it. Once a new root invalidates redo, only the original
+    // dropped set remains hidden so the new branch is visible.
+    if (rb.cutMessageID && rb.canUnrollback) return { cutMessageID: rb.cutMessageID }
+    return new Set(rb.droppedMessageIDs ?? [])
+  })
   const messages = createMemo(() => {
     const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
+    // Rollback filtering is gated by hiddenMessageIDs: the prefix-cut only
+    // applies while redo is possible (canUnrollback). Once a new root has been
+    // started the cut is superseded by the dropped-id set so the new branch —
+    // including messages sent after undoing the first message — stays visible.
     const hidden = hiddenMessageIDs()
+    if (!hidden) return raw
+    if ("cutMessageID" in hidden) {
+      // Prefix cut: drop target and all later messages
+      return raw.filter((message) => message.id < hidden.cutMessageID)
+    }
     if (hidden.size === 0) return raw
     return raw.filter((message) => !hidden.has(message.id))
   })
@@ -206,6 +238,41 @@ function SessionPageContent() {
     if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
     return false
   })
+  const openRewindConfirm = (message: UserMessage | undefined) => {
+    if (!message?.id) return
+    const targetMsg = message
+    const targetID = targetMsg.id
+    const sessionID = params.id
+    if (!sessionID) return
+    dialog.push(() => (
+      <DialogRewindConfirm
+        cutMessage={targetMsg}
+        allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
+        partsByMessage={sync.data.part}
+        onRewind={async (cutMessageID, restoreFiles) => {
+          if (!sessionID || !cutMessageID) return
+          // Abort if running. After abort, give the runtime a moment to settle
+          // so assertIdle in rollback doesn't reject with BusyError.
+          if (status().type !== "idle") {
+            await sdk.client.session.abort({ sessionID }).catch(() => {})
+            await new Promise((r) => setTimeout(r, 500))
+          }
+          const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
+          if (restoreFiles && result.data?.id) {
+            await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
+          }
+          // Backfill prompt from the cut message per spec §3.5
+          const cutParts = sync.data.part[targetID]
+          if (cutParts) {
+            const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
+            prompt.set(restored.prompt, inlineLength(restored.prompt))
+            prompt.context.set(restored.context)
+          }
+          setActiveMessage(userMessages().findLast((x) => x.id < cutMessageID))
+        }}
+      />
+    ))
+  }
   const messagesReady = createMemo(() => {
     const id = params.id
     if (!id) return true
@@ -221,46 +288,33 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
-  const isSessionIdentityAnchor = (message: UserMessage) => {
-    const metadata = message.metadata
-    if (!metadata) return true
-    const source = metadata.source
-    if (metadata.guided === true && metadata.noReply === true) return false
-    if (metadata.mailbox === true || metadata.channelPush === true) return false
-    if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
-    if (source === "cortex" || source === "mailbox" || source === "agenda") return false
-    if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
-    return true
-  }
+  // ── Root message derivation layer ───────────────────────────────────
+  // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
+  // heuristics with orthogonal isRoot/visible/rootID/origin fields.
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyUserMessages: UserMessage[] = []
-  const userMessages = createMemo(
-    () =>
-      messages().filter((m) => {
-        if (m.role !== "user") return false
-        const user = m as UserMessage
-        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user) && isSessionIdentityAnchor(user)
-      }) as UserMessage[],
+  const rootMessages = createMemo(
+    () => messages().filter((m) => m.role === "user" && (m as UserMessage).isRoot === true) as UserMessage[],
     emptyUserMessages,
   )
-  const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
-  const renderableUserMessages = createMemo(
-    () =>
-      messages().filter((m) => {
-        if (m.role !== "user") return false
-        const user = m as UserMessage
-        if (isGuidedContextUserMessage(user)) return false
-        return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
-      }) as UserMessage[],
-    emptyUserMessages,
-  )
-  const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
-  const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
+  const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
+  const lastRoot = createMemo(() => rootMessages().at(-1))
+  // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
+  const visibleUserMessages = visibleRoots
+  // userMessages — kept for commands hook compatibility
+  const userMessages = visibleRoots
+  // renderableUserMessages — deprecated alias, use visibleRoots
+  const renderableUserMessages = visibleRoots
+  const lastUserMessage = lastRoot
+  const lastRenderableUserMessage = lastRoot
   const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
+  // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
   createEffect(
     on(
-      () => [lastUserMessage()?.id, selectableAgentNames()] as const,
+      () =>
+        [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, lastRoot()?.variant, selectableAgentNames()] as const,
       () => {
-        const msg = lastUserMessage()
+        const msg = lastRoot()
         if (!msg) return
         if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
         local.agent.set(msg.agent)
@@ -272,32 +326,8 @@ function SessionPageContent() {
     ),
   )
 
-  // Blueprint loop start messages carry a model override but are excluded from
-  // userMessages by isSessionIdentityAnchor (source starts with "blueprint_loop_").
-  // Track their model separately so the stb-root model display stays current.
-  const lastBlueprintStartModel = createMemo(() => {
-    const msgs = messages()
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (m.role !== "user") continue
-      const meta = m.metadata as Record<string, unknown> | undefined
-      if (typeof meta?.source === "string" && meta.source === "blueprint_loop_start") {
-        return m.model
-      }
-    }
-    return undefined
-  })
-  createEffect(
-    on(
-      () => lastBlueprintStartModel(),
-      (model) => {
-        if (model) local.model.set(model)
-      },
-    ),
-  )
-
   const renderedUserMessages = createMemo(() => {
-    const msgs = visibleUserMessages()
+    const msgs = visibleRoots()
     if (!msgs) return emptyUserMessages
     const start = store.turnStart
     if (start <= 0) return msgs
@@ -307,17 +337,22 @@ function SessionPageContent() {
 
   const renderedConversationUserMessages = createMemo(() => {
     const firstID = renderedUserMessages()[0]?.id
-    const msgs = renderableUserMessages()
+    const msgs = visibleRoots()
     if (!firstID) return msgs
     return msgs.filter((message) => message.id >= firstID)
   }, emptyUserMessages)
 
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyTimeline: Message[] = []
   const isActionCommandMessage = (message: Message) => {
     const metadata = message.metadata as
       | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
       | undefined
-    return metadata?.command?.kind === "action" && metadata.promptVisible === false
+    if (metadata?.command?.kind !== "action") return false
+    // Prefer the canonical includeInContext; fall back to command.promptVisible
+    // for messages written before it was set.
+    if (message.includeInContext !== undefined) return message.includeInContext === false
+    return metadata.promptVisible === false
   }
 
   const mergeTimelineMessages = (items: Message[]) => {
@@ -330,6 +365,27 @@ function SessionPageContent() {
     }
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result
+  }
+
+  const pendingTimeline = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return [] as SessionInboxItem[]
+    const inbox = sync.data.inbox[sessionID]
+    if (!inbox || inbox.length === 0) return []
+    return inbox
+      .filter((item) => item.mode === "task" || item.mode === "steer")
+      .filter((item) => item.message?.visible !== false)
+      .filter((item) => (item.message?.origin?.type ?? item.source?.type) === "user")
+  })
+  const guidePending = async (item: SessionInboxItem) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    await sdk.client.session.inboxGuide({ sessionID, itemID: item.id })
+  }
+  const removePending = async (item: SessionInboxItem) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    await sdk.client.session.inboxRemove({ sessionID, itemID: item.id })
   }
 
   const timeline = createMemo(() => {
@@ -546,6 +602,7 @@ function SessionPageContent() {
     setActiveMessage,
     navigateMessageByOffset,
     isWorking: () => status().type !== "idle",
+    onRewind: openRewindConfirm,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -918,6 +975,14 @@ function SessionPageContent() {
                 )}
               </Show>
               <SessionTopBar />
+              <Show when={showRollbackBanner()}>
+                <RollbackBanner
+                  sessionID={params.id!}
+                  rollback={rollback()!}
+                  sdk={sdk}
+                  onDismiss={() => setRollbackDismissed(true)}
+                />
+              </Show>
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
@@ -970,6 +1035,7 @@ function SessionPageContent() {
                           sessionID={params.id!}
                           paramsDir={params.dir!}
                           timeline={timeline}
+                          pendingTimeline={pendingTimeline}
                           visibleUserMessages={visibleUserMessages}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
@@ -997,6 +1063,10 @@ function SessionPageContent() {
                           anchor={anchor}
                           terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
                           workspaceOpen={sideOpen}
+                          onRewind={openRewindConfirm}
+                          onPendingGuide={(item) => void guidePending(item)}
+                          onPendingRemove={(item) => void removePending(item)}
+                          rollbackActive={rollbackActive()}
                         />
                       </Show>
                     </Show>
@@ -1033,6 +1103,7 @@ function SessionPageContent() {
               branch={branch}
               lastModified={lastModified}
               workspaceOpen={sideOpen}
+              rollbackActive={rollbackActive()}
             />
             <Show when={isDesktop() && showTabs() && !sideOpen()}>
               <ResizeHandle

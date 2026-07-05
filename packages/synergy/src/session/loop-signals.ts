@@ -24,7 +24,17 @@ function lastAssistant(ctx: LoopJob.Context): AssistantMsg | undefined {
 LoopJob.defineSignal({
   type: "compact",
   detect(ctx) {
-    return ctx.lastUserParts.some((p) => p.type === "compaction")
+    if (!ctx.lastUserParts.some((p) => p.type === "compaction")) return false
+    // The compaction part lives on the task root R (issue #281 §7), so it stays
+    // in the window after compaction runs. Fire only while the request is still
+    // pending — i.e. no completed compaction summary for R exists yet — otherwise
+    // the loop would re-compact endlessly instead of resuming the task.
+    const fulfilled = ctx.messages.some((m) => {
+      if (m.info.role !== "assistant") return false
+      const a = m.info as MessageV2.Assistant
+      return a.summary === true && !!a.finish && a.parentID === ctx.lastUser.id
+    })
+    return !fulfilled
   },
 })
 
