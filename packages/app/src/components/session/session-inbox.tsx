@@ -6,7 +6,6 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
-import { useConfirm } from "@/components/dialog"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
@@ -56,19 +55,15 @@ function itemCountLabel(count: number) {
 function queueNote(items: SessionInboxItem[]) {
   const steers = items.filter((item) => item.mode === "steer").length
   const tasks = items.filter((item) => item.mode === "task").length
-  const nextCall = items.filter((item) => item.mode !== "task" || item.deliveryTarget === "next_model_call").length
-  const afterTurn = items.filter((item) => item.mode === "task" || item.deliveryTarget === "after_turn").length
+  const contexts = items.filter((item) => item.mode === "context").length
 
   if (steers > 0 && tasks > 0) return `${steers} next call · ${tasks} after turn`
   if (steers > 1) return `${steers} items join the next model call`
   if (steers === 1) return "Joins the current run's next model call"
   if (tasks > 1) return `${tasks} items send together in one reply`
   if (tasks === 1) return "Sends automatically after this turn"
-  if (nextCall > 0 && afterTurn > 0) return `${nextCall} next call · ${afterTurn} after turn`
-  if (nextCall > 1) return `${nextCall} items join the next model call`
-  if (nextCall === 1) return "Joins the current run's next model call"
-  if (afterTurn > 1) return `${afterTurn} items send together in one reply`
-  if (afterTurn === 1) return "Sends automatically after this turn"
+  if (contexts > 1) return `${contexts} context updates waiting`
+  if (contexts === 1) return "Context update waiting"
   return "Inbox clear"
 }
 
@@ -99,11 +94,12 @@ function InboxDetail(props: { item: SessionInboxItem }) {
 
 function InboxRow(props: {
   item: SessionInboxItem
+  disabled?: boolean
   onGuide: (item: SessionInboxItem) => void
   onRemove: (item: SessionInboxItem) => void
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false)
-  const canInteract = () => isInboxItemInteractive(props.item)
+  const canInteract = () => !props.disabled && isInboxItemInteractive(props.item)
   const preview = () => props.item.summary.preview || props.item.summary.title
 
   const remove = () => {
@@ -117,7 +113,7 @@ function InboxRow(props: {
         <div class="session-inbox-row-main">
           <div class="session-inbox-row-meta">
             <span class="session-inbox-row-label">{labelByMode(props.item)}</span>
-            <span class="session-inbox-row-status" data-target={props.item.deliveryTarget}>
+            <span class="session-inbox-row-status" data-mode={props.item.mode}>
               {timingLabel(props.item)}
             </span>
           </div>
@@ -168,7 +164,6 @@ function InboxRow(props: {
 }
 
 export function SessionInbox(props: SessionInboxProps) {
-  const confirm = useConfirm()
   const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
@@ -208,30 +203,30 @@ export function SessionInbox(props: SessionInboxProps) {
     }
   }
 
+  const restoreItem = async (item: SessionInboxItem) => {
+    if (!item.message?.parts?.length) return
+    await props.sdk.client.session.input({
+      sessionID: props.sessionID,
+      agent: item.message.agent,
+      model: item.message.model,
+      parts: item.message.parts,
+    })
+  }
+
   const remove = async (item: SessionInboxItem) => {
     await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
     showToast({
       type: "info",
       title: "Removed queued message",
-      description: "The message has been removed from the inbox.",
+      description: "The message has been removed from the inbox. Restoring it will add it to the queue tail.",
       actions: [
         {
           label: "Restore",
           onClick: () => {
-            void props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id }).catch(() => {})
+            void restoreItem(item).catch(() => {})
           },
         },
       ],
-    })
-  }
-  const confirmRemove = (item: SessionInboxItem) => {
-    confirm.show({
-      title: "Delete queued message?",
-      description: "Remove this message from the session inbox? It will not be sent after the turn.",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      tone: "danger",
-      onConfirm: () => remove(item),
     })
   }
 
@@ -275,13 +270,15 @@ export function SessionInbox(props: SessionInboxProps) {
               </Show>
               <div class="session-inbox-queue-note">
                 <span>{note()}</span>
-                <Show when={actionableItems().length > 1}>
+                <Show when={!props.freezeHint && actionableItems().length > 1}>
                   <button type="button" class="session-inbox-send-all" onClick={guideAll}>
                     Send all now
                   </button>
                 </Show>
               </div>
-              <For each={items()}>{(item) => <InboxRow item={item} onGuide={guide} onRemove={confirmRemove} />}</For>
+              <For each={items()}>
+                {(item) => <InboxRow item={item} disabled={props.freezeHint} onGuide={guide} onRemove={remove} />}
+              </For>
             </div>
           </Match>
         </Switch>

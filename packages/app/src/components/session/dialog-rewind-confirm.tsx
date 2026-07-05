@@ -14,7 +14,6 @@ interface DialogRewindConfirmProps {
   allMessages: { id: string; role: string }[]
   /** Parts records keyed by message id */
   partsByMessage: Record<string, PartType[] | undefined>
-  filesByMessage: Record<string, string[] | undefined>
   onRewind: (cutMessageID: string, restoreFiles: boolean) => Promise<void>
 }
 
@@ -26,9 +25,8 @@ function computeCounts(props: {
   allMessages: { id: string; role: string }[]
   cutId: string
   partsByMessage: Record<string, PartType[] | undefined>
-  filesByMessage: Record<string, string[] | undefined>
 }) {
-  const { allMessages, cutId, partsByMessage, filesByMessage } = props
+  const { allMessages, cutId, partsByMessage } = props
   const idx = activeMessageIndex(allMessages, cutId)
   if (idx < 0)
     return { droppedUserMessages: 0, assistantReplies: 0, affectedFiles: 0, affectedFileNames: [] as string[] }
@@ -47,8 +45,6 @@ function computeCounts(props: {
         }
       }
     }
-    const msgFiles = filesByMessage[m.id]
-    if (msgFiles) for (const f of msgFiles) affectedFileSet.add(f)
   }
 
   return {
@@ -71,7 +67,6 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
       allMessages: props.allMessages,
       cutId: props.cutMessage.id,
       partsByMessage: props.partsByMessage,
-      filesByMessage: props.filesByMessage,
     }),
   )
 

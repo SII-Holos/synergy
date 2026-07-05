@@ -182,10 +182,7 @@ export function SessionConversation(props: {
                   data-frozen={props.rollbackActive === true}
                   class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
                 >
-                  <Show
-                    when={props.rollbackActive && item.mode !== "task"}
-                    fallback={<Icon name="clock" size="small" />}
-                  >
+                  <Show when={props.rollbackActive} fallback={<Icon name="clock" size="small" />}>
                     <span
                       class="text-xs opacity-70"
                       title="Delivery paused during rollback. Will resume on redo or new task."

@@ -7,6 +7,7 @@ function item(
   kind: SessionInboxItem["kind"],
   deliveryTarget: SessionInboxItem["deliveryTarget"],
   orderKey: string,
+  mode?: SessionInboxItem["mode"],
 ): SessionInboxItem {
   return {
     id,
@@ -14,7 +15,7 @@ function item(
     kind,
     state: kind === "guiding" ? "guiding" : "queued",
     deliveryTarget,
-    mode: kind === "guiding" ? "steer" : kind === "agent_update" ? "steer" : ("task" as const),
+    mode: mode ?? (kind === "guiding" ? "steer" : kind === "agent_update" ? "steer" : ("task" as const)),
     messageID: `msg_${id}`,
     summary: { title: id },
     source: { type: "test" },
@@ -24,15 +25,15 @@ function item(
 }
 
 describe("sortInboxItems", () => {
-  test("keeps all inbox kinds in one delivery-ordered queue", () => {
-    const queuedEarly = item("inb_queued_early", "queued_user", "after_turn", "001")
-    const agentMiddle = item("inb_agent_middle", "agent_update", "after_turn", "002")
-    const guidingLate = item("inb_guiding_late", "guiding", "next_model_call", "003")
+  test("sorts by mode first, then queue order", () => {
+    const queuedEarly = item("inb_queued_early", "queued_user", "after_turn", "001", "task")
+    const contextMiddle = item("inb_context_middle", "agent_update", "next_model_call", "002", "context")
+    const steerLate = item("inb_steer_late", "guiding", "next_model_call", "003", "steer")
 
-    expect(sortInboxItems([agentMiddle, guidingLate, queuedEarly]).map((entry) => entry.id)).toEqual([
-      "inb_guiding_late",
+    expect(sortInboxItems([contextMiddle, steerLate, queuedEarly]).map((entry) => entry.id)).toEqual([
+      "inb_steer_late",
       "inb_queued_early",
-      "inb_agent_middle",
+      "inb_context_middle",
     ])
   })
 })

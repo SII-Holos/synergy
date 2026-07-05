@@ -287,9 +287,24 @@ export namespace SessionHistory {
   }
 
   export function applyEvents(messages: MessageV2.WithParts[], events: Event[]) {
-    const hidden = new Set(activeRollbacks(events).flatMap((event) => event.droppedMessageIDs))
-    if (hidden.size === 0) return messages
-    return messages.filter((msg) => !hidden.has(msg.info.id))
+    const rollbacks = activeRollbacks(events)
+    if (rollbacks.length === 0) return messages
+
+    const cuts: string[] = []
+    const hidden = new Set<string>()
+    for (const event of rollbacks) {
+      const cut = getCutMessageID(event)
+      if (cut && canUnrollback(messages, event)) {
+        cuts.push(cut)
+        continue
+      }
+      for (const id of event.droppedMessageIDs) hidden.add(id)
+    }
+
+    return messages.filter((msg) => {
+      if (cuts.some((cut) => msg.info.id >= cut)) return false
+      return !hidden.has(msg.info.id)
+    })
   }
 
   export function info(sessionID: string, raw: MessageV2.WithParts[], events: Event[]): Info["history"] | undefined {

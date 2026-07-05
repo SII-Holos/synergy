@@ -33,6 +33,7 @@ import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
+import { SessionHistory } from "./history"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
@@ -383,15 +384,19 @@ export namespace SessionInvoke {
 
         step++
 
+        const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+
         // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
         // so they can trigger a model call in this iteration. Context items follow
         // in ② after the predicate confirms a call is needed (piggyback).
-        const steerItems = await SessionInbox.drainSteer(sessionID)
-        if (steerItems.length > 0) {
-          log.info("drained steer items into session", { sessionID, count: steerItems.length })
-          for (const item of steerItems) {
-            const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
-            if (materialized) msgs.push(materialized)
+        if (!rollbackActive) {
+          const steerItems = await SessionInbox.drainSteer(sessionID)
+          if (steerItems.length > 0) {
+            log.info("drained steer items into session", { sessionID, count: steerItems.length })
+            for (const item of steerItems) {
+              const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+              if (materialized) msgs.push(materialized)
+            }
           }
         }
 
@@ -430,23 +435,26 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
-        // Drain legacy guiding/agent-update items by kind for compat
-        const guidingFallback = await SessionInbox.drainGuiding(sessionID)
-        if (guidingFallback.length > 0) {
-          const guided = await materializeInboxItems(sessionID, guidingFallback, { guiding: true, rootID: R.id })
-          msgs.push(...guided.userMessages)
-          log.info("drained legacy guiding items into session", { sessionID, count: guidingFallback.length })
-        }
-        const agentUpdateFallback = await SessionInbox.drainAgentUpdates(sessionID)
-        if (agentUpdateFallback.length > 0) {
-          const updates = await materializeInboxItems(sessionID, agentUpdateFallback, { guiding: true, rootID: R.id })
-          msgs.push(...updates.userMessages)
-          log.info("drained legacy agent updates into session", { sessionID, count: agentUpdateFallback.length })
+        // Drain legacy guiding/agent-update items by kind for compat.
+        // These are also non-task injections, so active rollback freezes them.
+        if (!rollbackActive) {
+          const guidingFallback = await SessionInbox.drainGuiding(sessionID)
+          if (guidingFallback.length > 0) {
+            const guided = await materializeInboxItems(sessionID, guidingFallback, { guiding: true, rootID: R.id })
+            msgs.push(...guided.userMessages)
+            log.info("drained legacy guiding items into session", { sessionID, count: guidingFallback.length })
+          }
+          const agentUpdateFallback = await SessionInbox.drainAgentUpdates(sessionID)
+          if (agentUpdateFallback.length > 0) {
+            const updates = await materializeInboxItems(sessionID, agentUpdateFallback, { guiding: true, rootID: R.id })
+            msgs.push(...updates.userMessages)
+            log.info("drained legacy agent updates into session", { sessionID, count: agentUpdateFallback.length })
+          }
         }
 
         // Mode-based drain ②: context items piggyback on confirmed model call.
         // Materialized after needsModelCall is true; do NOT wake idle sessions.
-        {
+        if (!rollbackActive) {
           const contextItems = await SessionInbox.drainContext(sessionID)
           if (contextItems.length > 0) {
             log.info("drained context items (piggyback)", { sessionID, count: contextItems.length })

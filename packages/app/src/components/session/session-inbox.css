@@ -260,7 +260,8 @@
   line-height: 1;
 }
 
-.session-inbox-row-status[data-target="next_model_call"] {
+.session-inbox-row-status[data-mode="steer"],
+.session-inbox-row-status[data-mode="context"] {
   color: var(--text-base);
   background: var(--workbench-selected-bg, var(--surface-interactive-selected));
   border-color: color-mix(in srgb, var(--border-weak-base) 72%, transparent);

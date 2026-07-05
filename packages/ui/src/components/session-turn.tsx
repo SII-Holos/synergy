@@ -446,7 +446,6 @@ function originIconName(origin: { type: string; label?: string; detail?: string 
 function TimelineDisplay(props: {
   item: SessionTurnDisplayItem
   serverUrl: string
-  isRootMessage: boolean
   rollbackActive: boolean
   onRewind?: () => void
 }) {
@@ -844,7 +843,6 @@ export function SessionTurn(
                                       <TimelineDisplay
                                         item={current()}
                                         serverUrl={data.serverUrl}
-                                        isRootMessage={false}
                                         rollbackActive={props.rollbackActive === true}
                                         onRewind={props.onRewind}
                                       />

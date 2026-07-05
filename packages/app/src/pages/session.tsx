@@ -197,15 +197,16 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
-  const rollbackActive = createMemo(() => rollback() !== undefined)
+  const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
   const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()
     if (!rb) return null as { cutMessageID: string } | null | Set<string>
-    // When cutMessageID is available, use prefix-cut: hide the cut message
-    // and everything after it. Fall back to droppedMessageIDs set for old events.
-    if (rb.cutMessageID) return { cutMessageID: rb.cutMessageID }
+    // While redo is still possible, use prefix-cut: hide the cut message and
+    // everything after it. Once a new root invalidates redo, only the original
+    // dropped set remains hidden so the new branch is visible.
+    if (rb.cutMessageID && rb.canUnrollback) return { cutMessageID: rb.cutMessageID }
     return new Set(rb.droppedMessageIDs ?? [])
   })
   const messages = createMemo(() => {
@@ -232,18 +233,14 @@ function SessionPageContent() {
         cutMessage={targetMsg}
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
         partsByMessage={sync.data.part}
-        filesByMessage={{}}
         onRewind={async (cutMessageID, restoreFiles) => {
           if (!sessionID) return
           if (status().type !== "idle") {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
           }
-          await sdk.client.session.rollback({ sessionID, cutMessageID })
-          if (restoreFiles) {
-            const rb = rollback()
-            if (rb) {
-              await sdk.client.session.files.restore({ sessionID, rollbackID: rb.id }).catch(() => {})
-            }
+          const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
+          if (restoreFiles && result.data?.id) {
+            await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
           }
           // Backfill prompt from the cut message per spec §3.5
           const cutParts = sync.data.part[targetMsg.id]
