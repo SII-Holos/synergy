@@ -1,22 +1,31 @@
 [data-component="rollback-banner"] {
+  /* Float in the bottom-right corner like the connection / toast popups so it
+     never overlaps the conversation in the top-left. Sits just below the toast
+     region (z 1000) so transient toasts still surface above it. */
+  position: fixed;
+  bottom: 40px;
+  right: 24px;
+  z-index: 999;
+  width: min(380px, calc(100vw - 32px));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 16px;
-  margin: 0 16px 8px;
-  border-radius: 8px;
-  background: var(--background-base);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background-base) 95%, transparent);
   border: 1px solid var(--border-weak);
+  box-shadow: var(--shadow-medium, 0 8px 24px rgb(0 0 0 / 0.18));
+  backdrop-filter: blur(8px);
   font-size: var(--font-size-small);
   color: var(--text-base);
-  animation: fadeDown 0.2s ease-out both;
+  animation: rollbackBannerIn 0.2s var(--motion-ease-standard, ease-out) both;
 }
 
-@keyframes fadeDown {
+@keyframes rollbackBannerIn {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
