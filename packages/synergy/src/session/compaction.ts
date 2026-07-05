@@ -36,15 +36,46 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
+  /**
+   * Check whether a compaction request for the given parent user message has
+   * already been fulfilled — i.e., there exists a completed summary assistant
+   * message targeting that parent. Used by both the proactive budget trigger
+   * and the compact signal to distinguish "compaction already pending" from
+   * "compaction already completed and should not block another."
+   */
+  export function hasFulfilledCompaction(messages: MessageV2.WithParts[], parentID: string): boolean {
+    return messages.some((m) => {
+      if (m.info.role !== "assistant") return false
+      const a = m.info as MessageV2.Assistant
+      return a.summary === true && !!a.finish && a.parentID === parentID
+    })
+  }
+
   /** Detect whether a processor error was caused by exceeding the model's context window. */
   export function isContextExceeded(error: unknown): boolean {
     if (!error || typeof error !== "object") return false
     const obj = error as { name?: string; data?: { message?: string; statusCode?: number; responseBody?: string } }
-    if (obj.name !== "APIError") return false
-    // Check the primary error message and the raw response body, since
-    // ProviderTransform.error() may rewrite the message and drop keywords.
-    const texts = [obj.data?.message ?? "", obj.data?.responseBody ?? ""].map((s) => s.toLowerCase())
-    return texts.some(
+
+    const texts: string[] = [obj.data?.message ?? "", obj.data?.responseBody ?? ""]
+
+    // Provider streaming errors (e.g. SSE error events from OpenAI Codex) may
+    // arrive as a plain Error instead of APICallError, and fromError() stores
+    // them as NamedError.Unknown with the JSON-stringified error payload in
+    // the message field. Try to extract nested keywords so emergency compaction
+    // can still recognize them.
+    if (typeof obj.data?.message === "string") {
+      try {
+        const nested = JSON.parse(obj.data.message)
+        for (const key of ["code", "type", "message"]) {
+          if (typeof nested?.error?.[key] === "string") texts.push(nested.error[key])
+        }
+        if (typeof nested?.error === "string") texts.push(nested.error)
+      } catch {}
+    }
+
+    const lower = texts.filter(Boolean).map((s) => s.toLowerCase())
+    if (lower.length === 0) return false
+    return lower.some(
       (msg) =>
         msg.includes("context_length_exceeded") ||
         msg.includes("context length") ||

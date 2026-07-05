@@ -304,23 +304,135 @@ describe("session.compaction.isContextExceeded", () => {
     expect(SessionCompaction.isContextExceeded({ name: "AuthError", data: { message: "bad key" } })).toBe(false)
   })
 
-  test("rejects null / undefined", () => {
-    expect(SessionCompaction.isContextExceeded(null)).toBe(false)
-    expect(SessionCompaction.isContextExceeded(undefined)).toBe(false)
+  test("detects codex streaming error stored as UnknownError", () => {
+    // Codex SSE streaming error: {"type":"error","sequence_number":2,"error":{"type":"invalid_request_error","code":"context_length_exceeded",...}}
+    // fromError() wraps this as NamedError.Unknown when it's not an APICallError.
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "UnknownError",
+        data: {
+          message:
+            '{"type":"error","sequence_number":2,"error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"Your input exceeds the context window of this model.","param":"input"}}',
+        },
+      }),
+    ).toBe(true)
   })
 
-  test("rejects primitive values", () => {
-    expect(SessionCompaction.isContextExceeded("context_length_exceeded")).toBe(false)
-    expect(SessionCompaction.isContextExceeded(42)).toBe(false)
+  test("detects UnknownError with nested error.type containing context_length_exceeded", () => {
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "UnknownError",
+        data: {
+          message: '{"type":"error","error":{"type":"context_length_exceeded"}}',
+        },
+      }),
+    ).toBe(true)
   })
 
-  test("detects 'request too large' with token mention", () => {
-    expect(SessionCompaction.isContextExceeded(apiError("request too large: total token count exceeds limit"))).toBe(
-      true,
-    )
+  test("rejects UnknownError without context keywords", () => {
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "UnknownError",
+        data: { message: "some random network error" },
+      }),
+    ).toBe(false)
+  })
+
+  test("rejects UnknownError with unrelated nested error", () => {
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "UnknownError",
+        data: {
+          message: '{"type":"error","error":{"type":"rate_limit_exceeded","message":"too many requests"}}',
+        },
+      }),
+    ).toBe(false)
+  })
+
+  test("detects context keyword in plain message without APIError name", () => {
+    expect(SessionCompaction.isContextExceeded({ data: { message: "context_length_exceeded" } })).toBe(true)
   })
 })
 
+// ---------------------------------------------------------------------------
+// SessionCompaction.hasFulfilledCompaction
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.hasFulfilledCompaction", () => {
+  const now = Date.now()
+
+  function makeAssistant(opts: {
+    id: string
+    parentID: string
+    summary?: boolean
+    finish?: string
+  }): MessageV2.WithParts {
+    const info: MessageV2.Assistant = {
+      id: opts.id,
+      role: "assistant",
+      sessionID: "test-session",
+      time: { created: now },
+      modelID: "test-model",
+      providerID: "test",
+      mode: "default",
+      agent: "synergy",
+      path: { cwd: "/", root: "/" },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      parentID: opts.parentID,
+    }
+    if (opts.summary) info.summary = true
+    if (opts.finish) info.finish = opts.finish as MessageV2.Assistant["finish"]
+    return { info, parts: [] }
+  }
+
+  test("returns true for fulfilled compaction", () => {
+    const parentID = "root-user"
+    const msgs = [makeAssistant({ id: "asst-1", parentID, summary: true, finish: "stop" })]
+    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(true)
+  })
+
+  test("returns false when no summary assistant exists", () => {
+    const msgs = [makeAssistant({ id: "asst-1", parentID: "other-parent", summary: true, finish: "stop" })]
+    expect(SessionCompaction.hasFulfilledCompaction(msgs, "root-user")).toBe(false)
+  })
+
+  test("returns false when summary is missing finish", () => {
+    const parentID = "root-user"
+    const msgs = [makeAssistant({ id: "asst-1", parentID, summary: true })]
+    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(false)
+  })
+
+  test("returns false for non-summary assistant matching parentID", () => {
+    const parentID = "root-user"
+    const msgs = [makeAssistant({ id: "asst-1", parentID, finish: "stop" })]
+    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(false)
+  })
+
+  test("returns false for user messages with matching id", () => {
+    const msgs: MessageV2.WithParts[] = [
+      {
+        info: {
+          id: "root-user",
+          role: "user",
+          sessionID: "test-session",
+          time: { created: now },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+        },
+        parts: [],
+      },
+    ]
+    expect(SessionCompaction.hasFulfilledCompaction(msgs, "root-user")).toBe(false)
+  })
+
+  test("returns false for empty messages", () => {
+    expect(SessionCompaction.hasFulfilledCompaction([], "root-user")).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.buildAnchor
 // ---------------------------------------------------------------------------
 // SessionCompaction.buildAnchor
 // ---------------------------------------------------------------------------
