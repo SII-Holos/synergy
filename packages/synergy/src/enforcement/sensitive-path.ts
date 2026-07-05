@@ -38,9 +38,13 @@ const SECRET_CANDIDATE_PATTERNS = [
 const PLACEHOLDER_ENV_PATTERN = /(^|[/\\])\.env\.(example|template|sample)$/i
 
 function expandHomeDir(input: string): string {
-  if (input === "~" || input === "~/" || input === "~\\") return process.env.HOME ?? process.env.USERPROFILE ?? ""
-  if (input.startsWith("~/") || input.startsWith("~\\"))
-    return path.join(process.env.HOME ?? process.env.USERPROFILE ?? "", input.slice(2))
+  const stripped = input.replace(/^[\"']/, "").replace(/[\"']$/, "")
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ""
+  if (stripped === "~" || stripped === "~/" || stripped === "~\\" || stripped === "$HOME" || stripped === "${HOME}")
+    return home
+  if (stripped.startsWith("~/") || stripped.startsWith("~\\")) return path.join(home, stripped.slice(2))
+  if (stripped.startsWith("$HOME/") || stripped.startsWith("$HOME\\")) return path.join(home, stripped.slice(6))
+  if (stripped.startsWith("${HOME}/") || stripped.startsWith("${HOME}\\")) return path.join(home, stripped.slice(8))
   return input
 }
 

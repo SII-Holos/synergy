@@ -422,7 +422,8 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(raw.startsWith("/") || raw.startsWith("~") ? raw : `${cwd}/${raw}`)
+      const arg = raw.replace(/^[\"']/, "").replace(/[\"']$/, "")
+      paths.push(arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg) ? arg : `${cwd}/${arg}`)
     }
   }
   return paths
