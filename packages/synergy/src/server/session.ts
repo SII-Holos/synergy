@@ -1113,37 +1113,17 @@ export const SessionRoute = new Hono()
         sessionID: Session.rollback.schema.shape.sessionID,
       }),
     ),
+    validator("json", Session.rollback.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      // Hono caches c.req.json() on first call — body stream is consumed
-      // by the framework middleware before this handler runs, so raw cloning won't work.
-      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
-      const numTurns = typeof body.numTurns === "number" ? body.numTurns : undefined
-      const cutMessageID =
-        typeof body.cutMessageID === "string" && body.cutMessageID.length > 0 ? body.cutMessageID : undefined
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[rollback]",
-        "bodyKeys=",
-        Object.keys(body).join(","),
-        "cutMessageID=",
-        cutMessageID,
-        "numTurns=",
-        numTurns,
-      )
-      if (numTurns == null && cutMessageID == null) {
-        return c.json({ message: "rollback requires numTurns or cutMessageID in request body" }, 400)
-      }
+      const body = c.req.valid("json")
       try {
-        const event = await Session.rollback(
-          cutMessageID != null ? { sessionID, cutMessageID } : { sessionID, numTurns: numTurns! },
-        )
+        const event = await Session.rollback({ sessionID, ...body })
         return c.json(event)
       } catch (error) {
         log.warn("session.rollback failed", {
           sessionID,
           error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
         })
         if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
           return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)

@@ -238,18 +238,13 @@ function SessionPageContent() {
         partsByMessage={sync.data.part}
         onRewind={async (cutMessageID, restoreFiles) => {
           if (!sessionID || !cutMessageID) return
-          // eslint-disable-next-line no-console
-          console.log("[rewind] calling session.rollback", { sessionID, cutMessageID })
           // Abort if running. After abort, give the runtime a moment to settle
           // so assertIdle in rollback doesn't reject with BusyError.
           if (status().type !== "idle") {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
             await new Promise((r) => setTimeout(r, 500))
           }
-          const result = await sdk.client.session.rollback(
-            { sessionID, cutMessageID },
-            { queryParams: { cutMessageID } },
-          )
+          const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
           if (restoreFiles && result.data?.id) {
             await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
           }
