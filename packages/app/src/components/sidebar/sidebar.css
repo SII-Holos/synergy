@@ -348,7 +348,8 @@
   color: var(--icon-base);
 }
 .sb-project-row:hover .sb-project-chevron-btn,
-.sb-project-row:focus-within .sb-project-chevron-btn {
+.sb-project-row:focus-within .sb-project-chevron-btn,
+.sb-project-row.sb-project-expanded .sb-project-chevron-btn {
   opacity: 1;
 }
 
@@ -372,7 +373,8 @@
   transition: opacity 120ms;
 }
 .sb-project-row:hover .sb-project-folder,
-.sb-project-row:focus-within .sb-project-folder {
+.sb-project-row:focus-within .sb-project-folder,
+.sb-project-row.sb-project-expanded .sb-project-folder {
   opacity: 0;
 }
 
@@ -1226,6 +1228,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sb-flyout-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .sb-flyout-session-row {

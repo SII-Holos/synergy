@@ -96,11 +96,11 @@ describe("performance observability store", () => {
       labels: { provider: "openai", model: "gpt-test" },
     })
     PerformanceMetrics.record({
-      name: "library.sqlite.query.duration",
+      name: "library.operation.duration",
       value: 30,
       unit: "ms",
       module: "library",
-      labels: { operation: "select", method: "all" },
+      labels: { operation: "select" },
     })
     PerformanceStore.flush()
 

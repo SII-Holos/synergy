@@ -253,6 +253,7 @@ export namespace PerformanceStore {
 
   export function queryMetrics(opts: {
     since: number
+    until?: number
     names?: string[]
     module?: string
     scopeID?: string
@@ -260,12 +261,17 @@ export namespace PerformanceStore {
     tool?: string
     providerID?: string
     limit?: number
+    newestFirst?: boolean
   }) {
     flush()
     const conn = open()
     if (!conn) return [] as StoredMetric[]
     const filters = ["time >= ?"]
     const params: Array<string | number> = [opts.since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
     if (opts.names?.length) {
       filters.push(`name IN (${opts.names.map(() => "?").join(",")})`)
       params.push(...opts.names)
@@ -287,13 +293,17 @@ export namespace PerformanceStore {
       params.push(opts.tool)
     }
     if (opts.providerID) {
-      filters.push("json_extract(labels_json, '$.providerID') = ?")
-      params.push(opts.providerID)
+      filters.push("(json_extract(labels_json, '$.providerID') = ? OR json_extract(labels_json, '$.provider') = ?)")
+      params.push(opts.providerID, opts.providerID)
     }
-    params.push(opts.limit ?? 10_000)
-    return conn
-      .prepare(`SELECT * FROM perf_metrics WHERE ${filters.join(" AND ")} ORDER BY time ASC LIMIT ?`)
+    const limit = opts.limit ?? 10_000
+    params.push(limit)
+    const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
+    const rows = conn
+      .prepare(`SELECT * FROM perf_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`)
       .all(...params) as StoredMetric[]
+    if (!opts.newestFirst) return rows
+    return rows.sort((a, b) => a.time - b.time || a.metric_id.localeCompare(b.metric_id))
   }
 
   export function querySpans(opts: {
@@ -614,8 +624,6 @@ CREATE INDEX IF NOT EXISTS idx_perf_issues_status_severity_time ON perf_issues(s
 CREATE INDEX IF NOT EXISTS idx_perf_issues_trace_time ON perf_issues(trace_id,time);
 CREATE INDEX IF NOT EXISTS idx_perf_issues_module_time ON perf_issues(module,time);
 CREATE TABLE IF NOT EXISTS perf_browser_batches (batch_id TEXT PRIMARY KEY,received_time INTEGER NOT NULL,sent_at INTEGER NOT NULL,source TEXT NOT NULL,accepted INTEGER NOT NULL,rejected INTEGER NOT NULL,page_json TEXT NOT NULL DEFAULT '{}');
-CREATE TABLE IF NOT EXISTS perf_aggregates (bucket_start INTEGER NOT NULL,bucket_ms INTEGER NOT NULL,name TEXT NOT NULL,module TEXT,source TEXT,count INTEGER NOT NULL,min_value REAL,max_value REAL,avg_value REAL,p50_value REAL,p95_value REAL,p99_value REAL,sum_value REAL,PRIMARY KEY (bucket_start,bucket_ms,name,module,source));
-CREATE INDEX IF NOT EXISTS idx_perf_aggregates_name_bucket ON perf_aggregates(name,bucket_start);
 CREATE TABLE IF NOT EXISTS perf_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
 `
 }
