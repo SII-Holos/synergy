@@ -36,19 +36,42 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
-  /**
-   * Check whether a compaction request for the given parent user message has
-   * already been fulfilled — i.e., there exists a completed summary assistant
-   * message targeting that parent. Used by both the proactive budget trigger
-   * and the compact signal to distinguish "compaction already pending" from
-   * "compaction already completed and should not block another."
-   */
-  export function hasFulfilledCompaction(messages: MessageV2.WithParts[], parentID: string): boolean {
-    return messages.some((m) => {
-      if (m.info.role !== "assistant") return false
-      const a = m.info as MessageV2.Assistant
-      return a.summary === true && !!a.finish && a.parentID === parentID
-    })
+  function completedSummaries(messages: MessageV2.WithParts[], parentID: string): MessageV2.Assistant[] {
+    return messages
+      .map((m) => m.info)
+      .filter(
+        (info): info is MessageV2.Assistant =>
+          info.role === "assistant" && info.summary === true && !!info.finish && info.parentID === parentID,
+      )
+  }
+
+  function summaryRequestID(summary: MessageV2.Assistant): string | undefined {
+    const value = summary.metadata?.compactionRequestPartID
+    return typeof value === "string" ? value : undefined
+  }
+
+  export function pendingCompactionRequest(
+    messages: MessageV2.WithParts[],
+    parentID: string,
+    parts: MessageV2.Part[],
+  ): MessageV2.CompactionPart | undefined {
+    const requests = parts.filter((part): part is MessageV2.CompactionPart => part.type === "compaction")
+    if (requests.length === 0) return undefined
+
+    const requestIDs = new Set(requests.map((part) => part.id))
+    const fulfilled = new Set<string>()
+    for (const summary of completedSummaries(messages, parentID)) {
+      const requestID = summaryRequestID(summary)
+      if (requestID) {
+        if (requestIDs.has(requestID)) fulfilled.add(requestID)
+        continue
+      }
+
+      const legacyRequest = requests.find((part) => !fulfilled.has(part.id))
+      if (legacyRequest) fulfilled.add(legacyRequest.id)
+    }
+
+    return requests.findLast((part) => !fulfilled.has(part.id))
   }
 
   /** Detect whether a processor error was caused by exceeding the model's context window. */
@@ -355,6 +378,7 @@ export namespace SessionCompaction {
 
   export async function process(input: {
     parentID: string
+    requestPartID: string
     messages: MessageV2.WithParts[]
     sessionID: string
     abort: AbortSignal
@@ -396,6 +420,9 @@ export namespace SessionCompaction {
       providerID: model.providerID,
       time: {
         created: Date.now(),
+      },
+      metadata: {
+        compactionRequestPartID: input.requestPartID,
       },
     })) as MessageV2.Assistant
     const processor = SessionProcessor.create({
@@ -549,10 +576,12 @@ export namespace SessionCompaction {
       return []
     },
     async execute(ctx) {
-      const part = ctx.lastUserParts.find((p): p is MessageV2.CompactionPart => p.type === "compaction")!
+      const part = pendingCompactionRequest(ctx.messages, ctx.lastUser.id, ctx.lastUserParts)
+      if (!part) return "pass"
       const result = await process({
         messages: ctx.messages,
         parentID: ctx.lastUser.id,
+        requestPartID: part.id,
         abort: ctx.abort,
         sessionID: ctx.sessionID,
         auto: part.auto,

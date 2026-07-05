@@ -50,6 +50,28 @@ function makeAssistant(toolParts: any[]): any {
   }
 }
 
+function makeSummary(parentID = "usr_test", requestID?: string): any {
+  return {
+    info: {
+      id: `msg_summary_${Math.random().toString(36).slice(2)}`,
+      role: "assistant" as const,
+      sessionID: "ses_test",
+      parentID,
+      agent: "compaction",
+      mode: "compaction",
+      summary: true,
+      finish: "stop",
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: "test-model",
+      providerID: "test-provider",
+      time: { created: Date.now(), completed: Date.now() },
+      ...(requestID ? { metadata: { compactionRequestPartID: requestID } } : {}),
+    },
+    parts: [],
+  }
+}
+
 function makeTool(tool: string, input: unknown, status: "completed" | "error"): any {
   return {
     id: `prt_${Math.random().toString(36).slice(2)}`,
@@ -211,6 +233,42 @@ describe("loop-signals: compact signal", () => {
     )
     const fired = await LoopJob.detectSignals(ctx)
     expect(fired).not.toContain("compact")
+  })
+
+  test("does not detect when the latest compaction request is fulfilled", async () => {
+    const ctx = makeCtx(
+      1,
+      [makeUserWrapper(), makeSummary("usr_test", "p1")],
+      [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true }],
+    )
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("compact")
+  })
+
+  test("detects a new compaction request after an older completed summary", async () => {
+    const ctx = makeCtx(
+      2,
+      [makeUserWrapper(), makeSummary("usr_test", "p1")],
+      [
+        { id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true },
+        { id: "p2", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true },
+      ],
+    )
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("compact")
+  })
+
+  test("detects a new compaction request after a legacy completed summary", async () => {
+    const ctx = makeCtx(
+      2,
+      [makeUserWrapper(), makeSummary("usr_test")],
+      [
+        { id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true },
+        { id: "p2", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true },
+      ],
+    )
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("compact")
   })
 
   test("coexists with repeat_loop without interference", async () => {

@@ -97,6 +97,7 @@ function testAssistant(input: {
   completed?: number
   summary?: boolean
   finish?: string
+  metadata?: Record<string, unknown>
   parts?: MessageV2.Part[]
 }): MessageV2.WithParts {
   const info: MessageV2.Assistant = {
@@ -114,6 +115,7 @@ function testAssistant(input: {
     time: { created: input.created, ...(input.completed !== undefined ? { completed: input.completed } : {}) },
     ...(input.summary ? { summary: true } : {}),
     ...(input.finish ? { finish: input.finish } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {}),
   }
   return { info, parts: input.parts ?? [] }
 }
@@ -647,6 +649,112 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const compacted = await filterNewestFirst([realUser, oldAssistant, boundary, summary, continuation])
 
     expect(compacted.map((msg) => msg.info.id)).toEqual(["msg_boundary", "msg_summary", "msg_continue"])
+  })
+
+  test("filters compacted history from the latest root compaction summary", async () => {
+    const sessionID = "ses_test"
+    const root = testUser({
+      id: "msg_root",
+      sessionID,
+      created: 1,
+      parts: [
+        {
+          id: "prt_root_text",
+          sessionID,
+          messageID: "msg_root",
+          type: "text",
+          text: "Implement the account settings workflow.",
+        },
+        {
+          id: "prt_compaction_1",
+          sessionID,
+          messageID: "msg_root",
+          type: "compaction",
+          auto: true,
+        },
+        {
+          id: "prt_compaction_2",
+          sessionID,
+          messageID: "msg_root",
+          type: "compaction",
+          auto: true,
+        },
+      ],
+    })
+    const oldAssistant = testAssistant({
+      id: "msg_old_assistant",
+      sessionID,
+      parentID: root.info.id,
+      created: 2,
+      completed: 3,
+      finish: "tool-calls",
+    })
+    const firstSummary = testAssistant({
+      id: "msg_summary_1",
+      sessionID,
+      parentID: root.info.id,
+      created: 4,
+      completed: 5,
+      summary: true,
+      finish: "stop",
+      metadata: { compactionRequestPartID: "prt_compaction_1" },
+    })
+    const firstContinue = testUser({
+      id: "msg_continue_1",
+      sessionID,
+      created: 6,
+      summaryTitle: "Compaction complete",
+    })
+    const newerAssistant = testAssistant({
+      id: "msg_newer_assistant",
+      sessionID,
+      parentID: root.info.id,
+      created: 7,
+      completed: 8,
+      finish: "tool-calls",
+    })
+    const secondSummary = testAssistant({
+      id: "msg_summary_2",
+      sessionID,
+      parentID: root.info.id,
+      created: 9,
+      completed: 10,
+      summary: true,
+      finish: "stop",
+      metadata: { compactionRequestPartID: "prt_compaction_2" },
+    })
+    const secondContinue = testUser({
+      id: "msg_continue_2",
+      sessionID,
+      created: 11,
+      summaryTitle: "Compaction complete",
+    })
+    const latestAssistant = testAssistant({
+      id: "msg_latest_assistant",
+      sessionID,
+      parentID: root.info.id,
+      created: 12,
+      completed: 13,
+      finish: "stop",
+    })
+
+    const compacted = await filterNewestFirst([
+      root,
+      oldAssistant,
+      firstSummary,
+      firstContinue,
+      newerAssistant,
+      secondSummary,
+      secondContinue,
+      latestAssistant,
+    ])
+
+    expect(compacted.map((msg) => msg.info.id)).toEqual([
+      "msg_root",
+      "msg_summary_2",
+      "msg_continue_2",
+      "msg_latest_assistant",
+    ])
   })
 
   test("resolves the compaction anchor from the task root by id", () => {

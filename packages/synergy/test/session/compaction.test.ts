@@ -354,80 +354,69 @@ describe("session.compaction.isContextExceeded", () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// SessionCompaction.hasFulfilledCompaction
-// ---------------------------------------------------------------------------
-
-describe("session.compaction.hasFulfilledCompaction", () => {
+describe("session.compaction.pendingCompactionRequest", () => {
   const now = Date.now()
 
-  function makeAssistant(opts: {
-    id: string
-    parentID: string
-    summary?: boolean
-    finish?: string
-  }): MessageV2.WithParts {
+  function compactionPart(id: string): MessageV2.CompactionPart {
+    return {
+      id,
+      sessionID: "test-session",
+      messageID: "root-user",
+      type: "compaction",
+      auto: true,
+    }
+  }
+
+  function summary(opts: { id: string; parentID: string; requestID?: string; finish?: string }): MessageV2.WithParts {
     const info: MessageV2.Assistant = {
       id: opts.id,
       role: "assistant",
       sessionID: "test-session",
-      time: { created: now },
+      time: { created: now, completed: now + 1 },
       modelID: "test-model",
       providerID: "test",
-      mode: "default",
-      agent: "synergy",
+      mode: "compaction",
+      agent: "compaction",
       path: { cwd: "/", root: "/" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       parentID: opts.parentID,
+      summary: true,
     }
-    if (opts.summary) info.summary = true
     if (opts.finish) info.finish = opts.finish as MessageV2.Assistant["finish"]
+    if (opts.requestID) info.metadata = { compactionRequestPartID: opts.requestID }
     return { info, parts: [] }
   }
 
-  test("returns true for fulfilled compaction", () => {
-    const parentID = "root-user"
-    const msgs = [makeAssistant({ id: "asst-1", parentID, summary: true, finish: "stop" })]
-    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(true)
+  test("returns the newest unfulfilled request when an older request is fulfilled explicitly", () => {
+    const parts = [compactionPart("part_1"), compactionPart("part_2")]
+    const messages = [summary({ id: "summary_1", parentID: "root-user", requestID: "part_1", finish: "stop" })]
+
+    expect(SessionCompaction.pendingCompactionRequest(messages, "root-user", parts)?.id).toBe("part_2")
   })
 
-  test("returns false when no summary assistant exists", () => {
-    const msgs = [makeAssistant({ id: "asst-1", parentID: "other-parent", summary: true, finish: "stop" })]
-    expect(SessionCompaction.hasFulfilledCompaction(msgs, "root-user")).toBe(false)
-  })
-
-  test("returns false when summary is missing finish", () => {
-    const parentID = "root-user"
-    const msgs = [makeAssistant({ id: "asst-1", parentID, summary: true })]
-    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(false)
-  })
-
-  test("returns false for non-summary assistant matching parentID", () => {
-    const parentID = "root-user"
-    const msgs = [makeAssistant({ id: "asst-1", parentID, finish: "stop" })]
-    expect(SessionCompaction.hasFulfilledCompaction(msgs, parentID)).toBe(false)
-  })
-
-  test("returns false for user messages with matching id", () => {
-    const msgs: MessageV2.WithParts[] = [
-      {
-        info: {
-          id: "root-user",
-          role: "user",
-          sessionID: "test-session",
-          time: { created: now },
-          agent: "synergy",
-          model: { providerID: "test", modelID: "test-model" },
-        },
-        parts: [],
-      },
+  test("returns undefined when the newest request is fulfilled explicitly", () => {
+    const parts = [compactionPart("part_1"), compactionPart("part_2")]
+    const messages = [
+      summary({ id: "summary_1", parentID: "root-user", requestID: "part_1", finish: "stop" }),
+      summary({ id: "summary_2", parentID: "root-user", requestID: "part_2", finish: "stop" }),
     ]
-    expect(SessionCompaction.hasFulfilledCompaction(msgs, "root-user")).toBe(false)
+
+    expect(SessionCompaction.pendingCompactionRequest(messages, "root-user", parts)).toBeUndefined()
   })
 
-  test("returns false for empty messages", () => {
-    expect(SessionCompaction.hasFulfilledCompaction([], "root-user")).toBe(false)
+  test("legacy summaries without request metadata fulfill only the oldest unfulfilled request", () => {
+    const parts = [compactionPart("part_1"), compactionPart("part_2")]
+    const messages = [summary({ id: "summary_1", parentID: "root-user", finish: "stop" })]
+
+    expect(SessionCompaction.pendingCompactionRequest(messages, "root-user", parts)?.id).toBe("part_2")
+  })
+
+  test("ignores unfinished summaries", () => {
+    const parts = [compactionPart("part_1")]
+    const messages = [summary({ id: "summary_1", parentID: "root-user", requestID: "part_1" })]
+
+    expect(SessionCompaction.pendingCompactionRequest(messages, "root-user", parts)?.id).toBe("part_1")
   })
 })
 

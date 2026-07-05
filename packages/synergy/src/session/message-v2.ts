@@ -1096,8 +1096,12 @@ export namespace MessageV2 {
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
     const result = [] as MessageV2.WithParts[]
     const completed = new Set<string>()
+    let latestCompactionParentID: string | undefined
     for await (const msg of stream) {
       result.push(msg)
+      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish && !latestCompactionParentID) {
+        latestCompactionParentID = msg.info.parentID
+      }
       if (
         msg.info.role === "user" &&
         completed.has(msg.info.id) &&
@@ -1107,7 +1111,26 @@ export namespace MessageV2 {
       if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
     }
     result.reverse()
-    return result
+    if (!latestCompactionParentID) return result
+
+    const rootIndex = result.findIndex(
+      (msg) =>
+        msg.info.role === "user" &&
+        msg.info.id === latestCompactionParentID &&
+        msg.parts.some((part) => part.type === "compaction"),
+    )
+    if (rootIndex < 0) return result
+
+    const summaryIndex = result.findLastIndex(
+      (msg) =>
+        msg.info.role === "assistant" &&
+        msg.info.summary &&
+        msg.info.finish &&
+        msg.info.parentID === latestCompactionParentID,
+    )
+    if (summaryIndex <= rootIndex) return result
+
+    return [result[rootIndex], ...result.slice(summaryIndex)]
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {

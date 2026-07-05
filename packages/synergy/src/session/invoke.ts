@@ -895,19 +895,8 @@ export namespace SessionInvoke {
     }
   }
 
-  /**
-   * Returns true when a compaction part is present on the root user message BUT
-   * the compaction has already been fulfilled (completed summary exists). When
-   * fulfilled, the part acts as a boundary marker for filterCompacted() but
-   * should NOT block future proactive compaction requests.
-   *
-   * False means either no compaction part is present, or the part is still
-   * pending (unfulfilled) — in both cases the proactive trigger can proceed.
-   */
   function compactionPending(jobCtx: LoopJob.Context): boolean {
-    const hasCompactionPart = jobCtx.lastUserParts.some((part) => part.type === "compaction")
-    if (!hasCompactionPart) return false
-    return !SessionCompaction.hasFulfilledCompaction(jobCtx.messages, jobCtx.lastUser.id)
+    return !!SessionCompaction.pendingCompactionRequest(jobCtx.messages, jobCtx.lastUser.id, jobCtx.lastUserParts)
   }
 
   // --- Helpers ---
