@@ -6,7 +6,7 @@ describe("tool result display metadata", () => {
     const display = {
       kind: "media-generation" as const,
       toolCard: "hidden" as const,
-      media: { type: "image" as const, aspectRatio: "1:1" as const },
+      media: { type: "image" as const, aspectRatio: "1:1" as const, size: "small" as const },
     }
 
     expect(

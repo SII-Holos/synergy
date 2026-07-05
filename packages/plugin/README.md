@@ -102,6 +102,7 @@ const mediaDisplay = {
   media: {
     type: "image",
     aspectRatio: "1:1",
+    size: "small",
   },
 } as const
 
