@@ -261,12 +261,9 @@ describe("isMetadataWriteDenied", () => {
     }
   })
 
-  test("denies write to /workspace/.synergy/data", () => {
+  test("allows write to /workspace/.synergy/data", () => {
     const result = isMetadataWriteDenied(writableRoots, "/workspace/.synergy/data")
-    expect(result.denied).toBe(true)
-    if (result.denied) {
-      expect(result.metadataName).toBe(".synergy")
-    }
+    expect(result.denied).toBe(false)
   })
 
   test("denies write to /workspace/.agents/config", () => {
@@ -327,6 +324,6 @@ describe("isMetadataWriteDenied", () => {
   })
 
   test("PROTECTED_METADATA_PATH_NAMES default constant matches expected values", () => {
-    expect(PROTECTED_METADATA_PATH_NAMES).toEqual([".git", ".agents", ".codex", ".synergy"])
+    expect(PROTECTED_METADATA_PATH_NAMES).toEqual([".git", ".agents", ".codex"])
   })
 })

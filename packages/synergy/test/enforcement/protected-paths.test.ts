@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { checkProtectedPath } from "@/enforcement/classify"
+import path from "node:path"
 
 describe("checkProtectedPath - write mode", () => {
   test("flags .git/", () => {
@@ -26,24 +27,21 @@ describe("checkProtectedPath - write mode", () => {
     expect(checkProtectedPath(".env.production", "write").matched).toBe(true)
   })
 
-  test("flags .vscode/", () => {
-    expect(checkProtectedPath(".vscode/settings.json", "write").matched).toBe(true)
+  test("does not flag editor or assistant config directories as sensitive paths", () => {
+    expect(checkProtectedPath(".vscode/settings.json", "write").matched).toBe(false)
+    expect(checkProtectedPath(".claude/settings.json", "write").matched).toBe(false)
   })
 
-  test("flags .claude/", () => {
-    expect(checkProtectedPath(".claude/settings.json", "write").matched).toBe(true)
+  test("does not flag project .synergy non-secret paths", () => {
+    expect(checkProtectedPath(".synergy/config", "write", { workspaceRoot: "/workspace" }).matched).toBe(false)
+    expect(
+      checkProtectedPath(".synergy/synergy.d/00-general.jsonc", "write", { workspaceRoot: "/workspace" }).matched,
+    ).toBe(false)
   })
 
-  test("flags .synergy/", () => {
-    expect(checkProtectedPath(".synergy/config", "write").matched).toBe(true)
-  })
-
-  test("flags .husky/", () => {
-    expect(checkProtectedPath(".husky/pre-commit", "write").matched).toBe(true)
-  })
-
-  test("flags .devcontainer/", () => {
-    expect(checkProtectedPath(".devcontainer/devcontainer.json", "write").matched).toBe(true)
+  test("does not flag non-secret project config directories as sensitive paths", () => {
+    expect(checkProtectedPath(".husky/pre-commit", "write").matched).toBe(false)
+    expect(checkProtectedPath(".devcontainer/devcontainer.json", "write").matched).toBe(false)
   })
 
   test("does NOT flag normal project paths", () => {
@@ -151,15 +149,73 @@ describe("checkProtectedPath - worktree exclusion", () => {
     expect(checkProtectedPath(".synergy/worktrees/fix-123/src/main.ts", "read").matched).toBe(false)
   })
 
-  test("non-worktree .synergy/ paths are STILL flagged", () => {
-    expect(checkProtectedPath(".synergy/config", "write").matched).toBe(true)
-    expect(checkProtectedPath(".synergy/synergy.d/00-general.jsonc", "write").matched).toBe(true)
-    expect(checkProtectedPath("subdir/.synergy/data/profile.json", "write").matched).toBe(true)
+  test("non-worktree .synergy non-secret paths are not flagged", () => {
+    expect(checkProtectedPath(".synergy/config", "write", { workspaceRoot: "/workspace" }).matched).toBe(false)
+    expect(
+      checkProtectedPath(".synergy/synergy.d/00-general.jsonc", "write", { workspaceRoot: "/workspace" }).matched,
+    ).toBe(false)
+    expect(
+      checkProtectedPath("subdir/.synergy/data/profile.json", "write", { workspaceRoot: "/workspace" }).matched,
+    ).toBe(false)
   })
 
   test("worktree paths with config-like content are safe", () => {
     // A path like .synergy/worktrees/X/.synergy/config should NOT be flagged
     // because the worktree prefix takes priority
     expect(checkProtectedPath(".synergy/worktrees/fix-123/.synergy/config", "write").matched).toBe(false)
+  })
+})
+
+describe("checkProtectedPath - Synergy auth and dotenv candidates", () => {
+  test("global Synergy auth root is an exact secret root", () => {
+    const r = checkProtectedPath("/home/user/.synergy/data/auth/provider-auth.json", "read", {
+      workspaceRoot: "/workspace",
+      synergyRoot: "/home/user/.synergy",
+    })
+    expect(r.matched).toBe(true)
+    expect(r.category).toBe("credentials")
+    expect(r.exactSecretRoot).toBe(true)
+  })
+
+  test("plugin auth file is an exact secret root", () => {
+    const r = checkProtectedPath("/home/user/.synergy/data/plugin/demo/auth.json", "write", {
+      workspaceRoot: "/workspace",
+      synergyRoot: "/home/user/.synergy",
+    })
+    expect(r.matched).toBe(true)
+    expect(r.exactSecretRoot).toBe(true)
+  })
+
+  test("dotenv examples are SmartAllow-eligible candidates", () => {
+    const r = checkProtectedPath(".env.example", "write", { workspaceRoot: "/workspace" })
+    expect(r.matched).toBe(true)
+    expect(r.category).toBe("secrets")
+    expect(r.smartAllowEligible).toBe(true)
+    expect(r.exactSecretRoot).toBe(false)
+  })
+
+  test(".envrc is not a dotenv secret path", () => {
+    expect(checkProtectedPath(".envrc", "write", { workspaceRoot: "/workspace" }).matched).toBe(false)
+  })
+
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "/home/unknown"
+
+  test("global Synergy auth root via ~/ is an exact secret root", () => {
+    const r = checkProtectedPath("~/.synergy/data/auth/provider-auth.json", "read", {
+      workspaceRoot: "/workspace",
+      synergyRoot: path.join(home, ".synergy"),
+    })
+    expect(r.matched).toBe(true)
+    expect(r.category).toBe("credentials")
+    expect(r.exactSecretRoot).toBe(true)
+  })
+
+  test("plugin auth file via ~/ is an exact secret root", () => {
+    const r = checkProtectedPath("~/.synergy/data/plugin/my-plugin/auth.json", "write", {
+      workspaceRoot: "/workspace",
+      synergyRoot: path.join(home, ".synergy"),
+    })
+    expect(r.matched).toBe(true)
+    expect(r.exactSecretRoot).toBe(true)
   })
 })

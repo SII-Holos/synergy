@@ -76,6 +76,7 @@ function ruleAction(profile: ApprovalProfile, capability: string): "allow" | "as
 }
 
 function actionForProfile(profile: ApprovalProfile, risk: RiskLevel, capabilities: string[]) {
+  if (profile.approval.mode === "full_access") return "allow"
   if (capabilities.length === 0) return actionForRisk(profile.approval, risk)
 
   let asks = false
@@ -86,7 +87,7 @@ function actionForProfile(profile: ApprovalProfile, risk: RiskLevel, capabilitie
   }
 
   if (!asks) return "allow"
-  if (profile.approval.mode === "autonomous" && risk === "high") return "deny"
+  if (profile.approval.mode === "autonomous") return "deny"
   return "ask"
 }
 

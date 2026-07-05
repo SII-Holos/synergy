@@ -30,8 +30,6 @@ function rulesFor(actions: {
   high: "allow" | "deny" | "ask"
 }) {
   return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
-    if (permission === "shell_hardline") return capabilityRule(permission, "deny")
-    if (permission === "protected_op") return capabilityRule(permission, "ask")
     const risk = capabilityRisk(permission)
     if (risk === "high") return capabilityRule(permission, actions.high)
     if (risk === "low") return capabilityRule(permission, actions.low)
@@ -254,7 +252,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Autonomous",
         description:
-          "Unattended development with Guarded's automatic approvals plus medium-risk work. High-risk asks are denied instead of prompting.",
+          "Unattended development: ordinary safe work is auto-approved, while high-risk operations are auto-denied instead of prompting.",
         ruleset: autonomousRules(),
         ...policy,
         sandbox: effectiveSandbox,
