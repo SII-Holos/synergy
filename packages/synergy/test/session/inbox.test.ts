@@ -23,8 +23,7 @@ describe("SessionInbox", () => {
           parts: [{ type: "text", text: "please adjust the current run" }],
         })
 
-        expect(item.kind).toBe("queued_user")
-        expect(item.deliveryTarget).toBe("after_turn")
+        expect(item.mode).toBe("task")
         expect(item.messageID).toBeDefined()
         expect(item.summary.preview).toContain("please adjust")
         expect(await Session.messages({ sessionID: session.id })).toEqual([])
@@ -50,8 +49,7 @@ describe("SessionInbox", () => {
         const guided = await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
         const items = await SessionInbox.list(session.id)
 
-        expect(guided.kind).toBe("guiding")
-        expect(guided.deliveryTarget).toBe("next_model_call")
+        expect(guided.mode).toBe("steer")
         expect(guided.messageID).toBeDefined()
         expect(items).toHaveLength(1)
         expect(items[0].id).toBe(queued.id)
@@ -92,7 +90,7 @@ describe("SessionInbox", () => {
 
         const items = await SessionInbox.list(session.id)
         expect(items).toHaveLength(1)
-        expect(items[0].kind).toBe("agent_update")
+        expect(items[0].mode).toBe("steer")
         expect(items[0].source.type).toBe("cortex")
         expect(items[0].summary.preview).toContain("background task completed")
 

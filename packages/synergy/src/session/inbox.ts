@@ -18,13 +18,12 @@ import type { SessionManager } from "./manager"
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
 
+  // The single scheduling axis for an inbox item (issue #281 §6):
+  //   task    — a new task root; starts a loop after the current one ends
+  //   steer   — non-root injection that may wake an idle session / promote a call
+  //   context — non-root injection that only piggybacks on an already-needed call
   export const ItemMode = z.enum(["task", "steer", "context"])
   export type ItemMode = z.infer<typeof ItemMode>
-
-  // Keep legacy fields for backward compat reads from storage
-  const ItemKind = z.enum(["queued_user", "guiding", "agent_update"])
-  const ItemState = z.enum(["queued", "guiding"])
-  const DeliveryTarget = z.enum(["after_turn", "next_model_call"])
 
   export const ItemSource = z
     .object({
@@ -46,11 +45,6 @@ export namespace SessionInbox {
     .object({
       id: Identifier.schema("inbox"),
       sessionID: Identifier.schema("session"),
-      // Legacy fields — kept for compat reads from storage
-      kind: ItemKind,
-      state: ItemState,
-      deliveryTarget: DeliveryTarget,
-      // New mode field
       mode: ItemMode,
       // Payload for materialization
       message: z
@@ -154,10 +148,7 @@ export namespace SessionInbox {
     return Item.parse({
       id: item.id,
       sessionID: item.sessionID,
-      kind: item.kind,
-      state: item.state,
-      deliveryTarget: item.deliveryTarget,
-      mode: item.mode ?? modeFromLegacy(item.kind, item.state, item.deliveryTarget),
+      mode: item.mode,
       message: item.message,
       summaryPreview: item.summaryPreview,
       summary: item.summary,
@@ -167,6 +158,14 @@ export namespace SessionInbox {
       orderKey: item.orderKey,
       messageID: item.messageID,
     })
+  }
+
+  /** Canonicalize a stored item read from disk: older items may only carry the
+   *  retired kind/state/deliveryTarget fields, so derive mode from them once. */
+  function normalizeStored(item: StoredItem): StoredItem {
+    if (item.mode) return item
+    const legacy = item as unknown as { kind?: string; state?: string; deliveryTarget?: string }
+    return { ...item, mode: modeFromLegacy(legacy.kind, legacy.state, legacy.deliveryTarget) }
   }
 
   function sortItems<T extends { orderKey: string; id: string }>(items: T[]): T[] {
@@ -183,7 +182,7 @@ export namespace SessionInbox {
     const ids = await Storage.scan(StoragePath.sessionInboxRoot(scopeID, sid))
     const keys = ids.map((id) => StoragePath.sessionInboxItem(scopeID, sid, id))
     const items = await Storage.readMany<StoredItem>(keys)
-    return sortItems(items.filter((item): item is StoredItem => !!item?.id))
+    return sortItems(items.filter((item): item is StoredItem => !!item?.id).map(normalizeStored))
   }
 
   async function writeItem(item: StoredItem): Promise<StoredItem> {
@@ -255,9 +254,8 @@ export namespace SessionInbox {
     }
   }
 
-  /** Compatibility: derive mode from legacy kind/state/deliveryTarget */
-  export function modeFromLegacy(kind: string, state: string, deliveryTarget: string): ItemMode {
-    if (kind === "queued_user" && state === "queued") return "task"
+  /** Compatibility: derive mode from the retired kind/state/deliveryTarget fields. */
+  export function modeFromLegacy(kind?: string, state?: string, _deliveryTarget?: string): ItemMode {
     if (kind === "guiding" || state === "guiding") return "steer"
     if (kind === "agent_update") return "steer"
     return "task"
@@ -270,7 +268,9 @@ export namespace SessionInbox {
   export async function getStored(sessionID: string, itemID: string): Promise<StoredItem> {
     const session = await readSession(sessionID)
     const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-    return Storage.read<StoredItem>(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), itemID))
+    return normalizeStored(
+      await Storage.read<StoredItem>(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), itemID)),
+    )
   }
 
   /**
@@ -282,18 +282,12 @@ export namespace SessionInbox {
     const itemID = Identifier.ascending("inbox")
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
-    const kind = mode === "task" ? "queued_user" : mode === "steer" ? "guiding" : "agent_update"
-    const state = mode === "task" ? "queued" : "guiding"
-    const deliveryTarget = mode === "steer" || mode === "context" ? "next_model_call" : "after_turn"
     const source: ItemSource = input.message.agent
       ? { type: "agent", label: input.message.agent }
       : { type: "user", label: "You" }
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
-      kind: kind as StoredItem["kind"],
-      state: state as StoredItem["state"],
-      deliveryTarget: deliveryTarget as StoredItem["deliveryTarget"],
       mode,
       message: {
         parts: input.message.parts as any,
@@ -326,9 +320,6 @@ export namespace SessionInbox {
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
-      kind: "queued_user",
-      state: "queued",
-      deliveryTarget: "after_turn",
       mode: "task",
       message: {
         role: "user",
@@ -372,15 +363,15 @@ export namespace SessionInbox {
                 : { type: "agent", label: "Agent" }
     const title = input.mail.type === "user" ? input.mail.summary?.title : undefined
     const userMail = input.mail as SessionManager.SessionMail.User
+    // assistant deliveries never own a reply cycle → context; user deliveries
+    // are task only when they explicitly request a reply, else steer.
+    const mode: ItemMode = input.mail.type === "assistant" ? "context" : input.mail.noReply === false ? "task" : "steer"
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
-      kind: "agent_update",
-      state: "queued",
-      deliveryTarget: "after_turn",
-      mode: "steer",
+      mode,
       message: {
-        role: "user",
+        role: input.mail.type === "assistant" ? "assistant" : "user",
         parts: input.mail.parts as any,
         agent: userMail.agent,
         model: userMail.model,
@@ -408,16 +399,9 @@ export namespace SessionInbox {
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
     const item = await getStored(input.sessionID, input.itemID)
-    const newMode: ItemMode = item.mode === "task" ? "steer" : "task"
-    const kind = newMode === "task" ? "queued_user" : "guiding"
-    const state = newMode === "task" ? "queued" : "guiding"
-    const deliveryTarget = newMode === "steer" ? "next_model_call" : "after_turn"
     const updated: StoredItem = {
       ...item,
-      kind: kind as StoredItem["kind"],
-      state: state as StoredItem["state"],
-      deliveryTarget: deliveryTarget as StoredItem["deliveryTarget"],
-      mode: newMode,
+      mode: item.mode === "task" ? "steer" : "task",
       time: {
         ...item.time,
         updated: Date.now(),
@@ -445,26 +429,8 @@ export namespace SessionInbox {
     return drained
   }
 
-  export async function drainGuiding(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(sessionID, (item) => item.kind === "guiding")
-  }
-
-  /**
-   * Drain agent-update inbox items (e.g. cortex background-task completion
-   * notifications).  Unlike {@link drainReady}, this is designed for mid-turn
-   * injection — callers should materialize with `{ guiding: true }` so the
-   * update is injected into the running conversation without triggering a
-   * redundant reply cycle.
-   */
-  export async function drainAgentUpdates(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(sessionID, (item) => item.kind === "agent_update")
-  }
-
   export async function drainReady(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(
-      sessionID,
-      (item) => item.kind === "queued_user" || item.kind === "guiding" || item.kind === "agent_update",
-    )
+    return drainWhere(sessionID, () => true)
   }
 
   /**
@@ -474,11 +440,7 @@ export namespace SessionInbox {
    */
   export async function peekReady(sessionID: string, excludeIDs?: Set<string>): Promise<StoredItem[]> {
     const items = await listStored(sessionID)
-    const ready = items.filter(
-      (item) =>
-        (item.kind === "queued_user" || item.kind === "guiding" || item.kind === "agent_update") &&
-        (!excludeIDs || !excludeIDs.has(item.id)),
-    )
+    const ready = items.filter((item) => !excludeIDs || !excludeIDs.has(item.id))
     return sortItems(ready)
   }
 
@@ -491,7 +453,7 @@ export namespace SessionInbox {
     await removeItems(sessionID, ids)
   }
 
-  // --- Mode-based drain helpers (Commit 2) ---
+  // --- Mode-based drains ---
 
   export async function drainSteer(sessionID: string): Promise<StoredItem[]> {
     return drainWhere(sessionID, (item) => item.mode === "steer")

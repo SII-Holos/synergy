@@ -19,33 +19,22 @@ type SessionInboxProps = {
 }
 
 function labelByMode(item: SessionInboxItem): string {
-  if (item.mode) {
-    if (item.mode === "task") return "Queued by you"
-    if (item.mode === "steer") return "Guiding current run"
-    if (item.mode === "context") return "Context update"
-  }
-  // Legacy fallback by kind
-  if (item.kind === "queued_user") return "Queued by you"
-  if (item.kind === "guiding") return "Guiding current run"
-  if (item.kind === "agent_update") return "Agent updates"
+  if (item.mode === "task") return "Queued by you"
+  if (item.mode === "steer") return "Guiding current run"
+  if (item.mode === "context") return "Context update"
   return "Update"
 }
 
 function timingLabel(item: SessionInboxItem): string {
   if (item.mode === "task") return "After turn"
   if (item.mode === "steer") return "Next call"
-  if (item.mode === "context") return "Context"
-  // Legacy fallback by deliveryTarget
-  return item.deliveryTarget === "next_model_call" ? "Next call" : "After turn"
+  return "Context"
 }
 
 function deliveryDescription(item: SessionInboxItem) {
   if (item.mode === "task") return "Sends after this turn; multiple queued items share one reply cycle."
   if (item.mode === "steer") return "Joins the current run before its next model request."
-  if (item.mode === "context") return "Joined to the ongoing model call as context."
-  // Legacy fallback by deliveryTarget
-  if (item.deliveryTarget === "next_model_call") return "Joins the current run before its next model request."
-  return "Sends after this turn; multiple queued items share one reply cycle."
+  return "Joined to the ongoing model call as context."
 }
 
 function itemCountLabel(count: number) {

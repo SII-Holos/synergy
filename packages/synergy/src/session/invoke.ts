@@ -185,7 +185,7 @@ export namespace SessionInvoke {
             sessionID,
             noReply,
             metadata: {
-              ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
+              ...(noReply === true ? { guided: item.mode === "steer" } : {}),
               ...queuedInput.metadata,
             },
           },
@@ -407,23 +407,6 @@ export namespace SessionInvoke {
           const result = await LoopJob.execute(preJobs, jobCtx)
           if (result === "stop") break
           if (result === "continue") continue
-        }
-
-        // Drain legacy guiding/agent-update items by kind for compat.
-        // These are also non-task injections, so active rollback freezes them.
-        if (!rollbackActive) {
-          const guidingFallback = await SessionInbox.drainGuiding(sessionID)
-          if (guidingFallback.length > 0) {
-            const guided = await materializeInboxItems(sessionID, guidingFallback, { guiding: true, rootID: R.id })
-            msgs.push(...guided.userMessages)
-            log.info("drained legacy guiding items into session", { sessionID, count: guidingFallback.length })
-          }
-          const agentUpdateFallback = await SessionInbox.drainAgentUpdates(sessionID)
-          if (agentUpdateFallback.length > 0) {
-            const updates = await materializeInboxItems(sessionID, agentUpdateFallback, { guiding: true, rootID: R.id })
-            msgs.push(...updates.userMessages)
-            log.info("drained legacy agent updates into session", { sessionID, count: agentUpdateFallback.length })
-          }
         }
 
         // Mode-based drain ②: context items piggyback on confirmed model call.
