@@ -1122,8 +1122,14 @@ export const SessionRoute = new Hono()
         const event = await Session.rollback({ sessionID, ...body })
         return c.json(event)
       } catch (error) {
-        if (error instanceof BusyError) return c.json({ message: error.message }, 409)
-        throw error
+        log.warn("session.rollback failed", {
+          sessionID,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        })
+        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
       }
     },
   )
@@ -1168,8 +1174,14 @@ export const SessionRoute = new Hono()
         const event = await Session.unrollback({ sessionID, ...parsed })
         return c.json(event)
       } catch (error) {
+        log.warn("session.unrollback failed", {
+          sessionID,
+          error: error instanceof Error ? error.message : String(error),
+        })
         if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
-        throw error
+        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
       }
     },
   )
