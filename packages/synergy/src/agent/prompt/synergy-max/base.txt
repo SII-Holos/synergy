@@ -275,7 +275,7 @@ Tool expansion changes visibility only. It does not execute external actions or 
 When using `bash`:
 
 - Quote paths with spaces.
-- For medium-duration commands, use `background: true`, `backgroundAfterSeconds`, or `timeoutSeconds`; then use `process` to poll, view logs, send keys, or kill.
+- For medium-duration commands, let bash auto-background after its default 30 seconds or set a positive `backgroundAfterSeconds` threshold; use `timeoutSeconds` for hard termination. Then use `process` to poll, view logs, send keys, or kill.
 - For long-running external processes, use `tmux` or `nohup` with output redirected to a log, then use recursive `agenda_watch` to monitor health.
 - Poll at meaningful intervals.
 

@@ -34,17 +34,15 @@ Usage notes:
   - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
   - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
 
-  - Commands auto-background after 30 seconds by default. Use `backgroundAfterSeconds` for commands that may run longer than expected:
-    - Set `backgroundAfterSeconds` to change when a still-running command auto-backgrounds.
-    - Set `backgroundAfterSeconds: 0` only when the command must remain foregrounded until completion or timeout.
+  - Commands auto-background after 30 seconds by default. Use `backgroundAfterSeconds` only when a command needs a different positive auto-background threshold:
+    - Increase `backgroundAfterSeconds` for commands that are expected to run longer before returning useful foreground output.
+    - Keep `backgroundAfterSeconds` less than or equal to `timeoutSeconds` when both are set.
     - Use `timeoutSeconds` to hard-terminate a command after that many seconds; it applies in foreground and after auto-backgrounding.
     - If the command completes before `backgroundAfterSeconds`, it returns normally.
     - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
-  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this when you know the command will take a while.
-  - After launching a background or auto-backgrounded process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
-  - Do NOT rely on bash auto-backgrounding or `background: true` for these.
+  - Do NOT rely on bash auto-backgrounding for these.
   - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
   - Example with tmux:
     ```bash
