@@ -16,6 +16,7 @@ type SessionInboxProps = {
   sessionID: string
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
+  freezeHint?: boolean
 }
 
 function labelByMode(item: SessionInboxItem): string {
@@ -209,6 +210,19 @@ export function SessionInbox(props: SessionInboxProps) {
 
   const remove = async (item: SessionInboxItem) => {
     await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
+    showToast({
+      type: "info",
+      title: "Removed queued message",
+      description: "The message has been removed from the inbox.",
+      actions: [
+        {
+          label: "Restore",
+          onClick: () => {
+            void props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id }).catch(() => {})
+          },
+        },
+      ],
+    })
   }
   const confirmRemove = (item: SessionInboxItem) => {
     confirm.show({
@@ -256,6 +270,9 @@ export function SessionInbox(props: SessionInboxProps) {
           </Match>
           <Match when={true}>
             <div class="session-inbox-list">
+              <Show when={props.freezeHint}>
+                <div class="px-1 py-1 text-11-medium text-text-subtle">Inbox frozen while rewinding</div>
+              </Show>
               <div class="session-inbox-queue-note">
                 <span>{note()}</span>
                 <Show when={actionableItems().length > 1}>

@@ -1,0 +1,54 @@
+[data-component="rollback-banner"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  margin: 0 16px 8px;
+  border-radius: 8px;
+  background: var(--background-base);
+  border: 1px solid var(--border-weak);
+  font-size: var(--font-size-small);
+  color: var(--text-base);
+  animation: fadeDown 0.2s ease-out both;
+}
+
+@keyframes fadeDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-slot="rollback-banner-content"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-slot="rollback-banner-text"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-slot="rollback-banner-actions"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rollback-banner-dismiss {
+  opacity: 0.5;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+
+  &:hover {
+    opacity: 1;
+  }
+}

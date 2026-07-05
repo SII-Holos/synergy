@@ -208,7 +208,11 @@ export function useSessionCommands(params: {
         }
         const message = visibleUserMessages().at(-1)
         if (!message) return
-        await sdk.client.session.rollback({ sessionID, numTurns: 1 })
+        // Roll back using the last visibleRoot's id as cutMessageID
+        await sdk.client.session.rollback({
+          sessionID,
+          cutMessageID: message.id,
+        })
         const parts = sync.data.part[message.id]
         if (parts) {
           const restored = extractPromptDraft({ message, parts, directory: sdk.directory })
@@ -232,6 +236,31 @@ export function useSessionCommands(params: {
         await sdk.client.session.unrollback({ sessionID })
         prompt.resetDraft()
         setActiveMessage(userMessages().at(-1))
+      },
+    },
+    {
+      id: "session.rewind_to_here",
+      title: "Rewind to here",
+      description: "Rewind session to the active message",
+      category: "Session",
+      disabled: !routeParams.id || !activeMessage(),
+      onSelect: async () => {
+        const sessionID = routeParams.id
+        const message = activeMessage()
+        if (!sessionID || !message) return
+        if (status()?.type !== "idle") {
+          await sdk.client.session.abort({ sessionID }).catch(() => {})
+        }
+        await sdk.client.session.rollback({
+          sessionID,
+          cutMessageID: message.id,
+        })
+        const parts = sync.data.part[message.id]
+        if (parts) {
+          const restored = extractPromptDraft({ message, parts, directory: sdk.directory })
+          prompt.set(restored.prompt, inlineLength(restored.prompt))
+          prompt.context.set(restored.context)
+        }
       },
     },
     {

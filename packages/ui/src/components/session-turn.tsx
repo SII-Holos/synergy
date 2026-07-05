@@ -163,8 +163,11 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
+/**
+ * @deprecated Use isRoot/rootID/visible fields instead.
+ * Kept for backward compat with old sessions that lack rootID.
+ */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "metadata">): boolean {
-  // Use new isRoot/visible fields when available, fall back to old metadata
   const msg = message as UserMessage
   if (msg.isRoot !== undefined) return msg.isRoot === false && msg.visible !== false
   const metadata = message.metadata
@@ -369,15 +372,35 @@ function originIconName(origin: { type: string; label?: string; detail?: string 
   }
 }
 
-function TimelineDisplay(props: { item: SessionTurnDisplayItem; serverUrl: string }) {
+function TimelineDisplay(props: {
+  item: SessionTurnDisplayItem
+  serverUrl: string
+  isRootMessage: boolean
+  rollbackActive: boolean
+  onRewind?: () => void
+}) {
   if (props.item.kind === "guided-user") {
     return <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
   }
   if (props.item.kind === "non-root-user") {
     return (
-      <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
-        <Icon name={originIconName(props.item.message.origin)} size="small" />
-        <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
+      <div data-slot="session-turn-rewind-wrapper">
+        <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
+          <Icon name={originIconName(props.item.message.origin)} size="small" />
+          <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
+        </div>
+        <button
+          type="button"
+          data-slot="session-turn-rewind-button"
+          data-rollback-active={props.rollbackActive}
+          onClick={(e) => {
+            e.stopPropagation()
+            props.onRewind?.()
+          }}
+          title="Rewind to before this message"
+        >
+          {"\u293A"} Rewind
+        </button>
       </div>
     )
   }
@@ -431,6 +454,8 @@ export function SessionTurn(
     messageID: string
     lastUserMessageID?: string
     onUserInteracted?: () => void
+    onRewind?: () => void
+    rollbackActive?: boolean
     classes?: {
       root?: string
       content?: string
@@ -687,14 +712,30 @@ export function SessionTurn(
                       <MailboxSourceBadge message={msg() as UserMessage} />
                     </Show>
                     {/* User message */}
-                    <Show
-                      when={specialUserMessageRenderer()}
-                      fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
-                    >
-                      {(SpecialUserMessage) => (
-                        <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
-                      )}
-                    </Show>
+                    <div data-slot="session-turn-rewind-wrapper">
+                      <Show
+                        when={specialUserMessageRenderer()}
+                        fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                      >
+                        {(SpecialUserMessage) => (
+                          <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
+                        )}
+                      </Show>
+                      <Show when={props.onRewind && !specialUserMessageRenderer()}>
+                        <button
+                          type="button"
+                          data-slot="session-turn-rewind-button"
+                          data-rollback-active={props.rollbackActive === true}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            props.onRewind?.()
+                          }}
+                          title="Rewind to before this message"
+                        >
+                          {"\u293A"} Rewind
+                        </button>
+                      </Show>
+                    </div>
                     <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItemKeys()}>
@@ -714,7 +755,13 @@ export function SessionTurn(
                                       data-slot="session-turn-timeline-item"
                                       data-kind={displayItemVisualKind(current())}
                                     >
-                                      <TimelineDisplay item={current()} serverUrl={data.serverUrl} />
+                                      <TimelineDisplay
+                                        item={current()}
+                                        serverUrl={data.serverUrl}
+                                        isRootMessage={false}
+                                        rollbackActive={props.rollbackActive === true}
+                                        onRewind={props.onRewind}
+                                      />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>
                                       {renderMessageSlot("after-reasoning")}

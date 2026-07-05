@@ -51,6 +51,8 @@ import {
 } from "@/components/session/worktree-session"
 import { WorktreeTransitionContent } from "@/components/session/worktree-transition-dialog"
 import { worktreeTransition, clearWorktreeTransition } from "@/components/session/worktree-progress-signals"
+import { RollbackBanner } from "@/components/session/rollback-banner"
+import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 
 const handoff = {
   prompt: "",
@@ -193,6 +195,9 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
+  const rollbackActive = createMemo(() => rollback() !== undefined)
+  const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()
     if (!rb) return new Set<string>()
@@ -211,6 +216,32 @@ function SessionPageContent() {
     if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
     return false
   })
+  const openRewindConfirm = (message: UserMessage) => {
+    const targetMsg = message
+    const sessionID = params.id
+    dialog.push(() => (
+      <DialogRewindConfirm
+        cutMessage={targetMsg}
+        allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
+        partsByMessage={sync.data.part}
+        filesByMessage={{}}
+        onRewind={async (cutMessageID, restoreFiles) => {
+          if (!sessionID) return
+          if (status().type !== "idle") {
+            await sdk.client.session.abort({ sessionID }).catch(() => {})
+          }
+          await sdk.client.session.rollback({ sessionID, cutMessageID })
+          if (restoreFiles) {
+            const rb = rollback()
+            if (rb) {
+              await sdk.client.session.files.restore({ sessionID, rollbackID: rb.id }).catch(() => {})
+            }
+          }
+          setActiveMessage(userMessages().findLast((x) => x.id < cutMessageID))
+        }}
+      />
+    ))
+  }
   const messagesReady = createMemo(() => {
     const id = params.id
     if (!id) return true
@@ -229,6 +260,7 @@ function SessionPageContent() {
   // ── Root message derivation layer ───────────────────────────────────
   // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
   // heuristics with orthogonal isRoot/visible/rootID/origin fields.
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyUserMessages: UserMessage[] = []
   const rootMessages = createMemo(
     () =>
@@ -290,6 +322,7 @@ function SessionPageContent() {
     return msgs.filter((message) => message.id >= firstID)
   }, emptyUserMessages)
 
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyTimeline: Message[] = []
   const isActionCommandMessage = (message: Message) => {
     const metadata = message.metadata as
@@ -906,6 +939,14 @@ function SessionPageContent() {
                 )}
               </Show>
               <SessionTopBar />
+              <Show when={showRollbackBanner()}>
+                <RollbackBanner
+                  sessionID={params.id!}
+                  rollback={rollback()!}
+                  sdk={sdk}
+                  onDismiss={() => setRollbackDismissed(true)}
+                />
+              </Show>
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
@@ -986,6 +1027,8 @@ function SessionPageContent() {
                           anchor={anchor}
                           terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
                           workspaceOpen={sideOpen}
+                          onRewind={openRewindConfirm}
+                          rollbackActive={rollbackActive()}
                         />
                       </Show>
                     </Show>
@@ -1022,6 +1065,7 @@ function SessionPageContent() {
               branch={branch}
               lastModified={lastModified}
               workspaceOpen={sideOpen}
+              rollbackActive={rollbackActive()}
             />
             <Show when={isDesktop() && showTabs() && !sideOpen()}>
               <ResizeHandle
