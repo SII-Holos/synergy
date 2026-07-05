@@ -381,7 +381,15 @@ export namespace SessionHistory {
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {
-    return !messages.some((msg) => msg.time.created > event.time.created)
+    // Only invalidate when a new root user message was created after the rollback.
+    // Non-root user messages and assistant messages do not invalidate.
+    return !messages.some((msg) => {
+      if (msg.role !== "user") return false
+      const user = msg as MessageV2.User
+      if (user.isRoot === false) return false
+      if (user.metadata?.synthetic === true) return false
+      return msg.time.created > event.time.created
+    })
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {

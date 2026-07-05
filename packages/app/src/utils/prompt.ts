@@ -125,7 +125,49 @@ export type PromptDraftSnapshot = {
 }
 
 export type PromptDraftMetadataMessage = {
+  id?: string
+  parts?: Part[]
   metadata?: Record<string, unknown>
+}
+
+/**
+ * Extract text content from parts filtered by origin for rewind backfill.
+ * When rewinding, the draft text from the cut message should be extracted
+ * to restore the user's original input.
+ */
+export function extractPromptTextForRewind(input: { message?: PromptDraftMetadataMessage; parts: Part[] }): string {
+  const promptDraft = input.message?.metadata?.promptDraft
+  if (isRecord(promptDraft) && promptDraft.version === 1) {
+    const prompt = sanitizePromptValue(promptDraft.prompt) as unknown as Prompt
+    return prompt
+      .map((part) => {
+        if (part.type === "text") return part.content
+        if (part.type === "file") return part.content
+        if (part.type === "attachment") return ""
+        if (part.type === "note") return part.content
+        if (part.type === "session") return ""
+        return ""
+      })
+      .join("")
+      .trim()
+  }
+
+  // Fallback: extract by part.origin from the cut message
+  const textPart = textPartValue(input.parts)
+  if (textPart) {
+    // Prefer non-system origin text
+    const nonSystemTexts = input.parts
+      .filter((part): part is TextPart => part.type === "text")
+      .filter((part) => part.origin !== "system" && !part.synthetic && !part.ignored)
+    if (nonSystemTexts.length > 0) {
+      return nonSystemTexts
+        .map((part) => part.text)
+        .join("\n")
+        .trim()
+    }
+    return textPart.text.trim()
+  }
+  return ""
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,7 +214,7 @@ function filePathFromUrl(url: string) {
 function textPartValue(parts: Part[]) {
   const candidates = parts
     .filter((part): part is TextPart => part.type === "text")
-    .filter((part) => !part.synthetic && !part.ignored)
+    .filter((part) => (part.origin !== undefined ? part.origin !== "system" : !part.synthetic && !part.ignored))
   return candidates.reduce((best: TextPart | undefined, part) => {
     if (!best) return part
     if (part.text.length > best.text.length) return part

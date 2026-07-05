@@ -9,6 +9,7 @@ import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
+import { SessionInbox } from "../session/inbox"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { CortexTypes } from "./types"
@@ -504,26 +505,14 @@ export namespace Cortex {
       .filter(Boolean)
       .join("\n")
 
-    void SessionManager.deliver({
-      target: task.parentSessionID,
-      mail: {
-        type: "user",
-        noReply: false,
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            messageID: "",
-            sessionID: task.parentSessionID,
-            type: "text",
-            text: notification,
-            synthetic: true,
-          },
-        ],
-        metadata: {
-          channelPush: true,
-          source: "cortex",
-          sourceSessionID: task.sessionID,
-        },
+    void SessionInbox.deliver({
+      sessionID: task.parentSessionID,
+      mode: "steer",
+      message: {
+        role: "user",
+        visible: true,
+        parts: [{ type: "text", text: notification }],
+        origin: { type: "cortex", sessionID: task.sessionID },
       },
     }).catch((error) => {
       log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })

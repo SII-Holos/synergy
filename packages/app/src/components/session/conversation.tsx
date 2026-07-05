@@ -5,16 +5,18 @@ import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
-import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
+import type { UserMessage, AssistantMessage, Message, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { SessionTimeline } from "./session-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { navMark } from "@/utils/perf"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 
 export function SessionConversation(props: {
   sessionID: string
   paramsDir: string
   timeline: Accessor<Message[]>
+  pendingTimeline?: Accessor<SessionInboxItem[]>
   visibleUserMessages: Accessor<UserMessage[]>
   lastUserMessage: Accessor<UserMessage | undefined>
   activeMessage: Accessor<UserMessage | undefined>
@@ -37,6 +39,8 @@ export function SessionConversation(props: {
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
+  onRewind?: (message: UserMessage) => void
+  rollbackActive?: boolean
 }) {
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
@@ -142,6 +146,8 @@ export function SessionConversation(props: {
                 sessionID={props.sessionID}
                 messageID={msg.id}
                 lastUserMessageID={props.lastUserMessage()?.id}
+                onRewind={() => props.onRewind?.(msg as UserMessage)}
+                rollbackActive={props.rollbackActive}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",
@@ -160,6 +166,31 @@ export function SessionConversation(props: {
           )
         }}
       </For>
+      <Show when={props.pendingTimeline?.()?.length}>
+        <div class="w-full flex flex-col items-start gap-2 opacity-50">
+          <For each={props.pendingTimeline?.() ?? []}>
+            {(item) => {
+              const isTask = () => item.mode === "task"
+              const label = () =>
+                item.message?.parts?.[0]?.type === "text"
+                  ? (item.message!.parts[0] as { text: string }).text
+                  : (item.summary?.title ?? "Pending…")
+              return (
+                <div
+                  data-slot="pending-timeline-item"
+                  data-mode={item.mode}
+                  class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
+                >
+                  <Icon name="clock" size="small" />
+                  <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
+                    <span class="text-xs">{label()}</span>
+                  </Show>
+                </div>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
     </ConversationViewport>
   )
 }

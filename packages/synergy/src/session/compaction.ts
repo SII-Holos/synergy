@@ -332,43 +332,36 @@ export namespace SessionCompaction {
   function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
     if (msg.info.role !== "user") return false
     const metadata = msg.info.metadata
+    // Exclude synthetic, noReply, and guided messages — those are system/steer, not real user requests
     return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
   }
 
-  function carriedAnchor(msg: MessageV2.WithParts): Anchor | undefined {
-    if (msg.info.role !== "user") return undefined
-    const value = msg.info.metadata?.[ANCHOR_METADATA_KEY]
-    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-    const text = typeof value.text === "string" ? value.text.trim() : undefined
-    if (!text) return undefined
-    const sourceMessageID = typeof value.sourceMessageID === "string" ? value.sourceMessageID : undefined
-    return { text, sourceMessageID }
-  }
-
   /**
-   * Preserve the active user request across compaction. Prefer the compaction
-   * parent when it is a real reply-requesting user message; synthetic, no-reply,
-   * and guided context messages fall back to the latest earlier real request.
+   * Preserve the active user request across compaction.
+   * First tries the root user by parentID, then scans backwards for an eligible user,
+   * with carried anchor metadata as the ultimate fallback for cascading compactions.
    */
   export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
-    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
-    const parentText = parent ? realUserText(parent) : undefined
-    if (parent && parentText) return { text: parentText, sourceMessageID: parent.info.id }
-
+    // Primary: find the root user by parentID, but skip if it's a guided/noReply/system message
+    const root = messages.find((m) => m.info.id === parentID && m.info.role === "user")
+    if (root && isAnchorEligibleUser(root)) {
+      const text = realUserText(root)
+      if (text) return { text, sourceMessageID: root.info.id }
+    }
+    // Fallback: scan backwards for the latest eligible user message
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (!isAnchorEligibleUser(msg)) continue
-      if (msg.info.id === parentID) continue
       const text = realUserText(msg)
-      if (!text) continue
-      return { text, sourceMessageID: msg.info.id }
+      if (text) return { text, sourceMessageID: msg.info.id }
     }
-
+    // Ultimate fallback: carried anchor metadata from cascading compactions
     for (let i = messages.length - 1; i >= 0; i--) {
-      const anchor = carriedAnchor(messages[i])
-      if (anchor) return anchor
+      const msg = messages[i]
+      if (msg.info.role !== "user") continue
+      const carriedAnchor = msg.info.metadata?.[ANCHOR_METADATA_KEY] as Anchor | undefined
+      if (carriedAnchor) return carriedAnchor
     }
-
     return undefined
   }
 

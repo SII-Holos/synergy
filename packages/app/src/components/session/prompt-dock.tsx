@@ -44,6 +44,7 @@ export function PromptDock(props: {
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
+  rollbackActive?: boolean
 }) {
   const nav = useNavigate()
   return (
@@ -167,7 +168,12 @@ export function PromptDock(props: {
                     hideAgentSelector={!props.meta().showInputBar}
                   />
                   <Show when={props.sessionID}>
-                    <SessionInbox sessionID={props.sessionID!} sync={props.sync} sdk={props.sdk} />
+                    <SessionInbox
+                      sessionID={props.sessionID!}
+                      sync={props.sync}
+                      sdk={props.sdk}
+                      freezeHint={props.rollbackActive}
+                    />
                   </Show>
                 </div>
               </>
