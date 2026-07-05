@@ -47,6 +47,7 @@ const performanceQueryParameters: Record<string, OpenApiParameter[]> = {
     query("tool", { type: "string" }),
     query("providerID", { type: "string" }),
     query("module", { $ref: "#/components/schemas/PerfModule" }),
+    query("stat", { $ref: "#/components/schemas/PerfTimelineStat" }),
     query("windowMs", { type: "integer", minimum: 1 }),
   ],
   PerfTraceListQuery: [

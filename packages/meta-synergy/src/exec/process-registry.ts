@@ -7,6 +7,7 @@ import { Platform } from "../platform"
 const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2_000
 const DEFAULT_TTL_MS = 30 * 60 * 1000
+const DEFAULT_BASH_BACKGROUND_AFTER_SECONDS = 30
 
 interface ProcessRecord {
   processId: MetaProtocolEnv.ProcessID
@@ -73,17 +74,18 @@ export class ProcessRegistry {
       description: request.description,
       workdir: Platform.resolveWorkdir(request.workdir),
     })
+    const timeoutTimer = this.#scheduleBashTimeout(launched.record, request.timeoutSeconds)
 
     if (request.background) {
       launched.record.backgrounded = true
       return this.#backgroundResult(launched.record, envID, request.description, "Background")
     }
 
-    if (request.yieldSeconds && request.yieldSeconds > 0) {
-      const yieldMs = request.yieldSeconds * 1000
+    const backgroundAfterSeconds = request.backgroundAfterSeconds ?? DEFAULT_BASH_BACKGROUND_AFTER_SECONDS
+    if (backgroundAfterSeconds > 0) {
       const autoBackground = await Promise.race([
         this.#waitForExit(launched.record.processId).then(() => false),
-        Platform.sleep(yieldMs).then(() => !launched.record.exited),
+        Platform.sleep(backgroundAfterSeconds * 1000).then(() => !launched.record.exited),
       ])
       if (autoBackground) {
         launched.record.backgrounded = true
@@ -92,12 +94,13 @@ export class ProcessRegistry {
           envID,
           request.description,
           "Auto-Background",
-          request.yieldSeconds,
+          backgroundAfterSeconds,
         )
       }
     }
 
     await this.#waitForExit(launched.record.processId)
+    if (timeoutTimer) clearTimeout(timeoutTimer)
     const current = this.#getCurrentOrFinished(launched.record.processId)
     const runtimeMs = this.#runtimeMs(current ?? launched.record)
     const output = current?.output ?? launched.record.output
@@ -221,7 +224,7 @@ export class ProcessRegistry {
     child.stderr?.on("data", append)
 
     child.once("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-      this.#markExited(record, code, signal)
+      this.#markExited(record, code, record.exitSignal ?? signal)
     })
 
     child.once("error", (error: Error) => {
@@ -232,6 +235,27 @@ export class ProcessRegistry {
     this.#running.set(processId, record)
     this.#startSweeper()
     return { record }
+  }
+
+  #scheduleBashTimeout(record: ProcessRecord, timeoutSeconds: number | undefined) {
+    if (timeoutSeconds === undefined) return undefined
+    const timer = setTimeout(async () => {
+      if (record.exited) return
+      const message = `\n\n<bash_metadata>\nThe command was interrupted: command timed out after ${timeoutSeconds}s.\n</bash_metadata>`
+      const next = record.output + message
+      if (next.length > MAX_OUTPUT_CHARS) {
+        record.output = next.slice(next.length - MAX_OUTPUT_CHARS)
+        record.truncated = true
+      } else {
+        record.output = next
+      }
+      record.tail = record.output.slice(-TAIL_CHARS)
+      record.exitSignal = "SIGTERM"
+      await Platform.killTree(record.child, () => record.exited)
+      if (!record.exited) this.#markExited(record, record.exitCode ?? null, "SIGTERM")
+    }, timeoutSeconds * 1000)
+    unrefTimer(timer)
+    return timer
   }
 
   async #poll(
@@ -531,11 +555,11 @@ export class ProcessRegistry {
     envID: string,
     description: string,
     mode: "Background" | "Auto-Background",
-    yieldSeconds?: number,
+    backgroundAfterSeconds?: number,
   ): MetaProtocolBash.Result {
     const prefix =
       mode === "Auto-Background"
-        ? `Command auto-backgrounded after ${yieldSeconds}s.`
+        ? `Command auto-backgrounded after ${backgroundAfterSeconds}s.`
         : "Command started in background."
     return {
       title: `[${mode}] ${description}`,

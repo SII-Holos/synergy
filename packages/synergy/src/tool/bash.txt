@@ -34,15 +34,17 @@ Usage notes:
   - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
   - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
 
-  - Use `yieldSeconds` for commands that may run longer than expected:
-    - Set `yieldSeconds` to auto-background if the command exceeds that duration. Default behavior: the tool waits for completion with no hard time limit.
-    - If the command completes before `yieldSeconds`, it returns normally.
+  - Commands auto-background after 30 seconds by default. Use `backgroundAfterSeconds` for commands that may run longer than expected:
+    - Set `backgroundAfterSeconds` to change when a still-running command auto-backgrounds.
+    - Set `backgroundAfterSeconds: 0` only when the command must remain foregrounded until completion or timeout.
+    - Use `timeoutSeconds` to hard-terminate a command after that many seconds; it applies in foreground and after auto-backgrounding.
+    - If the command completes before `backgroundAfterSeconds`, it returns normally.
     - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
-  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this over `yieldSeconds` when you know the command will take a while.
+  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this when you know the command will take a while.
   - After launching a background or auto-backgrounded process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
-  - Do NOT use `background: true` or `yieldSeconds` for these.
+  - Do NOT rely on bash auto-backgrounding or `background: true` for these.
   - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
   - Example with tmux:
     ```bash

@@ -8,7 +8,14 @@ export namespace MetaProtocolBash {
     description: z.string(),
     workdir: z.string().optional(),
     background: z.boolean().optional(),
-    yieldSeconds: z.number().optional(),
+    backgroundAfterSeconds: z
+      .number()
+      .refine((value) => Number.isFinite(value) && value >= 0)
+      .optional(),
+    timeoutSeconds: z
+      .number()
+      .refine((value) => Number.isFinite(value) && value > 0)
+      .optional(),
   })
   export type ExecutePayload = z.infer<typeof ExecutePayload>
 

@@ -70,6 +70,13 @@ export namespace PerformanceResources {
       source: "process",
     })
     PerformanceMetrics.record({
+      name: "process.memory.heap_total",
+      value: memory.heapTotal,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({
       name: "process.cpu.utilization",
       value: utilizationRatio,
       unit: "ratio",
