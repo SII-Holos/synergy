@@ -328,6 +328,24 @@ export namespace SessionProcessor {
       }
     }
 
+    function metadataToolOutcome(part: MessageV2.ToolPart): ToolOutcome | undefined {
+      if (part.state.status !== "running") return undefined
+      if (part.tool !== "bash") return undefined
+      const metadata = part.state.metadata as Record<string, any> | undefined
+      if (!metadata || typeof metadata.output !== "string") return undefined
+      if (metadata.exit === undefined) return undefined
+
+      return {
+        status: "completed",
+        input: part.state.input,
+        result: {
+          output: metadata.output,
+          title: part.state.title ?? String(metadata.description ?? ""),
+          metadata,
+        },
+      }
+    }
+
     function forgetToolCall(callID: string) {
       pendingExecutions.delete(callID)
       executionOutcomes.delete(callID)
@@ -875,6 +893,11 @@ export namespace SessionProcessor {
               p.map(async (part) => {
                 if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") return
                 if (outcomes.has(part.callID)) return
+                const metadataOutcome = metadataToolOutcome(part)
+                if (metadataOutcome) {
+                  outcomes.set(part.callID, metadataOutcome)
+                  return
+                }
                 const outcome = await waitForPendingExecution(part)
                 if (!outcome) return
                 executionOutcomes.set(part.callID, outcome)
@@ -889,7 +912,7 @@ export namespace SessionProcessor {
           }
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const outcome = outcomes.get(part.callID)
+              const outcome = outcomes.get(part.callID) ?? metadataToolOutcome(part)
               if (outcome) {
                 await settleToolPart(part, outcome)
                 forgetToolCall(part.callID)
