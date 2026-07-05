@@ -80,12 +80,14 @@ describe("ProcessRegistry lifecycle", () => {
     expect(finished!.status).toBe("completed")
   })
 
-  test("markExited removes non-backgrounded process", () => {
+  test("markExited always persists into the finished registry", () => {
     const proc = ProcessRegistry.create({ command: "echo hi" })
-    // Don't call markBackgrounded
+    // Don't call markBackgrounded — a fast-exiting process may finish before
+    // the auto-background timer fires. It should still be findable via
+    // getFinished so callers don't race the exit.
     ProcessRegistry.markExited(proc, 0, null)
     expect(ProcessRegistry.get(proc.id)).toBeUndefined()
-    expect(ProcessRegistry.getFinished(proc.id)).toBeUndefined()
+    expect(ProcessRegistry.getFinished(proc.id)!.status).toBe("completed")
   })
 
   test("failed exit code produces failed status", () => {
