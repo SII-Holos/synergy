@@ -560,17 +560,6 @@ function createGlobalSync() {
     )
   }
 
-  function refreshVolatileStateAfterMessage(scopeKey: string, store: State, sessionID: string) {
-    if (store.inbox[sessionID]?.length) refreshInbox(scopeKey, sessionID)
-    if (
-      store.cortex.some(
-        (task) => task.sessionID === sessionID && (task.status === "running" || task.status === "queued"),
-      )
-    ) {
-      refreshCortex(scopeKey)
-    }
-  }
-
   async function refreshRetainedVolatileState(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
     const sessionIDs = Array.from(
       new Set([...Object.keys(store.inbox), ...Object.keys(store.todo), ...Object.keys(store.dag)]),
@@ -862,17 +851,14 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
-        const sessionID = event.properties.info.sessionID
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
           setStore("message", event.properties.info.sessionID, [event.properties.info])
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
         if (result.found) {
           setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         setStore(
@@ -882,7 +868,6 @@ function createGlobalSync() {
             draft.splice(result.index, 0, event.properties.info)
           }),
         )
-        refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
         break
       }
       case "message.removed": {

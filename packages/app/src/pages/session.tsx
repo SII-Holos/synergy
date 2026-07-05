@@ -455,24 +455,23 @@ function SessionPageContent() {
   const hydratedSessions = new Set<string>()
   const initializedSessions = new Set<string>()
 
+  // Single idempotent entry point for loading a session's data. Runs on session
+  // switch and on (re)connect; sync.session.sync dedups concurrent/ready loads
+  // internally. Replaces two separate effects that both called sync (one on
+  // params.id, one on sdk.connected) and double-fetched on mount.
   createEffect(
     on(
-      () => params.id,
-      (id, prevId) => {
+      () => [params.id, sdk.connected()] as const,
+      ([id, connected], prev) => {
+        const prevId = prev?.[0]
         if (prevId && prevId !== id) {
           hydratedSessions.delete(prevId)
           initializedSessions.delete(prevId)
         }
-        if (id) sync.session.sync(id, { refreshVolatile: true })
+        if (connected && id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
   )
-
-  createEffect(() => {
-    if (!sdk.connected()) return
-    const id = params.id
-    if (id) sync.session.sync(id, { refreshVolatile: true })
-  })
 
   createEffect(
     on(
