@@ -259,6 +259,26 @@ describe("SessionProgress.pendingReply", () => {
   })
 })
 
+describe("SessionProgress.needsModelCall", () => {
+  test("terminal root reply covers the latest non-root user injection", () => {
+    const root = userMessage("msg_1") as MessageV2.WithParts & { info: MessageV2.User }
+    root.info.isRoot = true
+    root.info.rootID = root.info.id
+
+    const steer = userMessage("msg_2") as MessageV2.WithParts & { info: MessageV2.User }
+    steer.info.isRoot = false
+    steer.info.rootID = root.info.id
+
+    const reply = assistantMessage("msg_3", root.info.id, "covered steer") as MessageV2.WithParts & {
+      info: MessageV2.Assistant
+    }
+    reply.info.rootID = root.info.id
+
+    expect(SessionProgress.needsModelCall([root, steer], root.info.id)).toBe(true)
+    expect(SessionProgress.needsModelCall([root, steer, reply], root.info.id)).toBe(false)
+  })
+})
+
 describe("SessionInvoke system prompt assembly", () => {
   test("injects the git coauthor reminder into model system prompts", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -391,6 +411,70 @@ describe("SessionInvoke system prompt assembly", () => {
 })
 
 describe("SessionInvoke inbox boundaries", () => {
+  test("context inbox items are not materialized without a confirmed model call", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "user",
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: true,
+          rootID: "",
+          time: { created: Date.now() },
+        })) as MessageV2.User
+        root.rootID = root.id
+        await Session.updateMessage(root)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: root.id,
+          sessionID: session.id,
+          type: "text",
+          text: "already answered",
+        })
+        await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "assistant",
+          sessionID: session.id,
+          parentID: root.id,
+          rootID: root.id,
+          mode: "synergy",
+          agent: "synergy",
+          path: { cwd: tmp.path, root: tmp.path },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          modelID: "test-model",
+          providerID: "test-provider",
+          time: { created: Date.now(), completed: Date.now() },
+          finish: "stop",
+        })
+
+        await SessionInbox.deliver({
+          sessionID: session.id,
+          mode: "context",
+          message: {
+            role: "user",
+            parts: [{ type: "text", text: "piggyback later" }],
+            origin: { type: "user" },
+          },
+        })
+
+        await SessionInvoke.loop.force(session.id)
+
+        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+        const messages = await Session.messages({ sessionID: session.id })
+        expect(messages.map((msg) => MessageV2.extractText(msg.parts)).join("\n")).not.toContain("piggyback later")
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("queued user input waits for after-turn and receives a materialization-time message id", async () => {
     await using tmp = await tmpdir({ git: true })
 
@@ -406,8 +490,6 @@ describe("SessionInvoke inbox boundaries", () => {
         if (callIndex !== 1) return
         await SessionInbox.enqueueUser({
           sessionID: activeSessionID,
-          agent: "synergy",
-          model: { providerID: "test-provider", modelID: "test-model" },
           messageID: staleMessageID,
           parts: [{ type: "text", text: "queued while running" }],
         })
@@ -456,6 +538,8 @@ describe("SessionInvoke inbox boundaries", () => {
           expect(processedUsers[1]).toBe(queued!.info.id)
           expect(queued!.info.id).not.toBe(staleMessageID)
           expect(queued!.info.id > firstReply!.info.id).toBe(true)
+          expect(queued!.info.agent).toBe("synergy")
+          expect(queued!.info.model).toEqual({ providerID: "test-provider", modelID: "test-model" })
           expect(promptPayloads[0]).not.toContain("queued while running")
           expect(promptPayloads[1]).toContain("queued while running")
         },

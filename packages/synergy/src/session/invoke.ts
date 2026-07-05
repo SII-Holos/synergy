@@ -139,61 +139,6 @@ export namespace SessionInvoke {
     return invokeWithInternalTools(input)
   }
 
-  async function materializeInboxItems(
-    sessionID: string,
-    items: SessionInbox.StoredItem[],
-    options?: { guiding?: boolean; rootID?: string },
-  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
-    if (items.length === 0) return { needsReply: false, userMessages: [] }
-
-    let needsReply = false
-    const userMessages: MessageV2.WithParts[] = []
-    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
-
-    for (const item of items) {
-      if (item.input) {
-        const { messageID: _queuedMessageID, ...queuedInput } = item.input
-        const noReply = options?.guiding ? true : item.input.noReply
-        const created = await createUserMessage(
-          {
-            ...queuedInput,
-            sessionID,
-            noReply,
-          },
-          options?.rootID,
-        )
-        userMessages.push(created)
-        if (noReply !== true) needsReply = true
-        continue
-      }
-
-      const mail = item.mail
-      if (!mail) continue
-      if (mail.type === "assistant") {
-        await writeAssistantMail(sessionID, mail)
-        continue
-      }
-
-      const noReply = options?.guiding ? true : mail.noReply
-      const created = await createUserMessage(
-        {
-          sessionID,
-          agent: mail.agent,
-          model: mail.model ?? fallbackModel,
-          parts: partsFromMail(mail),
-          noReply,
-          summary: mail.summary,
-          metadata: mail.metadata,
-        },
-        options?.rootID,
-      )
-      userMessages.push(created)
-      if (noReply !== true) needsReply = true
-    }
-
-    return { needsReply, userMessages }
-  }
-
   async function recallMemory(
     step: number,
     sessionID: string,
@@ -890,22 +835,11 @@ export namespace SessionInvoke {
         continue outer
       }
 
-      // Peek-then-commit: materialize remaining ready items (steer/context that
-      // never triggered a call, and assistant-role context deliveries) and only
-      // delete them once the reply cycle has settled.
-      const readyItems = await SessionInbox.peekReady(sessionID)
-      const readyResult = await materializeInboxItems(sessionID, readyItems)
-      const committedIDs = new Set(readyItems.map((item) => item.id))
-
-      if (readyResult.needsReply) {
-        await SessionInbox.commitReady(sessionID, committedIDs)
+      const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+      if (await SessionInbox.hasRunnableItem(sessionID, { allowSteer: !rollbackActive })) {
+        log.info("runnable inbox items detected, re-entering loop", { sessionID })
         continue outer
       }
-
-      // Commit to remove materialized items from the inbox, then do a
-      // final check for late-arriving items before clearing pendingReply.
-      await SessionInbox.commitReady(sessionID, committedIDs)
-      if (await hasLateArrivingInbox(sessionID)) continue outer
       break
     }
 
@@ -1007,22 +941,6 @@ export namespace SessionInvoke {
     })
   }
 
-  /**
-   * Check for inbox items that arrived after the after-turn boundary closed.
-   * Returns true if any ready items exist and should trigger a loop re-entry.
-   */
-  async function hasLateArrivingInbox(sessionID: string): Promise<boolean> {
-    const lateItems = await SessionInbox.peekReady(sessionID)
-    if (lateItems.length > 0) {
-      log.info("late-arriving inbox items detected, re-entering loop", {
-        sessionID,
-        count: lateItems.length,
-      })
-      return true
-    }
-    return false
-  }
-
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
     const abortedParentID = Identifier.ascending("message")
     const assistantMessage = (await Session.updateMessage({
@@ -1071,81 +989,6 @@ export namespace SessionInvoke {
       info: assistantMessage,
       parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),
     }
-  }
-
-  async function writeAssistantMail(sessionID: string, mail: SessionManager.SessionMail.Assistant): Promise<void> {
-    // Use an orphan parentID so the message is not grouped into any existing turn
-    const parentID = Identifier.ascending("message")
-
-    const assistantMessage: MessageV2.Assistant = {
-      id: Identifier.ascending("message"),
-      role: "assistant",
-      sessionID,
-      parentID,
-      rootID: parentID,
-      visible: true,
-      agent: mail.agentID ?? "unknown",
-      mode: mail.agentID ?? "unknown",
-      path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
-      },
-      cost: 0,
-      tokens: {
-        input: 0,
-        output: 0,
-        reasoning: 0,
-        cache: { read: 0, write: 0 },
-      },
-      modelID: mail.model?.modelID ?? "unknown",
-      providerID: mail.model?.providerID ?? "unknown",
-      time: {
-        created: Date.now(),
-        completed: Date.now(),
-      },
-      finish: "stop",
-      metadata: mail.metadata,
-    }
-    for (const part of mail.parts) {
-      await Session.updatePart({
-        ...part,
-        messageID: assistantMessage.id,
-        sessionID,
-      })
-    }
-
-    await Session.updateMessage(assistantMessage)
-    ExperienceEncoder.onComplete(assistantMessage)
-    await Plugin.trigger(
-      "session.turn.after",
-      {
-        sessionID,
-        userMessageID: assistantMessage.parentID,
-        assistantMessageID: assistantMessage.id,
-        assistant: assistantMessage,
-        finish: assistantMessage.finish,
-        error: assistantMessage.error,
-      },
-      {},
-    )
-
-    log.info("assistant mail written", {
-      sessionID,
-      messageID: assistantMessage.id,
-      metadata: JSON.stringify(assistantMessage.metadata ?? {}).slice(0, 200),
-    })
-  }
-
-  function partsFromMail(mail: SessionManager.SessionMail.User): InvokeInput["parts"] {
-    const textParts = mail.parts.filter((part): part is MessageV2.TextPart => part.type === "text")
-    if (textParts.length > 0) {
-      return textParts.map((part) => ({
-        type: "text" as const,
-        text: part.text ?? "",
-        synthetic: part.synthetic,
-      }))
-    }
-    return [{ type: "text" as const, text: "" }]
   }
 
   async function buildDagUpstreamContext(

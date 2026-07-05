@@ -31,5 +31,5 @@ export function deriveSessionInboxView(items: SessionInboxItem[] | undefined): S
 }
 
 export function isInboxItemInteractive(item: SessionInboxItem) {
-  return item.mode === "task"
+  return item.mode === "task" || item.mode === "steer"
 }

@@ -259,8 +259,7 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID, error })
     })
 
-    const inboxItems = await SessionInbox.peekReady(sessionID)
-    if (inboxItems.length > 0) {
+    if (await SessionInbox.hasRunnableItem(sessionID)) {
       const { SessionInvoke } = await import("./invoke")
       await SessionInvoke.loop(sessionID)
     }
@@ -318,10 +317,42 @@ export namespace SessionManager {
 
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
-    await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
+    const releaseIfIdle = () => {
+      if (!runtime.abort) unregisterRuntime(session.id)
+    }
+
+    if (input.mail.type === "assistant") {
+      await SessionInbox.deliver({
+        sessionID: session.id,
+        mode: "context",
+        message: {
+          role: "assistant",
+          parts: input.mail.parts as any,
+          agent: input.mail.agentID,
+          model: input.mail.model,
+          metadata: input.mail.metadata,
+        },
+      })
+      releaseIfIdle()
+      return
+    }
+
+    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
 
     if (isRunning(session.id)) {
       log.info("mail queued (session running)", { sessionID: session.id })
+      return
+    }
+
+    if (item.mode === "context") {
+      log.info("context mail queued without waking session", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
+      return
+    }
+
+    if (item.mode === "steer" && !(await SessionInbox.latestRootID(session.id))) {
+      log.info("steer mail queued without root to resume", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
       return
     }
 

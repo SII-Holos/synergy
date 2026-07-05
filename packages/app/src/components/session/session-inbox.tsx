@@ -90,6 +90,11 @@ function InboxRow(props: {
   const [menuOpen, setMenuOpen] = createSignal(false)
   const canInteract = () => !props.disabled && isInboxItemInteractive(props.item)
   const preview = () => props.item.summary.preview || props.item.summary.title
+  const guideLabel = () => (props.item.mode === "steer" ? "Queue" : "Send now")
+  const guideTitle = () =>
+    props.item.mode === "steer"
+      ? "Move this message back to the queued task list."
+      : "Add this message to the current run's next model call."
 
   const remove = () => {
     setMenuOpen(false)
@@ -114,14 +119,14 @@ function InboxRow(props: {
           <button
             type="button"
             class="session-inbox-send-now"
-            aria-label="Send queued message now"
-            title="Add this message to the current run's next model call."
+            aria-label={guideLabel()}
+            title={guideTitle()}
             onClick={(event) => {
               event.stopPropagation()
               props.onGuide(props.item)
             }}
           >
-            Send now
+            {guideLabel()}
           </button>
           <Popover
             open={menuOpen()}

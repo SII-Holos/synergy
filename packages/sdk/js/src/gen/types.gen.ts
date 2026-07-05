@@ -3565,6 +3565,18 @@ export type SessionInboxItem = {
     }
     origin?: OriginUser
     visible?: boolean
+    metadata?: {
+      [key: string]: unknown
+    }
+    summary?: {
+      title?: string
+      body?: string
+    }
+    system?: string
+    tools?: {
+      [key: string]: boolean
+    }
+    variant?: string
   }
   summaryPreview?: string
   summary: {

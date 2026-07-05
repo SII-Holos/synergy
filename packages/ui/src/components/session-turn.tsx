@@ -289,11 +289,14 @@ export function collectMessagesForTurnDisplay(
 
     if (item.role === "user") {
       // Non-root user messages become chips; skip root user messages
-      if (!(item as UserMessage).isRoot) {
-        result.push(item as UserMessage)
+      const userItem = item as UserMessage
+      if (!userItem.isRoot && userItem.visible !== false) {
+        result.push(userItem)
       }
       continue
     }
+
+    if ((item as { visible?: boolean }).visible === false) continue
 
     // Assistant message
     result.push(item as AssistantMessage)

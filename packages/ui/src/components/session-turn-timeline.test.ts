@@ -248,6 +248,14 @@ describe("session turn assistant collection", () => {
     ).toEqual([toolStep.id, final.id])
   })
 
+  test("omits invisible non-root context from turn display", () => {
+    const firstUser = user("msg_001_user")
+    const hidden = user("msg_002_hidden", { isRoot: false, rootID: firstUser.id, visible: false })
+    const final = assistantFor("msg_003_assistant_final", firstUser.id)
+
+    expect(collectMessagesForTurnDisplay([firstUser, hidden, final] as MessageType[], firstUser.id)).toEqual([final])
+  })
+
   test("stops at the next normal user turn", () => {
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)

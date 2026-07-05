@@ -9,9 +9,13 @@ import { StoragePath } from "@/storage/path"
 import { Context } from "@/util/context"
 import { Log } from "@/util/log"
 import { fn } from "@/util/fn"
+import { Agent } from "@/agent/agent"
+import { Plugin } from "@/plugin"
+import { ExperienceEncoder } from "@/library/experience-encoder"
+import { ScopeContext } from "@/scope/context"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
-import type { InvokeInput } from "./input"
+import { lastModel, type InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
 
@@ -60,6 +64,16 @@ export namespace SessionInbox {
             .optional(),
           origin: MessageV2.OriginUser.optional(),
           visible: z.boolean().default(true),
+          metadata: z.record(z.string(), z.any()).optional(),
+          summary: z
+            .object({
+              title: z.string().optional(),
+              body: z.string().optional(),
+            })
+            .optional(),
+          system: z.string().optional(),
+          tools: z.record(z.string(), z.boolean()).optional(),
+          variant: z.string().optional(),
         })
         .optional(),
       summaryPreview: z.string().optional(),
@@ -113,7 +127,17 @@ export namespace SessionInbox {
           })
           .optional(),
         origin: MessageV2.OriginUser.optional(),
-        visible: z.boolean().default(true),
+        visible: z.boolean().optional(),
+        metadata: z.record(z.string(), z.any()).optional(),
+        summary: z
+          .object({
+            title: z.string().optional(),
+            body: z.string().optional(),
+          })
+          .optional(),
+        system: z.string().optional(),
+        tools: z.record(z.string(), z.boolean()).optional(),
+        variant: z.string().optional(),
       }),
     })
     export const Output = z.object({
@@ -261,6 +285,78 @@ export namespace SessionInbox {
     return "task"
   }
 
+  function mailMode(mail: SessionManager.SessionMail): ItemMode {
+    if (mail.type === "assistant") return "context"
+    const origin = MessageV2.originFromMetadata(mail.metadata)
+    if (mail.noReply === true) return "steer"
+    if (origin.type === "cortex" || origin.type === "compaction" || origin.type === "system") return "steer"
+    return "task"
+  }
+
+  function visibleFor(mode: ItemMode, origin: MessageV2.OriginUser | undefined, explicit?: boolean): boolean {
+    if (explicit !== undefined) return explicit
+    if (mode === "task") return true
+    return origin ? MessageV2.originRenders(origin) : false
+  }
+
+  async function resolveUserRuntime(
+    sessionID: string,
+    payload: NonNullable<StoredItem["message"]>,
+  ): Promise<{ agent: string; model: { providerID: string; modelID: string } }> {
+    let agentName = payload.agent
+    if (!agentName) {
+      const messages = await Session.messages({ sessionID })
+      for (let index = messages.length - 1; index >= 0; index--) {
+        const msg = messages[index]
+        if (msg.info.role !== "user") continue
+        agentName = (msg.info as MessageV2.User).agent
+        break
+      }
+    }
+
+    const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+    const inheritedModel = await lastModel(sessionID).catch(() => undefined)
+    const model = payload.model ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
+    return {
+      agent: agent.name,
+      model: model ?? { providerID: "system", modelID: "fallback" },
+    }
+  }
+
+  export async function latestRootID(sessionID: string): Promise<string | undefined> {
+    const messages = await Session.messages({ sessionID })
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const msg = messages[index]
+      if (msg.info.role !== "user") continue
+      const user = msg.info as MessageV2.User
+      if (user.isRoot === true) return user.rootID ?? user.id
+    }
+  }
+
+  export async function hasRunnableItem(
+    sessionID: string,
+    options?: { allowSteer?: boolean; excludeIDs?: Set<string> },
+  ): Promise<boolean> {
+    const items = await peekReady(sessionID, options?.excludeIDs)
+    if (items.some((item) => item.mode === "task")) return true
+    if (options?.allowSteer === false) return false
+    if (!items.some((item) => item.mode === "steer")) return false
+    return !!(await latestRootID(sessionID))
+  }
+
+  async function wakeIfRunnable(item: StoredItem): Promise<void> {
+    const { SessionManager } = await import("./manager")
+    if (SessionManager.isRunning(item.sessionID)) return
+    if (!(await hasRunnableItem(item.sessionID))) return
+
+    log.info("waking idle session for inbox item", { sessionID: item.sessionID, itemID: item.id, mode: item.mode })
+    void import("./invoke")
+      .then(({ SessionInvoke }) => SessionInvoke.loop(item.sessionID))
+      .catch((error) => {
+        log.error("async inbox wake failed", { sessionID: item.sessionID, itemID: item.id, error })
+      })
+  }
+
   export async function list(sessionID: string): Promise<Item[]> {
     return (await listStored(sessionID)).map(publicItem)
   }
@@ -282,9 +378,12 @@ export namespace SessionInbox {
     const itemID = Identifier.ascending("inbox")
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
+    const origin = input.message.role === "user" ? (input.message.origin ?? { type: "user" as const }) : undefined
     const source: ItemSource = input.message.agent
       ? { type: "agent", label: input.message.agent }
-      : { type: "user", label: "You" }
+      : origin
+        ? { type: origin.type, label: origin.label ?? (origin.type === "user" ? "You" : origin.type) }
+        : { type: "agent", label: "Agent" }
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
@@ -294,8 +393,13 @@ export namespace SessionInbox {
         role: input.message.role,
         agent: input.message.agent,
         model: input.message.model,
-        origin: input.message.origin,
-        visible: input.message.visible,
+        origin,
+        visible: visibleFor(mode, origin, input.message.visible),
+        metadata: input.message.metadata,
+        summary: input.message.summary,
+        system: input.message.system,
+        tools: input.message.tools,
+        variant: input.message.variant,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -308,7 +412,13 @@ export namespace SessionInbox {
       orderKey: itemID,
       messageID,
     }
+    if (input.message.role === "assistant") {
+      await materializeItem(item, await latestRootID(input.sessionID))
+      return { itemID, messageID }
+    }
+
     await writeItem(item)
+    await wakeIfRunnable(item)
     return { itemID, messageID }
   })
 
@@ -317,16 +427,24 @@ export namespace SessionInbox {
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
+    const origin = MessageV2.originFromMetadata(input.metadata)
+    const mode: ItemMode = input.noReply === true ? "steer" : "task"
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
-      mode: "task",
+      mode,
       message: {
         role: "user",
         parts: input.parts as any,
         agent: input.agent,
         model: input.model,
-        visible: true,
+        origin,
+        visible: visibleFor(mode, origin),
+        metadata: input.metadata,
+        summary: input.summary,
+        system: input.system,
+        tools: input.tools,
+        variant: input.variant,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -363,9 +481,9 @@ export namespace SessionInbox {
                 : { type: "agent", label: "Agent" }
     const title = input.mail.type === "user" ? input.mail.summary?.title : undefined
     const userMail = input.mail as SessionManager.SessionMail.User
-    // assistant deliveries never own a reply cycle → context; user deliveries
-    // are task only when they explicitly request a reply, else steer.
-    const mode: ItemMode = input.mail.type === "assistant" ? "context" : input.mail.noReply === false ? "task" : "steer"
+    const assistantMail = input.mail as SessionManager.SessionMail.Assistant
+    const origin = input.mail.type === "user" ? MessageV2.originFromMetadata(input.mail.metadata) : undefined
+    const mode = mailMode(input.mail)
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,
@@ -373,9 +491,12 @@ export namespace SessionInbox {
       message: {
         role: input.mail.type === "assistant" ? "assistant" : "user",
         parts: input.mail.parts as any,
-        agent: userMail.agent,
-        model: userMail.model,
-        visible: true,
+        agent: input.mail.type === "assistant" ? assistantMail.agentID : userMail.agent,
+        model: input.mail.model,
+        origin,
+        visible: visibleFor(mode, origin),
+        metadata: input.mail.metadata,
+        summary: userMail.summary,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -399,6 +520,7 @@ export namespace SessionInbox {
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
     const item = await getStored(input.sessionID, input.itemID)
+    if (item.mode === "context") return publicItem(item)
     const updated: StoredItem = {
       ...item,
       mode: item.mode === "task" ? "steer" : "task",
@@ -503,18 +625,39 @@ export namespace SessionInbox {
     const resolvedRootID = rootID ?? (isRoot ? messageID : undefined)
 
     const role = payload.role
-    const agent = payload.agent ?? "system"
-    const model = payload.model ?? { providerID: "system", modelID: "fallback" }
-
     // Build parts with synthesized IDs
     const parts = payload.parts.map((p: any) => ({
       ...p,
       id: p.id ?? Identifier.ascending("part"),
       messageID,
       sessionID: item.sessionID,
+      ...(p.type === "text" && !p.origin ? { origin: p.synthetic ? "system" : "user" } : {}),
     }))
 
     if (role === "user") {
+      if (item.input) {
+        const { createUserMessage } = await import("./input")
+        return createUserMessage(
+          {
+            ...item.input,
+            sessionID: item.sessionID,
+            messageID,
+            noReply: item.mode === "task" ? item.input.noReply : true,
+          },
+          rootID,
+        )
+      }
+
+      const origin = payload.origin ?? { type: "user" as const }
+      const runtime = await resolveUserRuntime(item.sessionID, payload)
+      const summary =
+        payload.summary?.title || payload.summary?.body
+          ? {
+              title: payload.summary.title,
+              body: payload.summary.body,
+              diffs: [],
+            }
+          : undefined
       // Scheduling & rendering come from mode-derived isRoot/visible/origin;
       // no noReply/guided metadata flags are written.
       const info: MessageV2.User = {
@@ -522,12 +665,17 @@ export namespace SessionInbox {
         role: "user",
         sessionID: item.sessionID,
         time: { created: Date.now() },
-        agent,
-        model,
+        agent: runtime.agent,
+        model: runtime.model,
         isRoot,
         ...(resolvedRootID ? { rootID: resolvedRootID } : {}),
         visible: payload.visible,
-        ...(payload.origin ? { origin: payload.origin } : {}),
+        origin,
+        ...(payload.metadata ? { metadata: payload.metadata } : {}),
+        ...(summary ? { summary } : {}),
+        ...(payload.system ? { system: payload.system } : {}),
+        ...(payload.tools ? { tools: payload.tools } : {}),
+        ...(payload.variant ? { variant: payload.variant } : {}),
       }
       await Session.updateMessage(info)
       for (const part of parts) {
@@ -537,6 +685,8 @@ export namespace SessionInbox {
     }
 
     // Assistant messages
+    const assistantAgent = payload.agent ?? "unknown"
+    const assistantModel = payload.model ?? { providerID: "unknown", modelID: "unknown" }
     const info: MessageV2.Assistant = {
       id: messageID,
       role: "assistant",
@@ -544,21 +694,34 @@ export namespace SessionInbox {
       parentID: rootID ?? messageID,
       rootID: rootID ?? messageID,
       time: { created: Date.now(), completed: Date.now() },
-      agent,
-      mode: agent,
+      agent: assistantAgent,
+      mode: assistantAgent,
       finish: "stop",
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      path: { cwd: "/", root: "/" },
-      modelID: model.modelID,
-      providerID: model.providerID,
+      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+      modelID: assistantModel.modelID,
+      providerID: assistantModel.providerID,
       visible: payload.visible,
-      ...(payload.origin ? { origin: payload.origin } : {}),
+      ...(payload.metadata ? { metadata: payload.metadata } : {}),
     }
     await Session.updateMessage(info)
     for (const part of parts) {
       await Session.updatePart(part)
     }
+    ExperienceEncoder.onComplete(info)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID: item.sessionID,
+        userMessageID: info.parentID,
+        assistantMessageID: info.id,
+        assistant: info,
+        finish: info.finish,
+        error: info.error,
+      },
+      {},
+    )
     return { info, parts }
   }
 }

@@ -24880,9 +24880,14 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string"
+            "default": "system",
+            "type": "string",
+            "enum": ["user", "cortex", "agenda", "blueprint", "channel", "compaction", "agent", "plugin", "system"]
           },
           "sessionID": {
+            "type": "string"
+          },
+          "pluginID": {
             "type": "string"
           },
           "label": {
@@ -24917,18 +24922,6 @@
           "sessionID": {
             "type": "string",
             "pattern": "^ses.*"
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["queued_user", "guiding", "agent_update"]
-          },
-          "state": {
-            "type": "string",
-            "enum": ["queued", "guiding"]
-          },
-          "deliveryTarget": {
-            "type": "string",
-            "enum": ["after_turn", "next_model_call"]
           },
           "mode": {
             "type": "string",
@@ -25056,6 +25049,39 @@
               "visible": {
                 "default": true,
                 "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                }
+              },
+              "system": {
+                "type": "string"
+              },
+              "tools": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              },
+              "variant": {
+                "type": "string"
               }
             },
             "required": ["parts"]
@@ -25112,19 +25138,7 @@
             "pattern": "^msg.*"
           }
         },
-        "required": [
-          "id",
-          "sessionID",
-          "kind",
-          "state",
-          "deliveryTarget",
-          "mode",
-          "summary",
-          "source",
-          "time",
-          "orderKey",
-          "messageID"
-        ]
+        "required": ["id", "sessionID", "mode", "summary", "source", "time", "orderKey", "messageID"]
       },
       "SessionInputResult": {
         "anyOf": [

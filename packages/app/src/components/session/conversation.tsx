@@ -40,6 +40,8 @@ export function SessionConversation(props: {
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
   onRewind?: (message: UserMessage) => void
+  onPendingGuide?: (item: SessionInboxItem) => void
+  onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
 }) {
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
@@ -171,6 +173,7 @@ export function SessionConversation(props: {
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
               const isTask = () => item.mode === "task"
+              const guideLabel = () => (item.mode === "steer" ? "Queue" : "Guide")
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
                   ? (item.message!.parts[0] as { text: string }).text
@@ -193,6 +196,26 @@ export function SessionConversation(props: {
                   <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
                     <span class="text-xs">{label()}</span>
                   </Show>
+                  <div class="ml-auto flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-muted hover:bg-background-base hover:text-text"
+                      title={item.mode === "steer" ? "Move back to queue" : "Guide current run"}
+                      onClick={() => props.onPendingGuide?.(item)}
+                    >
+                      <Icon name={item.mode === "steer" ? "corner-down-left" : "zap"} size="small" />
+                      <span>{guideLabel()}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-muted hover:bg-background-base hover:text-text"
+                      title="Remove pending message"
+                      onClick={() => props.onPendingRemove?.(item)}
+                    >
+                      <Icon name="x" size="small" />
+                      <span>Withdraw</span>
+                    </button>
+                  </div>
                 </div>
               )
             }}

@@ -58,9 +58,9 @@ describe("deriveSessionInboxView", () => {
 })
 
 describe("isInboxItemInteractive", () => {
-  test("only queued user messages are interactive", () => {
+  test("task and steer user messages are interactive", () => {
     expect(isInboxItemInteractive(item("inb_queued", "task", "001"))).toBe(true)
-    expect(isInboxItemInteractive(item("inb_guiding", "steer", "002"))).toBe(false)
+    expect(isInboxItemInteractive(item("inb_guiding", "steer", "002"))).toBe(true)
     expect(isInboxItemInteractive(item("inb_agent", "context", "003"))).toBe(false)
   })
 })

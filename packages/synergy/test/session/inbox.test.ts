@@ -27,6 +27,7 @@ describe("SessionInbox", () => {
 
         expect(item.mode).toBe("task")
         expect(item.messageID).toBeDefined()
+        expect(item.message?.origin?.type).toBe("user")
         expect(item.summary.preview).toContain("please adjust")
         expect(await Session.messages({ sessionID: session.id })).toEqual([])
 
@@ -57,6 +58,51 @@ describe("SessionInbox", () => {
         expect(items[0].id).toBe(queued.id)
         expect(items[0].mode).toBe("steer")
         expect(items[0].messageID).toBeDefined()
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("queues noReply user input as steer", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          noReply: true,
+          parts: [{ type: "text", text: "do not start a new task" }],
+        })
+
+        expect(queued.mode).toBe("steer")
+        expect(queued.message?.visible).toBe(false)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("does not guide context items into runnable work", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const context = await SessionInbox.deliver({
+          sessionID: session.id,
+          mode: "context",
+          message: {
+            role: "user",
+            parts: [{ type: "text", text: "only if a call is already needed" }],
+          },
+        })
+
+        const guided = await SessionInbox.guide({ sessionID: session.id, itemID: context.itemID })
+
+        expect(guided.mode).toBe("context")
+        expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
 
         SessionManager.unregisterRuntime(session.id)
       },
@@ -95,6 +141,70 @@ describe("SessionInbox", () => {
         expect(items[0].mode).toBe("steer")
         expect(items[0].source.type).toBe("cortex")
         expect(items[0].summary.preview).toContain("background task completed")
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("legacy mail mode preserves reply-required default", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const task = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "user",
+            parts: [
+              {
+                id: "prt_task_mail",
+                sessionID: session.id,
+                messageID: "msg_task_mail",
+                type: "text",
+                text: "start a task",
+              },
+            ],
+          },
+        })
+        const steer = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "user",
+            noReply: true,
+            parts: [
+              {
+                id: "prt_steer_mail",
+                sessionID: session.id,
+                messageID: "msg_steer_mail",
+                type: "text",
+                text: "join the current task",
+              },
+            ],
+          },
+        })
+        const assistant = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "assistant",
+            parts: [
+              {
+                id: "prt_assistant_mail",
+                sessionID: session.id,
+                messageID: "msg_assistant_mail",
+                type: "text",
+                text: "record this",
+              },
+            ],
+          },
+        })
+
+        expect(task.mode).toBe("task")
+        expect(task.message?.origin?.type).toBe("user")
+        expect(steer.mode).toBe("steer")
+        expect(assistant.mode).toBe("context")
 
         SessionManager.unregisterRuntime(session.id)
       },

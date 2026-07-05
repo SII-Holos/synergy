@@ -21,7 +21,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Session, SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
@@ -361,13 +361,24 @@ function SessionPageContent() {
 
   const pendingTimeline = createMemo(() => {
     const sessionID = params.id
-    if (!sessionID) return [] as import("@ericsanchezok/synergy-sdk/client").SessionInboxItem[]
+    if (!sessionID) return [] as SessionInboxItem[]
     const inbox = sync.data.inbox[sessionID]
     if (!inbox || inbox.length === 0) return []
     return inbox
       .filter((item) => item.mode === "task" || item.mode === "steer")
-      .filter((item) => item.message?.origin?.type === "user")
+      .filter((item) => item.message?.visible !== false)
+      .filter((item) => (item.message?.origin?.type ?? item.source?.type) === "user")
   })
+  const guidePending = async (item: SessionInboxItem) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    await sdk.client.session.inboxGuide({ sessionID, itemID: item.id })
+  }
+  const removePending = async (item: SessionInboxItem) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    await sdk.client.session.inboxRemove({ sessionID, itemID: item.id })
+  }
 
   const timeline = createMemo(() => {
     const turns = renderedConversationUserMessages() as Message[]
@@ -1045,6 +1056,8 @@ function SessionPageContent() {
                           terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
                           workspaceOpen={sideOpen}
                           onRewind={openRewindConfirm}
+                          onPendingGuide={(item) => void guidePending(item)}
+                          onPendingRemove={(item) => void removePending(item)}
                           rollbackActive={rollbackActive()}
                         />
                       </Show>

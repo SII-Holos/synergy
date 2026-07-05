@@ -58,7 +58,7 @@ function computeCounts(props: {
 export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
   const dialog = useDialog()
   const [pending, setPending] = createSignal(false)
-  const [restoreFiles, setRestoreFiles] = createSignal(true)
+  const [restoreFiles, setRestoreFiles] = createSignal(false)
 
   const summary = createMemo(() => (props.cutMessage as { summary?: { title?: string } }).summary?.title)
 
