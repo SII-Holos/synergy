@@ -36,7 +36,7 @@ import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
-import { hasVisibleUserMessageContent } from "./user-message-utils"
+import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
@@ -590,7 +590,7 @@ export function SessionTurn(
 
   const shellModePart = createMemo(() => {
     const p = parts()
-    if (!p.every((part) => part?.type === "text" && part?.synthetic)) return
+    if (!p.every((part) => part?.type === "text" && isSystemPart(part))) return
 
     const msgs = assistantMessages()
     if (msgs.length !== 1) return

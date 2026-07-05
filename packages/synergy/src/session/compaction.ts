@@ -132,9 +132,7 @@ export namespace SessionCompaction {
     const sections: string[] = []
 
     const recentUsers = messages
-      .filter(
-        (m) => m.info.role === "user" && !m.parts.some((p) => p.type === "text" && "synthetic" in p && p.synthetic),
-      )
+      .filter((m) => m.info.role === "user" && !m.parts.some((p) => MessageV2.isSystemPart(p) && p.type === "text"))
       .slice(-3)
       .map((m) => {
         const text = m.parts
@@ -293,7 +291,7 @@ export namespace SessionCompaction {
 
   function realUserText(msg: MessageV2.WithParts): string | undefined {
     const textParts = msg.parts.filter(
-      (p): p is MessageV2.TextPart => p.type === "text" && p.origin !== "system" && !p.synthetic && !p.ignored,
+      (p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p) && !p.ignored,
     )
     if (textParts.length === 0) return undefined
     const text = textParts

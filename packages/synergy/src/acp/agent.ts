@@ -319,7 +319,7 @@ export namespace ACP {
                   }
                 } else if (part.type === "text") {
                   const delta = props.delta
-                  if (delta && part.synthetic !== true) {
+                  if (delta && !MessageV2.isSystemPart(part)) {
                     await this.connection
                       .sessionUpdate({
                         sessionId,
