@@ -266,16 +266,8 @@ export namespace MessageV2 {
   export const CompactionRecoveryPart = PartBase.extend({
     type: z.literal("compaction_recovery"),
     summary: z.string(),
-    sections: z.array(
-      z.object({
-        heading: z.string(),
-        items: z.string().array(),
-      }),
-    ),
     mechanical: z.boolean(),
     recoverySessionIDs: z.string().array().optional(),
-    pendingDagCount: z.number().int().nonnegative().optional(),
-    nextStep: z.string().optional(),
     validated: z.boolean(),
   }).meta({
     ref: "CompactionRecoveryPart",

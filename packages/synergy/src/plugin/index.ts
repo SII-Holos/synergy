@@ -15,10 +15,13 @@ import * as status from "./status"
 export namespace Plugin {
   // Re-export LoadedPlugin type from loader
   export type LoadedPlugin = loader.LoadedPlugin
+  export type DisabledPlugin = loader.DisabledPlugin
 
   // Loader accessors
   export const getLoaded = loader.getLoadedPlugins
+  export const getDisabled = loader.getDisabledPlugins
   export const get = loader.getPlugin
+  export const getDisabledPlugin = loader.getDisabledPlugin
   export const perPluginHooks = loader.getHooks
   export const allHooks = loader.getHooksList
   export const cliEntries = loader.getCliEntries

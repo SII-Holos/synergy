@@ -14,6 +14,7 @@ type MaybeToolPart = {
 export type ToolDisplayKind = "default" | "media-generation"
 export type ToolCardDisplay = "visible" | "hidden"
 export type ToolMediaType = "image" | "video" | "audio"
+export type ToolMediaSize = "small" | "medium" | "large"
 
 export interface ToolMediaDisplay {
   type?: ToolMediaType
@@ -21,6 +22,7 @@ export interface ToolMediaDisplay {
   pendingTitle?: string
   pendingDescription?: string
   aspectRatio?: "1:1" | "4:3" | "16:9" | "auto"
+  size?: ToolMediaSize
 }
 
 export interface ToolDisplayMetadata {

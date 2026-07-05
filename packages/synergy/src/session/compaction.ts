@@ -216,33 +216,10 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "compaction_recovery",
       summary,
-      sections: [{ heading: "Summary", items: [summary] }],
       mechanical: true,
       validated: false,
     })
     log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
-  }
-
-  export function parseCompactionSections(markdown: string): { heading: string; items: string[] }[] {
-    const sections: { heading: string; items: string[] }[] = []
-    const lines = markdown.split("\n")
-    let currentHeading = ""
-    let currentItems: string[] = []
-
-    for (const line of lines) {
-      const headingMatch = line.match(/^### (.+)/)
-      if (headingMatch) {
-        if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
-        currentHeading = headingMatch[1].trim()
-        currentItems = []
-      } else {
-        const itemMatch = line.match(/^- (.+)/)
-        if (itemMatch) currentItems.push(itemMatch[1].trim())
-      }
-    }
-    if (currentHeading) sections.push({ heading: currentHeading, items: currentItems })
-
-    return sections.length > 0 ? sections : [{ heading: "Summary", items: [markdown] }]
   }
 
   // goes backwards through parts until there are 40_000 tokens worth of tool
@@ -426,8 +403,15 @@ export namespace SessionCompaction {
       { sessionID: input.sessionID },
       { context: [], prompt: undefined },
     )
-    const defaultPrompt =
-      "Provide a detailed prompt for continuing our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next considering new session will not have access to our conversation."
+    const defaultPrompt = [
+      "Write the compaction continuation summary now.",
+      "Strictly follow the compaction system prompt and its required Markdown section headers.",
+      "Only summarize the prior conversation for a future session; do not continue the user's task or answer pending requests.",
+      "Do not call tools. Do not emit tool-call-shaped text, DSML/XML tool blocks, JSON-RPC requests, shell transcripts, patches, file writes, or structured tool arguments.",
+      "Preserve exact observed facts, including user requests, decisions, constraints, file paths, commands already run, results already observed, completed work, current state, and pending work.",
+      "If something is unknown or was not observed, say it is unknown. Do not infer or fabricate.",
+      "Output only the Markdown continuation summary.",
+    ].join("\n")
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
     // Trim the conversation history so it fits within the compaction model's
@@ -490,18 +474,10 @@ export namespace SessionCompaction {
     }
     await Session.updateMessage(msg)
 
-    // Emit a CompactionRecoveryPart with the parsed sections for the frontend.
+    // Emit the full compaction text for the frontend.
     const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
     const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
     const allText = textParts.map((p) => p.text).join("\n")
-    const sections = parseCompactionSections(allText)
-
-    const nextStepsSection = sections.find((s) => s.heading.toLowerCase().includes("next step"))
-    const nextStep = nextStepsSection?.items[0]
-
-    const inProgressSection = sections.find((s) => s.heading.toLowerCase().includes("in progress"))
-    const rawDagCount = inProgressSection?.items.filter((i) => i.toLowerCase().includes("dag")).length
-    const pendingDagCount = rawDagCount != null && rawDagCount > 0 ? rawDagCount : undefined
 
     await Session.updatePart({
       id: Identifier.ascending("part"),
@@ -509,10 +485,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "compaction_recovery",
       summary: allText,
-      sections,
       mechanical: false,
-      nextStep,
-      pendingDagCount,
       validated: true,
     })
 

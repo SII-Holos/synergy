@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { Part as PartType } from "@ericsanchezok/synergy-sdk"
 import {
   USER_MESSAGE_COLLAPSE_LENGTH,
+  hasVisibleUserMessageContent,
   USER_MESSAGE_COLLAPSE_LINES,
   shouldCollapseUserMessage,
   userMessageLineCount,
@@ -29,5 +30,18 @@ describe("user message display helpers", () => {
     ] as PartType[]
 
     expect(visibleUserMessageText(parts)).toBe("visible user message")
+  })
+
+  test("does not treat synthetic-only text as visible user content", () => {
+    expect(hasVisibleUserMessageContent(undefined)).toBe(false)
+    expect(
+      hasVisibleUserMessageContent([
+        { type: "text", text: "Continue if you have next steps", synthetic: true },
+      ] as PartType[]),
+    ).toBe(false)
+    expect(hasVisibleUserMessageContent([{ type: "text", text: "visible user message" }] as PartType[])).toBe(true)
+    expect(
+      hasVisibleUserMessageContent([{ type: "attachment", filename: "image.png", mime: "image/png" }] as PartType[]),
+    ).toBe(true)
   })
 })

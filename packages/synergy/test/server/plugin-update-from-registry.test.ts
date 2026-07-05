@@ -27,6 +27,7 @@ function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin
     id: "test-plugin",
     name: "Test Plugin",
     hooks: {} as any,
+    manifest: buildManifest() as any,
     pluginDir: "/tmp/test-plugin-dir",
     agents: {},
     ...overrides,

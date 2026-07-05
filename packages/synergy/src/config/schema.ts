@@ -1049,15 +1049,11 @@ export const Provider = ModelsDev.Provider.partial()
               .number()
               .int()
               .positive()
-              .describe(
-                "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-              ),
+              .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
             z.literal(false).describe("Disable timeout for this provider entirely."),
           ])
           .optional()
-          .describe(
-            "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-          ),
+          .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
       })
       .catchall(z.any())
       .optional(),
@@ -1265,7 +1261,7 @@ export const Info = z
           .number()
           .positive()
           .optional()
-          .describe("Max wall-clock seconds for one agent turn (default: 900 = 15min)"),
+          .describe("Max wall-clock seconds for one assistant step (default: 21600 = 6h)"),
         provider: z
           .object({
             ttfb_sec: z
@@ -1275,13 +1271,14 @@ export const Info = z
               .describe(
                 "Max seconds to wait for first byte (TTFB) from provider. " +
                   "Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). " +
-                  "Default: 600 = 10min",
+                  "Default: 3600 = 1h",
               ),
             idle_sec: z
-              .number()
-              .min(0)
+              .union([z.number().min(0), z.literal(false)])
               .optional()
-              .describe("Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk."),
+              .describe(
+                "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+              ),
             wall_sec: z
               .number()
               .min(0)
@@ -1300,16 +1297,25 @@ export const Info = z
               .number()
               .positive()
               .optional()
-              .describe("Default timeout per tool execution in seconds (default: 300 = 5min)"),
+              .describe("Default timeout per tool execution in seconds (default: 7200 = 2h)"),
             overrides: z
               .record(z.string(), z.number().positive())
               .optional()
               .describe("Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }"),
           })
           .optional(),
+        permission: z
+          .object({
+            ask_sec: z
+              .number()
+              .positive()
+              .optional()
+              .describe("Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)"),
+          })
+          .optional(),
       })
       .optional()
-      .describe("Timeout configuration for agent turns, provider requests, and tool execution"),
+      .describe("Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
@@ -1529,7 +1535,7 @@ export const Info = z
           .number()
           .min(0)
           .optional()
-          .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)"),
+          .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)"),
       })
       .optional(),
     compaction: z

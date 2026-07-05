@@ -89,8 +89,8 @@
 
 .project-directory-search-field:focus-within {
   background: color-mix(in srgb, var(--project-directory-control-hover) 72%, transparent);
-  border-color: color-mix(in srgb, var(--border-base) 58%, transparent);
-  box-shadow: var(--project-directory-focus-ring);
+  border-color: color-mix(in srgb, var(--text-strong) 22%, transparent);
+  box-shadow: none;
 }
 
 .project-directory-search-icon {

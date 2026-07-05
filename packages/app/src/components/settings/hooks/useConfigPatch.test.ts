@@ -11,13 +11,38 @@ describe("settings config patch", () => {
 
     expect(
       buildPatch({
-        cfg: { model: "deepseek/deepseek-v4", mini_model: "openai/gpt-5.5-mini" } as Config,
+        cfg: {
+          model: "deepseek/deepseek-v4",
+          mini_model: "openai/gpt-5.5-mini",
+          timeout: {
+            invoke_sec: 21600,
+            provider: { ttfb_sec: 3600, idle_sec: 900 },
+            tool: { default_sec: 7200 },
+          },
+        } as Config,
         state,
         originalMcps: {},
       }),
     ).toEqual({
       model: "openai/gpt-5.5",
       mini_model: undefined,
+    })
+  })
+
+  test("provider idle timeout can be disabled with false", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.providerIdleTimeout = "false"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).timeout,
+    ).toEqual({
+      invoke_sec: 21600,
+      provider: { ttfb_sec: 3600, idle_sec: false },
+      tool: { default_sec: 7200 },
     })
   })
 })

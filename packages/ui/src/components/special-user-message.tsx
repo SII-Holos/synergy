@@ -76,6 +76,14 @@ function PlanModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element
   ) as unknown as JSX.Element
 }
 
+function HiddenSpecialMessage(): JSX.Element {
+  return h("div", {
+    "data-component": "special-user-message",
+    "data-kind": "hidden",
+    hidden: true,
+  }) as unknown as JSX.Element
+}
+
 function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
   const [detailsOpen, setDetailsOpen] = createSignal(false)
   let detailsTrigger: HTMLButtonElement | undefined
@@ -218,6 +226,14 @@ function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
     ],
   ) as unknown as JSX.Element
 }
+
+registerSpecialUserMessageRenderer({
+  id: "compaction-boundary",
+  match(message) {
+    return message.metadata?.compactionBoundary === true
+  },
+  component: HiddenSpecialMessage,
+})
 
 registerSpecialUserMessageRenderer({
   id: "plan-mode-user-request",

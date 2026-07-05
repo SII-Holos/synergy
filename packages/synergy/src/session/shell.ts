@@ -16,8 +16,8 @@ import { lastModel } from "./input"
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
     if (reason.name === "TimeoutError") return "The command was interrupted: tool execution timed out."
-    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
-      return "The command was interrupted: session turn timed out."
+    if (typeof reason.message === "string" && reason.message.includes("Assistant step timed out")) {
+      return "The command was interrupted: assistant step timed out."
     }
     return "The command was interrupted: " + (reason.message || reason.name)
   }

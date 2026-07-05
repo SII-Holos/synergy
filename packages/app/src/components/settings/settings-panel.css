@@ -918,6 +918,7 @@
 .settings-model-picker-list {
   min-height: 0;
   flex: 1;
+  padding-top: 12px;
 }
 
 .settings-model-picker-list [data-slot="list-scroll"] {

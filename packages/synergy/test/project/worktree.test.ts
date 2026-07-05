@@ -76,6 +76,10 @@ describe("git worktree integration", () => {
 
           expect(created.managed).toBe(true)
           expect(created.path).toStartWith(path.join(scope.worktree, ".synergy", "worktrees"))
+          expect(created.name).toStartWith("synergy-feature-one-")
+          expect(created.name).not.toContain("synergy-synergy")
+          expect(created.branch).toStartWith("synergy/feature-one-")
+          expect(created.branch).not.toContain("synergy/synergy")
           expect(await Bun.file(path.join(created.path, ".env.local")).text()).toBe("TOKEN=local")
           expect(await Bun.file(path.join(created.path, "setup.txt")).text()).toBe("setup")
 
@@ -117,10 +121,39 @@ describe("git worktree integration", () => {
           const session = await response.json()
           expect(session.workspace?.type).toBe("git_worktree")
           expect(session.workspace?.path).toStartWith(path.join(scope.worktree, ".synergy", "worktrees"))
+          expect(session.workspace?.name).toStartWith("synergy-route-worktree-")
+          expect(session.workspace?.branch).toStartWith("synergy/route-worktree-")
+          expect(session.workspace?.branch).not.toContain("synergy/synergy")
           expect(session.workspace?.originalCheckout).toBe(scope.worktree)
           expect(session.scope.directory).toBe(scope.worktree)
 
           await Worktree.remove({ sessionID: session.id, target: session.workspace.worktreeID, force: true })
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("workspace create falls back to branded session names for default titles", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create()
+          const created = await Worktree.create({
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+
+          expect(created.name).toStartWith("synergy-session-")
+          expect(created.name).not.toContain("new-session")
+          expect(created.branch).toStartWith("synergy/session-")
+          expect(created.branch).not.toContain("new-session")
+
+          await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
           await Session.remove(session.id)
         })(),
     })

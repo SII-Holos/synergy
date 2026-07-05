@@ -247,9 +247,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                     {(plugin) => (
                       <InstalledPluginRow
                         plugin={plugin}
-                        onClick={() =>
-                          openPlugin(plugin.pluginId, props.initialSource ?? "local", { installedPlugin: plugin })
-                        }
+                        onClick={() => openPlugin(plugin.pluginId, "local", { installedPlugin: plugin })}
                       />
                     )}
                   </For>
@@ -316,6 +314,7 @@ function PluginRow(props: {
 }
 
 function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void }) {
+  const disabled = () => props.plugin.health === "disabled"
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.pluginId,
     keywords: ["plugin"],
@@ -330,8 +329,17 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
           <span class="plugin-marketplace-version">v{props.plugin.version ?? "0.0.0"}</span>
         </span>
         <span class="plugin-marketplace-row-description">
-          {props.plugin.skillCount} skills · {props.plugin.agentCount} agents · {props.plugin.cliCommands.length}{" "}
-          commands
+          <Show
+            when={disabled()}
+            fallback={
+              <>
+                {props.plugin.skillCount} skills · {props.plugin.agentCount} agents · {props.plugin.cliCommands.length}{" "}
+                commands
+              </>
+            }
+          >
+            {props.plugin.disabledReason ?? "Plugin disabled"}
+          </Show>
         </span>
         <span class="plugin-marketplace-row-meta">
           <span>{props.plugin.trustTier}</span>
@@ -340,7 +348,15 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
         </span>
       </span>
       <span class="plugin-marketplace-row-status">
-        <span class="plugin-marketplace-state plugin-marketplace-state-installed">Installed</span>
+        <span
+          classList={{
+            "plugin-marketplace-state": true,
+            "plugin-marketplace-state-installed": !disabled(),
+            "plugin-marketplace-state-disabled": disabled(),
+          }}
+        >
+          {disabled() ? "Disabled" : "Installed"}
+        </span>
       </span>
       <Icon name="chevron-right" size="small" class="plugin-marketplace-row-arrow" />
     </button>

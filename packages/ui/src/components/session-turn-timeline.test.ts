@@ -27,6 +27,7 @@ mock.module("./accordion", () => {
 mock.module("./attachment-card", () => ({ AttachmentGallery: Empty }))
 mock.module("./button", () => ({ Button: Empty }))
 mock.module("./diff-changes", () => ({ DiffChanges: Empty }))
+mock.module("./compaction-card", () => ({ CompactionCard: Empty }))
 mock.module("./error-card", () => ({ ErrorCard: Empty }))
 mock.module("./file-icon", () => ({ FileIcon: Empty }))
 mock.module("./icon", () => ({ Icon: Empty }))
@@ -39,9 +40,13 @@ mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
 const {
   collectAssistantMessagesForTurn,
+  collectCompactionParentIDs,
   collectMessagesForTurnDisplay,
   collectSessionTurnTimelineItems,
+  collectUserCompactionTimelineItems,
   isGuidedContextUserMessage,
+  shouldShowTurnDiffs,
+  shouldShowTurnUserChrome,
   providerPreludeElapsedLabel,
   providerPreludeText,
   shouldShowProviderPrelude,
@@ -87,6 +92,27 @@ function completedAssistant(id: string): AssistantMessage {
     ...assistant(id),
     time: { created: 1, completed: 2 },
   } as AssistantMessage
+}
+
+function compactionAssistant(id: string, parentID = "user"): AssistantMessage {
+  return {
+    ...assistantFor(id, parentID),
+    mode: "compaction",
+    agent: "compaction",
+    summary: true,
+  } as AssistantMessage
+}
+
+function compactionRecoveryPart(id: string, messageID: string): PartType {
+  return {
+    id,
+    sessionID: "session",
+    messageID,
+    type: "compaction_recovery",
+    summary: "## Current work\n- Keep the UI stable",
+    mechanical: false,
+    validated: true,
+  } as PartType
 }
 
 function textPart(id: string, messageID: string, text = "Hello"): PartType {
@@ -226,6 +252,64 @@ describe("session turn assistant collection", () => {
         firstUser.id,
       ).map((message) => message.id),
     ).toEqual([firstAssistant.id])
+  })
+
+  test("stops the previous turn at a synthetic compaction boundary", async () => {
+    await import("./special-user-message")
+    const firstUser = user("msg_001_user")
+    const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
+    const boundary = user("msg_003_boundary", { synthetic: true, compactionBoundary: true })
+    const compaction = compactionAssistant("msg_004_compaction", boundary.id)
+
+    expect(
+      collectAssistantMessagesForTurn(
+        [firstUser, firstAssistant, boundary, compaction] as MessageType[],
+        firstUser.id,
+      ).map((message) => message.id),
+    ).toEqual([firstAssistant.id])
+    expect(
+      collectAssistantMessagesForTurn(
+        [firstUser, firstAssistant, boundary, compaction] as MessageType[],
+        boundary.id,
+      ).map((message) => message.id),
+    ).toEqual([compaction.id])
+  })
+
+  test("hides synthetic compaction chrome while keeping the recovery card", () => {
+    const compactionUser = user("msg_compaction", { synthetic: true })
+    const recovery = compactionRecoveryPart("recovery", compactionUser.id)
+    const parts = [
+      { ...textPart("synthetic-continue", compactionUser.id, "Continue if you have next steps"), synthetic: true },
+      recovery,
+    ] as PartType[]
+
+    const cardItems = collectUserCompactionTimelineItems(compactionUser, parts)
+
+    expect(cardItems).toHaveLength(1)
+    expect(cardItems[0]).toMatchObject({ kind: "compaction", part: recovery })
+    expect(shouldShowTurnUserChrome(compactionUser, parts, true)).toBe(false)
+    expect(
+      shouldShowTurnDiffs(
+        { metadata: compactionUser.metadata, summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] } },
+        { hasCompactionEvent: true },
+      ),
+    ).toBe(false)
+  })
+
+  test("hides diffs for the turn compacted by a boundary", () => {
+    const parent = {
+      ...user("msg_parent"),
+      summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] },
+    } as UserMessage
+    const boundary = user("msg_boundary", {
+      synthetic: true,
+      compactionBoundary: true,
+      compactionParentID: parent.id,
+    })
+    const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
+
+    expect(compactedParents.has(parent.id)).toBe(true)
+    expect(shouldShowTurnDiffs(parent, { isCompactedParent: compactedParents.has(parent.id) })).toBe(false)
   })
 })
 
@@ -395,6 +479,31 @@ describe("session turn timeline", () => {
     expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("renders compaction assistants as one event card while hiding streaming text", () => {
+    const message = compactionAssistant("assistant-compaction")
+    const streamingItems = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [textPart("text-stream", message.id, "Raw compaction tokens")] },
+      true,
+    )
+
+    expect(streamingItems).toHaveLength(1)
+    expect(streamingItems[0]).toMatchObject({ kind: "compaction", part: undefined })
+    expect(timelineVisualKind(streamingItems[0])).toBe("compaction")
+    expect(timelineItemStableKey(streamingItems[0])).toBe("compaction:assistant-compaction")
+
+    const recovery = compactionRecoveryPart("recovery", message.id)
+    const completedItems = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [textPart("text-stream", message.id, "Raw compaction tokens"), recovery] },
+      false,
+    )
+
+    expect(completedItems).toHaveLength(1)
+    expect(completedItems[0]).toMatchObject({ kind: "compaction", part: recovery })
+    expect(timelineItemStableKey(completedItems[0])).toBe("compaction:assistant-compaction")
   })
 
   test("keeps tool-call prelude text as text display", () => {

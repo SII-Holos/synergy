@@ -1,4 +1,5 @@
 import fs from "fs/promises"
+import fsSync from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { Config } from "../config/config"
@@ -51,6 +52,33 @@ async function listArchiveCacheDirs(): Promise<string[]> {
   const root = path.join(Global.Path.cache, "plugin-archives")
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => [])
   return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(root, entry.name))
+}
+
+function runtimeStatePath(): string {
+  return path.join(Global.Path.data, "plugin-runtime-state.json")
+}
+
+async function readRawRuntimeState(): Promise<any[]> {
+  try {
+    const text = await Bun.file(runtimeStatePath()).text()
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function runtimeStateEntryUsable(entry: any): boolean {
+  if (!entry?.pluginDir || !entry?.entryPath) return false
+  if (!fsSync.existsSync(path.join(entry.pluginDir, "plugin.json"))) return false
+  if (!fsSync.existsSync(entry.entryPath)) return false
+  return true
+}
+
+async function archiveCacheHasManifest(archiveDir: string): Promise<boolean> {
+  return Bun.file(path.join(archiveDir, "plugin.json"))
+    .exists()
+    .catch(() => false)
 }
 
 export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoctorResult> {
@@ -139,12 +167,39 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
     }
 
     const referencedArchiveDirs = new Set<string>()
+    const archiveSpecByDir = new Map<string, string>()
     for (const spec of fixedSpecs) {
       const archiveDir = archiveDirForSpec(spec)
-      if (archiveDir) referencedArchiveDirs.add(path.resolve(archiveDir))
+      if (archiveDir) {
+        const resolvedDir = path.resolve(archiveDir)
+        referencedArchiveDirs.add(resolvedDir)
+        archiveSpecByDir.set(resolvedDir, spec)
+      }
     }
     for (const entry of Object.values(nextLockfile.plugins)) {
       referencedArchiveDirs.add(path.resolve(path.dirname(entry.resolved), ".."))
+    }
+    for (const archiveDir of referencedArchiveDirs) {
+      if (!archiveDir.includes(`${path.sep}plugin-archives${path.sep}`)) continue
+      if (!fsSync.existsSync(archiveDir)) continue
+      if (await archiveCacheHasManifest(archiveDir)) continue
+      const spec = archiveSpecByDir.get(path.resolve(archiveDir))
+      let fixed = false
+      if (options.fix && spec) {
+        try {
+          await resolvePluginSpec(spec, { install: false, refresh: false })
+          fixed = await archiveCacheHasManifest(archiveDir)
+        } catch {
+          fixed = false
+        }
+      }
+      issues.push({
+        type: "invalid_archive_cache",
+        spec,
+        path: archiveDir,
+        message: `Plugin archive cache is missing plugin.json: ${archiveDir}`,
+        fixed: options.fix === true ? fixed : false,
+      })
     }
     for (const archiveDir of await listArchiveCacheDirs()) {
       if (referencedArchiveDirs.has(path.resolve(archiveDir))) continue
@@ -155,6 +210,56 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
         fixed: options.fix === true,
       })
       if (options.fix) await fs.rm(archiveDir, { recursive: true, force: true }).catch(() => {})
+    }
+
+    for (const [pluginId, entry] of Object.entries(nextLockfile.plugins)) {
+      if (fsSync.existsSync(entry.resolved)) continue
+      let fixed = false
+      if (options.fix) {
+        try {
+          const resolved = await resolvePluginSpec(entry.spec, { install: false, refresh: false })
+          nextLockfile = {
+            ...nextLockfile,
+            plugins: {
+              ...nextLockfile.plugins,
+              [pluginId]: {
+                ...entry,
+                resolved: resolved.entryPath,
+              },
+            },
+          }
+          fixed = true
+        } catch {
+          fixed = false
+        }
+      }
+      issues.push({
+        type: "missing_lock_resolved",
+        pluginId,
+        spec: entry.spec,
+        path: entry.resolved,
+        message: `Plugin lockfile resolved entry is missing: ${entry.resolved}`,
+        fixed: options.fix === true ? fixed : false,
+      })
+    }
+
+    const runtimeState = await readRawRuntimeState()
+    const validRuntimeState = runtimeState.filter(runtimeStateEntryUsable)
+    if (validRuntimeState.length !== runtimeState.length) {
+      for (const entry of runtimeState) {
+        if (runtimeStateEntryUsable(entry)) continue
+        issues.push({
+          type: "invalid_runtime_state",
+          pluginId: typeof entry?.pluginId === "string" ? entry.pluginId : undefined,
+          path: typeof entry?.pluginDir === "string" ? entry.pluginDir : undefined,
+          message: `Plugin runtime state points at an invalid plugin runtime: ${entry?.pluginId ?? "unknown"}`,
+          fixed: options.fix === true,
+        })
+      }
+      if (options.fix) {
+        await fs.mkdir(path.dirname(runtimeStatePath()), { recursive: true })
+        await Bun.write(runtimeStatePath(), JSON.stringify(validRuntimeState, null, 2))
+      }
     }
 
     const configChanged = fixedSpecs.length !== specs.length || fixedSpecs.some((spec, index) => spec !== specs[index])

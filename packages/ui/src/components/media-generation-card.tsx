@@ -7,11 +7,13 @@ export function MediaGenerationCard(props: { part: ToolPart }) {
   const display = createMemo(() => toolDisplayMetadata(props.part))
   const media = createMemo(() => display()?.media)
   const label = createMemo(() => media()?.pendingTitle ?? media()?.actionLabel ?? "Generating media")
+  const size = createMemo(() => media()?.size ?? "medium")
 
   return (
     <section
       data-component="media-generation-card"
       data-aspect-ratio={media()?.aspectRatio ?? "1:1"}
+      data-size={size()}
       aria-busy="true"
       aria-label={label()}
     >

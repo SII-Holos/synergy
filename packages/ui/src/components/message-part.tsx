@@ -50,8 +50,9 @@ import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hoo
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
-import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
+import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
+import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -521,6 +522,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   if (qz) return qz
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
+
+  if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
 
   switch (tool) {
     case "read":
@@ -1534,6 +1537,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
+  const hasVisibleContent = createMemo(() => hasVisibleUserMessageContent(props.parts))
   const inlineFiles = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
@@ -1583,7 +1587,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           </Show>
         </div>
       </Show>
-      <Show when={isTurnBubble() && (timestamp() || text())}>
+      <Show when={isTurnBubble() && hasVisibleContent()}>
         <div data-slot="user-message-meta">
           <Show when={timestamp()}>{(value) => <span data-slot="user-message-time">{value()}</span>}</Show>
           <Show when={text()}>

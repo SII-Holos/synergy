@@ -33,6 +33,7 @@ beforeEach(() => {
     id: pluginId,
     name: "Rollback Test",
     hooks: {},
+    manifest: baseManifest(),
     pluginDir: `/tmp/${pluginId}`,
   }
   manifest = baseManifest()

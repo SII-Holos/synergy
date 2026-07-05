@@ -4,6 +4,7 @@ export interface ToolMediaDisplay {
   pendingTitle?: string
   pendingDescription?: string
   aspectRatio?: "1:1" | "4:3" | "16:9" | "auto"
+  size?: "small" | "medium" | "large"
 }
 
 export interface ToolDisplay {

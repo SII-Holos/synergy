@@ -1,21 +1,25 @@
 import { createEffect, createSignal, For, Show } from "solid-js"
-import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { CommandOption } from "@/context/command"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import "./quick-actions.css"
 
+type QuickActionBase = {
+  icon: SemanticIconTokenName
+  label: string
+  description: string
+}
+
 type QuickAction =
-  | {
+  | (QuickActionBase & {
       type: "ui"
-      icon: IconName
-      label: string
       commandId: string
-    }
-  | {
+    })
+  | (QuickActionBase & {
       type: "runtime"
-      icon: IconName
-      label: string
       command: string
-    }
+    })
 
 type QuickActionGroup = {
   actions: QuickAction[]
@@ -24,25 +28,91 @@ type QuickActionGroup = {
 const ACTION_GROUPS: QuickActionGroup[] = [
   {
     actions: [
-      { type: "ui", icon: "undo-2", label: "Undo", commandId: "session.undo" },
-      { type: "ui", icon: "redo-2", label: "Redo", commandId: "session.redo" },
-      { type: "ui", icon: "minimize", label: "Compact", commandId: "session.compact" },
+      {
+        type: "ui",
+        icon: "command.undo",
+        label: "Undo",
+        description: "Undo the last message turn",
+        commandId: "session.undo",
+      },
+      {
+        type: "ui",
+        icon: "command.redo",
+        label: "Redo",
+        description: "Restore the last undone message turn",
+        commandId: "session.redo",
+      },
+      {
+        type: "ui",
+        icon: "command.compact",
+        label: "Compact",
+        description: "Summarize the session to reduce context size",
+        commandId: "session.compact",
+      },
     ],
   },
   {
     actions: [
-      { type: "runtime", icon: "file-text", label: "Init", command: "init" },
-      { type: "runtime", icon: "scan-eye", label: "Review", command: "review" },
-      { type: "runtime", icon: "git-merge", label: "Commit", command: "commit" },
-      { type: "runtime", icon: "sparkles", label: "Rmslop", command: "rmslop" },
+      {
+        type: "runtime",
+        icon: "command.init",
+        label: "Init",
+        description: "Initialize project guidance",
+        command: "init",
+      },
+      {
+        type: "runtime",
+        icon: "command.review",
+        label: "Review",
+        description: "Review recent code changes",
+        command: "review",
+      },
+      {
+        type: "runtime",
+        icon: "command.commit",
+        label: "Commit",
+        description: "Prepare and commit changes",
+        command: "commit",
+      },
+      {
+        type: "runtime",
+        icon: "command.rmslop",
+        label: "Rmslop",
+        description: "Remove AI slop from recent changes",
+        command: "rmslop",
+      },
     ],
   },
   {
     actions: [
-      { type: "runtime", icon: "notebook-pen", label: "Note", command: "note" },
-      { type: "runtime", icon: "rocket", label: "Continue", command: "continue" },
-      { type: "runtime", icon: "microscope", label: "Audit", command: "audit" },
-      { type: "runtime", icon: "zap", label: "Start", command: "start" },
+      {
+        type: "runtime",
+        icon: "command.note",
+        label: "Note",
+        description: "Write or update a project note",
+        command: "note",
+      },
+      {
+        type: "runtime",
+        icon: "command.continue",
+        label: "Continue",
+        description: "Continue the current task",
+        command: "continue",
+      },
+      {
+        type: "runtime",
+        icon: "command.audit",
+        label: "Audit",
+        description: "Audit the current work",
+        command: "audit",
+      },
+      {
+        type: "runtime",
+        icon: "command.start",
+        label: "Start",
+        description: "Start working from current context",
+        command: "start",
+      },
     ],
   },
 ]
@@ -66,6 +136,7 @@ interface QuickActionsProps {
   commandsDisabled?: boolean
   runtimeCommandsDisabled?: boolean
   class?: string
+  commands?: CommandOption[]
 }
 
 export function QuickActions(props: QuickActionsProps) {
@@ -88,6 +159,22 @@ export function QuickActions(props: QuickActionsProps) {
   const actionDisabled = (action: QuickAction) =>
     action.type === "ui" ? commandsDisabled() : runtimeCommandsDisabled()
 
+  const commandOption = (action: QuickAction) =>
+    action.type === "ui" ? props.commands?.find((option) => option.id === action.commandId) : undefined
+
+  const actionTooltip = (action: QuickAction) => {
+    const option = commandOption(action)
+    const title = option?.title ?? action.label
+    const description = option?.description ?? action.description
+
+    return (
+      <div class="qa-tooltip">
+        <span class="qa-tooltip-title">{title}</span>
+        <span class="qa-tooltip-description">{description}</span>
+      </div>
+    )
+  }
+
   return (
     <div class={props.class ?? "absolute -top-3 right-5 z-20"}>
       <Show when={open()}>
@@ -100,7 +187,7 @@ export function QuickActions(props: QuickActionsProps) {
                     {(action) => {
                       const index = action.index
                       return (
-                        <Tooltip placement="left" value={action.label}>
+                        <Tooltip placement="left" value={actionTooltip(action)}>
                           <button
                             type="button"
                             disabled={actionDisabled(action)}
@@ -112,7 +199,7 @@ export function QuickActions(props: QuickActionsProps) {
                             style={{ "animation-delay": quickActionDelay(index) }}
                             onClick={() => runAction(action)}
                           >
-                            <Icon name={action.icon} size="small" />
+                            <Icon name={getSemanticIcon(action.icon)} size="small" />
                             <Show when={action.type === "runtime"}>{action.label}</Show>
                           </button>
                         </Tooltip>

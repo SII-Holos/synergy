@@ -365,6 +365,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               title: blueprintSlot.title,
               sessionID: activeSession.id,
               runMode: blueprintSlot.runMode,
+              executionAgent: agent,
+              model,
             },
           })
           const loop = result.data

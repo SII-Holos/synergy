@@ -15,6 +15,12 @@ describe("plugin runtime routes", () => {
           id: "scoped-plugin",
           name: "Scoped Plugin",
           hooks: {} as any,
+          manifest: {
+            name: "scoped-plugin",
+            version: "1.0.0",
+            main: "./runtime/index.js",
+            description: "Scoped Plugin",
+          },
           pluginDir: "/tmp/scoped-plugin",
           entryPath: "/tmp/scoped-plugin/runtime/index.js",
           source: "local",

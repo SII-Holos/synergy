@@ -14,19 +14,19 @@ import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import type {
   ApiPluginDetail,
   ApiPluginInfo,
-  RegistryPermissionItem,
   RegistryPluginSummary,
   RegistryPluginVersion,
 } from "@ericsanchezok/synergy-sdk/client"
+import {
+  collectAllPermissions,
+  fallbackPluginSummary,
+  isRegistryPluginNotFoundError,
+  toTimestamp,
+  type MarketplaceSummary,
+} from "./plugin-detail-model"
 import type { PermissionSeverity, PluginPermissionDiff, TrustTier } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
-
-type MarketplaceSummary = RegistryPluginSummary & {
-  repo?: string
-  homepage?: string
-  downloads?: number
-}
 
 interface ApprovalRequiredError {
   code: "approval_required"
@@ -40,90 +40,6 @@ interface ApprovalRequiredError {
   trustTier?: TrustTier
   artifactCacheKey?: string
   message?: string
-}
-
-type RuntimeMode = RegistryPluginSummary["runtimeMode"]
-type Risk = RegistryPluginSummary["risk"]
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
-}
-
-function stringField(record: Record<string, unknown> | null | undefined, key: string): string | undefined {
-  const value = record?.[key]
-  return typeof value === "string" && value.length > 0 ? value : undefined
-}
-
-function arrayField(record: Record<string, unknown> | null | undefined, key: string): unknown[] {
-  const value = record?.[key]
-  return Array.isArray(value) ? value : []
-}
-
-function runtimeModeFromManifest(manifest: Record<string, unknown> | null | undefined): RuntimeMode {
-  const mode = stringField(asRecord(manifest?.runtime), "mode")
-  return mode === "in-process" || mode === "worker" || mode === "process" ? mode : "process"
-}
-
-function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const contributes = asRecord(manifest?.contributes)
-  return arrayField(contributes, "tools")
-    .map((tool) => stringField(asRecord(tool), "name"))
-    .filter((name): name is string => Boolean(name))
-}
-
-function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const ui = asRecord(asRecord(manifest?.contributes)?.ui)
-  if (!ui) return []
-  return [
-    "toolRenderers",
-    "partRenderers",
-    "workbenchPanels",
-    "appPanels",
-    "settings",
-    "messageSlots",
-    "themes",
-    "icons",
-    "appRoutes",
-    "commands",
-  ].filter((key) => arrayField(ui, key).length > 0)
-}
-
-function fallbackPluginSummary(input: {
-  installed?: ApiPluginInfo | null
-  detail?: ApiPluginDetail | null
-}): MarketplaceSummary | null {
-  if (!input.installed) return null
-  const manifest = asRecord(input.detail?.manifest)
-  const name = input.detail?.name ?? input.installed.name ?? stringField(manifest, "name") ?? input.installed.pluginId
-  return {
-    id: input.installed.pluginId,
-    name,
-    description: stringField(manifest, "description") ?? "Installed plugin",
-    repo: stringField(manifest, "repository"),
-    homepage: stringField(manifest, "homepage"),
-    author: { name: stringField(manifest, "author") ?? "Installed locally" },
-    verified: false,
-    official: false,
-    keywords: ["plugin"],
-    latestVersion: input.installed.version,
-    updatedAt: Date.now(),
-    risk: input.detail?.risk ?? input.installed.risk,
-    trustTier: input.installed.trustTier,
-    runtimeMode: runtimeModeFromManifest(manifest),
-    uiSurfaces: uiSurfacesFromManifest(manifest),
-    tools: toolsFromManifest(manifest),
-    downloads: 0,
-    source: "local",
-  }
-}
-
-function toTimestamp(value: number | string | undefined): number {
-  if (typeof value === "number") return value
-  if (typeof value === "string") {
-    const parsed = Date.parse(value)
-    return Number.isFinite(parsed) ? parsed : Date.now()
-  }
-  return Date.now()
 }
 
 function timeAgo(value: number | string | undefined): string {
@@ -169,19 +85,6 @@ function isApprovalRequiredError(input: unknown): input is ApprovalRequiredError
   )
 }
 
-function collectAllPermissions(versions: RegistryPluginVersion[]): RegistryPermissionItem[] {
-  const seen = new Set<string>()
-  const all: RegistryPermissionItem[] = []
-  for (const version of versions) {
-    for (const permission of version.permissionsSummary ?? []) {
-      if (seen.has(permission.key)) continue
-      seen.add(permission.key)
-      all.push(permission)
-    }
-  }
-  return all
-}
-
 function repositoryHost(url: string | undefined): string {
   if (!url) return "Repository"
   try {
@@ -216,8 +119,13 @@ export function PluginDetailDialog(props: {
   const [versions] = createResource(
     () => ({ id: props.pluginId, source: props.source }),
     async ({ id, source }) => {
-      const res = await globalSDK.client.registry.plugins.versions({ id, source })
-      return (res.data as RegistryPluginVersion[]) ?? []
+      try {
+        const res = await globalSDK.client.registry.plugins.versions({ id, source })
+        return (res.data as RegistryPluginVersion[]) ?? []
+      } catch (err) {
+        if (isRegistryPluginNotFoundError(err, id)) return []
+        throw err
+      }
     },
   )
 
