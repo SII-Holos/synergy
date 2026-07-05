@@ -34,7 +34,7 @@ export type ChartDatasetSpec = {
 }
 
 export type PerformanceLineChartModel = {
-  data: ChartData<"line", Array<number | null>, string>
+  data: ChartData<"line", Array<{ x: number; y: number | null }>>
   options: ChartOptions<"line">
 }
 
@@ -43,12 +43,15 @@ export function buildLineChartModel(input: {
   datasets: ChartDatasetSpec[]
 }): PerformanceLineChartModel {
   const axisSpecs = uniqueAxes(input.datasets)
+  const timestamps = input.points.map((point) => pointTimestamp(point))
   return {
     data: {
-      labels: input.points.map((point, index) => formatPointLabel(point, index)),
       datasets: input.datasets.map((dataset) => ({
         label: dataset.stat ? `${dataset.label} (${dataset.stat})` : dataset.label,
-        data: input.points.map((point) => numberValue(point[dataset.field])),
+        data: input.points.map((point, index) => ({
+          x: timestamps[index],
+          y: numberValue(point[dataset.field]),
+        })),
         borderColor: dataset.color,
         backgroundColor: dataset.color.replace(/0\.(?:8[68]|9[02])/, "0.12"),
         fill: true,
@@ -71,16 +74,37 @@ export function buildLineChartModel(input: {
           intersect: false,
           callbacks: {
             label: (context) => tooltipLabel(context, input.datasets),
+            title: (context) => {
+              const x = context[0]?.parsed?.x
+              return x != null ? formatTimeTick(x) : ""
+            },
           },
         },
       },
       scales: {
-        x: { grid: { display: false }, ticks: { color: AXIS_TEXT, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+        x: {
+          type: "linear",
+          grid: { display: false },
+          ticks: { color: AXIS_TEXT, maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: formatTimeTick },
+        },
         ...Object.fromEntries(axisSpecs.map((axis, index) => [axis.axisId, axisOptions(axis, index)])),
       },
       animation: { duration: 500, easing: "easeOutQuart" },
     },
   }
+}
+
+function pointTimestamp(point: PerformanceMetricPoint): number {
+  if (typeof point.timestamp === "number") return point.timestamp
+  if (typeof point.timestamp === "string") {
+    const parsed = Date.parse(point.timestamp)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return Date.now()
+}
+
+function formatTimeTick(value: string | number): string {
+  return new Date(Number(value)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
 export function resourcePressurePoints(timeline: PerformanceTimeline | null | undefined): PerformanceMetricPoint[] {
@@ -240,15 +264,6 @@ function uniqueAxes(datasets: ChartDatasetSpec[]) {
     if (!axes.has(dataset.axisId)) axes.set(dataset.axisId, dataset)
   }
   return [...axes.values()]
-}
-
-function formatPointLabel(point: PerformanceMetricPoint, index: number): string {
-  const value = point.label ?? point.timestamp
-  if (value === undefined) return String(index + 1)
-  if (typeof value === "number") return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  const date = Date.parse(value)
-  if (!Number.isNaN(date)) return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  return value
 }
 
 function numberValue(value: unknown): number | null {

@@ -169,7 +169,11 @@ describe("performance chart model", () => {
       ],
       datasets: [datasetSpecs[0]],
     })
-    expect(model.data.datasets[0].data).toEqual([null, null, null])
+    expect(model.data.datasets[0].data).toEqual([
+      { x: 1000, y: null },
+      { x: 2000, y: null },
+      { x: 3000, y: null },
+    ])
   })
 
   test("summary quality warning uses quiet partial copy", () => {
