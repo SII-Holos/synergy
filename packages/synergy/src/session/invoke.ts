@@ -380,11 +380,24 @@ export namespace SessionInvoke {
         if (!R) {
           break
         }
+
+        step++
+
+        // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
+        // so they can trigger a model call in this iteration. Context items follow
+        // in ② after the predicate confirms a call is needed (piggyback).
+        const steerItems = await SessionInbox.drainSteer(sessionID)
+        if (steerItems.length > 0) {
+          log.info("drained steer items into session", { sessionID, count: steerItems.length })
+          for (const item of steerItems) {
+            const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+            if (materialized) msgs.push(materialized)
+          }
+        }
+
         if (!SessionProgress.needsModelCall(msgs, R.id)) {
           break
         }
-
-        step++
 
         const jobCtx: LoopJob.Context = {
           session,
@@ -417,19 +430,7 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
-        // Mode-based mid-turn drain: inject steer items before model call.
-        // Steer items enter the next model request but are marked noReply
-        // so they do not schedule a second assistant turn after the response.
-        const steerItems = await SessionInbox.drainSteer(sessionID)
-        if (steerItems.length > 0) {
-          log.info("drained steer items into session", { sessionID, count: steerItems.length })
-          for (const item of steerItems) {
-            const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
-            if (materialized) msgs.push(materialized)
-          }
-        }
-
-        // Fallback: drain legacy guiding/agent-update items by kind for compat
+        // Drain legacy guiding/agent-update items by kind for compat
         const guidingFallback = await SessionInbox.drainGuiding(sessionID)
         if (guidingFallback.length > 0) {
           const guided = await materializeInboxItems(sessionID, guidingFallback, { guiding: true, rootID: R.id })
@@ -441,6 +442,19 @@ export namespace SessionInvoke {
           const updates = await materializeInboxItems(sessionID, agentUpdateFallback, { guiding: true, rootID: R.id })
           msgs.push(...updates.userMessages)
           log.info("drained legacy agent updates into session", { sessionID, count: agentUpdateFallback.length })
+        }
+
+        // Mode-based drain ②: context items piggyback on confirmed model call.
+        // Materialized after needsModelCall is true; do NOT wake idle sessions.
+        {
+          const contextItems = await SessionInbox.drainContext(sessionID)
+          if (contextItems.length > 0) {
+            log.info("drained context items (piggyback)", { sessionID, count: contextItems.length })
+            for (const item of contextItems) {
+              const materialized = await SessionInbox.materializeItem(item, R.id)
+              if (materialized) msgs.push(materialized)
+            }
+          }
         }
 
         const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
@@ -587,12 +601,21 @@ export namespace SessionInvoke {
         // downstream mutations (reminder wrapping, plugin transforms).
         const sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
 
-        // Ephemerally wrap queued user messages with a reminder to stay on track
+        // Ephemerally wrap non-root user-origin steer messages with a reminder.
+        // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
+        // steer messages carry their own structured text and should not be wrapped.
         if (step > 1 && lastFinished) {
           for (const msg of sessionMessages) {
             if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
+            const user = msg.info as MessageV2.User
+            const isRoot = user.isRoot === true
+            const originType = user.origin?.type
+            // Only wrap non-root user-origin messages (steer interruptions)
+            if (isRoot || (originType && originType !== "user")) continue
             msg.parts = msg.parts.map((part) => {
-              if (part.type !== "text" || part.ignored || part.synthetic) return part
+              if (part.type !== "text") return part
+              if (part.origin === "system") return part
+              if (part.origin === undefined && (part.synthetic || part.ignored)) return part
               if (!part.text.trim()) return part
               return {
                 ...part,

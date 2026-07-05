@@ -58,12 +58,27 @@ export namespace PlanModeUserWrapper {
 
     return input.messages.map((msg) => {
       if (msg.info.role !== "user") return msg
-      if (!isRequestMetadata(msg.info.metadata as Record<string, any> | undefined)) return msg
+      // New predicate: wrap only root user-origin messages (spec §4.2)
+      // Fall back to old metadata check for unmigrated sessions
+      const user = msg.info as MessageV2.User
+      const shouldWrap =
+        user.isRoot !== undefined && user.origin !== undefined
+          ? user.isRoot === true && user.origin.type === "user"
+          : isRequestMetadata(msg.info.metadata as Record<string, any> | undefined)
+      if (!shouldWrap) return msg
 
       const agentName = agentNameForMessage(msg, input.agent.name)
       let wrapped = false
       const parts = msg.parts.map((part) => {
-        if (part.type !== "text" || part.ignored || part.synthetic) return part
+        if (part.type !== "text") return part
+        // Prefer part.origin for filtering; fall back to old flags for compat
+        const origin = (part as { origin?: string; ignored?: boolean; synthetic?: boolean }).origin
+        const isSystemPart =
+          origin !== undefined
+            ? origin === "system"
+            : (part as { ignored?: boolean; synthetic?: boolean }).ignored === true ||
+              (part as { ignored?: boolean; synthetic?: boolean }).synthetic === true
+        if (isSystemPart) return part
         if (wrapped) return part
         wrapped = true
         return {

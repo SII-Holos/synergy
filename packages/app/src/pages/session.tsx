@@ -200,14 +200,20 @@ function SessionPageContent() {
   const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()
-    if (!rb) return new Set<string>()
-    // Use cutMessageID when available, fallback to droppedMessageIDs
-    if (rb.cutMessageID) return new Set([rb.cutMessageID])
+    if (!rb) return null as { cutMessageID: string } | null | Set<string>
+    // When cutMessageID is available, use prefix-cut: hide the cut message
+    // and everything after it. Fall back to droppedMessageIDs set for old events.
+    if (rb.cutMessageID) return { cutMessageID: rb.cutMessageID }
     return new Set(rb.droppedMessageIDs ?? [])
   })
   const messages = createMemo(() => {
     const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
     const hidden = hiddenMessageIDs()
+    if (!hidden) return raw
+    if ("cutMessageID" in hidden) {
+      // Prefix cut: drop target and all later messages
+      return raw.filter((message) => message.id < hidden.cutMessageID)
+    }
     if (hidden.size === 0) return raw
     return raw.filter((message) => !hidden.has(message.id))
   })
@@ -237,6 +243,10 @@ function SessionPageContent() {
               await sdk.client.session.files.restore({ sessionID, rollbackID: rb.id }).catch(() => {})
             }
           }
+          // Navigate to the message before the cut point.
+          // Prompt backfill is intentionally omitted from hover rewind —
+          // the user is rewinding to before a specific message, not rewriting it.
+          prompt.resetDraft()
           setActiveMessage(userMessages().findLast((x) => x.id < cutMessageID))
         }}
       />
@@ -279,19 +289,10 @@ function SessionPageContent() {
   const visibleUserMessages = visibleRoots
   // userMessages — kept for commands hook compatibility
   const userMessages = visibleRoots
-  // renderableUserMessages — kept for compatibility, mirror visibleRoots
-  const renderableUserMessages = createMemo(
-    () =>
-      messages().filter((m) => {
-        if (m.role !== "user") return false
-        const user = m as UserMessage
-        if (user.isRoot !== undefined) return user.isRoot === true && user.visible !== false
-        return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
-      }) as UserMessage[],
-    emptyUserMessages,
-  )
+  // renderableUserMessages — deprecated alias, use visibleRoots
+  const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
-  const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
+  const lastRenderableUserMessage = lastRoot
   const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
   // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
   createEffect(
@@ -317,7 +318,7 @@ function SessionPageContent() {
 
   const renderedConversationUserMessages = createMemo(() => {
     const firstID = renderedUserMessages()[0]?.id
-    const msgs = renderableUserMessages()
+    const msgs = visibleRoots()
     if (!firstID) return msgs
     return msgs.filter((message) => message.id >= firstID)
   }, emptyUserMessages)
@@ -567,6 +568,7 @@ function SessionPageContent() {
     setActiveMessage,
     navigateMessageByOffset,
     isWorking: () => status().type !== "idle",
+    onRewind: openRewindConfirm,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
