@@ -255,17 +255,6 @@ export namespace SessionInbox {
     }
   }
 
-  function sourceFromMail(mail: SessionManager.SessionMail): ItemSource {
-    const metadata = mail.metadata ?? {}
-    const source = metadata.source
-    if (source === "cortex") return { type: "cortex", label: "Cortex" }
-    if (source === "agenda") return { type: "agenda", label: "Agenda" }
-    if (source === "blueprint") return { type: "blueprint", label: "Blueprint" }
-    if (metadata.channelPush) return { type: "channel", label: "Channel" }
-    if (typeof source === "string" && source.trim()) return { type: source, label: source }
-    return { type: "agent", label: "Agent" }
-  }
-
   /** Compatibility: derive mode from legacy kind/state/deliveryTarget */
   export function modeFromLegacy(kind: string, state: string, deliveryTarget: string): ItemMode {
     if (kind === "queued_user" && state === "queued") return "task"
@@ -367,7 +356,20 @@ export namespace SessionInbox {
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const summarized = summarizeParts(input.mail.parts)
-    const source = sourceFromMail(input.mail)
+    const mailMetadata = input.mail.metadata ?? {}
+    const mailSourceLabel = mailMetadata.source
+    const source: ItemSource =
+      mailSourceLabel === "cortex"
+        ? { type: "cortex", label: "Cortex" }
+        : mailSourceLabel === "agenda"
+          ? { type: "agenda", label: "Agenda" }
+          : mailSourceLabel === "blueprint"
+            ? { type: "blueprint", label: "Blueprint" }
+            : mailMetadata.channelPush
+              ? { type: "channel", label: "Channel" }
+              : typeof mailSourceLabel === "string" && mailSourceLabel.trim()
+                ? { type: mailSourceLabel, label: mailSourceLabel }
+                : { type: "agent", label: "Agent" }
     const title = input.mail.type === "user" ? input.mail.summary?.title : undefined
     const userMail = input.mail as SessionManager.SessionMail.User
     const item: StoredItem = {

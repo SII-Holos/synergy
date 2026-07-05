@@ -1,6 +1,7 @@
 import { MessageV2 } from "./message-v2"
 
 export namespace SessionProgress {
+  /** @deprecated Replaced by needsModelCall. Kept for existing callers. */
   export function isReplyRequiredUser(user: MessageV2.User) {
     return user.metadata?.noReply !== true
   }
@@ -18,6 +19,7 @@ export namespace SessionProgress {
     }
   }
 
+  /** @deprecated Replaced by needsModelCall. Kept for migration callers. */
   export function hasTerminalReply(input: { messages: MessageV2.WithParts[]; userID: string }) {
     return !!findTerminalReply(input.messages, input.userID)
   }
