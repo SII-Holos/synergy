@@ -1,7 +1,7 @@
 import Ajv2020 from "ajv/dist/2020"
 import type { JSONSchema7 } from "ai"
 import { Session } from "@/session"
-import type { MessageV2 } from "@/session/message-v2"
+import { MessageV2 } from "@/session/message-v2"
 import type { ToolResolver } from "@/session/tool-resolver"
 import type { CortexTypes } from "./types"
 
@@ -186,7 +186,7 @@ export namespace CortexOutput {
     for (const message of [...messages].reverse()) {
       if (message.info.role !== "assistant") continue
       const text = message.parts
-        .flatMap((part) => (part.type === "text" && !part.synthetic && !part.ignored ? [part.text] : []))
+        .flatMap((part) => (part.type === "text" && !MessageV2.isSystemPart(part) && !part.ignored ? [part.text] : []))
         .join("\n")
         .trim()
       if (text) return text

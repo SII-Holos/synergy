@@ -71,14 +71,7 @@ export namespace PlanModeUserWrapper {
       let wrapped = false
       const parts = msg.parts.map((part) => {
         if (part.type !== "text") return part
-        // Prefer part.origin for filtering; fall back to old flags for compat
-        const origin = (part as { origin?: string; ignored?: boolean; synthetic?: boolean }).origin
-        const isSystemPart =
-          origin !== undefined
-            ? origin === "system"
-            : (part as { ignored?: boolean; synthetic?: boolean }).ignored === true ||
-              (part as { ignored?: boolean; synthetic?: boolean }).synthetic === true
-        if (isSystemPart) return part
+        if (MessageV2.isSystemPart(part) || (part as { ignored?: boolean }).ignored === true) return part
         if (wrapped) return part
         wrapped = true
         return {

@@ -676,7 +676,7 @@ export namespace MessageV2 {
     for (const part of parts) {
       if (part.type !== "text") continue
       if (!options?.includeIgnored && part.ignored) continue
-      if (!options?.includeSynthetic && part.synthetic) continue
+      if (!options?.includeSynthetic && isSystemPart(part)) continue
       texts.push(part.text)
     }
     const joined = texts.join("\n").trim()
@@ -704,11 +704,21 @@ export namespace MessageV2 {
   // canonical fields (rootID / isRoot / visible / includeInContext / origin
   // and part.origin) and never the legacy heuristics.
 
-  function partIsSystem(part: Part): boolean {
+  /**
+   * Whether a part is system-injected rather than user-authored. Prefers the
+   * canonical part.origin, falling back to the legacy `synthetic` flag for parts
+   * that predate it. The single predicate all consumers should use instead of
+   * reading `part.synthetic` directly.
+   */
+  export function isSystemPart(part: Part): boolean {
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
     if (part.origin !== undefined) return part.origin === "system"
     return part.synthetic === true
+  }
+
+  function partIsSystem(part: Part): boolean {
+    return isSystemPart(part)
   }
 
   function allPartsSystem(parts: Part[]): boolean {

@@ -82,11 +82,9 @@ export namespace SessionInvoke {
     return (await import("../command/command")).Command
   }
 
-  SessionManager.onMailboxReady(async (sessionID) => {
-    await processMailbox(sessionID)
-  })
-
-  export const assertIdle = SessionManager.assertIdle
+  export function assertIdle(sessionID: string) {
+    return SessionManager.assertIdle(sessionID)
+  }
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
@@ -141,19 +139,6 @@ export namespace SessionInvoke {
     return invokeWithInternalTools(input)
   }
 
-  async function processMailbox(sessionID: string): Promise<void> {
-    const inboxItems = await SessionInbox.drainReady(sessionID)
-    const { needsReply } = await materializeInboxItems(sessionID, inboxItems)
-
-    await Session.update(sessionID, (draft) => {
-      draft.pendingReply = needsReply || undefined
-    })
-
-    if (needsReply) {
-      await loop(sessionID)
-    }
-  }
-
   async function materializeInboxItems(
     sessionID: string,
     items: SessionInbox.StoredItem[],
@@ -174,10 +159,6 @@ export namespace SessionInvoke {
             ...queuedInput,
             sessionID,
             noReply,
-            metadata: {
-              ...(noReply === true ? { guided: item.mode === "steer" } : {}),
-              ...queuedInput.metadata,
-            },
           },
           options?.rootID,
         )
@@ -527,8 +508,7 @@ export namespace SessionInvoke {
             if (isRoot || (originType && originType !== "user")) continue
             msg.parts = msg.parts.map((part) => {
               if (part.type !== "text") return part
-              if (part.origin === "system") return part
-              if (part.origin === undefined && (part.synthetic || part.ignored)) return part
+              if (MessageV2.isSystemPart(part) || part.ignored) return part
               if (!part.text.trim()) return part
               return {
                 ...part,

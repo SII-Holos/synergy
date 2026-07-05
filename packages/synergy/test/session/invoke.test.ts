@@ -523,8 +523,9 @@ describe("SessionInvoke inbox boundaries", () => {
           expect(promptPayloads[0]).toContain("steer sooner")
           expect(guided).toBeDefined()
           expect(guided!.info.id).not.toBe(staleMessageID)
-          expect(guided!.info.metadata?.noReply).toBe(true)
-          expect(guided!.info.metadata?.guided).toBe(true)
+          expect(guided!.info.isRoot).toBe(false)
+          expect(guided!.info.rootID).toBe(user.id)
+          expect(guided!.info.origin?.type).toBe("user")
         },
       })
     } finally {

@@ -74,11 +74,7 @@ export namespace Turn {
     if (msg.info.role !== "user") return false
     if (!MessageV2.isPromptVisible(msg)) return true
     if (msg.parts.length === 0) return true
-    return msg.parts.every((p) => {
-      if (p.type === "text" && p.synthetic) return true
-      if (p.type === "compaction") return true
-      return false
-    })
+    return msg.parts.every((p) => MessageV2.isSystemPart(p))
   }
 
   /** @deprecated No longer needed since parentID === rootID. Kept for library callers. */
@@ -108,7 +104,7 @@ export namespace Turn {
     collected.reverse()
 
     const text = collected
-      .flatMap((m) => m.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic))
+      .flatMap((m) => m.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p)))
       .map((p) => p.text)
       .join("\n")
     return text.trim() || undefined

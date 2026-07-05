@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { mock } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
+import { SessionInvoke } from "../../src/session/invoke"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -105,12 +107,13 @@ describe("SessionInbox", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
+        const originalLoop = SessionInvoke.loop
         const started = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
         const done = Promise.withResolvers<void>()
         let finished = false
 
-        const cleanup = SessionManager.onMailboxReady(async (sessionID) => {
+        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
           started.resolve()
           await release.promise
           await SessionInbox.drainReady(sessionID)
@@ -149,7 +152,7 @@ describe("SessionInbox", () => {
           expect(finished).toBe(true)
         } finally {
           release.resolve()
-          cleanup()
+          ;(SessionInvoke.loop as any) = originalLoop
           SessionManager.unregisterRuntime(session.id)
         }
       },

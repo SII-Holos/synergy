@@ -197,8 +197,8 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     isRoot,
     rootID,
     visible,
+    // isRoot/visible/origin carry scheduling & rendering; no noReply/guided flags.
     metadata: {
-      ...(input.noReply === true ? { noReply: true } : {}),
       ...externalMetadata,
       ...planModeMetadata,
     },

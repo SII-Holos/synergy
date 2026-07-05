@@ -260,8 +260,9 @@ export namespace SessionManager {
     })
 
     const inboxItems = await SessionInbox.peekReady(sessionID)
-    if (inboxItems.length > 0 && mailboxHandler) {
-      await run(sessionID, () => mailboxHandler!(sessionID))
+    if (inboxItems.length > 0) {
+      const { SessionInvoke } = await import("./invoke")
+      await SessionInvoke.loop(sessionID)
     }
   }
 
@@ -299,18 +300,7 @@ export namespace SessionManager {
     return result
   }
 
-  // --- Mailbox ---
-
-  type MailboxHandler = (sessionID: string) => Promise<void>
-  let mailboxHandler: MailboxHandler | undefined
-
-  export function onMailboxReady(handler: MailboxHandler) {
-    const previous = mailboxHandler
-    mailboxHandler = handler
-    return () => {
-      if (mailboxHandler === handler) mailboxHandler = previous
-    }
-  }
+  // --- Inbox delivery ---
 
   /** @deprecated Use SessionInbox.deliver instead. Kept for existing callers (session-send, blueprint, etc.). */
   export async function deliver(input: {
@@ -335,17 +325,21 @@ export namespace SessionManager {
       return
     }
 
-    if (mailboxHandler) {
-      if (input.waitForProcessing === false) {
-        log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
-        void run(session.id, () => mailboxHandler!(session.id)).catch((error) => {
-          log.error("async mailbox processing failed", { sessionID: session.id, error })
-        })
-        return
-      }
-      log.info("mail queued (session idle), processing", { sessionID: session.id })
-      await run(session.id, () => mailboxHandler!(session.id))
+    const process = async () => {
+      const { SessionInvoke } = await import("./invoke")
+      await SessionInvoke.loop(session.id)
     }
+
+    if (input.waitForProcessing === false) {
+      log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
+      void process().catch((error) => {
+        log.error("async inbox processing failed", { sessionID: session.id, error })
+      })
+      return
+    }
+
+    log.info("mail queued (session idle), processing", { sessionID: session.id })
+    await process()
   }
 
   // --- Pending Reply ---

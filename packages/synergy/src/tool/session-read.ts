@@ -31,7 +31,7 @@ async function resolveSession(target: string): Promise<Session.Info> {
 
 function extractMessageText(parts: MessageV2.Part[]): string {
   return parts
-    .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
+    .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !MessageV2.isSystemPart(p))
     .map((p) => p.text)
     .join("\n")
 }

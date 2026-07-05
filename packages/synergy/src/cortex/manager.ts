@@ -55,7 +55,7 @@ export namespace Cortex {
       if (message.info.role !== "assistant") continue
 
       for (const part of message.parts) {
-        if (part.type !== "text" || part.synthetic || part.ignored) continue
+        if (part.type !== "text" || MessageV2.isSystemPart(part) || part.ignored) continue
         const text = part.text.trim()
         if (text) chunks.push(text)
       }
@@ -302,7 +302,7 @@ export namespace Cortex {
           return
         }
 
-        if (part.type === "text" && !part.synthetic && !part.ignored) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part) && !part.ignored) {
           const text = part.text.trim()
           current.progress = {
             ...progress,
@@ -708,7 +708,7 @@ export namespace Cortex {
     for (const message of recent) {
       const parts: string[] = []
       for (const part of message.parts) {
-        if (part.type === "text" && !part.synthetic && !part.ignored) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part) && !part.ignored) {
           const text = part.text.trim().replace(/\s+/g, " ")
           if (text) parts.push(`text: ${text.length > 260 ? `${text.slice(0, 257)}...` : text}`)
         }

@@ -501,7 +501,6 @@ export namespace SessionInbox {
     const messageID = item.messageID
     const isRoot = item.mode === "task"
     const resolvedRootID = rootID ?? (isRoot ? messageID : undefined)
-    const noReply = options?.guiding !== false ? item.mode === "steer" || item.mode === "context" : false
 
     const role = payload.role
     const agent = payload.agent ?? "system"
@@ -516,6 +515,8 @@ export namespace SessionInbox {
     }))
 
     if (role === "user") {
+      // Scheduling & rendering come from mode-derived isRoot/visible/origin;
+      // no noReply/guided metadata flags are written.
       const info: MessageV2.User = {
         id: messageID,
         role: "user",
@@ -527,14 +528,6 @@ export namespace SessionInbox {
         ...(resolvedRootID ? { rootID: resolvedRootID } : {}),
         visible: payload.visible,
         ...(payload.origin ? { origin: payload.origin } : {}),
-        ...(noReply || options?.guiding
-          ? {
-              metadata: {
-                noReply: noReply || undefined,
-                guided: options?.guiding || undefined,
-              },
-            }
-          : {}),
       }
       await Session.updateMessage(info)
       for (const part of parts) {

@@ -290,14 +290,7 @@ function SessionPageContent() {
   /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyUserMessages: UserMessage[] = []
   const rootMessages = createMemo(
-    () =>
-      messages().filter((m) => {
-        if (m.role !== "user") return false
-        const user = m as UserMessage
-        // Use new isRoot field when available; fall back to old metadata heuristics
-        if (user.isRoot !== undefined) return user.isRoot === true
-        return user.metadata?.noReply !== true && !user.metadata?.guided && !user.metadata?.synthetic
-      }) as UserMessage[],
+    () => messages().filter((m) => m.role === "user" && (m as UserMessage).isRoot === true) as UserMessage[],
     emptyUserMessages,
   )
   const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
