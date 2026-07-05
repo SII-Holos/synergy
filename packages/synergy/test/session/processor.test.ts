@@ -435,6 +435,36 @@ describe("SessionProcessor execution slot settlement", () => {
     if (tool?.state.status === "completed") expect(tool.state.output).toBe("settled after retry")
   })
 
+  test("does not mark a stale running part unresolved after successful settlement", async () => {
+    let completedWrites = 0
+    let errorWrites = 0
+    const runningParts = new Map<string, MessageV2.ToolPart>()
+    await runSettlementScenario({
+      messageID: "msg_assistant_stale_running_after_settle",
+      updatePart: async (input) => {
+        const part = "part" in input ? input.part : input
+        if (part.type !== "tool") return part
+        if (part.state.status === "running") runningParts.set(part.callID, part)
+        if (part.state.status === "completed") {
+          completedWrites++
+          return runningParts.get(part.callID) ?? part
+        }
+        if (part.state.status === "error") errorWrites++
+        return part
+      },
+      async *stream(processor) {
+        yield { type: "start" }
+        const input = { command: "git branch --show-current" }
+        const slot = processor.beginExecution("call_stale_settled")
+        yield { type: "tool-call", toolCallId: "call_stale_settled", toolName: "bash", input }
+        slot.complete(input, completedOutcome("bash", "dev\n", { exit: 0 }))
+      },
+    })
+
+    expect(completedWrites).toBe(1)
+    expect(errorWrites).toBe(0)
+  })
+
   test("marks a running part without an execution slot as missing_execution_slot", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_missing_slot",

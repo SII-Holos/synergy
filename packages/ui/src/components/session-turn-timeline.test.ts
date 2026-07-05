@@ -54,7 +54,11 @@ const {
   timelineVisualKind,
 } = await import("./session-turn")
 
-function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
+function user(
+  id: string,
+  opts?: { isRoot?: boolean; rootID?: string; visible?: boolean; metadata?: UserMessage["metadata"] },
+): UserMessage {
+  const isRoot = opts?.isRoot ?? true
   return {
     id,
     sessionID: "session",
@@ -62,7 +66,10 @@ function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
     time: { created: 1 },
     agent: "synergy",
     model: { providerID: "provider", modelID: "model" },
-    metadata,
+    isRoot,
+    rootID: opts?.rootID ?? id,
+    visible: opts?.visible ?? true,
+    metadata: opts?.metadata,
   } as UserMessage
 }
 
@@ -76,6 +83,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     sessionID: "session",
     role: "assistant",
     parentID,
+    rootID: parentID,
     mode: "test",
     agent: "synergy",
     path: { cwd: "/tmp", root: "/tmp" },
@@ -224,7 +232,7 @@ describe("session turn assistant collection", () => {
   test("keeps guided inbox context inside the active turn", () => {
     const firstUser = user("msg_001_user")
     const toolStep = assistantFor("msg_002_assistant_tool", firstUser.id)
-    const guided = user("msg_003_user_guided", { guided: true, noReply: true })
+    const guided = user("msg_003_user_guided", { isRoot: false, rootID: firstUser.id })
     const final = assistantFor("msg_004_assistant_final", firstUser.id)
 
     expect(isGuidedContextUserMessage(guided)).toBe(true)
@@ -240,11 +248,20 @@ describe("session turn assistant collection", () => {
     ).toEqual([toolStep.id, final.id])
   })
 
-  test("stops at the next normal user turn", () => {
+  test("omits invisible non-root context from turn display", () => {
+    const firstUser = user("msg_001_user")
+    const hidden = user("msg_002_hidden", { isRoot: false, rootID: firstUser.id, visible: false })
+    const final = assistantFor("msg_003_assistant_final", firstUser.id)
+
+    expect(collectMessagesForTurnDisplay([firstUser, hidden, final] as MessageType[], firstUser.id)).toEqual([final])
+  })
+
+  test("collects only assistants belonging to this task's root", () => {
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
     const nextUser = user("msg_003_user")
-    const nextAssistant = assistantFor("msg_004_assistant", firstUser.id)
+    // Belongs to the next task's root, so it is not part of the first turn.
+    const nextAssistant = assistantFor("msg_004_assistant", nextUser.id)
 
     expect(
       collectAssistantMessagesForTurn(
@@ -254,11 +271,31 @@ describe("session turn assistant collection", () => {
     ).toEqual([firstAssistant.id])
   })
 
+  test("collects interleaved replies from a task whose queued root pre-dates them", () => {
+    // A queued task root pre-allocates its id, so a still-running earlier task
+    // can emit an assistant after this root but before this task's own replies.
+    const earlierRoot = user("msg_001_user")
+    const queuedRoot = user("msg_002_queued_root")
+    const earlierLateReply = assistantFor("msg_003_earlier_reply", earlierRoot.id)
+    const queuedReply = assistantFor("msg_004_queued_reply", queuedRoot.id)
+
+    expect(
+      collectAssistantMessagesForTurn(
+        [earlierRoot, queuedRoot, earlierLateReply, queuedReply] as MessageType[],
+        queuedRoot.id,
+      ).map((message) => message.id),
+    ).toEqual([queuedReply.id])
+  })
+
   test("stops the previous turn at a synthetic compaction boundary", async () => {
     await import("./special-user-message")
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
-    const boundary = user("msg_003_boundary", { synthetic: true, compactionBoundary: true })
+    const boundary = user("msg_003_boundary", {
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true },
+    })
     const compaction = compactionAssistant("msg_004_compaction", boundary.id)
 
     expect(
@@ -276,7 +313,7 @@ describe("session turn assistant collection", () => {
   })
 
   test("hides synthetic compaction chrome while keeping the recovery card", () => {
-    const compactionUser = user("msg_compaction", { synthetic: true })
+    const compactionUser = user("msg_compaction", { visible: false, metadata: { synthetic: true } })
     const recovery = compactionRecoveryPart("recovery", compactionUser.id)
     const parts = [
       { ...textPart("synthetic-continue", compactionUser.id, "Continue if you have next steps"), synthetic: true },
@@ -302,9 +339,9 @@ describe("session turn assistant collection", () => {
       summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] },
     } as UserMessage
     const boundary = user("msg_boundary", {
-      synthetic: true,
-      compactionBoundary: true,
-      compactionParentID: parent.id,
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true, compactionParentID: parent.id },
     })
     const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
 

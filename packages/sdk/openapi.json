@@ -6540,9 +6540,11 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 9007199254740991
+                  },
+                  "cutMessageID": {
+                    "type": "string"
                   }
-                },
-                "required": ["numTurns"]
+                }
               }
             }
           }
@@ -22746,7 +22748,7 @@
             "$ref": "#/components/schemas/PermissionConfig"
           },
           "smartAllow": {
-            "description": "Use the Smart allow internal agent to auto-allow safe asks and soft denies",
+            "description": "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
             "type": "boolean"
           },
           "tools": {
@@ -23972,6 +23974,10 @@
                   "pattern": "^msg.*"
                 }
               },
+              "cutMessageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
               "files": {
                 "type": "array",
                 "items": {
@@ -24674,165 +24680,6 @@
           }
         ]
       },
-      "SessionInboxItemSource": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          }
-        },
-        "required": ["type"],
-        "additionalProperties": {}
-      },
-      "SessionInboxItem": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^inb.*"
-          },
-          "sessionID": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["queued_user", "guiding", "agent_update"]
-          },
-          "state": {
-            "type": "string",
-            "enum": ["queued", "guiding"]
-          },
-          "deliveryTarget": {
-            "type": "string",
-            "enum": ["after_turn", "next_model_call"]
-          },
-          "summary": {
-            "type": "object",
-            "properties": {
-              "title": {
-                "type": "string"
-              },
-              "preview": {
-                "type": "string"
-              }
-            },
-            "required": ["title"]
-          },
-          "detail": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string"
-              },
-              "attachments": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "source": {
-            "$ref": "#/components/schemas/SessionInboxItemSource"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
-              },
-              "updated": {
-                "type": "number"
-              }
-            },
-            "required": ["created"]
-          },
-          "orderKey": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string",
-            "pattern": "^msg.*"
-          }
-        },
-        "required": ["id", "sessionID", "kind", "state", "deliveryTarget", "summary", "source", "time", "orderKey"]
-      },
-      "SessionInputResult": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string",
-                "const": "started"
-              },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
-              }
-            },
-            "required": ["status", "messageID"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string",
-                "const": "queued"
-              },
-              "item": {
-                "$ref": "#/components/schemas/SessionInboxItem"
-              }
-            },
-            "required": ["status", "item"]
-          }
-        ]
-      },
-      "TextPartInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "text"
-          },
-          "text": {
-            "type": "string"
-          },
-          "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
-            "type": "boolean"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              }
-            },
-            "required": ["start"]
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["type", "text"]
-      },
       "AttachmentSourceText": {
         "type": "object",
         "properties": {
@@ -25029,6 +24876,346 @@
           }
         ]
       },
+      "OriginUser": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "default": "system",
+            "type": "string",
+            "enum": ["user", "cortex", "agenda", "blueprint", "channel", "compaction", "agent", "plugin", "system"]
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "pluginID": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": ["type"]
+      },
+      "SessionInboxItemSource": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": ["type"],
+        "additionalProperties": {}
+      },
+      "SessionInboxItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^inb.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["task", "steer", "context"]
+          },
+          "message": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "default": "user",
+                "type": "string",
+                "enum": ["user", "assistant"]
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "const": "text"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "synthetic": {
+                          "type": "boolean"
+                        },
+                        "ignored": {
+                          "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string",
+                          "enum": ["user", "system"]
+                        },
+                        "time": {
+                          "type": "object",
+                          "properties": {
+                            "start": {
+                              "type": "number"
+                            },
+                            "end": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["start"]
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": ["type", "text"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "const": "attachment"
+                        },
+                        "mime": {
+                          "type": "string"
+                        },
+                        "filename": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "localPath": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "$ref": "#/components/schemas/AttachmentSource"
+                        },
+                        "presentation": {
+                          "$ref": "#/components/schemas/AttachmentPresentation"
+                        },
+                        "model": {
+                          "$ref": "#/components/schemas/AttachmentModelPolicy"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": ["type", "mime", "url"]
+                    }
+                  ]
+                }
+              },
+              "agent": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              },
+              "origin": {
+                "$ref": "#/components/schemas/OriginUser"
+              },
+              "visible": {
+                "default": true,
+                "type": "boolean"
+              },
+              "metadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                }
+              },
+              "system": {
+                "type": "string"
+              },
+              "tools": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              },
+              "variant": {
+                "type": "string"
+              }
+            },
+            "required": ["parts"]
+          },
+          "summaryPreview": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "preview": {
+                "type": "string"
+              }
+            },
+            "required": ["title"]
+          },
+          "detail": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/SessionInboxItemSource"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "orderKey": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg.*"
+          }
+        },
+        "required": ["id", "sessionID", "mode", "summary", "source", "time", "orderKey", "messageID"]
+      },
+      "SessionInputResult": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "started"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["status", "messageID"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "queued"
+              },
+              "item": {
+                "$ref": "#/components/schemas/SessionInboxItem"
+              }
+            },
+            "required": ["status", "item"]
+          }
+        ]
+      },
+      "TextPartInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "text"
+          },
+          "text": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
+          "ignored": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["user", "system"]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["type", "text"]
+      },
       "AttachmentPartInput": {
         "type": "object",
         "properties": {
@@ -25151,6 +25338,9 @@
           },
           "variant": {
             "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/OriginUser"
           },
           "metadata": {
             "type": "object",
@@ -25455,6 +25645,10 @@
           },
           "ignored": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["user", "system"]
           },
           "time": {
             "type": "object",
@@ -26106,6 +26300,9 @@
               "pattern": "^msg.*"
             }
           },
+          "cutMessageID": {
+            "type": "string"
+          },
           "files": {
             "type": "array",
             "items": {
@@ -26193,6 +26390,9 @@
               "type": "string",
               "pattern": "^msg.*"
             }
+          },
+          "cutMessageID": {
+            "type": "string"
           },
           "files": {
             "type": "array",

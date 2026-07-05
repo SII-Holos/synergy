@@ -1647,5 +1647,96 @@ export const migrations: Migration[] = [
       await migrateSessionCompletionNotice(progress)
     },
   },
+  {
+    // Supersedes the earlier "20260704-message-v2-origin-fields" backfill, which
+    // used cruder per-message heuristics (rootID=self for non-roots, origin
+    // "forward", isRoot=!noReply). This re-runs and rewrites the canonical fields
+    // through the shared MessageV2.deriveSemantics so persisted values match what
+    // the read path computes. A new id ensures it applies even where the old one
+    // already ran.
+    id: "20260705-message-v2-semantics-derive",
+    description:
+      "Backfill canonical message semantics (rootID/isRoot/visible/origin, TextPart.origin) via shared derivation",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+      const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+        for (const sessionID of sessionIDs) {
+          tasks.push({ scopeID, sessionID })
+        }
+      }
+
+      if (tasks.length === 0) return
+
+      let done = 0
+      for (const { scopeID, sessionID } of tasks) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sid = Identifier.asSessionID(sessionID)
+        const messageIDs = (await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => []))
+          .slice()
+          .sort()
+
+        // Load the whole session (info + parts) in order so deriveSemantics can
+        // resolve rootID chains across roots, injected messages, and assistants.
+        const withParts: MessageV2.WithParts[] = []
+        for (const messageID of messageIDs) {
+          const mid = Identifier.asMessageID(messageID)
+          const info = await Storage.read<any>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
+          if (!info) continue
+          const partIDs = (await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])).slice().sort()
+          const parts: any[] = []
+          for (const partID of partIDs) {
+            const part = await Storage.read<any>(
+              StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(partID)),
+            ).catch(() => undefined)
+            if (part) parts.push(part)
+          }
+          withParts.push({ info, parts })
+        }
+
+        const derived = MessageV2.deriveSemantics(withParts)
+
+        for (let i = 0; i < derived.length; i++) {
+          const before = withParts[i]
+          const after = derived[i]
+          const mid = Identifier.asMessageID(after.info.id)
+
+          if (canonicalFieldsDiffer(before.info, after.info)) {
+            await Storage.write(StoragePath.messageInfo(scope, sid, mid), after.info)
+          }
+
+          for (let p = 0; p < after.parts.length; p++) {
+            const beforePart = before.parts[p] as { origin?: string } | undefined
+            const afterPart = after.parts[p]
+            if (afterPart.type !== "text") continue
+            if (beforePart?.origin !== afterPart.origin) {
+              await Storage.write(
+                StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(afterPart.id)),
+                afterPart,
+              )
+            }
+          }
+        }
+
+        done++
+        progress(done, tasks.length)
+      }
+
+      log.info("message semantics backfill complete", { total: tasks.length })
+    },
+  },
 ]
+
+function canonicalFieldsDiffer(before: any, after: any): boolean {
+  return (
+    before?.isRoot !== after?.isRoot ||
+    before?.rootID !== after?.rootID ||
+    before?.visible !== after?.visible ||
+    before?.includeInContext !== after?.includeInContext ||
+    JSON.stringify(before?.origin) !== JSON.stringify(after?.origin)
+  )
+}
 MigrationRegistry.register("session", migrations)

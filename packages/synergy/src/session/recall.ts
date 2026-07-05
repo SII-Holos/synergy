@@ -89,7 +89,7 @@ function extractLastUserText(messages: MessageV2.WithParts[]): string | undefine
   const lastUserMsg = messages.findLast((m) => m.info.role === "user")
   if (!lastUserMsg) return undefined
   const text = lastUserMsg.parts
-    .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+    .filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
     .map((p) => p.text)
     .join("\n")
   return text.trim() || undefined

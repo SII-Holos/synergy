@@ -41,6 +41,24 @@ function metadataText(message: UserMessage, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
+/**
+ * The BlueprintLoop control kind (start / continuation / restart / audit) from
+ * the canonical origin, falling back to legacy metadata.source for messages
+ * written before origin existed.
+ */
+function blueprintDetail(message: UserMessage): string | undefined {
+  const origin = message.origin
+  if (origin?.type === "blueprint") return origin.detail
+  const source = message.metadata?.source
+  return typeof source === "string" && source.startsWith("blueprint_loop_")
+    ? source.slice("blueprint_loop_".length)
+    : undefined
+}
+
+function isBlueprintControl(message: UserMessage): boolean {
+  return message.origin?.type === "blueprint" || blueprintDetail(message) !== undefined
+}
+
 function Field(props: { label: string; value: string | undefined }): JSX.Element {
   return h(Show, {
     when: props.value,
@@ -87,15 +105,15 @@ function HiddenSpecialMessage(): JSX.Element {
 function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
   const [detailsOpen, setDetailsOpen] = createSignal(false)
   let detailsTrigger: HTMLButtonElement | undefined
-  const source = createMemo(() => props.message.metadata?.source as string | undefined)
+  const kind = createMemo(() => blueprintDetail(props.message))
   const title = createMemo(() => metadataText(props.message, "title"))
   const loopID = createMemo(() => metadataText(props.message, "loopID"))
   const noteID = createMemo(() => metadataText(props.message, "noteID"))
   const sourceSessionID = createMemo(() => metadataText(props.message, "sourceSessionID"))
 
   const view = createMemo(() => {
-    switch (source()) {
-      case "blueprint_loop_start":
+    switch (kind()) {
+      case "start":
         return {
           tone: "start",
           icon: "clipboard-list" as IconName,
@@ -103,7 +121,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
           heading: "Started execution",
           description: "The execution session is now driving this BlueprintLoop.",
         }
-      case "blueprint_loop_continuation":
+      case "continuation":
         return {
           tone: "continue",
           icon: "refresh-ccw" as IconName,
@@ -111,7 +129,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
           heading: "Continued from idle",
           description: "The loop is still running, so the session was asked to inspect progress and continue.",
         }
-      case "blueprint_loop_restart":
+      case "restart":
         return {
           tone: "restart",
           icon: "clipboard-check" as IconName,
@@ -187,7 +205,7 @@ function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
             ]),
         }),
         h(Show, {
-          when: () => source() === "blueprint_loop_restart" && hasRestartDetails(),
+          when: () => kind() === "restart" && hasRestartDetails(),
           children: () => [
             h(
               "button",
@@ -246,12 +264,7 @@ registerSpecialUserMessageRenderer({
 registerSpecialUserMessageRenderer({
   id: "blueprint-control",
   match(message) {
-    const source = message.metadata?.source
-    return (
-      source === "blueprint_loop_start" ||
-      source === "blueprint_loop_continuation" ||
-      source === "blueprint_loop_restart"
-    )
+    return isBlueprintControl(message)
   },
   component: BlueprintControlMessage,
 })

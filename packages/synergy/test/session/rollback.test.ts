@@ -73,6 +73,38 @@ describe("session rollback history", () => {
     })
   })
 
+  test("rollback prefix hides post-cut injections until a new root starts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+        const injected = await writeUser(session.id, "steer after rollback", {
+          isRoot: false,
+          rootID: rollback.cutMessageID,
+          origin: { type: "user" },
+        })
+        expect(await visibleTexts(session.id)).toEqual(["first", "one"])
+        expect(await rawTexts(session.id)).toContain("steer after rollback")
+
+        await sleep(2)
+        await writeUser(session.id, "replacement")
+        expect(await visibleTexts(session.id)).toEqual(["first", "one", "steer after rollback", "replacement"])
+        expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(false)
+        expect(injected.info.rootID).toBe(rollback.cutMessageID)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("file restore is explicit and scoped to selected patch files", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -181,7 +213,7 @@ async function writeTurn(sessionID: string, cwd: string, userText: string, assis
   return [user, assistant] as const
 }
 
-async function writeUser(sessionID: string, text: string) {
+async function writeUser(sessionID: string, text: string, extra: Partial<MessageV2.User> = {}) {
   const info = await Session.updateMessage({
     id: Identifier.ascending("message"),
     role: "user",
@@ -194,6 +226,7 @@ async function writeUser(sessionID: string, text: string) {
     time: {
       created: Date.now(),
     },
+    ...extra,
   })
   await Session.updatePart({
     id: Identifier.ascending("part"),

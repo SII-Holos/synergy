@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { mock } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
+import { SessionInvoke } from "../../src/session/invoke"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -23,9 +25,9 @@ describe("SessionInbox", () => {
           parts: [{ type: "text", text: "please adjust the current run" }],
         })
 
-        expect(item.kind).toBe("queued_user")
-        expect(item.deliveryTarget).toBe("after_turn")
-        expect(item.messageID).toBeUndefined()
+        expect(item.mode).toBe("task")
+        expect(item.messageID).toBeDefined()
+        expect(item.message?.origin?.type).toBe("user")
         expect(item.summary.preview).toContain("please adjust")
         expect(await Session.messages({ sessionID: session.id })).toEqual([])
 
@@ -50,13 +52,59 @@ describe("SessionInbox", () => {
         const guided = await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
         const items = await SessionInbox.list(session.id)
 
-        expect(guided.kind).toBe("guiding")
-        expect(guided.deliveryTarget).toBe("next_model_call")
-        expect(guided.messageID).toBeUndefined()
+        expect(guided.mode).toBe("steer")
+        expect(guided.messageID).toBeDefined()
         expect(items).toHaveLength(1)
         expect(items[0].id).toBe(queued.id)
-        expect(items[0].kind).toBe("guiding")
-        expect(items[0].messageID).toBeUndefined()
+        expect(items[0].mode).toBe("steer")
+        expect(items[0].messageID).toBeDefined()
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("queues noReply user input as steer", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          noReply: true,
+          parts: [{ type: "text", text: "do not start a new task" }],
+        })
+
+        expect(queued.mode).toBe("steer")
+        // User-origin steer items (guide/插话) are always visible so the
+        // frontend renders them as chips or pending bubbles in the timeline.
+        expect(queued.message?.visible).toBe(true)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("does not guide context items into runnable work", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const context = await SessionInbox.deliver({
+          sessionID: session.id,
+          mode: "context",
+          message: {
+            role: "user",
+            parts: [{ type: "text", text: "only if a call is already needed" }],
+          },
+        })
+
+        const guided = await SessionInbox.guide({ sessionID: session.id, itemID: context.itemID })
+
+        expect(guided.mode).toBe("context")
+        expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
 
         SessionManager.unregisterRuntime(session.id)
       },
@@ -92,9 +140,73 @@ describe("SessionInbox", () => {
 
         const items = await SessionInbox.list(session.id)
         expect(items).toHaveLength(1)
-        expect(items[0].kind).toBe("agent_update")
+        expect(items[0].mode).toBe("steer")
         expect(items[0].source.type).toBe("cortex")
         expect(items[0].summary.preview).toContain("background task completed")
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("legacy mail mode preserves reply-required default", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const task = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "user",
+            parts: [
+              {
+                id: "prt_task_mail",
+                sessionID: session.id,
+                messageID: "msg_task_mail",
+                type: "text",
+                text: "start a task",
+              },
+            ],
+          },
+        })
+        const steer = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "user",
+            noReply: true,
+            parts: [
+              {
+                id: "prt_steer_mail",
+                sessionID: session.id,
+                messageID: "msg_steer_mail",
+                type: "text",
+                text: "join the current task",
+              },
+            ],
+          },
+        })
+        const assistant = await SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: {
+            type: "assistant",
+            parts: [
+              {
+                id: "prt_assistant_mail",
+                sessionID: session.id,
+                messageID: "msg_assistant_mail",
+                type: "text",
+                text: "record this",
+              },
+            ],
+          },
+        })
+
+        expect(task.mode).toBe("task")
+        expect(task.message?.origin?.type).toBe("user")
+        expect(steer.mode).toBe("steer")
+        expect(assistant.mode).toBe("context")
 
         SessionManager.unregisterRuntime(session.id)
       },
@@ -107,15 +219,18 @@ describe("SessionInbox", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
+        const originalLoop = SessionInvoke.loop
         const started = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
+        const done = Promise.withResolvers<void>()
         let finished = false
 
-        const cleanup = SessionManager.onMailboxReady(async (sessionID) => {
+        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
           started.resolve()
           await release.promise
-          SessionManager.drainMails(sessionID, "user")
+          await SessionInbox.drainReady(sessionID)
           finished = true
+          done.resolve()
         })
 
         try {
@@ -145,11 +260,11 @@ describe("SessionInbox", () => {
           expect(finished).toBe(false)
           await started.promise
           release.resolve()
-          await new Promise((resolve) => setTimeout(resolve, 0))
+          await done.promise
           expect(finished).toBe(true)
         } finally {
           release.resolve()
-          cleanup()
+          ;(SessionInvoke.loop as any) = originalLoop
           SessionManager.unregisterRuntime(session.id)
         }
       },
