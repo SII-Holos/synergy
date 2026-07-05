@@ -142,14 +142,14 @@ export function shouldShowTurnDiffs(
 }
 
 export function shouldShowTurnUserChrome(
-  message: Pick<UserMessage, "metadata"> | undefined,
+  message: Pick<UserMessage, "metadata" | "visible"> | undefined,
   parts: readonly PartType[] | undefined,
   hasCompactionEvent: boolean,
 ): boolean {
   if (!message) return false
   if (isCompactionBoundaryUser(message)) return false
   if (!hasCompactionEvent) return true
-  if (message.metadata?.synthetic === true) return false
+  if (message.visible === false) return false
 
   return hasVisibleUserMessageContent(parts)
 }

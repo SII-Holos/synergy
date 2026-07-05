@@ -220,8 +220,8 @@ function SessionPageContent() {
   })
   const messages = createMemo(() => {
     const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
-    const r = rollback()
-    if (r?.cutMessageID) return raw.filter((msg) => msg.id < r.cutMessageID)
+    const cut = rollback()?.cutMessageID
+    if (cut) return raw.filter((msg) => msg.id < cut)
     const hidden = hiddenMessageIDs()
     if (!hidden) return raw
     if ("cutMessageID" in hidden) {

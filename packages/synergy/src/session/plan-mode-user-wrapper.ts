@@ -36,7 +36,6 @@ export namespace PlanModeUserWrapper {
     if (!SessionModePolicy.isPlanMode(input.session)) return {}
     if (input.noReply === true) return {}
     if (input.metadata?.[METADATA_REQUEST] === false) return {}
-    if (input.metadata?.synthetic === true) return {}
 
     const source = input.metadata?.source
     if (typeof source === "string" && CONTROL_SOURCES.has(source)) return {}

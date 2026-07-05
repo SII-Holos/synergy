@@ -218,7 +218,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
               messageID: info.id,
               sessionID: input.sessionID,
               type: "text",
-              synthetic: true,
+              origin: "system" as const,
               text: `Reading MCP resource: ${part.filename} (${uri})`,
             },
           ]
@@ -242,7 +242,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: content.text as string,
                 })
               } else if ("blob" in content && content.blob) {
@@ -253,7 +253,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `[Binary content: ${mimeType}]`,
                 })
               }
@@ -273,7 +273,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
               messageID: info.id,
               sessionID: input.sessionID,
               type: "text",
-              synthetic: true,
+              origin: "system" as const,
               text: `Failed to read MCP resource ${part.filename}: ${message}`,
             })
           }
@@ -299,7 +299,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
                 },
                 {
@@ -307,7 +307,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: Attachment.decodeDataUrl(part.url).buffer.toString(),
                 },
                 {
@@ -327,7 +327,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
                 },
                 {
@@ -335,7 +335,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text,
                 },
               ]
@@ -422,7 +422,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
                 },
               ]
@@ -447,14 +447,13 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
-                    synthetic: true,
+                    origin: "system" as const,
                     text: result.output,
                   })
                   if (result.attachments?.length) {
                     pieces.push(
                       ...result.attachments.map((attachment) => ({
                         ...attachment,
-                        synthetic: true,
                         filename: attachment.filename ?? part.filename,
                         messageID: info.id,
                         sessionID: input.sessionID,
@@ -484,7 +483,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
-                    synthetic: true,
+                    origin: "system" as const,
                     text: `Read tool failed to read ${filepath} with the following error: ${message}`,
                   })
                 })
@@ -512,7 +511,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the list tool with the following input: ${JSON.stringify(args)}`,
                 },
                 {
@@ -520,7 +519,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: result.output,
                 },
                 {
@@ -542,7 +541,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
                 },
                 {
@@ -550,7 +549,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text,
                 },
               ]
@@ -578,7 +577,6 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                 sessionID: input.sessionID,
                 type: "text",
                 text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
-                synthetic: true,
               },
               await Attachment.toPart({
                 filepath,
@@ -621,13 +619,13 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     },
   )
 
-  if (parts.length > 0 && parts.every((p) => p.type === "text" && "synthetic" in p && p.synthetic === true)) {
-    info.metadata = { ...info.metadata, synthetic: true }
-  }
-
+  // System-injected text parts are written with origin: "system" above; any
+  // remaining text part is the user's own input. Rendering/visibility of the
+  // whole message is carried by info.visible/origin, so no metadata.synthetic
+  // flag is needed.
   for (const part of parts) {
     if (part.type === "text" && !part.origin) {
-      ;(part as MessageV2.TextPart).origin = part.synthetic ? "system" : "user"
+      ;(part as MessageV2.TextPart).origin = "user"
     }
     await Session.updatePart(part)
   }

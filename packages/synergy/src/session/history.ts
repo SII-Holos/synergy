@@ -406,9 +406,9 @@ export namespace SessionHistory {
     // Non-root user messages and assistant messages do not invalidate.
     return !messages.some((msg) => {
       if (msg.role !== "user") return false
-      const user = msg as MessageV2.User
-      if (user.isRoot === false) return false
-      if (user.metadata?.synthetic === true) return false
+      // Only explicit non-root injections are exempt; a new root (or an
+      // un-derived legacy user message) invalidates redo.
+      if ((msg as MessageV2.User).isRoot === false) return false
       return msg.time.created > event.time.created
     })
   }
