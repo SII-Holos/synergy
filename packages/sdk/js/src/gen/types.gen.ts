@@ -3508,8 +3508,9 @@ export type AttachmentModelPolicy =
     }
 
 export type OriginUser = {
-  type: string
+  type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
+  pluginID?: string
   label?: string
   detail?: string
 }
@@ -3523,9 +3524,6 @@ export type SessionInboxItemSource = {
 export type SessionInboxItem = {
   id: string
   sessionID: string
-  kind: "queued_user" | "guiding" | "agent_update"
-  state: "queued" | "guiding"
-  deliveryTarget: "after_turn" | "next_model_call"
   mode: "task" | "steer" | "context"
   message?: {
     role?: "user" | "assistant"

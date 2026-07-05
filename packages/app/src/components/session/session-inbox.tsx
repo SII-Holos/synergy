@@ -97,7 +97,7 @@ function InboxRow(props: {
   }
 
   return (
-    <div class="session-inbox-row" data-kind={props.item.kind} data-interactive={canInteract()}>
+    <div class="session-inbox-row" data-mode={props.item.mode} data-interactive={canInteract()}>
       <Tooltip placement="left" class="session-inbox-row-tooltip" value={<InboxDetail item={props.item} />}>
         <div class="session-inbox-row-main">
           <div class="session-inbox-row-meta">
