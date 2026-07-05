@@ -225,7 +225,8 @@ function SessionPageContent() {
     if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
     return false
   })
-  const openRewindConfirm = (message: UserMessage) => {
+  const openRewindConfirm = (message: UserMessage | undefined) => {
+    if (!message?.id) return
     const targetMsg = message
     const sessionID = params.id
     dialog.push(() => (
