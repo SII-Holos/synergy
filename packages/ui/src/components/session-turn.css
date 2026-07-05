@@ -18,7 +18,10 @@
     font-size: var(--font-size-x-small);
     color: var(--text-subtle);
     background: transparent;
+    /* Stay out of the way until the turn is hovered or the button is focused. */
+    opacity: 0;
     transition:
+      opacity var(--motion-duration-fast) var(--motion-ease-standard),
       background var(--motion-duration-fast) var(--motion-ease-standard),
       color var(--motion-duration-fast) var(--motion-ease-standard);
     white-space: nowrap;
@@ -31,10 +34,25 @@
     &:active {
       background: var(--background-base);
     }
+
+    &:focus-visible {
+      opacity: 1;
+      outline: 1px solid var(--border-interactive-base);
+      outline-offset: 1px;
+    }
+
+    & [data-component="icon"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  [data-slot="session-turn-rewind-wrapper"]:hover [data-slot="session-turn-rewind-button"] {
+    opacity: 1;
   }
 
   [data-slot="session-turn-rewind-button"][data-rollback-active="true"] {
-    opacity: 0.35;
+    opacity: 0;
     pointer-events: none;
   }
 
@@ -120,6 +138,35 @@
     color: var(--text-weak);
     font-size: var(--font-size-small);
     line-height: 1;
+  }
+
+  /* Injected (non-root) message chip: a compact, origin-tinted pill so a
+     mid-run steer / notification reads distinctly from a real user turn. */
+  [data-slot="session-turn-chip"] {
+    align-self: flex-start;
+    padding: 3px 9px;
+    font-size: var(--font-size-x-small);
+    border: 1px solid var(--border-weak);
+    color: var(--text-subtle);
+
+    & [data-component="icon"] {
+      width: 12px;
+      height: 12px;
+      color: var(--chip-accent, var(--text-subtle));
+    }
+  }
+
+  [data-slot="session-turn-chip"][data-origin="cortex"] {
+    --chip-accent: var(--text-interactive-base);
+  }
+  [data-slot="session-turn-chip"][data-origin="blueprint"] {
+    --chip-accent: var(--text-success, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip"][data-origin="channel"] {
+    --chip-accent: var(--text-warning, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip-label"] {
+    font-weight: var(--font-weight-medium);
   }
 
   [data-slot="session-turn-timeline-item"]:is(

@@ -10,6 +10,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-medium, 8px);
+  background: var(--background-weak);
 }
 
 .rewind-confirm-count-row {
@@ -18,6 +22,10 @@
   gap: 8px;
   font-size: var(--font-size-small);
   color: var(--text-base);
+
+  & [data-component="icon"] {
+    color: var(--text-subtle);
+  }
 }
 
 .rewind-confirm-file-list {
@@ -44,15 +52,28 @@
 
 .rewind-confirm-checkbox-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: var(--font-size-small);
   color: var(--text-base);
   cursor: pointer;
 
   input[type="checkbox"] {
+    margin-top: 2px;
     accent-color: var(--accent-base);
   }
+}
+
+.rewind-confirm-checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rewind-confirm-checkbox-hint {
+  font-size: var(--font-size-x-small);
+  color: var(--text-subtle);
+  line-height: var(--line-height-base, 1.4);
 }
 
 .rewind-confirm-actions {

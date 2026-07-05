@@ -90,7 +90,9 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
     <Dialog
       title="Rewind to here"
       description={
-        summary() ? `Rewind before 「${summary()}」?` : "Rewind before this message? Messages after it will be hidden."
+        summary()
+          ? `Rewind to before “${summary()}”. Everything after it is hidden and can be redone until you start a new task.`
+          : "Rewind to before this message. Everything after it is hidden and can be redone until you start a new task."
       }
       class="rewind-confirm-dialog"
       action={
@@ -154,7 +156,12 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
           onChange={(e) => setRestoreFiles(e.currentTarget.checked)}
           disabled={pending()}
         />
-        <span>Restore files</span>
+        <span class="rewind-confirm-checkbox-text">
+          <span>Restore files to this point</span>
+          <span class="rewind-confirm-checkbox-hint">
+            Reverts on-disk changes made after it. You can also do this later from the banner.
+          </span>
+        </span>
       </label>
 
       <div data-slot="dialog-actions" class="rewind-confirm-actions">

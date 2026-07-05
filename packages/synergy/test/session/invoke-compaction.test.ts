@@ -226,9 +226,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
           const root = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
           expect(root.info?.role).toBe("user")
           expect(root.parts).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ type: "compaction", auto: true, messageID: user.id }),
-            ]),
+            expect.arrayContaining([expect.objectContaining({ type: "compaction", auto: true, messageID: user.id })]),
           )
           expect(processCalled).not.toHaveBeenCalled()
         },

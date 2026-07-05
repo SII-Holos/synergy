@@ -253,15 +253,19 @@ function chipLabelFromOrigin(origin: { type: string; label?: string; detail?: st
     case "agenda":
       return "Agenda"
     case "blueprint":
-      return origin.detail ?? "Blueprint"
+      return "Blueprint"
     case "channel":
       return "Channel"
-    case "forward":
+    case "agent":
       return "Forwarded"
+    case "compaction":
+      return "Compaction"
+    case "plugin":
+      return "Plugin"
     case "system":
       return "System"
     default:
-      return origin.type
+      return "Guided"
   }
 }
 
@@ -434,8 +438,12 @@ function originIconName(origin: { type: string; label?: string; detail?: string 
       return "clipboard-list"
     case "channel":
       return "message-circle"
-    case "forward":
+    case "agent":
       return "corner-down-left"
+    case "compaction":
+      return "archive"
+    case "plugin":
+      return "puzzle"
     case "system":
       return "cpu"
     default:
@@ -469,7 +477,8 @@ function TimelineDisplay(props: {
           }}
           title="Rewind to before this message"
         >
-          {"\u293A"} Rewind
+          <Icon name="undo-2" size="small" />
+          <span>Rewind</span>
         </button>
       </div>
     )
@@ -816,7 +825,8 @@ export function SessionTurn(
                             }}
                             title="Rewind to before this message"
                           >
-                            {"\u293A"} Rewind
+                            <Icon name="undo-2" size="small" />
+                            <span>Rewind</span>
                           </button>
                         </Show>
                       </div>
