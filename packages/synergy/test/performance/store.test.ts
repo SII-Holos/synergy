@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
@@ -16,6 +16,7 @@ import { PerformanceWriter } from "../../src/performance/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
 
 const homes: string[] = []
+const originalTestHome = process.env.SYNERGY_TEST_HOME
 
 beforeEach(() => {
   const home = mkdtempSync(path.join(tmpdir(), "synergy-perf-"))
@@ -25,7 +26,14 @@ beforeEach(() => {
   PerformanceConfig.refresh()
 })
 
-describe("performance observability store", () => {
+afterEach(() => {
+  PerformanceStore.close()
+  PerformanceConfig.refresh()
+  if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
+  else process.env.SYNERGY_TEST_HOME = originalTestHome
+})
+
+describe.serial("performance observability store", () => {
   test("initializes required sqlite tables and stores attributed metrics", () => {
     PerformanceMetrics.record({
       name: "http.request.duration",
@@ -206,7 +214,7 @@ describe("performance observability store", () => {
     expect(PerformanceWriter.stats().queueDepth).toBe(0)
     expect(await Bun.file(file).text()).toContain("one")
 
-    for (let i = 0; i < 5_050; i++) PerformanceWriter.append(file, `{\"type\":\"${i}\"}\n`)
+    for (let i = 0; i < 5_050; i++) PerformanceWriter.append(file, `{"type":"${i}"}\n`)
     await PerformanceWriter.flush()
     PerformanceStore.flush()
     const drops = PerformanceStore.queryMetrics({ since: 0, names: ["observability.writer.dropped"] })

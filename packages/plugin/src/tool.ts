@@ -1,8 +1,8 @@
 import { z } from "zod"
-import type { ToolDisplay } from "./display"
-import type { BunShell } from "./shell"
+import type { ToolDisplay } from "./display.js"
+import type { BunShell } from "./shell.js"
 
-export type { ToolDisplay, ToolMediaDisplay } from "./display"
+export type { ToolDisplay, ToolMediaDisplay } from "./display.js"
 
 export type ToolContext = {
   sessionID: string

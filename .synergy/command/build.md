@@ -13,3 +13,13 @@ If build succeeds, regenerate the SDK:
 ```
 
 Report build results and any errors. $ARGUMENTS
+
+### Quality verification
+
+After building, run quality checks to ensure no regressions:
+
+```bash
+bun run quality:quick
+```
+
+If the build or any quality check fails, fix the root cause and re-run.

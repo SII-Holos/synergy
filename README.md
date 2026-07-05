@@ -87,7 +87,7 @@ Web clients update frontend assets by refreshing the browser page when the loade
 
 ### Session History, File Restore, And Forking
 
-Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, engram recall, and session forks; it does not restore, delete, or otherwise modify local files.
+Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, library recall, and session forks; it does not restore, delete, or otherwise modify local files.
 
 File restoration is an explicit follow-up action. When a rolled-back turn contains patch data, Synergy can restore selected files through the file restore endpoint or Web command. This is the only user-facing flow that applies snapshot patch data back to the workspace.
 
@@ -624,7 +624,7 @@ The installer places the binary under `~/.meta-synergy/bin/` and optionally adds
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) ≥ 1.3 (the repo pins `bun@1.3.11` via `packageManager`)
+- [Bun](https://bun.sh) ≥ 1.3 (the repo pins `bun@1.3.14` via `packageManager`)
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
@@ -685,12 +685,24 @@ bun run desktop:dist    # local installer/package for the current platform
 
 Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable with minimum plausibility checks: file size and executable permission.
 
-### Quality checks
+### Quality commands
 
 ```bash
-bun run typecheck       # type-check all packages via turbo
-./script/format.ts      # format with prettier
+bun run format:check       # check formatting with prettier
+./script/format.ts          # auto-format all files
+bun run lint                # lint with oxlint (errors + warnings)
+bun run lint:fix            # lint with auto-fix
+bun run typecheck           # type-check all packages via turbo
+bun run deadcode            # check dead code and dependency hygiene (knip)
+bun run monorepo:check      # validate monorepo dependency consistency (sherif)
+bun run workflow:check      # validate CI workflow files (actionlint)
+bun run secrets:check       # scan for secrets (gitleaks)
+bun run package:check       # validate publishable packages (publint + attw)
+bun run quality:quick       # format:check + lint + typecheck + monorepo:check + package:check
+bun run quality             # quality:quick + all tests (turbo test)
 ```
+
+`bun run quality:quick` is the default local PR preflight. The pre-push hook runs the fast subset: Bun version, format, lint, typecheck, and monorepo checks. CI runs the full matrix: quality, typecheck, test, package-validation, workflow-validation, secret-scan, desktop, and smoke jobs. See [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model, contributor scenarios, and CI/tool responsibility table.
 
 ### Tests
 

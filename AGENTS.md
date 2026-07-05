@@ -119,12 +119,24 @@ bun dev build desktop
 
 `packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server. Use `bun dev desktop --managed` when validating the production-style managed server path; it rebuilds the Web app dist before launching Electron so stale frontend assets do not mix with current desktop/server code.
 
-### Type checking and formatting
+### Quality commands
 
 ```bash
-bun run typecheck
-./script/format.ts
+bun run format:check       # check formatting with prettier
+./script/format.ts          # auto-format all files
+bun run lint                # lint with oxlint (errors + warnings)
+bun run lint:fix            # lint with auto-fix
+bun run typecheck           # type-check all packages via turbo
+bun run deadcode            # check dead code and dependency hygiene (knip)
+bun run monorepo:check      # validate monorepo dependency consistency (sherif)
+bun run workflow:check      # validate CI workflow files (actionlint)
+bun run secrets:check       # scan for secrets (gitleaks)
+bun run package:check       # validate publishable packages (publint + attw)
+bun run quality:quick       # format:check + lint + typecheck + monorepo:check + package:check
+bun run quality             # quality:quick + all tests (turbo test)
 ```
+
+`bun run quality:quick` is the default local PR preflight. The pre-push hook runs the fast subset: Bun version, format, lint, typecheck, and monorepo checks. CI runs the full matrix: quality, typecheck, test, package-validation, workflow-validation, secret-scan, desktop, and smoke jobs. See [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model.
 
 ### Tests
 
@@ -394,7 +406,8 @@ Skipping any of these causes the tool to fall back to a generic icon and label, 
 - do not silently ignore failing relevant tests
 - If a pre-push or prepush check fails, agents may make the narrow fixes required by that hook, verify them, commit the fix directly, and retry the push. Do not bypass the hook or leave required fixes uncommitted.
 
-Do not run root-level `test` scripts expecting the main suite; the root intentionally blocks that path.
+- Verify quality commands against the actual root scripts (`package.json`) before referencing them. `bun run quality:quick` is the default local PR preflight; the pre-push hook runs a fast subset; `bun run quality` runs the full suite with tests.
+- When changes add or modify quality scripts, CI jobs, or pre-push hooks, update `docs/open-source-quality.md` and the affected agent guides.
 
 ## Documentation Sync Rules
 
@@ -465,7 +478,7 @@ Key documents in the repo that agents should be aware of:
 - `CODE_OF_CONDUCT.md` — community code of conduct
 - `.github/SECURITY.md` — security vulnerability reporting process (never open public issues for security bugs)
 - `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
-- `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
+- `docs/open-source-quality.md` — quality model, CI jobs, pre-push hook, package validation, contributor scenarios
 - `docs/desktop-release.md` — desktop packaging, signing, update, and release runbook
 - `packages/app/PRODUCT.md` — Web product principles, interaction model, and visual design contract
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package

@@ -28,19 +28,19 @@ export namespace McpAuth {
   })
   export type Entry = z.infer<typeof Entry>
 
-  const filepath = Global.Path.authMcp
-
-  let cache: Record<string, Entry> | undefined
+  let cache: { filepath: string; data: Record<string, Entry> } | undefined
 
   export function invalidateCache() {
     cache = undefined
   }
 
   export async function all(): Promise<Record<string, Entry>> {
-    if (cache) return cache
+    const filepath = Global.Path.authMcp
+    if (cache?.filepath === filepath) return cache.data
     const file = Bun.file(filepath)
-    cache = (await file.json().catch(() => ({}))) as Record<string, Entry>
-    return cache
+    const data = (await file.json().catch(() => ({}))) as Record<string, Entry>
+    cache = { filepath, data }
+    return data
   }
 
   export async function get(mcpName: string): Promise<Entry | undefined> {
@@ -69,15 +69,15 @@ export namespace McpAuth {
     if (serverUrl) entry.serverUrl = serverUrl
     const data = await all()
     data[mcpName] = entry
-    await Bun.write(filepath, JSON.stringify(data, null, 2))
-    await fs.chmod(filepath, 0o600)
+    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
+    await fs.chmod(Global.Path.authMcp, 0o600)
   }
 
   export async function remove(mcpName: string): Promise<void> {
     const data = await all()
     delete data[mcpName]
-    await Bun.write(filepath, JSON.stringify(data, null, 2))
-    await fs.chmod(filepath, 0o600)
+    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
+    await fs.chmod(Global.Path.authMcp, 0o600)
   }
 
   export async function updateTokens(mcpName: string, tokens: Tokens, serverUrl?: string): Promise<void> {

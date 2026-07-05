@@ -1,6 +1,6 @@
 import fs from "fs"
 import path from "path"
-import type { PluginManifest } from "./manifest"
+import type { PluginManifest } from "./manifest.js"
 
 function resolvePackageEntry(pluginDir: string): string {
   const pkgPath = path.join(pluginDir, "package.json")

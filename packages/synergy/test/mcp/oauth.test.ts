@@ -47,6 +47,7 @@ describe.serial("McpOAuthProvider", () => {
   let backup: string | undefined
 
   beforeEach(async () => {
+    McpAuth.invalidateCache()
     const file = Bun.file(Global.Path.authMcp)
     const exists = await file.exists()
     backup = exists ? await file.text() : undefined
@@ -60,6 +61,7 @@ describe.serial("McpOAuthProvider", () => {
     } else {
       await Bun.write(Global.Path.authMcp, "{}")
     }
+    McpAuth.invalidateCache()
   })
 
   function createProvider(

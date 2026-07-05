@@ -142,6 +142,13 @@ function extractVarRefs(css: string): string[] {
   }
   return refs
 }
+function extractCustomProps(css: string): Set<string> {
+  const props = new Set<string>()
+  const re = /^\s*--([\w-]+):/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(css)) !== null) props.add(m[1])
+  return props
+}
 
 function extractTailwindVarRefs(tsx: string): string[] {
   const refs: string[] = []
@@ -189,9 +196,14 @@ function buildValidTokenSet(): Set<string> {
   return valid
 }
 
-function assertNoBrokenTokenRefs(filepath: string, refs: string[], validTokens: Set<string>) {
+function assertNoBrokenTokenRefs(
+  filepath: string,
+  refs: string[],
+  validTokens: Set<string>,
+  localTokens = new Set<string>(),
+) {
   const uniqueRefs = [...new Set(refs)]
-  const broken = uniqueRefs.filter((r) => !validTokens.has(r))
+  const broken = uniqueRefs.filter((r) => !validTokens.has(r) && !localTokens.has(r))
 
   if (broken.length > 0) {
     throw new Error(
@@ -214,7 +226,7 @@ describe("CSS Token Integrity", () => {
         test(`${glob} — all var(--token) refs are valid`, async () => {
           const css = await readFileSafe(glob)
           if (!css) return
-          assertNoBrokenTokenRefs(glob, extractVarRefs(css), validTokens)
+          assertNoBrokenTokenRefs(glob, extractVarRefs(css), validTokens, extractCustomProps(css))
         })
       }
     })
@@ -228,7 +240,7 @@ describe("CSS Token Integrity", () => {
 
         const isTsx = filepath.endsWith(".tsx")
         const refs = isTsx ? [...extractVarRefs(content), ...extractTailwindVarRefs(content)] : extractVarRefs(content)
-        assertNoBrokenTokenRefs(filepath, refs, validTokens)
+        assertNoBrokenTokenRefs(filepath, refs, validTokens, extractCustomProps(content))
       })
     }
   })

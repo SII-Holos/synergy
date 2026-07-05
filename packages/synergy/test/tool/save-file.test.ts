@@ -60,21 +60,22 @@ describe("tool.save_file", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          await Bun.write(path.join(dir, "file.ts"), "v1\n")
+          await Bun.write(path.join(dir, "file.ts"), "const original = 1\n")
         },
       })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
-          const result = await tool.execute({ filePath: path.join(tmp.path, "file.ts"), content: "v2 revised\n" }, ctx)
+          const content = "const revised = 2\n"
+          const result = await tool.execute({ filePath: path.join(tmp.path, "file.ts"), content }, ctx)
 
           expect(result.output).toMatch(/^\[file\.ts#[0-9A-F]{4}\]$/)
-          expect(result.metadata.tag).toBe(computeTag("v2 revised\n"))
-          expect(result.metadata.tag).not.toBe(computeTag("v1\n"))
+          expect(result.metadata.tag).toBe(computeTag(content))
+          expect(result.metadata.tag).not.toBe(computeTag("const original = 1\n"))
 
           const onDisk = await Bun.file(path.join(tmp.path, "file.ts")).text()
-          expect(onDisk).toBe("v2 revised\n")
+          expect(onDisk).toBe(content)
         },
       })
     })
@@ -218,13 +219,13 @@ after
         fn: async () => {
           const tool = await SaveFileTool.init()
           const result = await tool.execute(
-            { filePath: path.join(tmp.path, "conflict.ts"), content: "resolved content\n" },
+            { filePath: path.join(tmp.path, "conflict.ts"), content: "const resolved = true\n" },
             ctx,
           )
 
           // File is overwritten with clean content
           const onDisk = await Bun.file(path.join(tmp.path, "conflict.ts")).text()
-          expect(onDisk).toBe("resolved content\n")
+          expect(onDisk).toBe("const resolved = true\n")
 
           // The overwrite must succeed — save_file does not refuse conflicted files.
           expect(result.output).toMatch(/^\[.*#[0-9A-F]{4}\]$/)
@@ -276,14 +277,17 @@ b
 
           // Now overwrite with resolved content
           const tool = await SaveFileTool.init()
-          const result = await tool.execute({ filePath: path.join(tmp.path, "f.ts"), content: "resolved\n" }, ctx)
+          const result = await tool.execute(
+            { filePath: path.join(tmp.path, "f.ts"), content: "const resolved = true\n" },
+            ctx,
+          )
 
           // Save succeeded
           expect(result.output).toMatch(/^\[.*#[0-9A-F]{4}\]$/)
 
           // File on disk is resolved
           const onDisk = await Bun.file(path.join(tmp.path, "f.ts")).text()
-          expect(onDisk).toBe("resolved\n")
+          expect(onDisk).toBe("const resolved = true\n")
 
           // View again — should now be clean
           const reViewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)

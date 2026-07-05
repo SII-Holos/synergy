@@ -43,7 +43,7 @@ Clients connect to the server and provide a working directory (scope). The serve
 | `cli/`        | CLI commands and startup             | New commands, CLI UX              |
 | `config/`     | Config loading and merging           | Config schema changes             |
 | `cortex/`     | Task orchestration (DAGs, subagents) | Delegation and parallel execution |
-| `engram/`     | Memory/knowledge (embedding, recall) | Memory features                   |
+| `library/`    | Memory/knowledge (embedding, recall) | Memory features                   |
 | `mcp/`        | Model Context Protocol integration   | MCP server/client features        |
 | `note/`       | Notes system                         | Note features                     |
 | `permission/` | Permission model                     | Access control                    |
@@ -64,12 +64,18 @@ Clients connect to the server and provide a working directory (scope). The serve
 
 ## Testing
 
+### Quality verification
+
 ```bash
+bun run quality:quick      # format:check + lint + typecheck + monorepo:check + package:check
+bun run quality            # quality:quick + all tests (turbo test)
 cd packages/synergy
-bun test                          # all tests
-bun test test/tool/read.test.ts   # specific test
-bun test --watch                  # watch mode
+bun test                   # all tests
+bun test test/tool/read.test.ts  # specific test
+bun test --watch           # watch mode
 ```
+
+See [docs/open-source-quality.md](../../docs/open-source-quality.md) for the full quality model.
 
 Tests live in `packages/synergy/test/` mirroring the `src/` structure.
 

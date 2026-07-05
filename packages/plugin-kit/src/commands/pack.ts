@@ -6,10 +6,10 @@ import {
   PluginManifest,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { sha256File } from "../lib/crypto"
-import { missingPackagedAssets } from "../lib/artifact-assets"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { sha256File } from "../lib/crypto.js"
+import { missingPackagedAssets } from "../lib/artifact-assets.js"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

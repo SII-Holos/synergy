@@ -25,3 +25,14 @@
 ## Tool Calling
 
 - ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
+
+## Quality Verification
+
+Before committing frontend changes:
+
+- Never restart the app or server process (see Debugging section above)
+- Verify the app builds: `bun run --cwd packages/app build`
+- Check for type errors: `bun run typecheck` (from repo root)
+- Run the full quality preflight from repo root: `bun run quality:quick`
+- Do not bypass pre-push hooks
+- Preserve "do not restart app/server" rule in all debugging and verification workflows

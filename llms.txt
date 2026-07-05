@@ -69,8 +69,16 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 
 ## Source Verification
 
+- Full quality suite: `bun run quality` (format:check + lint + typecheck + monorepo:check + package:check + all tests)
+- Default local PR preflight: `bun run quality:quick` (format:check + lint + typecheck + monorepo:check + package:check)
 - Plugin SDK typecheck: `bun run --cwd packages/plugin typecheck`
 - Synergy package tests: `cd packages/synergy && bun test <relevant test files>`
 - Whole monorepo typecheck: `bun run typecheck`
 - Web build: `bun run --cwd packages/app build`
 - SDK regeneration after route/schema changes: `./script/generate.ts`
+- Package publishing validation: `bun run package:check`
+- CI workflow lint: `bun run workflow:check`
+- Secret scanning: `bun run secrets:check`
+- Dead code and dependency hygiene: `bun run deadcode`
+- Monorepo dependency consistency: `bun run monorepo:check`
+- Quality model reference: [docs/open-source-quality.md](docs/open-source-quality.md)

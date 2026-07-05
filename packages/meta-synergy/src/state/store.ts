@@ -160,8 +160,10 @@ export namespace MetaSynergyStore {
   }
 
   export async function saveState(state: MetaSynergyState): Promise<void> {
-    await ensureRoot()
-    await writeFile(statePath(), JSON.stringify(hydrateState(state), null, 2) + "\n")
+    const rootDir = root()
+    const sp = path.join(rootDir, "state.json")
+    await mkdir(rootDir, { recursive: true })
+    await writeFile(sp, JSON.stringify(hydrateState(state), null, 2) + "\n")
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {

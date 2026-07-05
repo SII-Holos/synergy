@@ -169,7 +169,7 @@
     align-self: flex-start;
     padding: 3px 9px;
     font-size: var(--font-size-x-small);
-    border: 1px solid var(--border-weak);
+    border: 1px solid var(--border-weak-base);
     color: var(--text-subtle);
 
     & [data-component="icon"] {
@@ -183,10 +183,10 @@
     --chip-accent: var(--text-interactive-base);
   }
   [data-slot="session-turn-chip"][data-origin="blueprint"] {
-    --chip-accent: var(--text-success, var(--text-interactive-base));
+    --chip-accent: var(--icon-success-base, var(--text-interactive-base));
   }
   [data-slot="session-turn-chip"][data-origin="channel"] {
-    --chip-accent: var(--text-warning, var(--text-interactive-base));
+    --chip-accent: var(--icon-warning-base, var(--text-interactive-base));
   }
   [data-slot="session-turn-chip-label"] {
     font-weight: var(--font-weight-medium);

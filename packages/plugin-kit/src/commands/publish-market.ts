@@ -3,13 +3,13 @@ import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
 import { OFFICIAL_GITHUB_PLUGIN_MARKETPLACE, githubReleaseTag } from "@ericsanchezok/synergy-plugin/market"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { SYNERGY_ROOT } from "../lib/paths"
-import { buildPluginProject } from "./build"
-import { packPluginProject } from "./pack"
-import { signPluginTarball } from "./sign"
-import { validatePluginProject } from "./validate"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { SYNERGY_ROOT } from "../lib/paths.js"
+import { buildPluginProject } from "./build.js"
+import { packPluginProject } from "./pack.js"
+import { signPluginTarball } from "./sign.js"
+import { validatePluginProject } from "./validate.js"
 import {
   copyRegistryEntryIcon,
   githubRepoSlug,
@@ -18,7 +18,7 @@ import {
   resolveReleaseAssetUrls,
   readTarballManifest,
   writeRegistryEntry,
-} from "../lib/market-entry"
+} from "../lib/market-entry.js"
 
 function defaultRegistryRepo(): string {
   return process.env.SYNERGY_PLUGIN_MARKET_REGISTRY_REPO ?? OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryRepo

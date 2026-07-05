@@ -50,6 +50,7 @@ describe("meta-synergy cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_shared",
       source: "shared",
+      hiddenReason: null,
     })
   })
 
@@ -61,6 +62,7 @@ describe("meta-synergy cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_legacy",
       source: "legacy-migrated",
+      hiddenReason: null,
     })
     expect(result.checks.find((check) => check.name === "auth")).toEqual({
       name: "auth",
@@ -81,6 +83,7 @@ describe("meta-synergy cli backend auth payloads", () => {
       loggedIn: false,
       agentID: null,
       source: null,
+      hiddenReason: null,
     })
   })
 })

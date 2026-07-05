@@ -36,10 +36,9 @@
     "@hey-api/openapi-ts": "0.88.1",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
   },
-  "dependencies": {},
   "publishConfig": {
     "directory": "dist",
     "registry": "https://registry.npmjs.org",

@@ -52,3 +52,12 @@ export default {
 - `packages/synergy/src/cli/index.ts` — CLI entry point and routing
 - `packages/synergy/src/cli/cmd/` — all command implementations
 - `packages/synergy/src/cli/ui.ts` — shared UI helpers (colors, formatting)
+
+## Quality verification
+
+Before committing a new CLI command:
+
+- Run `bun run typecheck` from repo root
+- Run `bun run lint` from repo root
+- Run full quality preflight: `bun run quality:quick`
+- Test the command manually via `bun run packages/synergy/src/cli/index.ts <command>`

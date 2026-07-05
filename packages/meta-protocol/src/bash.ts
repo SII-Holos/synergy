@@ -1,6 +1,6 @@
 import z from "zod"
-import { MetaProtocolEnvelope } from "./envelope"
-import { MetaProtocolEnv } from "./env"
+import { MetaProtocolEnvelope } from "./envelope.js"
+import { MetaProtocolEnv } from "./env.js"
 
 export namespace MetaProtocolBash {
   export const ExecutePayload = z.object({
