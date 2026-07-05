@@ -220,8 +220,10 @@ function SessionPageContent() {
   })
   const messages = createMemo(() => {
     const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
-    const cut = rollback()?.cutMessageID
-    if (cut) return raw.filter((msg) => msg.id < cut)
+    // Rollback filtering is gated by hiddenMessageIDs: the prefix-cut only
+    // applies while redo is possible (canUnrollback). Once a new root has been
+    // started the cut is superseded by the dropped-id set so the new branch —
+    // including messages sent after undoing the first message — stays visible.
     const hidden = hiddenMessageIDs()
     if (!hidden) return raw
     if ("cutMessageID" in hidden) {
