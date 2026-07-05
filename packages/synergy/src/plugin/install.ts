@@ -322,12 +322,13 @@ export async function add(
 export async function remove(pluginId: string, opts: { autoReload?: boolean } = {}): Promise<void> {
   const current = await state().catch(() => null)
   const plugin = current?.loaded.find((p) => p.id === pluginId)
-  if (!plugin) {
+  const disabled = current?.disabled.find((p) => p.pluginId === pluginId)
+  if (!plugin && !disabled) {
     throw new Error(`Plugin not found: ${pluginId}`)
   }
 
   // Dispose the plugin
-  if (plugin.hooks.dispose) {
+  if (plugin?.hooks.dispose) {
     await plugin.hooks.dispose().catch((err) => {
       log.error("plugin dispose error during remove", { id: pluginId, err })
     })
@@ -340,7 +341,7 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
   }
   await PluginInstallationTransaction.remove({
     pluginId,
-    pluginDir: plugin.pluginDir,
+    pluginDir: plugin?.pluginDir ?? disabled!.pluginDir ?? "",
     autoReload: opts.autoReload,
     reload,
     resolveSpecPluginDir,

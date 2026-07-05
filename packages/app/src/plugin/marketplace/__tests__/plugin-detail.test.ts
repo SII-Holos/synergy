@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test"
+import { fallbackPluginSummary, isRegistryPluginNotFoundError } from "../plugin-detail-model"
 import { ratingStars } from "../rating-stars"
 
 describe("ratingStars", () => {
@@ -58,5 +59,71 @@ describe("ratingStars", () => {
 
   test("rating rounding edge: 2.99 = 2 filled + 1 half + 2 empty", () => {
     expect(ratingStars(2.99)).toEqual(["filled", "filled", "half", "empty", "empty"])
+  })
+})
+
+describe("plugin detail model", () => {
+  test("builds an installed plugin summary from local manifest details", () => {
+    const summary = fallbackPluginSummary({
+      installed: {
+        pluginId: "synergy-meme-plugin",
+        name: "Meme Generator",
+        version: "1.0.0",
+        trustTier: "sandbox",
+        hasManifest: true,
+        pluginDir: "/plugins/synergy-meme-plugin",
+        cliCommands: [],
+        skillCount: 0,
+        agentCount: 0,
+        capabilities: [],
+        risk: "low",
+        permissionsSummary: [],
+        health: "loaded",
+        loaded: true,
+      },
+      detail: {
+        pluginId: "synergy-meme-plugin",
+        name: "Meme Generator",
+        version: "1.0.0",
+        trustTier: "sandbox",
+        hasManifest: true,
+        pluginDir: "/plugins/synergy-meme-plugin",
+        manifest: {
+          name: "Meme Generator",
+          description: "Generate memes from prompts",
+          author: "Synergy",
+          contributes: {
+            tools: [{ name: "generate_meme" }],
+            ui: { toolRenderers: ["generate_meme"] },
+          },
+        },
+        cliCommands: [],
+        skills: [],
+        agents: [],
+        capabilities: [],
+        risk: "low",
+        permissionsSummary: [],
+        health: "loaded",
+        loaded: true,
+      },
+    })
+
+    expect(summary?.id).toBe("synergy-meme-plugin")
+    expect(summary?.description).toBe("Generate memes from prompts")
+    expect(summary?.tools).toEqual(["generate_meme"])
+    expect(summary?.uiSurfaces).toEqual(["toolRenderers"])
+    expect(summary?.source).toBe("local")
+  })
+
+  test("recognizes registry plugin not found errors as local detail fallback candidates", () => {
+    expect(
+      isRegistryPluginNotFoundError(
+        { message: "Registry plugin not found: synergy-meme-plugin" },
+        "synergy-meme-plugin",
+      ),
+    ).toBe(true)
+    expect(
+      isRegistryPluginNotFoundError({ message: "Registry plugin not found: other-plugin" }, "synergy-meme-plugin"),
+    ).toBe(false)
   })
 })

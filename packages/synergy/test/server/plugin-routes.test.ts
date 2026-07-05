@@ -30,6 +30,7 @@ function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin
     id: "test-plugin",
     name: "Test Plugin",
     hooks: {} as any,
+    manifest: buildManifest() as any,
     pluginDir: "/tmp/test-plugin-dir",
     agents: {},
     ...overrides,
@@ -60,7 +61,9 @@ function buildManifest(overrides: Record<string, any> = {}): Record<string, any>
 const _origPlugin = {
   get: Plugin.get,
   manifest: Plugin.manifest,
-  loaded: Plugin.getLoaded,
+  getLoaded: Plugin.getLoaded,
+  getDisabled: Plugin.getDisabled,
+  getDisabledPlugin: Plugin.getDisabledPlugin,
   add: Plugin.add,
   remove: Plugin.remove,
 }
@@ -79,7 +82,9 @@ const _origMarketplaceRegistry = {
 afterEach(() => {
   ;(Plugin as any).get = _origPlugin.get
   ;(Plugin as any).manifest = _origPlugin.manifest
-  ;(Plugin as any).loaded = _origPlugin.loaded
+  ;(Plugin as any).getLoaded = _origPlugin.getLoaded
+  ;(Plugin as any).getDisabled = _origPlugin.getDisabled
+  ;(Plugin as any).getDisabledPlugin = _origPlugin.getDisabledPlugin
   ;(Plugin as any).add = _origPlugin.add
   ;(Plugin as any).remove = _origPlugin.remove
   ;(Plugin as any).getStatus = _origPluginStatus.getStatus
@@ -208,6 +213,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
       verifiedIntegrity: false,
       reason: "local plugin",
     },
+    health: "loaded",
     loaded: true,
     manifestValid: true,
     integrity: "unverified",
@@ -585,7 +591,98 @@ describe("POST /api/plugins/install-from-registry", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 4. Config schema
+// 4. Plugin aggregate APIs tolerate disabled plugins
+// ---------------------------------------------------------------------------
+
+describe("plugin aggregate routes", () => {
+  test("GET /api/plugins returns loaded plugins and disabled diagnostics", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const plugin = buildLoadedPlugin({
+      id: "loaded-plugin",
+      name: "Loaded Plugin",
+      manifest: buildManifest({ name: "loaded-plugin", version: "1.2.3", contributes: {} }) as any,
+      pluginDir: tmp.path,
+    })
+    ;(Plugin as any).getLoaded = mock(async () => [plugin])
+    ;(Plugin as any).getDisabled = mock(async () => [
+      {
+        pluginId: "disabled-plugin",
+        name: "Disabled Plugin",
+        pluginDir: path.join(tmp.path, "missing-plugin"),
+        phase: "manifest",
+        reason: "Plugin manifest not found",
+        disabledAt: Date.now(),
+      },
+    ])
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/plugins", { method: "GET" })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.find((entry: any) => entry.pluginId === "loaded-plugin")?.health).toBe("loaded")
+        const disabled = body.find((entry: any) => entry.pluginId === "disabled-plugin")
+        expect(disabled).toMatchObject({
+          health: "disabled",
+          loaded: false,
+          hasManifest: false,
+          disabledReason: "Plugin manifest not found",
+          disabledPhase: "manifest",
+          capabilities: [],
+          cliCommands: [],
+        })
+      },
+    })
+  })
+
+  test("GET /plugin/ui/contributions returns disabled plugin diagnostics", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const plugin = buildLoadedPlugin({
+      id: "ui-plugin",
+      name: "UI Plugin",
+      manifest: buildManifest({
+        name: "ui-plugin",
+        version: "2.0.0",
+        contributes: { ui: { entry: "dist/ui.js" } },
+      }) as any,
+      pluginDir: tmp.path,
+    })
+    ;(Plugin as any).getLoaded = mock(async () => [plugin])
+    ;(Plugin as any).getDisabled = mock(async () => [
+      {
+        pluginId: "disabled-ui-plugin",
+        name: "Disabled UI Plugin",
+        phase: "load",
+        reason: "Plugin load failed",
+        disabledAt: Date.now(),
+      },
+    ])
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/plugin/ui/contributions", { method: "GET" })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.find((entry: any) => entry.pluginId === "ui-plugin")?.health).toBe("loaded")
+        const disabled = body.find((entry: any) => entry.pluginId === "disabled-ui-plugin")
+        expect(disabled).toMatchObject({
+          health: "disabled",
+          disabledReason: "Plugin load failed",
+          disabledPhase: "load",
+          ui: null,
+          permissions: null,
+        })
+      },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. Config schema
 // ---------------------------------------------------------------------------
 
 describe("GET /plugin/:pluginId/config-schema", () => {

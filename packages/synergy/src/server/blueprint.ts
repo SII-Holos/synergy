@@ -27,6 +27,7 @@ const CreateInput = z
     parentSessionID: z.string().optional().meta({ description: "Parent session ID" }),
     firstPrompt: z.string().optional().meta({ description: "First user prompt for the loop" }),
     loopIndex: z.number().optional().meta({ description: "Zero-based loop index" }),
+    executionAgent: z.string().optional().meta({ description: "Explicit agent override for the Blueprint Run" }),
     model: z
       .object({ providerID: z.string(), modelID: z.string() })
       .optional()
@@ -200,13 +201,14 @@ export const BlueprintRoute = new Hono()
       try {
         const body = c.req.valid("json")
         await assertLoopSessionInCurrentScope(body.sessionID)
-        const [executionAgent, auditAgent] = await Promise.all([
+        const [explicitExecutionAgent, fallbackExecutionAgent, auditAgent] = await Promise.all([
+          knownAgentName(body.executionAgent),
           resolveBlueprintAgent(body.sessionID, body.noteID),
           resolveBlueprintAuditAgent(body.noteID),
         ])
         const loop = await BlueprintLoopStore.create({
           ...body,
-          executionAgent,
+          executionAgent: explicitExecutionAgent ?? fallbackExecutionAgent,
           auditAgent,
           runMode: body.runMode ?? "current",
         })

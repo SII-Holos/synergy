@@ -1,5 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
+import fsSync from "fs"
 import { Global } from "../global"
 import type { PersistedRuntimeEntry, RuntimeEntry } from "./registry.js"
 import { Log } from "../util/log"
@@ -10,6 +11,13 @@ const STATE_FILE = "plugin-runtime-state.json"
 
 function stateFilePath(): string {
   return path.join(Global.Path.data, STATE_FILE)
+}
+
+function hasUsablePluginRuntime(entry: PersistedRuntimeEntry): boolean {
+  if (!entry.pluginDir || !entry.entryPath) return false
+  if (!fsSync.existsSync(path.join(entry.pluginDir, "plugin.json"))) return false
+  if (!fsSync.existsSync(entry.entryPath)) return false
+  return true
 }
 
 export async function writeRuntimeState(entries: RuntimeEntry[]): Promise<void> {
@@ -48,6 +56,14 @@ export async function readRuntimeState(): Promise<PersistedRuntimeEntry[]> {
       .filter((entry) => {
         // Don't restore entries older than 1 hour
         if (entry.startedAt && now - entry.startedAt > ONE_HOUR_MS) {
+          return false
+        }
+        if (!hasUsablePluginRuntime(entry)) {
+          log.warn("skipping invalid plugin runtime state entry", {
+            pluginId: entry.pluginId,
+            pluginDir: entry.pluginDir,
+            entryPath: entry.entryPath,
+          })
           return false
         }
         return true

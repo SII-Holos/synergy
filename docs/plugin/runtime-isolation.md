@@ -65,3 +65,5 @@ Runtime status is exposed under plugin runtime routes, including `/api/plugins/:
 ## Hook Behavior
 
 Hooks receive `(input, output)` where `output` is mutable. The isolated runner returns the mutated `output`; if a hook returns a replacement value, that value is used. This keeps worker/process hooks aligned with in-process plugin behavior while preserving the mutation-first convention.
+
+Hook invocation failures are isolated per plugin. A thrown error or timeout disables the failing plugin and leaves the current output unchanged so the host can continue with built-in behavior. For `permission.ask`, this means Synergy continues to its normal permission prompt path; a failed plugin hook never turns an ask into an allow.

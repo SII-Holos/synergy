@@ -3,7 +3,12 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import { tmpdir } from "../fixture/fixture"
-import { assertCanonicalPluginIdentity, importUrlForEntry, resolvePluginSpec } from "../../src/plugin/spec-resolver"
+import {
+  archiveCacheDir,
+  assertCanonicalPluginIdentity,
+  importUrlForEntry,
+  resolvePluginSpec,
+} from "../../src/plugin/spec-resolver"
 
 const encoder = new TextEncoder()
 
@@ -117,6 +122,45 @@ describe("resolvePluginSpec", () => {
     expect(resolved.pkg).toBe("archive-plugin")
     expect(resolved.manifest.name).toBe("archive-plugin")
     expect(resolved.entryPath.endsWith(path.join("src", "index.ts"))).toBe(true)
+  })
+
+  test("rebuilds an empty archive cache before reading plugin.json", async () => {
+    await using tmp = await tmpdir({ init: (dir) => writePlugin(dir, "empty-cache-plugin") })
+    await using archiveTmp = await tmpdir()
+    const archivePath = path.join(archiveTmp.path, "empty-cache-plugin-0.1.0.synergy-plugin.tgz")
+    const result = Bun.spawnSync(["tar", "-czf", archivePath, "-C", tmp.path, "."])
+    expect(result.exitCode).toBe(0)
+
+    const first = await resolvePluginSpec(pathToFileURL(archivePath).href, { install: false })
+    const cacheDir = archiveCacheDir(archivePath)
+    expect(first.pluginDir).toBe(cacheDir)
+    await fs.rm(cacheDir, { recursive: true, force: true })
+    await fs.mkdir(cacheDir, { recursive: true })
+    expect(await Bun.file(path.join(cacheDir, "plugin.json")).exists()).toBe(false)
+
+    const rebuilt = await resolvePluginSpec(pathToFileURL(archivePath).href, { install: false })
+
+    expect(rebuilt.pluginDir).toBe(cacheDir)
+    expect(rebuilt.manifest.name).toBe("empty-cache-plugin")
+    expect(await Bun.file(path.join(cacheDir, "plugin.json")).exists()).toBe(true)
+    expect(await Bun.file(rebuilt.entryPath).exists()).toBe(true)
+  })
+
+  test("keeps an existing usable archive cache when the source archive becomes unreadable", async () => {
+    await using tmp = await tmpdir({ init: (dir) => writePlugin(dir, "cached-archive-plugin") })
+    await using archiveTmp = await tmpdir()
+    const archivePath = path.join(archiveTmp.path, "cached-archive-plugin-0.1.0.synergy-plugin.tgz")
+    const result = Bun.spawnSync(["tar", "-czf", archivePath, "-C", tmp.path, "."])
+    expect(result.exitCode).toBe(0)
+
+    const first = await resolvePluginSpec(pathToFileURL(archivePath).href, { install: false })
+    await Bun.write(archivePath, "not a tarball")
+
+    const resolved = await resolvePluginSpec(pathToFileURL(archivePath).href, { install: false })
+
+    expect(resolved.pluginDir).toBe(first.pluginDir)
+    expect(resolved.manifest.name).toBe("cached-archive-plugin")
+    expect(await Bun.file(path.join(first.pluginDir, "plugin.json")).exists()).toBe(true)
   })
 
   test("rejects local plugin archives with unsafe entries before extraction", async () => {

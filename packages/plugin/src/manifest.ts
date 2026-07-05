@@ -156,6 +156,7 @@ const ToolDisplayDef = z
         pendingTitle: z.string().min(1).max(120).optional(),
         pendingDescription: z.string().min(1).max(200).optional(),
         aspectRatio: z.enum(["1:1", "4:3", "16:9", "auto"]).optional(),
+        size: z.enum(["small", "medium", "large"]).optional(),
       })
       .strict()
       .optional(),

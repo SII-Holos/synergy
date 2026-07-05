@@ -808,7 +808,10 @@ export namespace SessionInvoke {
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
-        const deadlineError = new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError")
+        const deadlineError = new DOMException(
+          "Assistant step timed out after " + timeoutCfg.invokeMs + "ms",
+          "AbortError",
+        )
         let rejectDeadline: (error: Error) => void
         const deadlinePromise = new Promise<never>((_, reject) => {
           rejectDeadline = reject

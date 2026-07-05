@@ -13,6 +13,7 @@ import { Plugin } from "@/plugin"
 import type { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { PermissionNext } from "@/permission/next"
 import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
@@ -259,6 +260,96 @@ export namespace SessionProcessor {
     async function waitForTrackedSettlements() {
       if (settlementPromises.size === 0) return
       await Promise.allSettled([...settlementPromises.values()])
+    }
+
+    async function pendingExecutionWaitMs(part: MessageV2.ToolPart): Promise<number> {
+      const metadata =
+        part.state.status === "pending" || part.state.status === "generating" || part.state.status === "running"
+          ? (part.state.metadata as Record<string, any> | undefined)
+          : undefined
+      const toolTimeout = metadata?.toolTimeout
+      const configured = await TimeoutConfig.resolve()
+      const toolTimeoutMs =
+        toolTimeout && typeof toolTimeout === "object" && typeof toolTimeout.toolTimeoutMs === "number"
+          ? toolTimeout.toolTimeoutMs
+          : (configured.toolOverrides[part.tool] ?? configured.toolDefaultMs)
+      if (!Number.isFinite(toolTimeoutMs) || toolTimeoutMs <= 0) {
+        return TOOL_SETTLE_TIMEOUT
+      }
+
+      const startTime = toolStartTime(part)
+      const remaining = Math.max(0, startTime + toolTimeoutMs - Date.now())
+      return Math.max(TOOL_SETTLE_TIMEOUT, remaining + TOOL_SETTLE_TIMEOUT)
+    }
+
+    async function waitForPendingExecution(part: MessageV2.ToolPart): Promise<ToolOutcome | undefined> {
+      const registered = await waitForRegisteredExecution(part.callID)
+      if (!registered) return undefined
+
+      const waitMs = await pendingExecutionWaitMs(part)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), waitMs)
+        if (typeof timer === "object" && "unref" in timer) timer.unref()
+      })
+
+      try {
+        return await Promise.race([registered, timeout])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    async function waitForRegisteredExecution(callID: string): Promise<Promise<ToolOutcome> | undefined> {
+      const existing = pendingExecutions.get(callID)
+      if (existing) return existing
+
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await new Promise<Promise<ToolOutcome> | undefined>((resolve) => {
+          const deadline = Date.now() + TOOL_SETTLE_TIMEOUT
+          const check = () => {
+            const registered = pendingExecutions.get(callID)
+            if (registered) {
+              resolve(registered)
+              return
+            }
+            if (Date.now() >= deadline) {
+              resolve(undefined)
+              return
+            }
+            timer = setTimeout(check, 10)
+            if (typeof timer === "object" && "unref" in timer) timer.unref()
+          }
+          check()
+        })
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    function metadataToolOutcome(part: MessageV2.ToolPart): ToolOutcome | undefined {
+      if (part.state.status !== "running") return undefined
+      if (part.tool !== "bash") return undefined
+      const metadata = part.state.metadata as Record<string, any> | undefined
+      if (!metadata || typeof metadata.output !== "string") return undefined
+      if (metadata.exit === undefined) return undefined
+
+      return {
+        status: "completed",
+        input: part.state.input,
+        result: {
+          output: metadata.output,
+          title: part.state.title ?? String(metadata.description ?? ""),
+          metadata,
+        },
+      }
+    }
+
+    function forgetToolCall(callID: string) {
+      pendingExecutions.delete(callID)
+      executionOutcomes.delete(callID)
+      delete toolcalls[callID]
     }
 
     const result = {
@@ -793,30 +884,38 @@ export namespace SessionProcessor {
           }
           await waitForTrackedSettlements()
           const outcomes = new Map<string, ToolOutcome>(executionOutcomes)
-          if (!fastAbort && pendingExecutions.size > 0) {
-            const timeout = new Promise<undefined>((resolve) =>
-              setTimeout(() => resolve(undefined), TOOL_SETTLE_TIMEOUT),
-            )
-            await Promise.allSettled(
-              [...pendingExecutions.entries()].map(async ([id, promise]) => {
-                const outcome = await Promise.race([promise, timeout])
-                if (outcome) {
-                  executionOutcomes.set(id, outcome)
-                  outcomes.set(id, outcome)
-                }
-              }),
-            )
-          }
-          await waitForTrackedSettlements()
-          const p = await MessageV2.parts({
+          let p = await MessageV2.parts({
             sessionID: input.sessionID,
             messageID: input.assistantMessage.id,
           })
+          if (!fastAbort) {
+            await Promise.allSettled(
+              p.map(async (part) => {
+                if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") return
+                if (outcomes.has(part.callID)) return
+                const metadataOutcome = metadataToolOutcome(part)
+                if (metadataOutcome) {
+                  outcomes.set(part.callID, metadataOutcome)
+                  return
+                }
+                const outcome = await waitForPendingExecution(part)
+                if (!outcome) return
+                executionOutcomes.set(part.callID, outcome)
+                outcomes.set(part.callID, outcome)
+              }),
+            )
+            await waitForTrackedSettlements()
+            p = await MessageV2.parts({
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+          }
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const outcome = outcomes.get(part.callID)
+              const outcome = outcomes.get(part.callID) ?? metadataToolOutcome(part)
               if (outcome) {
                 await settleToolPart(part, outcome)
+                forgetToolCall(part.callID)
               } else {
                 const startTime = toolStartTime(part)
                 await Session.updatePart({
@@ -831,6 +930,7 @@ export namespace SessionProcessor {
                     },
                   },
                 })
+                forgetToolCall(part.callID)
               }
             }
           }

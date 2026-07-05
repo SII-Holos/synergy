@@ -186,6 +186,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       return
     }
 
+    const selectedVariant = local.model.variant.current()
     input.addToHistory(currentPrompt, mode)
     input.setStore("historyIndex", -1)
     input.setStore("savedPrompt", null)
@@ -321,7 +322,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       providerID: currentModel.provider.id,
     }
     const agent = currentAgent.name
-    const variant = local.model.variant.current()
+    const variant = selectedVariant
     const optimisticPlanModeMetadata =
       !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
 
@@ -365,6 +366,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               title: blueprintSlot.title,
               sessionID: activeSession.id,
               runMode: blueprintSlot.runMode,
+              executionAgent: agent,
+              model,
             },
           })
           const loop = result.data
@@ -635,6 +638,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           time: { created: Date.now() },
           agent,
           model,
+          variant,
           metadata: userMessageMetadata,
         }
       : undefined

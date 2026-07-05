@@ -21094,10 +21094,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                    "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -22321,11 +22321,11 @@
             }
           },
           "timeout": {
-            "description": "Timeout configuration for agent turns, provider requests, and tool execution",
+            "description": "Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts",
             "type": "object",
             "properties": {
               "invoke_sec": {
-                "description": "Max wall-clock seconds for one agent turn (default: 900 = 15min)",
+                "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
                 "type": "number",
                 "exclusiveMinimum": 0
               },
@@ -22333,14 +22333,22 @@
                 "type": "object",
                 "properties": {
                   "ttfb_sec": {
-                    "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min",
+                    "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h",
                     "type": "number",
                     "exclusiveMinimum": 0
                   },
                   "idle_sec": {
-                    "description": "Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.",
-                    "type": "number",
-                    "minimum": 0
+                    "description": "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "boolean",
+                        "const": false
+                      }
+                    ]
                   },
                   "wall_sec": {
                     "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
@@ -22353,7 +22361,7 @@
                 "type": "object",
                 "properties": {
                   "default_sec": {
-                    "description": "Default timeout per tool execution in seconds (default: 300 = 5min)",
+                    "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
                     "type": "number",
                     "exclusiveMinimum": 0
                   },
@@ -22367,6 +22375,16 @@
                       "type": "number",
                       "exclusiveMinimum": 0
                     }
+                  }
+                }
+              },
+              "permission": {
+                "type": "object",
+                "properties": {
+                  "ask_sec": {
+                    "description": "Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)",
+                    "type": "number",
+                    "exclusiveMinimum": 0
                   }
                 }
               }
@@ -22753,7 +22771,7 @@
             "type": "object",
             "properties": {
               "timeout": {
-                "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+                "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)",
                 "type": "number",
                 "minimum": 0
               }
@@ -28888,6 +28906,10 @@
             "description": "Zero-based loop index",
             "type": "number"
           },
+          "executionAgent": {
+            "description": "Explicit agent override for the Blueprint Run",
+            "type": "string"
+          },
           "model": {
             "description": "Explicit model override for the Blueprint Run",
             "type": "object",
@@ -29296,6 +29318,16 @@
             "type": "string",
             "enum": ["declarative", "trusted-import", "sandbox"]
           },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
+          },
           "ui": {
             "anyOf": [
               {
@@ -29391,6 +29423,17 @@
               }
             },
             "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string",
+            "enum": ["resolve", "load", "manifest", "hook", "runtime", "doctor"]
           },
           "loaded": {
             "type": "boolean"
@@ -29575,6 +29618,7 @@
           "id",
           "source",
           "trust",
+          "health",
           "loaded",
           "manifestValid",
           "integrity",
@@ -29654,6 +29698,19 @@
             "items": {
               "$ref": "#/components/schemas/ApiPluginPermissionItem"
             }
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
           }
         },
         "required": [
@@ -29738,6 +29795,19 @@
             "items": {
               "$ref": "#/components/schemas/ApiPluginPermissionItem"
             }
+          },
+          "health": {
+            "type": "string",
+            "enum": ["loaded", "disabled"]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "disabledPhase": {
+            "type": "string"
           }
         },
         "required": [

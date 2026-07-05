@@ -107,17 +107,23 @@ export namespace ToolResolver {
     const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
     const approvals: Record<string, PluginApprovalRecord> = {}
     for (const plugin of await Plugin.getLoaded()) {
-      const manifest = await Plugin.manifest(plugin.id)
-      if (!manifest) continue
-      for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-        const capabilities = toolCapabilities(manifest, toolId)
-        caps[PluginToolId.format(plugin.id, toolId)] = {
-          capabilities,
-          risk: toolRisk(manifest, toolId),
+      try {
+        const manifest = plugin.manifest
+        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+          const capabilities = toolCapabilities(manifest, toolId)
+          caps[PluginToolId.format(plugin.id, toolId)] = {
+            capabilities,
+            risk: toolRisk(manifest, toolId),
+          }
         }
+        const approval = await getApproval(plugin.id)
+        if (approval) approvals[plugin.id] = approval
+      } catch (err) {
+        log.warn("plugin gate data skipped", {
+          pluginId: plugin.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
-      const approval = await getApproval(plugin.id)
-      if (approval) approvals[plugin.id] = approval
     }
     return { toolCapabilities: caps, approvals }
   }

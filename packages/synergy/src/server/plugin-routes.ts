@@ -78,6 +78,9 @@ const UIContribution = z
     name: z.string().optional(),
     version: z.string(),
     trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
+    health: z.enum(["loaded", "disabled"]).optional(),
+    disabledReason: z.string().optional(),
+    disabledPhase: z.string().optional(),
     ui: z.record(z.string(), z.any()).optional().nullable(),
     permissions: z.record(z.string(), z.any()).optional().nullable(),
   })
@@ -108,6 +111,8 @@ async function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: Plug
     name: loadedPlugin.name ?? manifest.name,
     version: manifest.version,
     trustTier: policy.trust.tier,
+    health: "loaded" as const,
+    loaded: true,
     hasManifest: true,
     pluginDir: loadedPlugin.pluginDir,
     manifest,
@@ -262,10 +267,9 @@ export const PluginRoute = new Hono()
     }),
     async (c) => {
       const loaded = await Plugin.getLoaded()
-      const contributions = await Promise.all(
+      const settled = await Promise.allSettled(
         loaded.map(async (p) => {
-          const manifest = await Plugin.manifest(p.id)
-          if (!manifest) return null
+          const manifest = p.manifest
           const policy = await resolveInstalledPluginPolicy({
             pluginId: p.id,
             pluginDir: p.pluginDir,
@@ -278,11 +282,29 @@ export const PluginRoute = new Hono()
             name: p.name ?? manifest.name,
             version: manifest.version,
             trustTier: policy.trust.tier,
+            health: "loaded" as const,
             ui: manifest.contributes?.ui ?? null,
             permissions: manifest.permissions ?? null,
           }
         }),
       )
+      const contributions: Array<z.infer<typeof UIContribution>> = []
+      for (const item of settled) {
+        if (item.status === "fulfilled" && item.value) contributions.push(item.value)
+      }
+      for (const disabled of await Plugin.getDisabled()) {
+        contributions.push({
+          pluginId: disabled.pluginId,
+          name: disabled.name ?? disabled.pluginId,
+          version: "0.0.0",
+          trustTier: "sandbox" as const,
+          health: "disabled" as const,
+          disabledReason: disabled.reason,
+          disabledPhase: disabled.phase,
+          ui: null,
+          permissions: null,
+        })
+      }
       return c.json(contributions.filter(Boolean))
     },
   )
@@ -595,6 +617,10 @@ const ApiPluginInfo = z
     capabilities: z.array(z.string()),
     risk: z.enum(["low", "medium", "high"]),
     permissionsSummary: z.array(ApiPluginPermissionItem),
+    health: z.enum(["loaded", "disabled"]).optional(),
+    loaded: z.boolean().optional(),
+    disabledReason: z.string().optional(),
+    disabledPhase: z.string().optional(),
   })
   .meta({ ref: "ApiPluginInfo" })
 
@@ -613,6 +639,10 @@ const ApiPluginDetail = z
     capabilities: z.array(z.string()),
     risk: z.enum(["low", "medium", "high"]),
     permissionsSummary: z.array(ApiPluginPermissionItem),
+    health: z.enum(["loaded", "disabled"]).optional(),
+    loaded: z.boolean().optional(),
+    disabledReason: z.string().optional(),
+    disabledPhase: z.string().optional(),
   })
   .meta({ ref: "ApiPluginDetail" })
 
@@ -636,10 +666,9 @@ export const ApiPluginRoute = new Hono()
     }),
     async (c) => {
       const loaded = await Plugin.getLoaded()
-      const infos = await Promise.all(
+      const settled = await Promise.allSettled(
         loaded.map(async (p) => {
-          const manifest = await Plugin.manifest(p.id)
-          if (!manifest) return null
+          const manifest = p.manifest
           const capabilities = baseCapabilities(manifest)
           const policy = await resolveInstalledPluginPolicy({
             pluginId: p.id,
@@ -653,6 +682,8 @@ export const ApiPluginRoute = new Hono()
             name: p.name ?? manifest.name,
             version: manifest.version,
             trustTier: policy.trust.tier,
+            health: "loaded" as const,
+            loaded: true,
             hasManifest: true,
             pluginDir: p.pluginDir,
             cliCommands: p.cli ? Object.keys(p.cli) : [],
@@ -664,6 +695,29 @@ export const ApiPluginRoute = new Hono()
           }
         }),
       )
+      const infos: Array<z.infer<typeof ApiPluginInfo>> = []
+      for (const item of settled) {
+        if (item.status === "fulfilled" && item.value) infos.push(item.value)
+      }
+      for (const disabled of await Plugin.getDisabled()) {
+        infos.push({
+          pluginId: disabled.pluginId,
+          name: disabled.name ?? disabled.pluginId,
+          trustTier: "sandbox" as const,
+          health: "disabled" as const,
+          loaded: false,
+          disabledReason: disabled.reason,
+          disabledPhase: disabled.phase,
+          hasManifest: false,
+          pluginDir: disabled.pluginDir ?? "",
+          cliCommands: [],
+          skillCount: 0,
+          agentCount: 0,
+          capabilities: [],
+          risk: "low" as const,
+          permissionsSummary: [],
+        })
+      }
       return c.json(infos.filter(Boolean))
     },
   )
@@ -724,7 +778,8 @@ export const ApiPluginRoute = new Hono()
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
-      if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+      const disabled = await Plugin.getDisabledPlugin(pluginId)
+      if (!plugin && !disabled) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       try {
         await Plugin.remove(pluginId, { autoReload: true })

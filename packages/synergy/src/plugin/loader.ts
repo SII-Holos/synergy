@@ -5,6 +5,7 @@ import type {
   PluginCLIEntry,
   PluginSkill,
   PluginAgent,
+  PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -21,8 +22,16 @@ import { StartupReporter } from "../cli/startup-reporter"
 import { Installation } from "../global/installation"
 import type { RuntimeMode } from "../plugin-runtime/registry"
 import { resolveInstalledPluginPolicy, type PluginSource } from "./trust"
-import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
+import {
+  archiveCacheDir,
+  assertCanonicalPluginIdentity,
+  findPackageRoot,
+  importUrlForEntry,
+  isArchivePath,
+  resolvePluginSpec,
+} from "./spec-resolver"
 import * as Lockfile from "./lockfile"
+import { recordEvent } from "./audit"
 
 const log = Log.create({ service: "plugin.loader" })
 // ---------------------------------------------------------------------------
@@ -45,6 +54,7 @@ export interface LoadedPlugin {
   id: string
   name?: string
   hooks: PluginHooks
+  manifest: PluginManifestType
   pluginDir: string
   entryPath?: string
   source?: PluginSource
@@ -52,6 +62,20 @@ export interface LoadedPlugin {
   cli?: Record<string, PluginCLIEntry>
   skills?: PluginSkill[]
   agents?: Record<string, PluginAgent>
+}
+
+export type DisabledPluginPhase = "resolve" | "load" | "manifest" | "hook" | "runtime" | "doctor"
+
+export interface DisabledPlugin {
+  pluginId: string
+  name?: string
+  spec?: string
+  pluginDir?: string
+  entryPath?: string
+  source?: PluginSource
+  phase: DisabledPluginPhase
+  reason: string
+  disabledAt: number
 }
 
 export { findPackageRoot }
@@ -66,6 +90,7 @@ export function resolveSpecPluginDir(spec: string): string {
       filePath = spec.slice("file://".length)
     }
     const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
+    if (isArchivePath(absolute)) return archiveCacheDir(absolute)
     return findPackageRoot(absolute)
   }
   const { pkg } = PluginSpec.parse(spec)
@@ -79,6 +104,7 @@ const printedPluginPaths = new Set<string>()
 
 export interface LoaderState {
   loaded: LoadedPlugin[]
+  disabled: DisabledPlugin[]
 }
 
 export interface ResolvedLoadCandidate {
@@ -130,9 +156,10 @@ export function selectLoadCandidates(
 export const state = ScopedState.create(async (): Promise<LoaderState> => {
   const config = await Config.current()
   const loaded: LoadedPlugin[] = []
+  const disabled: DisabledPlugin[] = []
   const pluginPaths = [...(config.plugin ?? [])]
 
-  if (pluginPaths.length === 0) return { loaded }
+  if (pluginPaths.length === 0) return { loaded, disabled }
 
   const { Server } = await import("../server/server")
   const client = createSynergyClient({
@@ -172,6 +199,13 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         StartupReporter.active()?.plugin({ name, status: "failed", error: err.message ?? String(err) })
       }
       log.warn("plugin resolve failed, skipping", { name, error: err.message ?? err })
+      recordDisabled(disabled, {
+        pluginId: name,
+        name,
+        spec: configPath,
+        phase: "resolve",
+        reason: err.message ?? String(err),
+      })
       continue
     }
 
@@ -196,70 +230,143 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
     const lockEntry = lockfile?.plugins[pluginIdFromManifest]
     const source = lockEntry?.source ?? resolved.source
 
-    const importUrl = importUrlForEntry(resolved.entryPath, reloadVersion)
-    const mod = await import(importUrl)
+    try {
+      const importUrl = importUrlForEntry(resolved.entryPath, reloadVersion)
+      const mod = await import(importUrl)
 
-    const seen = new Set<PluginDescriptor>()
+      const seen = new Set<PluginDescriptor>()
 
-    for (const [, descriptor] of Object.entries<PluginDescriptor>(mod)) {
-      if (!descriptor || typeof descriptor !== "object" || !descriptor.id || !descriptor.init) continue
-      if (seen.has(descriptor)) continue
-      seen.add(descriptor)
-      assertCanonicalPluginIdentity({ spec: configPath, manifest: resolved.manifest, descriptor })
+      for (const [, descriptor] of Object.entries<PluginDescriptor>(mod)) {
+        if (!descriptor || typeof descriptor !== "object" || !descriptor.id || !descriptor.init) continue
+        if (seen.has(descriptor)) continue
+        seen.add(descriptor)
+        assertCanonicalPluginIdentity({ spec: configPath, manifest: resolved.manifest, descriptor })
 
-      const pluginId = descriptor.id
-      if (loadedPluginIds.has(pluginId)) {
-        log.warn("duplicate plugin descriptor skipped", { pluginId, path: configPath })
-        continue
+        const pluginId = descriptor.id
+        if (loadedPluginIds.has(pluginId)) {
+          log.warn("duplicate plugin descriptor skipped", { pluginId, path: configPath })
+          continue
+        }
+        loadedPluginIds.add(pluginId)
+        const showLoadedUI = !printedPluginIds.has(pluginId)
+        const policy = await resolveInstalledPluginPolicy({
+          pluginId,
+          pluginDir: resolved.pluginDir,
+          manifest: resolved.manifest,
+          source,
+          devMode: Installation.CHANNEL === "local",
+          policy: config.pluginRuntimePolicy,
+        })
+
+        const input: PluginInput = {
+          ...baseInput,
+          pluginDir: resolved.pluginDir,
+          config: createConfigAccessor(pluginId),
+          auth: createAuthStore(pluginId),
+          cache: createCacheStore(pluginId),
+        }
+        const hooks = await descriptor.init(input)
+        loaded.push({
+          id: pluginId,
+          name: descriptor.name,
+          hooks,
+          manifest: resolved.manifest,
+          pluginDir: resolved.pluginDir,
+          entryPath: resolved.entryPath,
+          source,
+          runtimeMode: policy.runtimeMode,
+          cli: hooks.cli,
+          skills: hooks.skills,
+          agents: hooks.agents,
+        })
+        specToPluginId.set(configPath, pluginId)
+
+        if (showLoadedUI) {
+          printedPluginIds.add(pluginId)
+          StartupReporter.active()?.plugin({ name: descriptor.name ?? pluginId, status: "loaded" })
+        }
+        log.info("loaded plugin", {
+          id: pluginId,
+          name: descriptor.name,
+          pluginDir: resolved.pluginDir,
+          runtimeMode: policy.runtimeMode,
+        })
       }
-      loadedPluginIds.add(pluginId)
-      const showLoadedUI = !printedPluginIds.has(pluginId)
-      const policy = await resolveInstalledPluginPolicy({
-        pluginId,
-        pluginDir: resolved.pluginDir,
-        manifest: resolved.manifest,
-        source,
-        devMode: Installation.CHANNEL === "local",
-        policy: config.pluginRuntimePolicy,
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log.warn("plugin load failed, disabling", {
+        pluginId: pluginIdFromManifest,
+        path: configPath,
+        error: reason,
       })
-
-      const input: PluginInput = {
-        ...baseInput,
-        pluginDir: resolved.pluginDir,
-        config: createConfigAccessor(pluginId),
-        auth: createAuthStore(pluginId),
-        cache: createCacheStore(pluginId),
-      }
-      const hooks = await descriptor.init(input)
-      loaded.push({
-        id: pluginId,
-        name: descriptor.name,
-        hooks,
+      recordDisabled(disabled, {
+        pluginId: pluginIdFromManifest,
+        name: resolved.manifest.name,
+        spec: configPath,
         pluginDir: resolved.pluginDir,
         entryPath: resolved.entryPath,
         source,
-        runtimeMode: policy.runtimeMode,
-        cli: hooks.cli,
-        skills: hooks.skills,
-        agents: hooks.agents,
-      })
-      specToPluginId.set(configPath, pluginId)
-
-      if (showLoadedUI) {
-        printedPluginIds.add(pluginId)
-        StartupReporter.active()?.plugin({ name: descriptor.name ?? pluginId, status: "loaded" })
-      }
-      log.info("loaded plugin", {
-        id: pluginId,
-        name: descriptor.name,
-        pluginDir: resolved.pluginDir,
-        runtimeMode: policy.runtimeMode,
+        phase: "load",
+        reason,
       })
     }
   }
 
-  return { loaded }
+  return { loaded, disabled }
 })
+
+function recordDisabled(list: DisabledPlugin[], input: Omit<DisabledPlugin, "disabledAt">) {
+  const disabled: DisabledPlugin = {
+    ...input,
+    disabledAt: Date.now(),
+  }
+  const index = list.findIndex((plugin) => plugin.pluginId === disabled.pluginId)
+  if (index >= 0) {
+    list[index] = disabled
+  } else {
+    list.push(disabled)
+  }
+  void recordEvent({
+    pluginId: disabled.pluginId,
+    type: "plugin_disabled",
+    details: {
+      spec: disabled.spec,
+      pluginDir: disabled.pluginDir,
+      phase: disabled.phase,
+      reason: disabled.reason,
+    },
+  })
+}
+
+export async function disablePlugin(input: {
+  pluginId: string
+  phase: DisabledPluginPhase
+  reason: string
+  spec?: string
+  pluginDir?: string
+  entryPath?: string
+  source?: PluginSource
+  name?: string
+}): Promise<DisabledPlugin | undefined> {
+  const current = await state().catch(() => null)
+  if (!current) return undefined
+  const loadedIndex = current.loaded.findIndex((plugin) => plugin.id === input.pluginId)
+  const loadedPlugin = loadedIndex >= 0 ? current.loaded[loadedIndex] : undefined
+  if (loadedIndex >= 0) current.loaded.splice(loadedIndex, 1)
+  const disabledInput = {
+    pluginId: input.pluginId,
+    name: input.name ?? loadedPlugin?.name,
+    spec: input.spec,
+    pluginDir: input.pluginDir ?? loadedPlugin?.pluginDir,
+    entryPath: input.entryPath ?? loadedPlugin?.entryPath,
+    source: input.source ?? loadedPlugin?.source,
+    phase: input.phase,
+    reason: input.reason,
+  }
+  recordDisabled(current.disabled, disabledInput)
+  log.warn("plugin disabled", disabledInput)
+  return current.disabled.find((plugin) => plugin.pluginId === input.pluginId)
+}
 
 // ---------------------------------------------------------------------------
 // Accessor helpers — used by both lifecycle and install modules
@@ -269,14 +376,23 @@ export async function getLoadedPlugins(): Promise<LoadedPlugin[]> {
   return state().then((x) => x.loaded)
 }
 
+export async function getDisabledPlugins(): Promise<DisabledPlugin[]> {
+  return state().then((x) => x.disabled)
+}
+
 export async function getPlugin(pluginId: string): Promise<LoadedPlugin | undefined> {
   return state().then((x) => x.loaded.find((p) => p.id === pluginId))
+}
+
+export async function getDisabledPlugin(pluginId: string): Promise<DisabledPlugin | undefined> {
+  return state().then((x) => x.disabled.find((p) => p.pluginId === pluginId))
 }
 
 export async function getHooks(): Promise<
   Array<{
     id: string
     hooks: PluginHooks
+    manifest: PluginManifestType
     pluginDir: string
     entryPath?: string
     source?: PluginSource
@@ -287,6 +403,7 @@ export async function getHooks(): Promise<
     x.loaded.map((p) => ({
       id: p.id,
       hooks: p.hooks,
+      manifest: p.manifest,
       pluginDir: p.pluginDir,
       entryPath: p.entryPath,
       source: p.source,

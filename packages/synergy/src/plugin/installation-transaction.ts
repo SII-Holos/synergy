@@ -59,6 +59,9 @@ export interface PluginDoctorIssue {
     | "stale_lock_entry"
     | "lock_config_drift"
     | "orphan_archive_cache"
+    | "invalid_archive_cache"
+    | "missing_lock_resolved"
+    | "invalid_runtime_state"
     | "unresolved_config_spec"
   pluginId?: string
   spec?: string

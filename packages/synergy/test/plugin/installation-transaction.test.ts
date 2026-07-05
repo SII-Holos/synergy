@@ -28,6 +28,12 @@ function loaded(version: string): LoadedPlugin {
     id: "demo-plugin",
     name: "Demo Plugin",
     hooks: {},
+    manifest: {
+      name: "demo-plugin",
+      version,
+      main: "./runtime/index.js",
+      description: "Demo plugin",
+    },
     pluginDir: `/tmp/${version}`,
     entryPath: `/tmp/${version}/runtime/index.js`,
     source: "local",

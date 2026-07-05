@@ -264,7 +264,10 @@ function SessionPageContent() {
         if (!msg) return
         if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
         local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
+        if (msg.model) {
+          local.model.set(msg.model)
+          local.model.variant.set(msg.variant, msg.model)
+        }
       },
     ),
   )

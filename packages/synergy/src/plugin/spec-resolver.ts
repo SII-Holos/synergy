@@ -99,16 +99,37 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
   return parsed as PluginManifestType
 }
 
+async function validateExtractedArchiveDir(pluginDir: string): Promise<void> {
+  const manifest = await readPluginManifest(pluginDir)
+  const entryPath = resolveEntryFromPluginDir(pluginDir, manifest)
+  if (!fs.existsSync(entryPath)) {
+    throw new Error(`Plugin entry not found at ${entryPath}. Synergy plugins must include a valid runtime entry.`)
+  }
+}
+
+async function archiveCacheUsable(pluginDir: string): Promise<boolean> {
+  if (!fs.existsSync(pluginDir)) return false
+  try {
+    await validateExtractedArchiveDir(pluginDir)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function extractArchive(archivePath: string, options: { stage?: boolean } = {}): Promise<string> {
+  if (!options.stage) {
+    const finalDir = archiveCacheDir(archivePath)
+    if (await archiveCacheUsable(finalDir)) return finalDir
+  }
   validateArchiveEntries(archivePath)
-  const targetDir = options.stage
-    ? path.join(
-        Global.Path.state,
-        "plugin-install",
-        "staging",
-        `${safeArchiveName(archivePath).replace(/\.tgz$/i, "")}-${process.pid}-${Date.now()}`,
-      )
-    : archiveCacheDir(archivePath)
+  const archiveName = safeArchiveName(archivePath).replace(/\.tgz$/i, "")
+  const targetDir = path.join(
+    Global.Path.state,
+    "plugin-install",
+    "staging",
+    `${archiveName}-${process.pid}-${Date.now()}`,
+  )
   fs.rmSync(targetDir, { recursive: true, force: true })
   fs.mkdirSync(targetDir, { recursive: true })
   const result = Bun.spawnSync(["tar", "-xzf", archivePath, "-C", targetDir], {
@@ -117,9 +138,48 @@ async function extractArchive(archivePath: string, options: { stage?: boolean } 
   })
   if (result.exitCode !== 0) {
     const stderr = new TextDecoder().decode(result.stderr)
+    fs.rmSync(targetDir, { recursive: true, force: true })
     throw new Error(`Failed to extract plugin archive ${archivePath}${stderr ? `: ${stderr}` : ""}`)
   }
-  return targetDir
+  try {
+    await validateExtractedArchiveDir(targetDir)
+  } catch (err) {
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    throw err
+  }
+  if (options.stage) return targetDir
+
+  const finalDir = archiveCacheDir(archivePath)
+
+  const backupDir = path.join(
+    Global.Path.state,
+    "plugin-install",
+    "rollback",
+    `${path.basename(finalDir)}-${process.pid}-${Date.now()}`,
+  )
+  fs.mkdirSync(path.dirname(finalDir), { recursive: true })
+  fs.mkdirSync(path.dirname(backupDir), { recursive: true })
+  const hadExisting = fs.existsSync(finalDir)
+  if (hadExisting) {
+    fs.rmSync(backupDir, { recursive: true, force: true })
+    fs.renameSync(finalDir, backupDir)
+  }
+  try {
+    fs.renameSync(targetDir, finalDir)
+    if (hadExisting) fs.rmSync(backupDir, { recursive: true, force: true })
+    return finalDir
+  } catch (err) {
+    fs.rmSync(finalDir, { recursive: true, force: true })
+    if (hadExisting) {
+      try {
+        fs.renameSync(backupDir, finalDir)
+      } catch {
+        fs.rmSync(backupDir, { recursive: true, force: true })
+      }
+    }
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    throw err
+  }
 }
 
 async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions): Promise<ResolvedPluginSpec> {

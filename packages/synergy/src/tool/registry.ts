@@ -133,18 +133,24 @@ export namespace ToolRegistry {
 
     const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
-      const manifest = await Plugin.manifest(plugin.id)
-      if (!manifest) continue
-      for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
-        const exposure = pluginToolExposure(def, id, manifest)
-        const display = pluginToolDisplay(def, id, manifest)
-        const runtime = getRuntime(plugin.id)
-        const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
-        if (runtimeMode !== "in-process") {
-          custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
-        } else {
-          custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+      try {
+        const manifest = plugin.manifest
+        for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
+          const exposure = pluginToolExposure(def, id, manifest)
+          const display = pluginToolDisplay(def, id, manifest)
+          const runtime = getRuntime(plugin.id)
+          const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
+          if (runtimeMode !== "in-process") {
+            custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+          } else {
+            custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+          }
         }
+      } catch (err) {
+        log.warn("plugin tools skipped due to registry failure", {
+          pluginId: plugin.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
@@ -165,7 +171,9 @@ export namespace ToolRegistry {
   ): ToolExposure.Info | undefined {
     const explicit = (def as ToolDefinition & { exposure?: ToolExposure.Info }).exposure
     if (explicit) return explicit
-    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
+    const manifestTool = manifest?.contributes?.tools?.find(
+      (tool: { id?: string; name?: string }) => tool.id === id || tool.name === id,
+    )
     return manifestTool?.exposure as ToolExposure.Info | undefined
   }
 
@@ -174,7 +182,9 @@ export namespace ToolRegistry {
     id: string,
     manifest: Awaited<ReturnType<typeof Plugin.manifest>>,
   ): ToolDisplay | undefined {
-    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
+    const manifestTool = manifest?.contributes?.tools?.find(
+      (tool: { id?: string; name?: string }) => tool.id === id || tool.name === id,
+    )
     const manifestDisplay = manifestTool?.display as ToolDisplay | undefined
     const explicit = (def as ToolDefinition & { display?: ToolDisplay }).display
     if (!explicit) return manifestDisplay

@@ -1,5 +1,5 @@
 import { createStore, produce, reconcile } from "solid-js/store"
-import { batch, createMemo, onCleanup } from "solid-js"
+import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { firstBy, uniqueBy } from "remeda"
 import type {
   ProviderListResponse,
@@ -8,13 +8,14 @@ import type {
   WorkspaceFileStatusSummary,
 } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useProviders } from "@/hooks/use-providers"
-import { DateTime } from "luxon"
 import { Persist, persisted } from "@/utils/persist"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { createModelVariantSession } from "./model-variant"
 
 export type LocalFile = WorkspaceFileNode &
   Partial<{
@@ -44,10 +45,21 @@ export type ModelKey = { providerID: string; modelID: string }
 export type FileContext = { type: "file"; path: string; selection?: TextSelection }
 export type ContextItem = FileContext
 
+const WORKSPACE_KEY = "__workspace__"
+const MAX_MODEL_VARIANT_SESSIONS = 20
+
+type ModelVariantSession = ReturnType<typeof createModelVariantSession>
+
+type ModelVariantCacheEntry = {
+  value: ModelVariantSession
+  dispose: VoidFunction
+}
+
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
     const sdk = useSDK()
+    const params = useParams()
     const sync = useSync()
     const providers = useProviders()
 
@@ -122,24 +134,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!value || typeof value !== "object") return value
 
         const record = value as Record<string, unknown>
-        if (Array.isArray(record.quickSwitcher)) return record
-
         const recent = Array.isArray(record.recent) ? (record.recent as ModelKey[]) : []
-        const variant = record.variant && typeof record.variant === "object" ? record.variant : {}
-        const quickSwitcher = Array.isArray(record.user)
-          ? record.user.flatMap((item) => {
-              if (!item || typeof item !== "object") return []
-              const entry = item as Record<string, unknown>
-              if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
-              const state = entry.visibility === "hide" ? "remove" : "add"
-              return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
-            })
-          : []
+        const quickSwitcher = Array.isArray(record.quickSwitcher)
+          ? (record.quickSwitcher as (ModelKey & { state: "add" | "remove" })[])
+          : Array.isArray(record.user)
+            ? record.user.flatMap((item) => {
+                if (!item || typeof item !== "object") return []
+                const entry = item as Record<string, unknown>
+                if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+                const state = entry.visibility === "hide" ? "remove" : "add"
+                return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+              })
+            : []
 
         return {
           quickSwitcher,
           recent,
-          variant,
         }
       }
 
@@ -151,11 +161,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         createStore<{
           quickSwitcher: (ModelKey & { state: "add" | "remove" })[]
           recent: ModelKey[]
-          variant?: Record<string, string | undefined>
         }>({
           quickSwitcher: [],
           recent: [],
-          variant: {},
         }),
       )
 
@@ -164,6 +172,48 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }>({
         model: {},
       })
+
+      const variantCache = new Map<string, ModelVariantCacheEntry>()
+
+      const disposeVariantCache = () => {
+        for (const entry of variantCache.values()) {
+          entry.dispose()
+        }
+        variantCache.clear()
+      }
+
+      onCleanup(disposeVariantCache)
+
+      const pruneVariantCache = () => {
+        while (variantCache.size > MAX_MODEL_VARIANT_SESSIONS) {
+          const first = variantCache.keys().next().value
+          if (!first) return
+          const entry = variantCache.get(first)
+          entry?.dispose()
+          variantCache.delete(first)
+        }
+      }
+
+      const loadVariantSession = (dir: string, id: string | undefined) => {
+        const key = `${dir}:${id ?? WORKSPACE_KEY}`
+        const existing = variantCache.get(key)
+        if (existing) {
+          variantCache.delete(key)
+          variantCache.set(key, existing)
+          return existing.value
+        }
+
+        const entry = createRoot((dispose) => ({
+          value: createModelVariantSession(dir, id),
+          dispose,
+        }))
+
+        variantCache.set(key, entry)
+        pruneVariantCache()
+        return entry.value
+      }
+
+      const variantSession = createMemo(() => loadVariantSession(sdk.scopeKey, params.id))
 
       const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`
       const keyOfLocalModel = (model: LocalModel) => keyOf({ providerID: model.provider.id, modelID: model.id })
@@ -375,8 +425,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           current() {
             const m = current()
             if (!m) return undefined
-            const key = `${m.provider.id}/${m.id}`
-            return store.variant?.[key]
+            return variantSession().get({ providerID: m.provider.id, modelID: m.id })
           },
           list() {
             const m = current()
@@ -384,15 +433,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (!m.variants) return []
             return Object.keys(m.variants)
           },
-          set(value: string | undefined) {
+          set(value: string | undefined, target?: ModelKey) {
             const m = current()
-            if (!m) return
-            const key = `${m.provider.id}/${m.id}`
-            if (!store.variant) {
-              setStore("variant", { [key]: value })
-            } else {
-              setStore("variant", key, value)
-            }
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            variantSession().set(modelKey, value)
           },
           cycle() {
             const variants = this.list()
