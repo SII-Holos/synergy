@@ -66,6 +66,58 @@ describe("BlueprintRoute start prompt", () => {
     })
   })
 
+  test("honors explicit execution agent and model for a Blueprint run", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy")
+        const response = await app().request("/blueprint/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            noteID: note.id,
+            title: "Prompt split",
+            sessionID: session.id,
+            runMode: "current",
+            executionAgent: "synergy-max",
+            model: { providerID: "openai", modelID: "gpt-test" },
+          }),
+        })
+        expect(response.status).toBe(200)
+        const loop = (await response.json()) as {
+          id: string
+          executionAgent?: string
+          model?: { providerID: string; modelID: string }
+        }
+        expect(loop.executionAgent).toBe("synergy-max")
+        expect(loop.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
+
+        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          deliveries.push(input)
+        })
+
+        const startResponse = await app().request(`/blueprint/loop/${loop.id}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+
+        expect(startResponse.status).toBe(200)
+        expect(deliveries).toHaveLength(1)
+        const mail = deliveries[0].mail
+        expect(mail.type).toBe("user")
+        if (mail.type !== "user") throw new Error("expected user mail")
+        expect(mail.agent).toBe("synergy-max")
+        expect(mail.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
+        const text = (mail.parts[0] as MessageV2.TextPart).text
+        expect(text).toContain('Execute the coding Blueprint "Prompt split"')
+      },
+    })
+  })
+
   test("rejects a loop bound to a session from another scope", async () => {
     await using blueprintScope = await tmpdir({ git: true })
     await using otherScope = await tmpdir({ git: true })
@@ -247,7 +299,7 @@ describe("BlueprintRoute start prompt", () => {
         })
         const response = await Promise.race([
           request,
-          new Promise<Response | undefined>((resolve) => setTimeout(() => resolve(undefined), 50)),
+          new Promise<Response | undefined>((resolve) => setTimeout(() => resolve(undefined), 1000)),
         ])
 
         try {

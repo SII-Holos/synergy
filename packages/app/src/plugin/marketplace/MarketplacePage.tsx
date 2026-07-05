@@ -247,9 +247,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                     {(plugin) => (
                       <InstalledPluginRow
                         plugin={plugin}
-                        onClick={() =>
-                          openPlugin(plugin.pluginId, props.initialSource ?? "local", { installedPlugin: plugin })
-                        }
+                        onClick={() => openPlugin(plugin.pluginId, "local", { installedPlugin: plugin })}
                       />
                     )}
                   </For>

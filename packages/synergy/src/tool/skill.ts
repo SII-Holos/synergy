@@ -32,38 +32,44 @@ function resolveBuiltinReference(references: Record<string, string>, name: strin
   return undefined
 }
 
+function isWithinDirectory(dir: string, candidate: string) {
+  const relative = path.relative(dir, candidate)
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+}
+
 /**
  * Resolve a user skill reference file with fuzzy fallback.
  * Tries: exact path → with common extensions → in references/ subdirectory.
  * All resolved paths are validated to stay within the skill directory.
  */
 async function resolveUserReference(dir: string, name: string): Promise<string | undefined> {
+  const baseDir = path.resolve(dir)
   const candidates: string[] = []
 
   // 1. Exact path
-  candidates.push(path.resolve(dir, name))
+  candidates.push(path.resolve(baseDir, name))
 
   // 2. Try with common extensions if no extension
   if (!path.extname(name)) {
     for (const ext of REFERENCE_EXTENSIONS) {
-      candidates.push(path.resolve(dir, name + ext))
+      candidates.push(path.resolve(baseDir, name + ext))
     }
   }
 
   // 3. Try in references/ subdirectory
   const basename = path.basename(name)
   if (!name.startsWith("references/") && !name.startsWith("references\\")) {
-    candidates.push(path.resolve(dir, "references", basename))
+    candidates.push(path.resolve(baseDir, "references", basename))
     if (!path.extname(basename)) {
       for (const ext of REFERENCE_EXTENSIONS) {
-        candidates.push(path.resolve(dir, "references", basename + ext))
+        candidates.push(path.resolve(baseDir, "references", basename + ext))
       }
     }
   }
 
   for (const candidate of candidates) {
     // Security: ensure resolved path is within skill directory
-    if (!candidate.startsWith(dir)) continue
+    if (!isWithinDirectory(baseDir, candidate)) continue
     const file = Bun.file(candidate)
     if (await file.exists()) {
       return await file.text()
@@ -176,7 +182,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
               dir: skill.builtin ? "builtin" : (skill.baseDir ?? "builtin"),
             },
           }
-        } else if (skill.location && skill.location.startsWith("/")) {
+        } else if (skill.location && path.isAbsolute(skill.location)) {
           // User skill: read reference from filesystem
           const dir = path.dirname(skill.location)
           const resolved = await resolveUserReference(dir, refName)
@@ -247,6 +253,13 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           `**Compatibility**: ${skill.compatibility?.level ?? "compatible"}`,
           `**Base directory**: ${dir}`,
         ]
+
+        if (skill.references && Object.keys(skill.references).length > 0) {
+          parts.push(
+            "",
+            `**References** (load via \`skill(name: "${skill.name}", reference: "<name>")\`): ${Object.keys(skill.references).join(", ")}`,
+          )
+        }
 
         if (skill.compatibility?.warnings.length) {
           parts.push("", "**Warnings**:")

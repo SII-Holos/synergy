@@ -75,6 +75,42 @@ Instructions here.
     })
   })
 
+  test("discovers references from .synergy/skill/ directory", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        const skillDir = path.join(dir, ".synergy", "skill", "reference-skill")
+        await fs.mkdir(path.join(skillDir, "references", "nested"), { recursive: true })
+        await Bun.write(
+          path.join(skillDir, "SKILL.md"),
+          `---
+name: reference-skill
+description: A test skill with references.
+---
+
+# Reference Skill
+
+Read the reference files.
+`,
+        )
+        await Bun.write(path.join(skillDir, "references", "guide.md"), "# Guide\n")
+        await Bun.write(path.join(skillDir, "references", "nested", "extra.md"), "# Extra\n")
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = await Skill.get("reference-skill")
+        expect(skill).toBeDefined()
+        expect(skill!.references).toEqual({
+          "references/guide.md": "# Guide\n",
+          "references/nested/extra.md": "# Extra\n",
+        })
+      },
+    })
+  })
+
   test("discovers multiple skills from .synergy/skill/ directory", async () => {
     await using tmp = await tmpdir({
       git: true,

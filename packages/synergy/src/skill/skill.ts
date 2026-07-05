@@ -248,7 +248,23 @@ export namespace Skill {
   // ---------------------------------------------------------------------------
 
   const SKILL_CONTENT_FILES = ["SKILL.md", "Skill.md", "content.txt", "content.md"]
-  const SKILL_REF_GLOB = new Bun.Glob("*")
+  const SKILL_REF_GLOB = new Bun.Glob("**/*")
+
+  async function loadSkillReferences(dir: string, existing?: Record<string, string>) {
+    const refDir = path.join(dir, "references")
+    if (!existsSync(refDir)) return existing
+
+    const references = existing ? { ...existing } : {}
+    for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
+      const normalized = file.replace(/\\/g, "/")
+      const key = `references/${normalized}`
+      if (!(key in references)) {
+        references[key] = await Bun.file(path.join(refDir, file)).text()
+      }
+    }
+
+    return references
+  }
 
   type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & {
     pluginId: string
@@ -282,16 +298,7 @@ export namespace Skill {
         }
       }
 
-      const refDir = path.join(dir, "references")
-      if (existsSync(refDir)) {
-        references ??= {}
-        for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
-          const key = `references/${file}`
-          if (!(key in references)) {
-            references[key] = await Bun.file(path.join(refDir, file)).text()
-          }
-        }
-      }
+      references = await loadSkillReferences(dir, references)
 
       const scriptDir = path.join(dir, "scripts")
       if (existsSync(scriptDir)) {
@@ -435,6 +442,8 @@ export namespace Skill {
 
       const { source, scope, priority } = candidate
       const compatibility = analyzeCompatibility(source, frontmatter)
+      const baseDir = path.dirname(candidate.location)
+      const references = await loadSkillReferences(baseDir)
       const entry = {
         name,
         description,
@@ -442,7 +451,8 @@ export namespace Skill {
         source,
         scope,
         entryFile: candidate.location,
-        baseDir: path.dirname(candidate.location),
+        baseDir,
+        references,
         rawFrontmatter: frontmatter,
         compatibility,
       } satisfies Info

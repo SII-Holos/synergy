@@ -73,11 +73,11 @@
       }
     },
     "timeout": {
-      "description": "Timeout configuration for agent turns, provider requests, and tool execution",
+      "description": "Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts",
       "type": "object",
       "properties": {
         "invoke_sec": {
-          "description": "Max wall-clock seconds for one agent turn (default: 900 = 15min)",
+          "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
           "type": "number",
           "exclusiveMinimum": 0
         },
@@ -85,14 +85,22 @@
           "type": "object",
           "properties": {
             "ttfb_sec": {
-              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min",
+              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h",
               "type": "number",
               "exclusiveMinimum": 0
             },
             "idle_sec": {
-              "description": "Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.",
-              "type": "number",
-              "minimum": 0
+              "description": "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "boolean",
+                  "const": false
+                }
+              ]
             },
             "wall_sec": {
               "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
@@ -106,7 +114,7 @@
           "type": "object",
           "properties": {
             "default_sec": {
-              "description": "Default timeout per tool execution in seconds (default: 300 = 5min)",
+              "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
               "type": "number",
               "exclusiveMinimum": 0
             },
@@ -120,6 +128,17 @@
                 "type": "number",
                 "exclusiveMinimum": 0
               }
+            }
+          },
+          "additionalProperties": false
+        },
+        "permission": {
+          "type": "object",
+          "properties": {
+            "ask_sec": {
+              "description": "Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)",
+              "type": "number",
+              "exclusiveMinimum": 0
             }
           },
           "additionalProperties": false
@@ -338,7 +357,7 @@
         },
         "cacheTtlMs": {
           "description": "Remote marketplace cache TTL in milliseconds",
-          "default": 300000,
+          "default": 3600000,
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
@@ -461,6 +480,16 @@
     "vision_model": {
       "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
       "type": "string"
+    },
+    "role_variant": {
+      "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "default_agent": {
       "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
@@ -816,10 +845,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                    "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -1733,6 +1762,10 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "model": {
+                      "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+                      "type": "string"
+                    },
                     "resolveSenderNames": {
                       "description": "Resolve sender display names via Feishu contact API",
                       "default": true,
@@ -1900,6 +1933,145 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
+        },
+        "performance": {
+          "description": "Structured local performance observability settings",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable structured local performance metrics and traces",
+              "type": "boolean"
+            },
+            "samplingRate": {
+              "description": "Default performance metric sampling rate",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "metricRetentionMs": {
+              "description": "Milliseconds to retain raw performance metrics",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "traceRetentionMs": {
+              "description": "Milliseconds to retain performance spans and trace details",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "resourceSampleIntervalMs": {
+              "description": "Runtime resource sampling interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "slowTraceThresholdMs": {
+              "description": "Default slow trace issue threshold",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceEvents": {
+              "description": "Maximum related events returned for a trace detail",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTimelineBuckets": {
+              "description": "Maximum timeline buckets returned to the dashboard",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceListLimit": {
+              "description": "Maximum trace list rows returned",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxAttributeStringLength": {
+              "description": "Maximum redacted attribute string length",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "dashboardRefreshMs": {
+              "description": "Performance dashboard polling refresh interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseHeartbeatMs": {
+              "description": "Performance SSE heartbeat interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseBufferSize": {
+              "description": "Performance event stream replay buffer size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "perClientSseQueueSize": {
+              "description": "Per-client performance SSE queue size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "redactAttributeKeys": {
+              "description": "Additional performance telemetry attribute keys to redact",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rateLimits": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "sqliteEnabled": {
+                  "type": "boolean"
+                },
+                "jsonlMirrorEnabled": {
+                  "type": "boolean"
+                },
+                "maxSqliteBytes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "walCheckpointIntervalMs": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "thresholds": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -2194,7 +2366,7 @@
       "type": "object",
       "properties": {
         "timeout": {
-          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)",
           "type": "number",
           "minimum": 0
         }
