@@ -264,16 +264,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                     ? Promise.resolve()
                     : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
                         if (!session.data) return
-                        reconcileCortexFromSession(session.data)
+                        const data = session.data
+                        reconcileCortexFromSession(data)
+                        const match = Binary.search(store.session, sessionID, (s) => s.id)
+                        if (match.found) {
+                          // reconcile so a re-fetch of an already-present session
+                          // preserves object identity and doesn't invalidate
+                          // downstream memos (issue #319).
+                          setStore("session", match.index, reconcile(data))
+                          return
+                        }
                         setStore(
                           "session",
                           produce((draft) => {
-                            const match = Binary.search(draft, sessionID, (s) => s.id)
-                            if (match.found) {
-                              draft[match.index] = session.data
-                              return
-                            }
-                            draft.splice(match.index, 0, session.data)
+                            draft.splice(match.index, 0, data)
                           }),
                         )
                       })

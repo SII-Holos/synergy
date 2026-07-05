@@ -816,12 +816,10 @@ function createGlobalSync() {
           break
         }
         if (result.found) {
-          setStore(
-            "session",
-            produce((draft) => {
-              draft[result.index] = info
-            }),
-          )
+          // reconcile (not whole-object replace) so unchanged fields keep their
+          // identity; a session.updated that only bumps time.updated must not
+          // invalidate memos reading title/status/etc. (issue #319).
+          setStore("session", result.index, reconcile(info))
           break
         }
         setStore(
@@ -910,7 +908,9 @@ function createGlobalSync() {
         } else {
           const result = Binary.search(parts, part.id, (p) => p.id)
           if (result.found) {
-            setStore("part", part.messageID, result.index, part)
+            // reconcile so a streaming text/tool part only touches changed
+            // leaves instead of re-rendering the whole part on every delta.
+            setStore("part", part.messageID, result.index, reconcile(part))
           } else {
             setStore(
               "part",
