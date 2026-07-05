@@ -989,7 +989,22 @@ export namespace ToolResolver {
       description: diagnostic.message,
       inputSchema: jsonSchema(schema),
       async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        log.info("tool.execute.callback.start", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+        })
         const slot = input.processor.beginExecution(options.toolCallId)
+        log.info("tool.execute.callback.slot", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+          slotStatus: slot.status,
+        })
         const error = new ToolDiagnosticError({
           ...diagnostic,
           metadata: {
@@ -1029,7 +1044,22 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema as any),
             async execute(args, options) {
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
+              })
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
+                slotStatus: slot.status,
+              })
               try {
                 const result = await item.execute(args as Record<string, unknown>)
                 slot.complete(args, {
@@ -1076,9 +1106,24 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+              })
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+                slotStatus: slot.status,
+              })
 
               try {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
@@ -1226,6 +1271,14 @@ export namespace ToolResolver {
                     : (result.metadata ?? {}),
                   attachments: result.attachments,
                 })
+                log.info("tool.execute.callback.completed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
+                })
                 await toolTrace.end({
                   outputChars: result.output.length,
                   attachmentCount: result.attachments?.length ?? 0,
@@ -1246,6 +1299,14 @@ export namespace ToolResolver {
                   error,
                 })
                 slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                log.warn("tool.execute.callback.failed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
+                })
                 await toolTrace?.error(error)
                 throw error
               } finally {
@@ -1290,9 +1351,24 @@ export namespace ToolResolver {
             return {
               ...item,
               execute: async (args, opts) => {
+                log.info("tool.execute.callback.start", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                })
                 const ctx = context(args, opts)
                 let toolTrace: ToolTrace | undefined
                 const slot = runtimeInput.processor.beginExecution(opts.toolCallId)
+                log.info("tool.execute.callback.slot", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                  slotStatus: slot.status,
+                })
 
                 try {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
@@ -1422,6 +1498,14 @@ export namespace ToolResolver {
                       : output.metadata,
                     attachments: output.attachments,
                   })
+                  log.info("tool.execute.callback.completed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
+                  })
 
                   await toolTrace.end({
                     outputChars: output.output.length,
@@ -1444,6 +1528,14 @@ export namespace ToolResolver {
                     error,
                   })
                   slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                  log.warn("tool.execute.callback.failed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
+                  })
                   await toolTrace?.error(error)
                   throw error
                 } finally {
