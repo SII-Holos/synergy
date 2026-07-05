@@ -283,8 +283,8 @@ export namespace SessionProcessor {
     }
 
     async function waitForPendingExecution(part: MessageV2.ToolPart): Promise<ToolOutcome | undefined> {
-      const pending = pendingExecutions.get(part.callID)
-      if (!pending) return undefined
+      const registered = await waitForRegisteredExecution(part.callID)
+      if (!registered) return undefined
 
       const waitMs = await pendingExecutionWaitMs(part)
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -294,7 +294,35 @@ export namespace SessionProcessor {
       })
 
       try {
-        return await Promise.race([pending, timeout])
+        return await Promise.race([registered, timeout])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    async function waitForRegisteredExecution(callID: string): Promise<Promise<ToolOutcome> | undefined> {
+      const existing = pendingExecutions.get(callID)
+      if (existing) return existing
+
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await new Promise<Promise<ToolOutcome> | undefined>((resolve) => {
+          const deadline = Date.now() + TOOL_SETTLE_TIMEOUT
+          const check = () => {
+            const registered = pendingExecutions.get(callID)
+            if (registered) {
+              resolve(registered)
+              return
+            }
+            if (Date.now() >= deadline) {
+              resolve(undefined)
+              return
+            }
+            timer = setTimeout(check, 10)
+            if (typeof timer === "object" && "unref" in timer) timer.unref()
+          }
+          check()
+        })
       } finally {
         if (timer) clearTimeout(timer)
       }

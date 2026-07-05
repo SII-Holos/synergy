@@ -324,6 +324,97 @@ describe("SessionProcessor tracked execution settlement", () => {
       ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
     }
   })
+
+  test("waits briefly for tool execution registration after a tool-call", async () => {
+    const originalStream = LLM.stream
+    const originalUpdatePart = Session.updatePart
+    const originalParts = MessageV2.parts
+    const originalUpdateMessage = Session.updateMessage
+    const originalUpdateLastExchange = Session.updateLastExchange
+    const originalConfigCurrent = Config.current
+    const originalPluginTrigger = Plugin.trigger
+    const originalExperienceComplete = ExperienceEncoder.onComplete
+    const parts = new Map<string, MessageV2.Part>()
+    let processor!: SessionProcessor.Info
+
+    try {
+      TimeoutConfig.invalidate()
+      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
+        const part = "part" in input ? input.part : input
+        parts.set(part.id, part)
+        return part
+      })
+      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
+      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
+      ;(Session.updateLastExchange as any) = mock(async () => {})
+      ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
+      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
+      ;(LLM.stream as any) = mock(async () => ({
+        fullStream: (async function* () {
+          yield { type: "start" }
+          yield {
+            type: "tool-call",
+            toolCallId: "call_late_registration",
+            toolName: "bash",
+            input: { command: "git status --porcelain=v1 --branch" },
+          }
+          queueMicrotask(() => {
+            processor.trackExecution(
+              "call_late_registration",
+              Promise.resolve({
+                status: "completed",
+                input: { command: "git status --porcelain=v1 --branch" },
+                result: {
+                  output: "## dev...origin/dev\n",
+                  title: "Git status",
+                  metadata: { exit: 0 },
+                },
+              }),
+            )
+          })
+        })(),
+      }))
+
+      processor = SessionProcessor.create({
+        assistantMessage: {
+          id: "msg_assistant_late_registration",
+          sessionID: "ses_test",
+          role: "assistant",
+          parentID: "msg_user",
+          modelID: "test-model",
+          providerID: "test-provider",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 0 },
+        },
+        sessionID: "ses_test",
+        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
+        abort: new AbortController().signal,
+      })
+
+      await processor.process({} as any)
+
+      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
+      expect(tool?.state.status).toBe("completed")
+      if (tool?.state.status === "completed") {
+        expect(tool.state.output).toBe("## dev...origin/dev\n")
+      }
+    } finally {
+      TimeoutConfig.invalidate()
+      ;(LLM.stream as any) = originalStream
+      ;(Session.updatePart as any) = originalUpdatePart
+      ;(MessageV2.parts as any) = originalParts
+      ;(Session.updateMessage as any) = originalUpdateMessage
+      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
+      ;(Config.current as any) = originalConfigCurrent
+      ;(Plugin.trigger as any) = originalPluginTrigger
+      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    }
+  })
 })
 
 describe("SessionProcessor.unresolvedToolError", () => {
