@@ -330,7 +330,7 @@ describe("session.compaction.buildAnchor", () => {
 
   function userMsg(
     id: string,
-    parts: Array<{ text: string; synthetic?: boolean; ignored?: boolean }>,
+    parts: Array<{ text: string; synthetic?: boolean }>,
     metadata?: Record<string, any>,
   ): MessageV2.WithParts {
     return {
@@ -350,7 +350,6 @@ describe("session.compaction.buildAnchor", () => {
         type: "text",
         text: part.text,
         ...(part.synthetic ? { synthetic: true } : {}),
-        ...(part.ignored ? { ignored: true } : {}),
       })),
     }
   }
@@ -407,20 +406,15 @@ describe("session.compaction.buildAnchor", () => {
     expect(anchor).not.toContain("some steering context")
   })
 
-  test("ignores system-origin and ignored text parts when extracting anchor text", () => {
+  test("ignores system-origin text parts when extracting anchor text", () => {
     const messages = [
-      userMsg("active", [
-        { text: "hidden synthetic text", synthetic: true },
-        { text: "hidden ignored text", ignored: true },
-        { text: "visible active request" },
-      ]),
+      userMsg("active", [{ text: "hidden synthetic text", synthetic: true }, { text: "visible active request" }]),
     ]
 
     const anchor = SessionCompaction.buildAnchor(messages, "active")
 
     expect(anchor).toContain("visible active request")
     expect(anchor).not.toContain("hidden synthetic text")
-    expect(anchor).not.toContain("hidden ignored text")
   })
 
   test("falls back to the root summary title when it has no user-authored text", () => {

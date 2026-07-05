@@ -186,7 +186,7 @@ export namespace CortexOutput {
     for (const message of [...messages].reverse()) {
       if (message.info.role !== "assistant") continue
       const text = message.parts
-        .flatMap((part) => (part.type === "text" && !MessageV2.isSystemPart(part) && !part.ignored ? [part.text] : []))
+        .flatMap((part) => (part.type === "text" && !MessageV2.isSystemPart(part) ? [part.text] : []))
         .join("\n")
         .trim()
       if (text) return text

@@ -453,7 +453,7 @@ export namespace SessionInvoke {
             if (isRoot || (originType && originType !== "user")) continue
             msg.parts = msg.parts.map((part) => {
               if (part.type !== "text") return part
-              if (MessageV2.isSystemPart(part) || part.ignored) return part
+              if (MessageV2.isSystemPart(part)) return part
               if (!part.text.trim()) return part
               return {
                 ...part,

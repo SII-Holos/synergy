@@ -290,9 +290,7 @@ export namespace SessionCompaction {
   }
 
   function realUserText(msg: MessageV2.WithParts): string | undefined {
-    const textParts = msg.parts.filter(
-      (p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p) && !p.ignored,
-    )
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
     if (textParts.length === 0) return undefined
     const text = textParts
       .map((p) => p.text)

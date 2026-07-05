@@ -135,9 +135,8 @@ export namespace MessageV2 {
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
+    /** @deprecated Superseded by `origin`; read only as a fallback by isSystemPart. No writes. */
     synthetic: z.boolean().optional(),
-    /** @deprecated Dead field — no writes exist. Kept for backward compat reads. */
-    ignored: z.boolean().optional(),
     origin: z.enum(["user", "system"]).optional(),
     time: z
       .object({
@@ -668,14 +667,10 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
-  export function extractText(
-    parts: Part[],
-    options?: { includeSynthetic?: boolean; includeIgnored?: boolean; maxLength?: number },
-  ): string {
+  export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
     for (const part of parts) {
       if (part.type !== "text") continue
-      if (!options?.includeIgnored && part.ignored) continue
       if (!options?.includeSynthetic && isSystemPart(part)) continue
       texts.push(part.text)
     }

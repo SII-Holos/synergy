@@ -3533,7 +3533,6 @@ export type SessionInboxItem = {
           type: "text"
           text: string
           synthetic?: boolean
-          ignored?: boolean
           origin?: "user" | "system"
           time?: {
             start: number
@@ -3611,7 +3610,6 @@ export type TextPartInput = {
   type: "text"
   text: string
   synthetic?: boolean
-  ignored?: boolean
   origin?: "user" | "system"
   time?: {
     start: number
@@ -3761,7 +3759,6 @@ export type TextPart = {
   type: "text"
   text: string
   synthetic?: boolean
-  ignored?: boolean
   origin?: "user" | "system"
   time?: {
     start: number

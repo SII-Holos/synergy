@@ -70,7 +70,7 @@ export namespace PlanModeUserWrapper {
       let wrapped = false
       const parts = msg.parts.map((part) => {
         if (part.type !== "text") return part
-        if (MessageV2.isSystemPart(part) || (part as { ignored?: boolean }).ignored === true) return part
+        if (MessageV2.isSystemPart(part)) return part
         if (wrapped) return part
         wrapped = true
         return {
@@ -85,7 +85,7 @@ export namespace PlanModeUserWrapper {
           sessionID: msg.info.sessionID,
           messageID: msg.info.id,
           type: "text",
-          synthetic: true,
+          origin: "system",
           text: build(agentName, "(The user request has no plain text. Use any attached context as the request.)"),
         })
       }
