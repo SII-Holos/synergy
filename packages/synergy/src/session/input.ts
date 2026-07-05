@@ -127,25 +127,13 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
 }
 
 /**
- * Check if a user message is a session identity anchor (root user).
- * Uses the new isRoot field when available; falls back to old metadata heuristics.
+ * Whether a user message is a task root. Messages read via effectiveMessages
+ * are canonicalized (issue #281 §12.2), so isRoot is always populated.
  */
 function isUserAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
   info: MessageV2.User
 } {
-  if (item.info.role !== "user") return false
-  const user = item.info as MessageV2.User
-  if (user.isRoot !== undefined) return user.isRoot
-  // Fallback for old sessions without isRoot
-  const metadata = user.metadata
-  if (!metadata) return true
-  const source = metadata.source
-  if (metadata.guided === true && metadata.noReply === true) return false
-  if (metadata.mailbox === true || metadata.channelPush === true) return false
-  if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
-  if (source === "cortex" || source === "mailbox" || source === "agenda") return false
-  if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
-  return true
+  return item.info.role === "user" && (item.info as MessageV2.User).isRoot === true
 }
 
 export async function lastModel(sessionID: string) {
@@ -156,18 +144,6 @@ export async function lastModel(sessionID: string) {
   }
   const { Provider } = await import("@/provider/provider")
   return Provider.defaultModel()
-}
-
-function deriveOrigin(metadata: Record<string, any> | undefined): MessageV2.OriginUser | undefined {
-  if (!metadata) return { type: "user" }
-  const source = metadata.source
-  if (source === "cortex") return { type: "cortex", sessionID: metadata.sourceSessionID }
-  if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID: metadata.sourceSessionID }
-  if (typeof source === "string" && source.startsWith("blueprint_loop_")) return { type: "blueprint", detail: source }
-  if (metadata.channelPush) return { type: "channel" }
-  if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim())
-    return { type: "forward", sessionID: metadata.sourceSessionID }
-  return { type: "user" }
 }
 
 export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
@@ -197,9 +173,12 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   })
   const externalMetadata = PlanModeUserWrapper.stripReservedMetadata(input.metadata)
   const messageID = input.messageID ?? Identifier.ascending("message")
-  const origin = deriveOrigin(input.metadata)
+  const origin = MessageV2.originFromMetadata(input.metadata)
   const isRoot = input.noReply !== true
   const rootID = rootIDOverride ?? messageID
+  // A reply-requiring message is always shown; a noReply injection is shown
+  // only when its origin renders as a chip (cortex/agenda/blueprint/channel/…).
+  const visible = isRoot || MessageV2.originRenders(origin)
 
   const info: MessageV2.Info = {
     id: messageID,
@@ -217,7 +196,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     origin,
     isRoot,
     rootID,
-    visible: true,
+    visible,
     metadata: {
       ...(input.noReply === true ? { noReply: true } : {}),
       ...externalMetadata,

@@ -74,18 +74,17 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("filters out messages with only ignored parts", () => {
-    const messageID = "m-user"
-
+  test("excludes messages marked includeInContext: false", () => {
+    // Part-level model exclusion was removed (issue #281 §4.4); the only
+    // model-context switch is the message-level includeInContext flag.
     const input: MessageV2.WithParts[] = [
       {
-        info: userInfo(messageID),
+        info: { ...userInfo("m-user"), includeInContext: false },
         parts: [
           {
-            ...basePart(messageID, "p1"),
+            ...basePart("m-user", "p1"),
             type: "text",
-            text: "ignored",
-            ignored: true,
+            text: "hidden from model",
           },
         ] as MessageV2.Part[],
       },
@@ -134,7 +133,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("converts user text/attachment parts and filters ignored/special parts", () => {
+  test("converts user text/attachment parts and filters special parts", () => {
     const messageID = "m-user"
 
     const input: MessageV2.WithParts[] = [
@@ -145,12 +144,6 @@ describe("session.message-v2.toModelMessage", () => {
             ...basePart(messageID, "p1"),
             type: "text",
             text: "hello",
-          },
-          {
-            ...basePart(messageID, "p2"),
-            type: "text",
-            text: "ignored",
-            ignored: true,
           },
           {
             ...basePart(messageID, "p3"),

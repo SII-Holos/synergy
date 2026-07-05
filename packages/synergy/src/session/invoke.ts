@@ -292,30 +292,6 @@ export namespace SessionInvoke {
     return undefined
   }
 
-  async function createAutoCompactionBoundary(input: { sessionID: string; lastUser: MessageV2.User }) {
-    const boundary = await Session.updateMessage({
-      id: Identifier.ascending("message"),
-      role: "user",
-      sessionID: input.sessionID,
-      time: { created: Date.now() },
-      agent: input.lastUser.agent,
-      model: input.lastUser.model,
-      summary: { title: "Compaction requested", diffs: [] },
-      metadata: {
-        synthetic: true,
-        compactionBoundary: true,
-        compactionParentID: input.lastUser.id,
-      },
-    })
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: boundary.id,
-      sessionID: input.sessionID,
-      type: "compaction",
-      auto: true,
-    })
-  }
-
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
     BlueprintContinuation.init()
     SessionManager.registerRuntime(sessionID)
@@ -359,11 +335,9 @@ export namespace SessionInvoke {
           const msg = msgs[i]
           if (msg.info.role === "user") {
             const user = msg.info as MessageV2.User
-            if (user.isRoot === true || (user.metadata?.noReply !== true && !user.metadata?.guided)) {
-              if (!R) {
-                R = user
-                RParts = msg.parts
-              }
+            if (user.isRoot === true && !R) {
+              R = user
+              RParts = msg.parts
             }
           }
           if (msg.info.role === "assistant") {
@@ -971,22 +945,12 @@ export namespace SessionInvoke {
           ) {
             log.warn("context exceeded, injecting emergency compaction", { sessionID })
             emergencyCompactionTriggered = true
-            const emergencySteer = await Session.updateMessage({
-              id: Identifier.ascending("message"),
-              role: "user",
-              sessionID,
-              time: { created: Date.now() },
-              agent: R.agent,
-              model: R.model,
-              origin: { type: "compaction", detail: "emergency" },
-              isRoot: false,
-              rootID: R.id,
-              visible: false,
-              summary: { title: "Emergency compaction", diffs: [] },
-            })
+            // Attach the compaction part to R so the next iteration detects it
+            // via lastUserParts (same path as the prompt-budget trigger above)
+            // and anchors compaction on the task root.
             await Session.updatePart({
               id: Identifier.ascending("part"),
-              messageID: emergencySteer.id,
+              messageID: R.id,
               sessionID,
               type: "compaction" as const,
               auto: true,

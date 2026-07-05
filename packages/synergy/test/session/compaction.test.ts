@@ -367,60 +367,48 @@ describe("session.compaction.buildAnchor", () => {
     expect(anchor).not.toContain("will gh pr create be blocked?")
   })
 
-  test("falls back to the latest real user request for synthetic continue parents", () => {
+  test("anchors the root by parentID, not a later synthetic continue", () => {
+    // The loop always passes the task root R as parentID (issue #281 §7), so
+    // the anchor is R's text regardless of any later synthetic/steer messages.
     const messages = [
       userMsg("active", [{ text: "keep this active request across compaction" }]),
       userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
     ]
 
-    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
 
     expect(anchor).toContain("keep this active request across compaction")
     expect(anchor).not.toContain("Continue if you have next steps")
   })
 
-  test("falls back past guided context even when it has real user text", () => {
+  test("anchors the root by parentID, not a later guided steer", () => {
     const messages = [
       userMsg("active", [{ text: "implement the active task" }]),
       userMsg("guided", [{ text: "temporary steering context" }], { guided: true }),
     ]
 
-    const anchor = SessionCompaction.buildAnchor(messages, "guided")
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
 
     expect(anchor).toContain("implement the active task")
     expect(anchor).not.toContain("temporary steering context")
   })
 
-  test("does not use earlier guided context as a fallback anchor", () => {
+  test("resolves the root by id in O(1) without scanning neighbours", () => {
     const messages = [
-      userMsg("active", [{ text: "preserve this original request" }]),
-      userMsg("guided", [{ text: "do not anchor this guided context" }], { guided: true }),
-      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+      userMsg("earlier", [{ text: "an earlier request" }]),
+      userMsg("active", [{ text: "the current root request" }]),
+      userMsg("guided", [{ text: "some steering context" }], { guided: true }),
     ]
 
-    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
 
-    expect(anchor).toContain("preserve this original request")
-    expect(anchor).not.toContain("do not anchor this guided context")
+    expect(anchor).toContain("the current root request")
+    expect(anchor).not.toContain("an earlier request")
+    expect(anchor).not.toContain("some steering context")
   })
 
-  test("does not anchor synthetic or no-reply user messages", () => {
+  test("ignores system-origin and ignored text parts when extracting anchor text", () => {
     const messages = [
-      userMsg("active", [{ text: "anchor the actual request" }]),
-      userMsg("synthetic", [{ text: "synthetic user message" }], { synthetic: true }),
-      userMsg("no-reply", [{ text: "no reply context" }], { noReply: true }),
-    ]
-
-    const anchor = SessionCompaction.buildAnchor(messages, "no-reply")
-
-    expect(anchor).toContain("anchor the actual request")
-    expect(anchor).not.toContain("synthetic user message")
-    expect(anchor).not.toContain("no reply context")
-  })
-
-  test("ignores synthetic and ignored text parts when extracting anchor text", () => {
-    const messages = [
-      userMsg("previous", [{ text: "previous real request" }]),
       userMsg("active", [
         { text: "hidden synthetic text", synthetic: true },
         { text: "hidden ignored text", ignored: true },
@@ -433,47 +421,26 @@ describe("session.compaction.buildAnchor", () => {
     expect(anchor).toContain("visible active request")
     expect(anchor).not.toContain("hidden synthetic text")
     expect(anchor).not.toContain("hidden ignored text")
-    expect(anchor).not.toContain("previous real request")
   })
 
-  test("falls back to carried anchor metadata after the source user message is compacted away", () => {
+  test("falls back to the root summary title when it has no user-authored text", () => {
     const messages = [
-      userMsg(
-        "continue-1",
-        [
-          { text: "Continue if you have next steps", synthetic: true },
-          { text: "<anchor>original carried request</anchor>", synthetic: true },
-        ],
-        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
-      ),
-      userMsg(
-        "continue-2",
-        [
-          { text: "Continue if you have next steps", synthetic: true },
-          { text: "<anchor>original carried request</anchor>", synthetic: true },
-        ],
-        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
-      ),
-    ]
-
-    const anchor = SessionCompaction.buildAnchor(messages, "continue-2")
-
-    expect(anchor).toContain("original carried request")
-    expect(anchor).not.toContain("Continue if you have next steps")
-  })
-
-  test("prefers a new real user request over older carried anchor metadata", () => {
-    const messages = [
-      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }], {
-        compactionAnchor: { text: "old carried request", sourceMessageID: "old" },
+      userMsg("active", [{ text: "only synthetic content", synthetic: true }], {
+        summary: { title: "Scheduled task", diffs: [] },
       }),
-      userMsg("active", [{ text: "new real request" }]),
     ]
+    // summary lives on info, not metadata — attach it directly
+    ;(messages[0].info as MessageV2.User).summary = { title: "Scheduled task", diffs: [] }
 
     const anchor = SessionCompaction.buildAnchor(messages, "active")
 
-    expect(anchor).toContain("new real request")
-    expect(anchor).not.toContain("old carried request")
+    expect(anchor).toContain("Scheduled task")
+  })
+
+  test("returns undefined when the root is missing", () => {
+    const messages = [userMsg("active", [{ text: "a request" }])]
+
+    expect(SessionCompaction.buildAnchor(messages, "does-not-exist")).toBeUndefined()
   })
 })
 

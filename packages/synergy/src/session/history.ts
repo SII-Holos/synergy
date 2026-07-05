@@ -267,7 +267,11 @@ export namespace SessionHistory {
     const result = [] as MessageV2.WithParts[]
     for await (const msg of MessageV2.stream({ sessionID: input.sessionID })) result.push(msg)
     result.reverse()
-    return input.limit ? result.slice(-input.limit) : result
+    // Canonicalize legacy messages once, at the read boundary, so every
+    // downstream consumer reads rootID / isRoot / visible / origin directly
+    // (issue #281 §12.2). Must run on the full ordered list before slicing.
+    const derived = MessageV2.deriveSemantics(result)
+    return input.limit ? derived.slice(-input.limit) : derived
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
@@ -361,8 +365,10 @@ export namespace SessionHistory {
     })
   }
 
+  // A rollback "turn start" is a root user message: /undo steps by whole tasks.
+  // Messages are canonicalized in rawMessages, so isRoot is always populated.
   function isRollbackUser(msg: MessageV2.WithParts) {
-    return msg.info.role === "user" && (msg.info as MessageV2.User).metadata?.synthetic !== true
+    return msg.info.role === "user" && (msg.info as MessageV2.User).isRoot === true
   }
 
   function activeRollbacks(events: Event[]) {
