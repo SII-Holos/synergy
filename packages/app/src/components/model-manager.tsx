@@ -141,24 +141,22 @@ function createStandaloneModelPreferences(models: Accessor<LocalModel[]>, defaul
     if (!value || typeof value !== "object") return value
 
     const record = value as Record<string, unknown>
-    if (Array.isArray(record.quickSwitcher)) return record
-
     const recent = Array.isArray(record.recent) ? (record.recent as ModelKey[]) : []
-    const variant = record.variant && typeof record.variant === "object" ? record.variant : {}
-    const quickSwitcher = Array.isArray(record.user)
-      ? record.user.flatMap((item) => {
-          if (!item || typeof item !== "object") return []
-          const entry = item as Record<string, unknown>
-          if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
-          const state = entry.visibility === "hide" ? "remove" : "add"
-          return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
-        })
-      : []
+    const quickSwitcher = Array.isArray(record.quickSwitcher)
+      ? (record.quickSwitcher as (ModelKey & { state: "add" | "remove" })[])
+      : Array.isArray(record.user)
+        ? record.user.flatMap((item) => {
+            if (!item || typeof item !== "object") return []
+            const entry = item as Record<string, unknown>
+            if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+            const state = entry.visibility === "hide" ? "remove" : "add"
+            return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+          })
+        : []
 
     return {
       quickSwitcher,
       recent,
-      variant,
     }
   }
 
@@ -170,11 +168,9 @@ function createStandaloneModelPreferences(models: Accessor<LocalModel[]>, defaul
     createStore<{
       quickSwitcher: (ModelKey & { state: "add" | "remove" })[]
       recent: ModelKey[]
-      variant?: Record<string, string | undefined>
     }>({
       quickSwitcher: [],
       recent: [],
-      variant: {},
     }),
   )
 
