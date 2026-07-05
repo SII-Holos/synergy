@@ -199,6 +199,15 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  // A fresh rewind (new rollback event id) always shows its banner, even if a
+  // previous banner was dismissed.
+  createEffect(
+    on(
+      () => rollback()?.id,
+      () => setRollbackDismissed(false),
+      { defer: true },
+    ),
+  )
   const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()

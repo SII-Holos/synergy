@@ -1,4 +1,5 @@
 import { Show } from "solid-js"
+import { Portal } from "solid-js/web"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -77,45 +78,47 @@ export function RollbackBanner(props: RollbackBannerProps) {
   }
 
   return (
-    <div data-component="rollback-banner">
-      <div data-slot="rollback-banner-content">
-        <Icon name="undo-2" size="small" />
-        <span data-slot="rollback-banner-text">
-          Rewound {numMessages} message{numMessages === 1 ? "" : "s"} ({numTurns} turn{numTurns === 1 ? "" : "s"})
-        </span>
-      </div>
-      <div data-slot="rollback-banner-actions">
-        <Button
-          type="button"
-          variant="ghost"
-          size="small"
-          data-tone={rollback.canUnrollback ? "neutral" : "disabled"}
-          disabled={!rollback.canUnrollback}
-          title={
-            rollback.canUnrollback
-              ? "Restore the rewound messages"
-              : "New messages have been added; cannot redo this rollback"
-          }
-          onClick={() => void handleRedo()}
-        >
-          Redo
-        </Button>
-        <Show when={numFiles > 0}>
-          <Button type="button" variant="ghost" size="small" onClick={() => void handleRestoreFiles()}>
-            Restore files ({numFiles})
+    <Portal>
+      <div data-component="rollback-banner">
+        <div data-slot="rollback-banner-content">
+          <Icon name="undo-2" size="small" />
+          <span data-slot="rollback-banner-text">
+            Rewound {numMessages} message{numMessages === 1 ? "" : "s"} ({numTurns} turn{numTurns === 1 ? "" : "s"})
+          </span>
+        </div>
+        <div data-slot="rollback-banner-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            data-tone={rollback.canUnrollback ? "neutral" : "disabled"}
+            disabled={!rollback.canUnrollback}
+            title={
+              rollback.canUnrollback
+                ? "Restore the rewound messages"
+                : "New messages have been added; cannot redo this rollback"
+            }
+            onClick={() => void handleRedo()}
+          >
+            Redo
           </Button>
-        </Show>
-        <Button
-          type="button"
-          variant="ghost"
-          size="small"
-          class="rollback-banner-dismiss"
-          onClick={props.onDismiss}
-          aria-label="Dismiss"
-        >
-          <Icon name="x" size="small" />
-        </Button>
+          <Show when={numFiles > 0}>
+            <Button type="button" variant="ghost" size="small" onClick={() => void handleRestoreFiles()}>
+              Restore files ({numFiles})
+            </Button>
+          </Show>
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            class="rollback-banner-dismiss"
+            onClick={props.onDismiss}
+            aria-label="Dismiss"
+          >
+            <Icon name="x" size="small" />
+          </Button>
+        </div>
       </div>
-    </div>
+    </Portal>
   )
 }
