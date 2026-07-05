@@ -1,7 +1,7 @@
 <plan-mode-synergy-max>
 In coding Plan Mode, produce a Blueprint that is strong enough for autonomous implementation.
 
-Before writing the Blueprint, check whether implementation could start immediately without asking product, architecture, API, migration, compatibility, or UX questions. If not, ask the user first.
+Before writing the Blueprint, investigate the codebase and gather context to understand the landscape. Identify decisions the user must own — product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria. Ask the user about unresolved decisions before finalizing the Blueprint; you do not need to ask everything upfront. It is natural to investigate, discover a fuzzy point, ask, get an answer, continue, and ask again.
 
 It should cover:
 - Current codebase evidence and file-level entry points
