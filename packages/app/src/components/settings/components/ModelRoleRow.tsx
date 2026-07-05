@@ -33,6 +33,13 @@ type ModelPickerOption =
       ref: ModelRef
     }
 
+type ModelVariantOption = {
+  key: string
+  label: string
+  description: string
+  value: string
+}
+
 export function ModelRoleRow(props: {
   summary: ModelRoleSummary
   value: string
@@ -46,6 +53,7 @@ export function ModelRoleRow(props: {
   onVariantChange?: (variant: string) => void
 }) {
   const [pickerOpen, setPickerOpen] = createSignal(false)
+  const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
 
@@ -85,6 +93,26 @@ export function ModelRoleRow(props: {
     if (!props.value) return options()[0]
     return options().find((option) => option.value === props.value)
   })
+
+  const variantOptions = createMemo<ModelVariantOption[]>(() => [
+    { key: "default", label: "Default", description: "Use the role default", value: "" },
+    ...props.availableVariants.map((variant) => ({
+      key: variant,
+      label: variant,
+      description: "Role variant",
+      value: variant,
+    })),
+  ])
+
+  const currentVariantOption = createMemo(() =>
+    variantOptions().find((option) => option.value === (props.roleVariant ?? "")),
+  )
+
+  function selectModelVariantOption(option: ModelVariantOption | undefined) {
+    if (!option) return
+    props.onVariantChange?.(option.value)
+    setVariantPickerOpen(false)
+  }
 
   function selectModelRoleOption(option: ModelPickerOption | undefined) {
     if (!option) return
@@ -195,14 +223,41 @@ export function ModelRoleRow(props: {
           </Show>
         </KobaltePopover>
         <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
-          <select
-            class="settings-model-variant"
-            value={props.roleVariant ?? ""}
-            onChange={(e) => props.onVariantChange?.(e.currentTarget.value)}
+          <KobaltePopover
+            open={variantPickerOpen()}
+            onOpenChange={setVariantPickerOpen}
+            placement="bottom-end"
+            gutter={8}
           >
-            <option value="">Default</option>
-            <For each={props.availableVariants}>{(variant) => <option value={variant}>{variant}</option>}</For>
-          </select>
+            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label="Select model variant">
+              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? "Default"}</span>
+              <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+            </KobaltePopover.Trigger>
+            <Show when={props.popoverLayer}>
+              {(layer) => (
+                <Portal mount={layer()}>
+                  <KobaltePopover.Content class="settings-model-variant-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                    <KobaltePopover.Title class="sr-only">Select model variant</KobaltePopover.Title>
+                    <List<ModelVariantOption>
+                      class="settings-model-picker-list"
+                      key={(option) => option.key}
+                      items={variantOptions}
+                      current={currentVariantOption()}
+                      filterKeys={["label", "description", "value"]}
+                      onSelect={selectModelVariantOption}
+                    >
+                      {(option) => (
+                        <div class="settings-model-option">
+                          <span class="settings-model-option-title">{option.label}</span>
+                          <span class="settings-model-option-detail">{option.description}</span>
+                        </div>
+                      )}
+                    </List>
+                  </KobaltePopover.Content>
+                </Portal>
+              )}
+            </Show>
+          </KobaltePopover>
         </Show>
       </div>
     </div>
