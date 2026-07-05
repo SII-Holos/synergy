@@ -816,6 +816,25 @@ function createGlobalSync() {
           break
         }
         if (result.found) {
+          const prev = store.session[result.index]
+          // Skip the update entirely when the incoming info carries no
+          // UI-meaningful change. BlueprintLoop node transitions call
+          // Session.update() frequently but only touch DAG / pendingReply /
+          // ephemeral state — fields that info() in session.tsx does not
+          // depend on.  Bypassing the store write when nothing changed
+          // prevents the full reactive cascade (info → messages →
+          // rootMessages → visibleRoots → effect → flash).
+          if (
+            prev &&
+            prev.title === info.title &&
+            prev.time?.updated === info.time?.updated &&
+            prev.pendingReply === info.pendingReply &&
+            prev.time?.archived === info.time?.archived &&
+            prev.category == info.category &&
+            prev.parentID === info.parentID
+          ) {
+            break
+          }
           setStore(
             "session",
             produce((draft) => {
