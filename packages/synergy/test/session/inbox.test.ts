@@ -107,13 +107,15 @@ describe("SessionInbox", () => {
         const session = await Session.create({})
         const started = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
+        const done = Promise.withResolvers<void>()
         let finished = false
 
         const cleanup = SessionManager.onMailboxReady(async (sessionID) => {
           started.resolve()
           await release.promise
-          SessionManager.drainMails(sessionID, "user")
+          await SessionInbox.drainReady(sessionID)
           finished = true
+          done.resolve()
         })
 
         try {
@@ -143,7 +145,7 @@ describe("SessionInbox", () => {
           expect(finished).toBe(false)
           await started.promise
           release.resolve()
-          await new Promise((resolve) => setTimeout(resolve, 0))
+          await done.promise
           expect(finished).toBe(true)
         } finally {
           release.resolve()

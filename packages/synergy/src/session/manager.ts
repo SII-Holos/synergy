@@ -55,8 +55,6 @@ export namespace SessionManager {
       onComplete(result: MessageV2.WithParts): void
       onCancel(): void
     }[]
-    /** @deprecated Use SessionInbox.deliver directly. Kept for existing callers. */
-    mailbox: SessionMail[]
     lastActiveAt: number
   }
 
@@ -75,7 +73,6 @@ export namespace SessionManager {
           continue
         }
       }
-      if (runtime.mailbox.length > 0) continue
       if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
       runtimes.delete(sessionID)
       log.info("swept idle runtime", { sessionID })
@@ -160,7 +157,6 @@ export namespace SessionManager {
       sessionID,
       status: { type: "idle" },
       waiters: [],
-      mailbox: [],
       lastActiveAt: Date.now(),
     }
     runtimes.set(sessionID, runtime)
@@ -208,7 +204,7 @@ export namespace SessionManager {
       })
     } finally {
       const runtime = getRuntime(session.id)
-      if (runtime && !runtime.abort && runtime.mailbox.length === 0) {
+      if (runtime && !runtime.abort) {
         unregisterRuntime(session.id)
       }
     }
@@ -262,11 +258,6 @@ export namespace SessionManager {
     await emitSessionUpdated(sessionID).catch((error) => {
       log.warn("failed to emit session update after release", { sessionID, error })
     })
-
-    if (runtime.mailbox.length > 0 && mailboxHandler) {
-      await run(sessionID, () => mailboxHandler!(sessionID))
-      return
-    }
 
     const inboxItems = await SessionInbox.peekReady(sessionID)
     if (inboxItems.length > 0 && mailboxHandler) {
@@ -337,58 +328,24 @@ export namespace SessionManager {
 
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
-    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
-    runtime.mailbox.push({ ...input.mail, inboxItemID: item.id })
+    await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
 
     if (isRunning(session.id)) {
-      log.info("mail queued (session running)", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
+      log.info("mail queued (session running)", { sessionID: session.id })
       return
     }
 
     if (mailboxHandler) {
       if (input.waitForProcessing === false) {
-        log.info("mail queued (session idle), processing asynchronously", {
-          sessionID: session.id,
-          mailboxSize: runtime.mailbox.length,
-        })
+        log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
         void run(session.id, () => mailboxHandler!(session.id)).catch((error) => {
           log.error("async mailbox processing failed", { sessionID: session.id, error })
         })
         return
       }
-      log.info("mail queued (session idle), processing", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
+      log.info("mail queued (session idle), processing", { sessionID: session.id })
       await run(session.id, () => mailboxHandler!(session.id))
     }
-  }
-
-  export function drainMails(sessionID: string, type: "user"): SessionMail.User[]
-  export function drainMails(sessionID: string, type: "assistant"): SessionMail.Assistant[]
-  export function drainMails(sessionID: string, type: "user" | "assistant"): SessionMail[] {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return []
-    const matching: SessionMail[] = []
-    const remaining: SessionMail[] = []
-    for (const mail of runtime.mailbox) {
-      if (mail.type === type) matching.push(mail)
-      else remaining.push(mail)
-    }
-    runtime.mailbox.length = 0
-    runtime.mailbox.push(...remaining)
-    return matching
-  }
-
-  export function drainAllMails(sessionID: string): SessionMail[] {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return []
-    return runtime.mailbox.splice(0)
-  }
-
-  export function discardMails(sessionID: string, inboxItemIDs: Iterable<string>): void {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return
-    const discard = new Set(inboxItemIDs)
-    if (discard.size === 0) return
-    runtime.mailbox = runtime.mailbox.filter((mail) => !mail.inboxItemID || !discard.has(mail.inboxItemID))
   }
 
   // --- Pending Reply ---

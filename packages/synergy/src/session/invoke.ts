@@ -142,14 +142,8 @@ export namespace SessionInvoke {
   }
 
   async function processMailbox(sessionID: string): Promise<void> {
-    const runtimeMails = SessionManager.drainAllMails(sessionID)
     const inboxItems = await SessionInbox.drainReady(sessionID)
-    const inboxIDs = new Set(inboxItems.map((item) => item.id))
-    const legacyMails = runtimeMails.filter((mail) => !mail.inboxItemID || !inboxIDs.has(mail.inboxItemID))
-
-    const inboxResult = await materializeInboxItems(sessionID, inboxItems)
-    const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-    const needsReply = inboxResult.needsReply || legacyResult.needsReply
+    const { needsReply } = await materializeInboxItems(sessionID, inboxItems)
 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = needsReply || undefined
@@ -166,10 +160,6 @@ export namespace SessionInvoke {
     options?: { guiding?: boolean; rootID?: string },
   ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
     if (items.length === 0) return { needsReply: false, userMessages: [] }
-    SessionManager.discardMails(
-      sessionID,
-      items.map((item) => item.id),
-    )
 
     let needsReply = false
     const userMessages: MessageV2.WithParts[] = []
@@ -218,41 +208,6 @@ export namespace SessionInvoke {
       )
       userMessages.push(created)
       if (noReply !== true) needsReply = true
-    }
-
-    return { needsReply, userMessages }
-  }
-
-  async function materializeLegacyMails(
-    sessionID: string,
-    mails: SessionManager.SessionMail[],
-    rootIDOverride?: string,
-  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
-    if (mails.length === 0) return { needsReply: false, userMessages: [] }
-
-    let needsReply = false
-    const userMessages: MessageV2.WithParts[] = []
-    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
-
-    for (const mail of mails) {
-      if (mail.type === "assistant") {
-        await writeAssistantMail(sessionID, mail)
-        continue
-      }
-      const created = await createUserMessage(
-        {
-          sessionID,
-          agent: mail.agent,
-          model: mail.model ?? fallbackModel,
-          parts: partsFromMail(mail),
-          noReply: mail.noReply,
-          summary: mail.summary,
-          metadata: mail.metadata,
-        },
-        rootIDOverride,
-      )
-      userMessages.push(created)
-      if (mail.noReply !== true) needsReply = true
     }
 
     return { needsReply, userMessages }
@@ -420,13 +375,6 @@ export namespace SessionInvoke {
               if (materialized) msgs.push(materialized)
             }
           }
-        }
-
-        const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
-        if (legacyUserMails.length > 0) {
-          const legacy = await materializeLegacyMails(sessionID, legacyUserMails, R.id)
-          msgs.push(...legacy.userMessages)
-          log.info("drained legacy user mails into session", { sessionID, count: legacy.userMessages.length })
         }
 
         const userModel = R.model
@@ -962,7 +910,9 @@ export namespace SessionInvoke {
         continue outer
       }
 
-      // Fallback: legacy peek-then-commit for compat
+      // Peek-then-commit: materialize remaining ready items (steer/context that
+      // never triggered a call, and assistant-role context deliveries) and only
+      // delete them once the reply cycle has settled.
       const readyItems = await SessionInbox.peekReady(sessionID)
       const readyResult = await materializeInboxItems(sessionID, readyItems)
       const committedIDs = new Set(readyItems.map((item) => item.id))
@@ -972,24 +922,11 @@ export namespace SessionInvoke {
         continue outer
       }
 
-      const legacyMails = SessionManager.drainAllMails(sessionID).filter((mail) => !mail.inboxItemID)
-      const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-      if (legacyResult.needsReply) {
-        await SessionInbox.commitReady(sessionID, committedIDs)
-        continue outer
-      }
-
       // Commit to remove materialized items from the inbox, then do a
       // final check for late-arriving items before clearing pendingReply.
       await SessionInbox.commitReady(sessionID, committedIDs)
       if (await hasLateArrivingInbox(sessionID)) continue outer
       break
-    }
-
-    // Drain legacy assistant mails and write them as messages.
-    const assistantMails = SessionManager.drainMails(sessionID, "assistant").filter((mail) => !mail.inboxItemID)
-    for (const mail of assistantMails) {
-      await writeAssistantMail(sessionID, mail)
     }
 
     evictRecallCache(sessionID)
