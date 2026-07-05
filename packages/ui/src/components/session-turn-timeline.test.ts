@@ -256,11 +256,12 @@ describe("session turn assistant collection", () => {
     expect(collectMessagesForTurnDisplay([firstUser, hidden, final] as MessageType[], firstUser.id)).toEqual([final])
   })
 
-  test("stops at the next normal user turn", () => {
+  test("collects only assistants belonging to this task's root", () => {
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
     const nextUser = user("msg_003_user")
-    const nextAssistant = assistantFor("msg_004_assistant", firstUser.id)
+    // Belongs to the next task's root, so it is not part of the first turn.
+    const nextAssistant = assistantFor("msg_004_assistant", nextUser.id)
 
     expect(
       collectAssistantMessagesForTurn(
@@ -268,6 +269,22 @@ describe("session turn assistant collection", () => {
         firstUser.id,
       ).map((message) => message.id),
     ).toEqual([firstAssistant.id])
+  })
+
+  test("collects interleaved replies from a task whose queued root pre-dates them", () => {
+    // A queued task root pre-allocates its id, so a still-running earlier task
+    // can emit an assistant after this root but before this task's own replies.
+    const earlierRoot = user("msg_001_user")
+    const queuedRoot = user("msg_002_queued_root")
+    const earlierLateReply = assistantFor("msg_003_earlier_reply", earlierRoot.id)
+    const queuedReply = assistantFor("msg_004_queued_reply", queuedRoot.id)
+
+    expect(
+      collectAssistantMessagesForTurn(
+        [earlierRoot, queuedRoot, earlierLateReply, queuedReply] as MessageType[],
+        queuedRoot.id,
+      ).map((message) => message.id),
+    ).toEqual([queuedReply.id])
   })
 
   test("stops the previous turn at a synthetic compaction boundary", async () => {

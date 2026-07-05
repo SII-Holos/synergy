@@ -279,13 +279,17 @@ export function collectMessagesForTurnDisplay(
 
   const result: SessionTurnDisplayMessage[] = []
 
-  // Walk forward collecting messages with matching rootID
+  // Collect every message belonging to this task (matching rootID), skipping —
+  // not stopping at — messages from other tasks. Tasks can interleave: a queued
+  // task root pre-allocates its message id, so a still-running earlier task can
+  // emit assistants whose ids fall after this root but before this task's own
+  // replies. Breaking on the first foreign message would drop those replies.
   for (let i = search.index + 1; i < messages.length; i++) {
     const item = messages[i]
-    if (!item) break
+    if (!item) continue
 
     const itemRootID = item.rootID
-    if (itemRootID === undefined || itemRootID !== rootID) break
+    if (itemRootID === undefined || itemRootID !== rootID) continue
 
     if (item.role === "user") {
       // Non-root user messages become chips; skip root user messages
@@ -614,14 +618,22 @@ export function SessionTurn(
       for (const item of displayMessages()) {
         if (item.role === "user") {
           const userMsg = item as UserMessage
-          // Use old metadata-based guided detection as fallback when isRoot/rootID absent
           if (userMsg.isRoot === false) {
-            result.push({
-              kind: "non-root-user",
-              message: userMsg,
-              parts: data.store.part[item.id] ?? emptyParts,
-              originLabel: chipLabelFromOrigin(userMsg.origin),
-            })
+            const itemParts = data.store.part[item.id] ?? emptyParts
+            // A user's own mid-run message (steer / follow-up) renders as their
+            // message bubble; system-injected non-root messages (cortex, agenda,
+            // …) render as a compact origin chip.
+            const originType = userMsg.origin?.type ?? "user"
+            if (originType === "user") {
+              result.push({ kind: "guided-user", message: userMsg, parts: itemParts })
+            } else {
+              result.push({
+                kind: "non-root-user",
+                message: userMsg,
+                parts: itemParts,
+                originLabel: chipLabelFromOrigin(userMsg.origin),
+              })
+            }
           }
           continue
         }
