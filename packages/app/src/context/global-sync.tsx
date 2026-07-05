@@ -22,6 +22,7 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
+import { planCompactionReplace } from "./session-compaction"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -1089,46 +1090,25 @@ function createGlobalSync() {
       }
       case "session.compacted": {
         const sessionID = event.properties.sessionID as string
-        const messages = store.message[sessionID]
-        if (!messages) break
-        batch(() => {
-          setStore(
-            produce((draft) => {
-              for (const msg of messages) {
-                delete draft.part[msg.id]
-              }
-              delete draft.message[sessionID]
-              delete draft.session_diff[sessionID]
-              delete draft.inbox[sessionID]
-            }),
-          )
-        })
+        if (!store.message[sessionID]) break
+        // Fetch first, then swap atomically. Deleting the messages up front left
+        // the timeline empty until the refetch returned — a visible flash (#319).
         const sdk = createScopedClient(scopeKey)
         retry(() => sdk.session.messages({ sessionID, limit: 200 }))
           .then((result) => {
-            const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-            const all = items
-              .map((x) => x.info)
-              .filter((m) => !!m?.id)
-              .slice()
-              .sort((a, b) => a.id.localeCompare(b.id))
-            const keep = all.length > 500 ? all.slice(-500) : all
+            const currentIds = (store.message[sessionID] ?? []).map((m) => m.id)
+            const plan = planCompactionReplace(currentIds, result.data ?? [])
             batch(() => {
-              setStore("message", sessionID, reconcile(keep, { key: "id" }))
-              const keepIds = new Set(keep.map((m) => m.id))
-              for (const item of items) {
-                if (!keepIds.has(item.info.id)) continue
-                setStore(
-                  "part",
-                  item.info.id,
-                  reconcile(
-                    item.parts
-                      .filter((p) => !!p?.id)
-                      .slice()
-                      .sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
+              setStore(
+                produce((draft) => {
+                  for (const messageID of plan.dropPartMessageIds) delete draft.part[messageID]
+                  delete draft.session_diff[sessionID]
+                  delete draft.inbox[sessionID]
+                }),
+              )
+              setStore("message", sessionID, reconcile(plan.keep, { key: "id" }))
+              for (const [messageID, parts] of Object.entries(plan.parts)) {
+                setStore("part", messageID, reconcile(parts, { key: "id" }))
               }
             })
           })
