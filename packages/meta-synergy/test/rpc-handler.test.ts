@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { RPCHandler } from "../src/rpc/handler"
 
+function sleepCommand(ms: number) {
+  return `bun test/fixture/sleep.js ${ms}`
+}
+
 describe("meta-synergy rpc handler", () => {
-  test("bash background execution returns process id", async () => {
+  test("bash auto-background execution returns process id", async () => {
     const handler = new RPCHandler({ envID: "env_test" })
     const result = await handler.handle({
       version: 1,
@@ -12,9 +16,9 @@ describe("meta-synergy rpc handler", () => {
       action: "execute",
       sessionID: "session_test",
       payload: {
-        command: "echo hello && sleep 1",
+        command: sleepCommand(1000),
         description: "background test",
-        background: true,
+        backgroundAfterSeconds: 0.05,
       },
     })
 
@@ -37,9 +41,9 @@ describe("meta-synergy rpc handler", () => {
       action: "execute",
       sessionID: "session_test",
       payload: {
-        command: "echo hello && sleep 1",
+        command: sleepCommand(1000),
         description: "background test",
-        background: true,
+        backgroundAfterSeconds: 0.05,
       },
     })
 
@@ -75,7 +79,7 @@ describe("meta-synergy rpc handler", () => {
       action: "execute",
       sessionID: "session_test",
       payload: {
-        command: "sleep 1",
+        command: sleepCommand(1000),
         description: "auto background test",
         backgroundAfterSeconds: 0.05,
       },
@@ -99,9 +103,9 @@ describe("meta-synergy rpc handler", () => {
       action: "execute",
       sessionID: "session_test",
       payload: {
-        command: "sleep 1",
+        command: sleepCommand(1000),
         description: "timeout foreground test",
-        backgroundAfterSeconds: 0,
+        backgroundAfterSeconds: 1,
         timeoutSeconds: 0.05,
       },
     })
@@ -121,7 +125,7 @@ describe("meta-synergy rpc handler", () => {
       action: "execute",
       sessionID: "session_test",
       payload: {
-        command: "sleep 1",
+        command: sleepCommand(1000),
         description: "timeout background test",
         backgroundAfterSeconds: 0.05,
         timeoutSeconds: 0.1,
@@ -146,7 +150,7 @@ describe("meta-synergy rpc handler", () => {
     expect(polled.ok).toBe(true)
     if (!polled.ok) return
     expect(polled.result.output).toContain("command timed out after 0.1s")
-    expect(polled.result.metadata.status).toBe("killed")
+    expect((polled.result.metadata as { status?: string }).status).toBe("killed")
   })
 
   test("env mismatch returns error envelope", async () => {
