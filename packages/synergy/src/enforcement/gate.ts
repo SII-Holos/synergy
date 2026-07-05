@@ -422,7 +422,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
+      paths.push(raw.startsWith("/") || raw.startsWith("~") ? raw : `${cwd}/${raw}`)
     }
   }
   return paths
