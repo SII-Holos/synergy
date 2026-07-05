@@ -1511,7 +1511,9 @@ export const Info = z
     smartAllow: z
       .boolean()
       .optional()
-      .describe("Use the Smart allow internal agent to auto-allow safe asks and soft denies"),
+      .describe(
+        "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
+      ),
     tools: z.record(z.string(), z.boolean()).optional(),
     enterprise: z
       .object({

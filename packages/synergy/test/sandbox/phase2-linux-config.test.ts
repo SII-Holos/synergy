@@ -260,7 +260,7 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
     }
   })
 
-  test("workspace .git and .synergy are in readOnlySubpaths", () => {
+  test("workspace .git is in readOnlySubpaths while .synergy remains writable", () => {
     const workspace = "/home/user/project"
 
     const profile = buildPermissionProfile({
@@ -273,10 +273,8 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
       approvedUnixSockets: [],
     })
 
-    // Workspace .git is writable by workspace_write but must be read-only
     expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.git`)
-    // Workspace .synergy is writable by workspace_write but must be read-only
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.synergy`)
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(`${workspace}/.synergy`)
   })
 
   test("credential paths appear in readOnlySubpaths when homedir is writable", () => {
@@ -324,7 +322,7 @@ describe("Phase 2: fileSystem.protectedPaths", () => {
     }
   })
 
-  test("protectedPaths includes Synergy auth/config/sensitive data", () => {
+  test("protectedPaths includes Synergy auth but not non-secret config/data roots", () => {
     const homedir = os.homedir()
 
     const profile = buildPermissionProfile({
@@ -338,7 +336,9 @@ describe("Phase 2: fileSystem.protectedPaths", () => {
     })
 
     const paths = profile.fileSystem.protectedPaths
-    expect(paths).toContain(path.join(homedir, ".synergy", "config"))
+    expect(paths).not.toContain(path.join(homedir, ".synergy", "config"))
+    expect(paths).not.toContain(path.join(homedir, ".synergy", "data", "library"))
+    expect(paths).not.toContain(path.join(homedir, ".synergy", "data", "notes"))
     expect(paths).toContain(path.join(homedir, ".synergy", "data", "auth"))
   })
 })
@@ -605,7 +605,7 @@ describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
     expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.codex`)
   })
 
-  test("approved write path to .synergy/data is excluded", () => {
+  test("approved write path to .synergy/data is allowed", () => {
     const workspace = "/home/user/project"
 
     const profile = buildPermissionProfile({
@@ -618,7 +618,7 @@ describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
       approvedUnixSockets: [],
     })
 
-    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.synergy/data`)
+    expect(profile.fileSystem.writableRoots).toContain(`${workspace}/.synergy/data`)
   })
 
   test("approved write path to .agents is excluded", () => {
@@ -707,7 +707,7 @@ describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
     expect(profile.fileSystem.protectedMetadataNames).toContain(".git")
     expect(profile.fileSystem.protectedMetadataNames).toContain(".agents")
     expect(profile.fileSystem.protectedMetadataNames).toContain(".codex")
-    expect(profile.fileSystem.protectedMetadataNames).toContain(".synergy")
-    expect(profile.fileSystem.protectedMetadataNames.length).toBe(4)
+    expect(profile.fileSystem.protectedMetadataNames).not.toContain(".synergy")
+    expect(profile.fileSystem.protectedMetadataNames.length).toBe(3)
   })
 })

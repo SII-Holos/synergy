@@ -37,7 +37,7 @@ function bunEval(script: string) {
   const executable = process.execPath.replace(/\\/g, "/")
   const encoded = Buffer.from(script).toString("base64")
   const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
-  if (process.platform === "win32") return `& "${executable}" -e "${evalScript}"`
+  if (process.platform === "win32") return `"${executable}" -e "${evalScript}"`
   return `"${executable}" -e ${JSON.stringify(evalScript)}`
 }
 

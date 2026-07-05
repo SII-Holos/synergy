@@ -106,6 +106,7 @@ export interface GateOptions {
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
   execPolicy?: { rules: PrefixRule[] }
+  synergyRoot?: string
 }
 
 const DESTRUCTIVE_PATTERNS = [
@@ -374,15 +375,31 @@ function classifyPathCapability(
   }
 }
 
-function classifyProtectedPathCapability(caps: Capability[], pathInput: string, mode: "read" | "write") {
-  const protectedMatch = checkProtectedPath(pathInput, mode)
+function classifyProtectedPathCapability(
+  caps: Capability[],
+  pathInput: string,
+  mode: "read" | "write",
+  options: { activeWorkspace?: string; originalCheckout?: string; synergyRoot?: string } = {},
+) {
+  const protectedMatch = checkProtectedPath(pathInput, mode, {
+    workspaceRoot: options.activeWorkspace,
+    originalCheckout: options.originalCheckout,
+    synergyRoot: options.synergyRoot,
+  })
   if (!protectedMatch.matched) return
+  const capabilityClass =
+    protectedMatch.category === "secrets" || protectedMatch.exactSecretRoot ? "secrets" : "protected_op"
   uniqueCapability(caps, {
-    class: "protected_op",
-    nonBypassable: true,
-    opaque: true,
+    class: capabilityClass,
+    nonBypassable: protectedMatch.exactSecretRoot === true,
+    opaque: protectedMatch.exactSecretRoot === true,
     reason: protectedMatch.reason,
-    metadata: { protectedCategory: protectedMatch.category },
+    metadata: {
+      protectedCategory: protectedMatch.category,
+      smartAllowEligible: protectedMatch.smartAllowEligible === true,
+      exactSecretRoot: protectedMatch.exactSecretRoot === true,
+      redactedEvidenceRequired: protectedMatch.category === "secrets",
+    },
   })
 }
 
@@ -436,6 +453,7 @@ export namespace EnforcementGate {
       originalCheckout,
       readRoots,
       execPolicy,
+      synergyRoot,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
@@ -458,17 +476,16 @@ export namespace EnforcementGate {
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
 
-      // Protected path hard boundary — checked first so it applies to every
-      // path-bearing tool regardless of profile/mode. A match forces an ask
-      // even in full_access because the capability is nonBypassable+opaque
-      // and profiles.ts hard-codes protected_op → "ask".
+      // Sensitive path candidates are classified before generic path ownership
+      // so secret roots/candidates get profile-aware handling instead of a
+      // blanket .synergy/.env hard boundary.
       const pathArg = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
       if (pathArg) {
         const mode =
           toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
             ? "write"
             : "read"
-        classifyProtectedPathCapability(caps, pathArg, mode)
+        classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
       }
 
       // MCP tools: mcp__server__tool
@@ -559,13 +576,13 @@ export namespace EnforcementGate {
           const paths =
             multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
           for (const p of paths) {
-            classifyProtectedPathCapability(caps, p, "write")
+            classifyProtectedPathCapability(caps, p, "write", { activeWorkspace, originalCheckout, synergyRoot })
             classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
           }
         } else {
           const filePath = args.filePath ?? args.path ?? ""
           if (filePath) {
-            classifyProtectedPathCapability(caps, filePath, "write")
+            classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
             classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
           }
         }
@@ -657,7 +674,11 @@ export namespace EnforcementGate {
         // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
         const writeCapable = risk !== "shell_read"
         for (const candidate of pathCandidates) {
-          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read")
+          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+            activeWorkspace,
+            originalCheckout,
+            synergyRoot,
+          })
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
             uniqueCapability(caps, {
@@ -947,6 +968,15 @@ export namespace EnforcementGate {
         // "deny" → hardline forbid
         if (execPolicyMatch.action === "deny") {
           const caps: Capability[] = [{ class: "shell_hardline", nonBypassable: true }]
+          if (profileId === "full_access") {
+            return {
+              decision: "allow",
+              profileId,
+              opaque: false,
+              capabilities: caps,
+              amendment,
+            }
+          }
           auditRecords.push({ tool: toolName, capabilities: caps, timestamp: Date.now() })
           return {
             decision: "deny",
@@ -997,6 +1027,16 @@ export namespace EnforcementGate {
       // When execPolicy says "ask", override profile decision to "ask"
       if (execPolicyMatch?.action === "ask") {
         decision = "ask"
+      }
+
+      if (profileId === "full_access") {
+        decision = "allow"
+        deniedCapClass = undefined
+      }
+
+      if (profileId === "autonomous" && decision === "ask") {
+        decision = "deny"
+        deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
       }
 
       // Approval cache: if the profile says "ask" but the capability was

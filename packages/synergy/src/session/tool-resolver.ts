@@ -538,6 +538,15 @@ export namespace ToolResolver {
     // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
 
+    if (profile.profileId === "full_access" && decision.action !== "allow") {
+      await setApprovalMetadata(
+        ctx,
+        ApprovalPolicy.metadata(approval, { ...decision, action: "allow" }, "auto_allowed"),
+      )
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
@@ -591,6 +600,7 @@ export namespace ToolResolver {
     if (smartAllowEligible) {
       const cfg = await Config.current()
       if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
+        const redactedEvidence = SmartAllow.buildRedactedEvidence(args, envelope.capabilities)
         const classification = await SmartAllow.classify({
           sessionID: ctx.sessionID,
           tool: toolName,
@@ -598,8 +608,9 @@ export namespace ToolResolver {
           capabilities: envelope.capabilities.map((c) => c.class),
           workspace: ScopeContext.current.directory,
           policyAction: decision.action,
+          redactedEvidence,
         })
-        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID)) {
+        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID, decision.action)) {
           await setApprovalMetadata(ctx, {
             ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
             source: "smart_allow",
@@ -620,6 +631,13 @@ export namespace ToolResolver {
       // should be visible both in the error message AND the frontend audit tooltip.
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+    }
+
+    if (profile.profileId === "autonomous" && decision.action === "ask") {
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, { ...decision, action: "deny" }, "auto_denied")
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
@@ -779,6 +797,24 @@ export namespace ToolResolver {
               profile.summary?.profileId ?? "unknown",
             )
           }
+          if (profile.summary?.profileId === "full_access") {
+            await setApprovalMetadata(
+              ctx,
+              ApprovalPolicy.metadata(profile.approval, { ...decision, action: "allow" }, "auto_allowed"),
+            )
+            return
+          }
+
+          if (profile.summary?.profileId === "autonomous" && decision.action === "ask") {
+            const approval = ApprovalPolicy.metadata(profile.approval, { ...decision, action: "deny" }, "auto_denied")
+            await setApprovalMetadata(ctx, approval)
+            throw new EnforcementError.PolicyDenied(
+              decision.reason,
+              decision.capabilities,
+              profile.summary?.profileId ?? "unknown",
+            )
+          }
+
           if (decision.action === "allow") {
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
             return
@@ -1088,6 +1124,7 @@ export namespace ToolResolver {
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
                   readRoots: [synergyRoot],
+                  synergyRoot,
                 })
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                   profileId,
@@ -1313,6 +1350,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    synergyRoot: Global.Path.root,
                   })
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                     profileId,

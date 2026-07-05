@@ -4,6 +4,7 @@ import { buildProfile } from "../../src/control-profile/profiles"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import type { ResolvedProfile } from "../../src/control-profile/types"
+import { SYNERGY_PROFILE_CAPABILITIES } from "../../../util/src/capability"
 
 const workspace = "/tmp/test"
 
@@ -97,19 +98,27 @@ test("full_access profile — decidePermission returns allow for high-risk tools
   })
 })
 
-test("full_access allows all capabilities except shell_hardline", async () => {
+test("full_access allows every profile capability", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const profile = await fullAccessProfile()
-      const neverAllowed = new Set(["shell_hardline", "protected_op"])
-      for (const r of profile.ruleset) {
-        if (neverAllowed.has(r.permission)) {
-          continue // these are always denied/ask per syspolicy, not profile-dependent
-        }
-        expect(r.action, `${r.permission}:${r.pattern}`).toBe("allow")
+      for (const permission of SYNERGY_PROFILE_CAPABILITIES) {
+        expect(rule(profile, permission)?.action, permission).toBe("allow")
       }
+    },
+  })
+})
+
+test("full_access allows non-bypassable protected and hardline permissions", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const profile = await fullAccessProfile()
+      expect(ApprovalPolicy.decidePermission(profile, "protected_op", { nonBypassable: true }).action).toBe("allow")
+      expect(ApprovalPolicy.decidePermission(profile, "shell_hardline", {}).action).toBe("allow")
     },
   })
 })
