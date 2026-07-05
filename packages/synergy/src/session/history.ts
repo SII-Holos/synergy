@@ -312,7 +312,7 @@ export namespace SessionHistory {
         messageID: rollback.droppedUserMessageIDs[0],
         droppedMessageIDs: rollback.droppedMessageIDs,
         droppedUserMessageIDs: rollback.droppedUserMessageIDs,
-        cutMessageID: rollback.cutMessageID,
+        cutMessageID: getCutMessageID(rollback),
         files: rollback.files,
         patchPartIDs: rollback.patchPartIDs,
         canUnrollback: canUnrollbackInfo(messages, rollback),
