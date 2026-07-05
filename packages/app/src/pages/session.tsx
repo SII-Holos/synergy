@@ -246,7 +246,10 @@ function SessionPageContent() {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
             await new Promise((r) => setTimeout(r, 500))
           }
-          const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
+          const result = await sdk.client.session.rollback(
+            { sessionID, cutMessageID },
+            { queryParams: { cutMessageID } },
+          )
           if (restoreFiles && result.data?.id) {
             await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
           }
