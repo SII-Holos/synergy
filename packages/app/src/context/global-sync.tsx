@@ -1273,7 +1273,13 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
   return (
-    <Switch fallback={<div class="size-full flex items-center justify-center text-text-weak">Loading...</div>}>
+    <Switch
+      fallback={
+        <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
+          Loading...
+        </div>
+      }
+    >
       <Match when={value.error}>
         <ErrorPage error={value.error} />
       </Match>

@@ -1,17 +1,28 @@
 import { describe, expect, test } from "bun:test"
+import { readdir } from "node:fs/promises"
+import { join, relative } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const settingsDir = new URL(".", import.meta.url)
+const settingsPath = fileURLToPath(settingsDir)
 
 async function readSettingsFile(path: string) {
   return Bun.file(new URL(path, settingsDir)).text()
 }
 
-async function readSettingsTsxFiles() {
-  const glob = new Bun.Glob("**/*.tsx")
+async function readSettingsTsxFiles(directory = settingsPath): Promise<Array<{ path: string; content: string }>> {
+  const entries = await readdir(directory, { withFileTypes: true })
   const files: Array<{ path: string; content: string }> = []
 
-  for await (const path of glob.scan({ cwd: settingsDir.pathname })) {
-    files.push({ path, content: await readSettingsFile(path) })
+  for (const entry of entries) {
+    const filepath = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...(await readSettingsTsxFiles(filepath)))
+      continue
+    }
+    if (!entry.isFile() || !entry.name.endsWith(".tsx")) continue
+    const path = relative(settingsPath, filepath).replaceAll("\\", "/")
+    files.push({ path, content: await Bun.file(filepath).text() })
   }
 
   return files

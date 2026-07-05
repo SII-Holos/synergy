@@ -180,10 +180,21 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfRankedItem" })
   export type RankedItem = z.infer<typeof RankedItem>
 
+  export const TimelineQuality = z
+    .object({
+      truncated: z.boolean().optional(),
+      sampled: z.boolean().optional(),
+      partial: z.boolean().optional(),
+      retentionLimited: z.boolean().optional(),
+      unavailableReason: z.string().optional(),
+    })
+    .meta({ ref: "PerfTimelineQuality" })
+
   export const DashboardSummary = z
     .object({
       generatedAt: z.string(),
       windowMs: z.number(),
+      quality: TimelineQuality.optional(),
       health: z.object({
         status: z.enum(["healthy", "degraded", "critical", "unknown"]),
         score: z.number(),
@@ -254,6 +265,7 @@ export namespace PerformanceSchema {
       to: z.string().optional(),
       bucketMs: z.coerce.number().int().positive().optional(),
       metric: z.union([z.string(), z.array(z.string())]).optional(),
+      stat: z.enum(["avg", "latest", "sum", "rate", "p50", "p95", "p99", "max"]).optional(),
       scopeID: z.string().optional(),
       sessionID: z.string().optional(),
       tool: z.string().optional(),
@@ -264,15 +276,26 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfTimelineQuery" })
   export type TimelineQuery = z.infer<typeof TimelineQuery>
 
+  export const TimelineStat = z
+    .enum(["avg", "latest", "sum", "rate", "p50", "p95", "p99", "max"])
+    .meta({ ref: "PerfTimelineStat" })
+  export const MetricKind = z
+    .enum(["duration", "gauge", "counter", "rate", "size", "ratio"])
+    .meta({ ref: "PerfMetricKind" })
   export const TimelinePoint = z
-    .object({ time: z.number(), value: z.number().nullable() })
+    .object({ time: z.number(), value: z.number().nullable(), sampleCount: z.number().int().optional() })
     .meta({ ref: "PerfTimelinePoint" })
   export const TimelineSeries = z
     .object({
       name: z.string(),
+      label: z.string().optional(),
       unit: Unit,
+      kind: MetricKind.optional(),
+      stat: TimelineStat.optional(),
+      sampleCount: z.number().int().optional(),
       module: Module.optional(),
       source: Source.optional(),
+      quality: TimelineQuality.optional(),
       points: z.array(TimelinePoint),
     })
     .meta({ ref: "PerfTimelineSeries" })
@@ -282,6 +305,7 @@ export namespace PerformanceSchema {
       from: z.number(),
       to: z.number(),
       bucketMs: z.number(),
+      quality: TimelineQuality.optional(),
       series: z.array(TimelineSeries),
     })
     .meta({ ref: "PerfTimeline" })
