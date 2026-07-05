@@ -472,7 +472,9 @@ function ProviderPrelude(props: { text: string; elapsed?: string }) {
 function MailboxSourceBadge(props: { message: UserMessage }) {
   const data = useData()
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
-  const sourceID = createMemo(() => props.message.metadata?.sourceSessionID as string | undefined)
+  const sourceID = createMemo(
+    () => (props.message.origin?.sessionID ?? props.message.metadata?.sourceSessionID) as string | undefined,
+  )
   const label = createMemo(() => sourceName() ?? sourceID() ?? "another session")
 
   return (
