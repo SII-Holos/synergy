@@ -81,6 +81,7 @@ export namespace Turn {
     })
   }
 
+  /** @deprecated No longer needed since parentID === rootID. Kept for library callers. */
   export function resolveRealUser(messages: MessageV2.WithParts[], userMessageID: string): string {
     const idx = messages.findIndex((m) => m.info.id === userMessageID && m.info.role === "user")
     if (idx < 0) return userMessageID
@@ -93,6 +94,7 @@ export namespace Turn {
     return userMessageID
   }
 
+  /** @deprecated No longer needed since parentID === rootID. Kept for library callers. */
   export function resolveUserText(messages: MessageV2.WithParts[], userMessageID: string): string | undefined {
     const idx = messages.findIndex((m) => m.info.id === userMessageID && m.info.role === "user")
     if (idx < 0) return undefined

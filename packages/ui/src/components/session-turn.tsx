@@ -163,18 +163,85 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
+/**
+ * @deprecated Use isRoot/rootID/visible fields instead.
+ * Kept for backward compat with old sessions that lack rootID.
+ */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "metadata">): boolean {
+  const msg = message as UserMessage
+  if (msg.isRoot !== undefined) return msg.isRoot === false && msg.visible !== false
   const metadata = message.metadata
   return metadata?.guided === true && metadata?.noReply === true
 }
 
-function isInlineContextUserMessage(message: UserMessage): boolean {
-  return message.metadata?.synthetic === true || isGuidedContextUserMessage(message)
-}
-
 export type SessionTurnDisplayMessage = AssistantMessage | UserMessage
 
+function chipLabelFromOrigin(origin: { type: string; label?: string; detail?: string } | undefined): string {
+  if (!origin || !origin.type) return "Guided"
+  if (origin.label) return origin.label
+  switch (origin.type) {
+    case "cortex":
+      return "Agent"
+    case "agenda":
+      return "Agenda"
+    case "blueprint":
+      return origin.detail ?? "Blueprint"
+    case "channel":
+      return "Channel"
+    case "forward":
+      return "Forwarded"
+    case "system":
+      return "System"
+    default:
+      return origin.type
+  }
+}
+
 export function collectMessagesForTurnDisplay(
+  messages: MessageType[],
+  userMessageID: string,
+): SessionTurnDisplayMessage[] {
+  const search = Binary.search(messages, userMessageID, (m) => m.id)
+  if (!search.found) return []
+
+  const userMessage = messages[search.index]
+  if (!userMessage || userMessage.role !== "user") return []
+
+  const user = userMessage as UserMessage
+  const rootID = user.rootID
+
+  // If this message has no rootID field, fall back to old parentID-based logic
+  if (rootID === undefined) {
+    return collectMessagesForTurnDisplayLegacy(messages, userMessageID)
+  }
+
+  const result: SessionTurnDisplayMessage[] = []
+
+  // Walk forward collecting messages with matching rootID
+  for (let i = search.index + 1; i < messages.length; i++) {
+    const item = messages[i]
+    if (!item) break
+
+    const itemRootID = item.rootID
+    if (itemRootID === undefined || itemRootID !== rootID) break
+
+    if (item.role === "user") {
+      // Non-root user messages become chips; skip root user messages
+      if (!(item as UserMessage).isRoot) {
+        result.push(item as UserMessage)
+      }
+      continue
+    }
+
+    // Assistant message
+    result.push(item as AssistantMessage)
+  }
+
+  return result
+}
+
+/** Legacy parentID-based fallback when rootID fields are absent */
+function collectMessagesForTurnDisplayLegacy(
   messages: MessageType[],
   userMessageID: string,
 ): SessionTurnDisplayMessage[] {
@@ -191,10 +258,10 @@ export function collectMessagesForTurnDisplay(
     if (!item) continue
     if (item.role === "user") {
       const user = item as UserMessage
-      if (isInlineContextUserMessage(user)) {
+      if (isInlineContextUserMessageLegacy(user)) {
         if (user.metadata?.synthetic && hasSpecialUserMessageRenderer(user)) break
         validParentIDs.add(user.id)
-        if (isGuidedContextUserMessage(user)) result.push(user)
+        if (isGuidedContextUserMessageLegacy(user)) result.push(user)
         continue
       }
       break
@@ -203,6 +270,15 @@ export function collectMessagesForTurnDisplay(
       result.push(item as AssistantMessage)
   }
   return result
+}
+
+function isInlineContextUserMessageLegacy(message: UserMessage): boolean {
+  return message.metadata?.synthetic === true || isGuidedContextUserMessageLegacy(message)
+}
+
+function isGuidedContextUserMessageLegacy(message: Pick<UserMessage, "metadata">): boolean {
+  const metadata = message.metadata
+  return metadata?.guided === true && metadata?.noReply === true
 }
 
 export function collectAssistantMessagesForTurn(messages: MessageType[], userMessageID: string): AssistantMessage[] {
@@ -251,24 +327,82 @@ type SessionTurnDisplayItem =
       message: UserMessage
       parts: PartType[]
     }
+  | {
+      kind: "non-root-user"
+      message: UserMessage
+      parts: PartType[]
+      originLabel: string
+    }
 
 function isAssistantTimelineDisplayItem(item: SessionTurnDisplayItem): item is SessionTurnTimelineItem {
-  return item.kind !== "guided-user"
+  return item.kind !== "guided-user" && item.kind !== "non-root-user"
 }
 
 function displayItemStableKey(item: SessionTurnDisplayItem): string {
   if (item.kind === "guided-user") return `guided-user:${item.message.id}`
+  if (item.kind === "non-root-user") return `non-root-user:${item.message.id}`
   return timelineItemStableKey(item)
 }
 
-function displayItemVisualKind(item: SessionTurnDisplayItem): SessionTurnTimelineVisualKind | "guided-user" {
+function displayItemVisualKind(
+  item: SessionTurnDisplayItem,
+): SessionTurnTimelineVisualKind | "guided-user" | "non-root-user" {
   if (item.kind === "guided-user") return "guided-user"
+  if (item.kind === "non-root-user") return "non-root-user"
   return timelineVisualKind(item)
 }
 
-function TimelineDisplay(props: { item: SessionTurnDisplayItem; serverUrl: string }) {
+function originIconName(origin: { type: string; label?: string; detail?: string } | undefined): string {
+  if (!origin || !origin.type) return "message-square"
+  switch (origin.type) {
+    case "cortex":
+      return "bot"
+    case "agenda":
+      return "calendar-days"
+    case "blueprint":
+      return "clipboard-list"
+    case "channel":
+      return "message-circle"
+    case "forward":
+      return "corner-down-left"
+    case "system":
+      return "cpu"
+    default:
+      return "bot"
+  }
+}
+
+function TimelineDisplay(props: {
+  item: SessionTurnDisplayItem
+  serverUrl: string
+  isRootMessage: boolean
+  rollbackActive: boolean
+  onRewind?: () => void
+}) {
   if (props.item.kind === "guided-user") {
     return <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
+  }
+  if (props.item.kind === "non-root-user") {
+    return (
+      <div data-slot="session-turn-rewind-wrapper">
+        <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
+          <Icon name={originIconName(props.item.message.origin)} size="small" />
+          <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
+        </div>
+        <button
+          type="button"
+          data-slot="session-turn-rewind-button"
+          data-rollback-active={props.rollbackActive}
+          onClick={(e) => {
+            e.stopPropagation()
+            props.onRewind?.()
+          }}
+          title="Rewind to before this message"
+        >
+          {"\u293A"} Rewind
+        </button>
+      </div>
+    )
   }
   return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
 }
@@ -320,6 +454,8 @@ export function SessionTurn(
     messageID: string
     lastUserMessageID?: string
     onUserInteracted?: () => void
+    onRewind?: () => void
+    rollbackActive?: boolean
     classes?: {
       root?: string
       content?: string
@@ -444,11 +580,17 @@ export function SessionTurn(
       const result: SessionTurnDisplayItem[] = []
       for (const item of displayMessages()) {
         if (item.role === "user") {
-          result.push({
-            kind: "guided-user",
-            message: item,
-            parts: data.store.part[item.id] ?? emptyParts,
-          })
+          const userMsg = item as UserMessage
+          // Use old metadata-based guided detection as fallback when isRoot/rootID absent
+          const isNonRoot = userMsg.isRoot !== undefined ? !userMsg.isRoot : isGuidedContextUserMessage(userMsg)
+          if (isNonRoot) {
+            result.push({
+              kind: "non-root-user",
+              message: userMsg,
+              parts: data.store.part[item.id] ?? emptyParts,
+              originLabel: chipLabelFromOrigin(userMsg.origin),
+            })
+          }
           continue
         }
         result.push(...collectSessionTurnTimelineItems([item], data.store.part, working()))
@@ -570,14 +712,30 @@ export function SessionTurn(
                       <MailboxSourceBadge message={msg() as UserMessage} />
                     </Show>
                     {/* User message */}
-                    <Show
-                      when={specialUserMessageRenderer()}
-                      fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
-                    >
-                      {(SpecialUserMessage) => (
-                        <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
-                      )}
-                    </Show>
+                    <div data-slot="session-turn-rewind-wrapper">
+                      <Show
+                        when={specialUserMessageRenderer()}
+                        fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                      >
+                        {(SpecialUserMessage) => (
+                          <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
+                        )}
+                      </Show>
+                      <Show when={props.onRewind && !specialUserMessageRenderer()}>
+                        <button
+                          type="button"
+                          data-slot="session-turn-rewind-button"
+                          data-rollback-active={props.rollbackActive === true}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            props.onRewind?.()
+                          }}
+                          title="Rewind to before this message"
+                        >
+                          {"\u293A"} Rewind
+                        </button>
+                      </Show>
+                    </div>
                     <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItemKeys()}>
@@ -597,7 +755,13 @@ export function SessionTurn(
                                       data-slot="session-turn-timeline-item"
                                       data-kind={displayItemVisualKind(current())}
                                     >
-                                      <TimelineDisplay item={current()} serverUrl={data.serverUrl} />
+                                      <TimelineDisplay
+                                        item={current()}
+                                        serverUrl={data.serverUrl}
+                                        isRootMessage={false}
+                                        rollbackActive={props.rollbackActive === true}
+                                        onRewind={props.onRewind}
+                                      />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>
                                       {renderMessageSlot("after-reasoning")}

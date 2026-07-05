@@ -25,7 +25,7 @@ describe("SessionInbox", () => {
 
         expect(item.kind).toBe("queued_user")
         expect(item.deliveryTarget).toBe("after_turn")
-        expect(item.messageID).toBeUndefined()
+        expect(item.messageID).toBeDefined()
         expect(item.summary.preview).toContain("please adjust")
         expect(await Session.messages({ sessionID: session.id })).toEqual([])
 
@@ -52,11 +52,11 @@ describe("SessionInbox", () => {
 
         expect(guided.kind).toBe("guiding")
         expect(guided.deliveryTarget).toBe("next_model_call")
-        expect(guided.messageID).toBeUndefined()
+        expect(guided.messageID).toBeDefined()
         expect(items).toHaveLength(1)
         expect(items[0].id).toBe(queued.id)
-        expect(items[0].kind).toBe("guiding")
-        expect(items[0].messageID).toBeUndefined()
+        expect(items[0].mode).toBe("steer")
+        expect(items[0].messageID).toBeDefined()
 
         SessionManager.unregisterRuntime(session.id)
       },

@@ -126,31 +126,36 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
   return parts
 }
 
-export async function lastModel(sessionID: string) {
-  const messages = await effectiveMessages(sessionID)
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const item = messages[i]
-    if (isSessionIdentityAnchor(item) && item.info.model) return item.info.model
-  }
-  const { Provider } = await import("@/provider/provider")
-  return Provider.defaultModel()
-}
-
-export function isSessionIdentityAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
+/**
+ * Check if a user message is a session identity anchor (root user).
+ * Uses the new isRoot field when available; falls back to old metadata heuristics.
+ */
+function isUserAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
   info: MessageV2.User
 } {
   if (item.info.role !== "user") return false
-  const metadata = item.info.metadata
+  const user = item.info as MessageV2.User
+  if (user.isRoot !== undefined) return user.isRoot
+  // Fallback for old sessions without isRoot
+  const metadata = user.metadata
   if (!metadata) return true
-
   const source = metadata.source
   if (metadata.guided === true && metadata.noReply === true) return false
   if (metadata.mailbox === true || metadata.channelPush === true) return false
   if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
   if (source === "cortex" || source === "mailbox" || source === "agenda") return false
   if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
-
   return true
+}
+
+export async function lastModel(sessionID: string) {
+  const messages = await effectiveMessages(sessionID)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const item = messages[i]
+    if (isUserAnchor(item) && item.info.model) return item.info.model
+  }
+  const { Provider } = await import("@/provider/provider")
+  return Provider.defaultModel()
 }
 
 function deriveOrigin(metadata: Record<string, any> | undefined): MessageV2.OriginUser | undefined {
@@ -177,7 +182,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     const messages = await effectiveMessages(input.sessionID)
     for (let i = messages.length - 1; i >= 0; i--) {
       const item = messages[i]
-      if (isSessionIdentityAnchor(item)) {
+      if (isUserAnchor(item)) {
         agentName = item.info.agent
         break
       }

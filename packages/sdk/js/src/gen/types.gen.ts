@@ -3416,61 +3416,6 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
-export type SessionInboxItemSource = {
-  type: string
-  label?: string
-  [key: string]: unknown | string | undefined
-}
-
-export type SessionInboxItem = {
-  id: string
-  sessionID: string
-  kind: "queued_user" | "guiding" | "agent_update"
-  state: "queued" | "guiding"
-  deliveryTarget: "after_turn" | "next_model_call"
-  summary: {
-    title: string
-    preview?: string
-  }
-  detail?: {
-    text?: string
-    attachments?: Array<string>
-  }
-  source: SessionInboxItemSource
-  time: {
-    created: number
-    updated?: number
-  }
-  orderKey: string
-  messageID?: string
-}
-
-export type SessionInputResult =
-  | {
-      status: "started"
-      messageID: string
-    }
-  | {
-      status: "queued"
-      item: SessionInboxItem
-    }
-
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  origin?: "user" | "system"
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
 export type AttachmentSourceText = {
   value: string
   start: number
@@ -3536,6 +3481,111 @@ export type AttachmentModelPolicy =
       mode: "none"
     }
 
+export type OriginUser = {
+  type: string
+  sessionID?: string
+  label?: string
+  detail?: string
+}
+
+export type SessionInboxItemSource = {
+  type: string
+  label?: string
+  [key: string]: unknown | string | undefined
+}
+
+export type SessionInboxItem = {
+  id: string
+  sessionID: string
+  kind: "queued_user" | "guiding" | "agent_update"
+  state: "queued" | "guiding"
+  deliveryTarget: "after_turn" | "next_model_call"
+  mode: "task" | "steer" | "context"
+  message?: {
+    role?: "user" | "assistant"
+    parts: Array<
+      | {
+          id?: string
+          type: "text"
+          text: string
+          synthetic?: boolean
+          ignored?: boolean
+          origin?: "user" | "system"
+          time?: {
+            start: number
+            end?: number
+          }
+          metadata?: {
+            [key: string]: unknown
+          }
+        }
+      | {
+          id?: string
+          type: "attachment"
+          mime: string
+          filename?: string
+          url: string
+          localPath?: string
+          source?: AttachmentSource
+          presentation?: AttachmentPresentation
+          model?: AttachmentModelPolicy
+          metadata?: {
+            [key: string]: unknown
+          }
+        }
+    >
+    agent?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    origin?: OriginUser
+    visible?: boolean
+  }
+  summaryPreview?: string
+  summary: {
+    title: string
+    preview?: string
+  }
+  detail?: {
+    text?: string
+    attachments?: Array<string>
+  }
+  source: SessionInboxItemSource
+  time: {
+    created: number
+    updated?: number
+  }
+  orderKey: string
+  messageID: string
+}
+
+export type SessionInputResult =
+  | {
+      status: "started"
+      messageID: string
+    }
+  | {
+      status: "queued"
+      item: SessionInboxItem
+    }
+
+export type TextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  origin?: "user" | "system"
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
 export type AttachmentPartInput = {
   id?: string
   type: "attachment"
@@ -3549,13 +3599,6 @@ export type AttachmentPartInput = {
   metadata?: {
     [key: string]: unknown
   }
-}
-
-export type OriginUser = {
-  type: string
-  sessionID?: string
-  label?: string
-  detail?: string
 }
 
 export type UserMessage = {
