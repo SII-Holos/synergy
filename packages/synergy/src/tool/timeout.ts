@@ -175,11 +175,8 @@ export namespace ToolTimeout {
         return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.taskOutputWaitMs), source: "wait" }
       case "bash": {
         const commandTimeoutMs = secondsToMsOrUndefined(args.timeoutSeconds)
-        const autoBackgroundMs = secondsToMsOrUndefined(args.backgroundAfterSeconds)
         const effectiveAutoBackgroundMs =
-          autoBackgroundMs === undefined && args.backgroundAfterSeconds !== 0
-            ? DEFAULTS.bashAutoBackgroundMs
-            : autoBackgroundMs
+          secondsToMsOrUndefined(args.backgroundAfterSeconds) ?? DEFAULTS.bashAutoBackgroundMs
         if (effectiveAutoBackgroundMs && commandTimeoutMs && commandTimeoutMs < effectiveAutoBackgroundMs) {
           return { timeoutMs: commandTimeoutMs, source: "wait" }
         }

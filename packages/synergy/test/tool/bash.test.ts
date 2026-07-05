@@ -71,17 +71,24 @@ describe("tool.bash", () => {
     })
   })
 
-  test("accepts new timing controls and ignores unknown old timing fields", async () => {
+  test("accepts positive timing controls and rejects invalid timing values", async () => {
     const bash = await BashTool.init()
     expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok" }).success).toBe(true)
     expect(
       bash.parameters.safeParse({
         command: "echo ok",
         description: "Echo ok",
-        backgroundAfterSeconds: 0,
+        backgroundAfterSeconds: 1,
         timeoutSeconds: 1,
       }).success,
     ).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        backgroundAfterSeconds: 0,
+      }).success,
+    ).toBe(false)
     expect(
       bash.parameters.safeParse({
         command: "echo ok",
@@ -112,14 +119,14 @@ describe("tool.bash", () => {
     })
   })
 
-  test("backgroundAfterSeconds zero keeps short commands foregrounded", async () => {
+  test("commands that finish before auto-backgrounding return foreground results", async () => {
     await withProjectScope(async () => {
       const bash = await BashTool.init()
       const result = await bash.execute(
         {
           command: "echo foreground",
           description: "Echo foreground",
-          backgroundAfterSeconds: 0,
+          backgroundAfterSeconds: 1,
         },
         ctx,
       )
@@ -136,7 +143,7 @@ describe("tool.bash", () => {
         {
           command: sleepCommand(1000),
           description: "Timeout foreground",
-          backgroundAfterSeconds: 0,
+          backgroundAfterSeconds: 1,
           timeoutSeconds: 0.05,
         },
         ctx,
@@ -600,8 +607,8 @@ describe("tool.bash output cap", () => {
         const result = await bash.execute(
           {
             command: bunEval(`process.stdout.write("x".repeat(300000))`),
-            background: true,
-            description: "Generate 300KB output in background",
+            backgroundAfterSeconds: 0.05,
+            description: "Generate 300KB output with auto-background",
           },
           ctx,
         )

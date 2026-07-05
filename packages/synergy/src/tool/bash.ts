@@ -22,18 +22,12 @@ const parameters = z.object({
     .describe(
       "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
     ),
-  background: z
-    .boolean()
-    .optional()
-    .describe(
-      "Run command in background immediately. Returns immediately with processId. Use process tool to monitor/interact with the process.",
-    ),
   backgroundAfterSeconds: z
     .number()
-    .refine((value) => Number.isFinite(value) && value >= 0)
+    .refine((value) => Number.isFinite(value) && value > 0)
     .optional()
     .describe(
-      "Seconds to wait before auto-backgrounding. Defaults to 30. Set to 0 only when the command must remain foregrounded until completion or timeout.",
+      "Seconds to wait before auto-backgrounding. Defaults to 30. Use a positive value for commands that may run longer; it should not exceed timeoutSeconds when both are set.",
     ),
   timeoutSeconds: z
     .number()

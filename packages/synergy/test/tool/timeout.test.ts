@@ -70,16 +70,6 @@ describe("ToolTimeout", () => {
       displayMs: 5_000,
       source: "auto_background",
     })
-    expect(metadata("bash", { backgroundAfterSeconds: 0 })).toMatchObject({
-      toolTimeoutMs,
-      displayMs: toolTimeoutMs,
-      source: "tool_timeout",
-    })
-    expect(metadata("bash", { backgroundAfterSeconds: 0, timeoutSeconds: 7 })).toMatchObject({
-      operationTimeoutMs: 7_000,
-      displayMs: 7_000,
-      source: "wait",
-    })
   })
 
   test("uses operation timeout for browser, connect, and MCP waits", () => {
