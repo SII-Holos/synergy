@@ -135,7 +135,7 @@ export namespace ToolResolver {
   function externalPathFromArgs(toolName: string, args: Record<string, any>): string {
     if (toolName === "bash") return (args.workdir ?? args.command) as string
     //     if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
-    if (toolName === "look_at" || toolName === "attach") {
+    if (toolName === "look_at" || toolName === "view_image" || toolName === "attach") {
       const raw = args.file_path ?? args.filePath ?? ""
       return Array.isArray(raw) ? (raw[0] ?? "") : String(raw)
     }
@@ -892,11 +892,12 @@ export namespace ToolResolver {
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
 
+    const supportsImageInput = input.model.capabilities.input.image
+
     for (const def of defs) {
       const isEphemeral = ephemeralToolIds.has(def.id)
-      if (!isEphemeral && def.id === "look_at" && input.model.capabilities.input.image) {
-        continue
-      }
+      if (!isEphemeral && def.id === "look_at" && supportsImageInput) continue
+      if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
 
       const modeDiagnostic = isEphemeral
         ? undefined

@@ -514,7 +514,8 @@ Some operations may require user approval depending on the project's permission 
 Use the right visual surface for the job:
 
 - **`render`** — Render inline HTML/SVG/tables/charts directly in the conversation when the output is structured markup rather than a file.
-- **`look_at`** — Inspect images for your own reasoning. Set `show_to_user: true` when the user should see the same image; otherwise follow with `attach` if the image becomes a user-facing result.
+- **`view_image`** — When available, load a local image into the current model context for direct visual inspection. It does not perform separate model analysis.
+- **`look_at`** — When `view_image` is unavailable, ask the configured vision model for textual analysis. Set `show_to_user: true` when the user should see the same image; otherwise follow with `attach` if the image becomes a user-facing result.
 - **`attach`** — Deliver files to the user as conversation attachments. The user may be on a web or TUI client without direct access to the server filesystem.
 
 When you generate, download, compile, or produce a user-facing artifact (PDFs, images, rendered figures, screenshots, plots, HTML reports, archives, exports, paper outputs, etc.), use `attach` to make the final result available — don't just write it to disk and print the path. Attach final artifacts only; avoid intermediate build files, caches, dependency downloads, logs, or unrelated outputs.

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { pathToFileURL } from "url"
 import { BrowserPolicy } from "../../src/browser/policy"
+import { tmpdir } from "../fixture/fixture"
 
 describe("BrowserPolicy URL normalization", () => {
   test("normalizes bare domains and search text", () => {
@@ -22,10 +23,21 @@ describe("BrowserPolicy user hard safety", () => {
     expect(result.decision).toBe("deny")
   })
 
-  test("allows file URLs only inside workspace", () => {
+  test("allows file URLs only inside workspace", async () => {
     const inside = path.join(process.cwd(), "README.md")
     expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(inside).href, process.cwd()).decision).toBe("allow")
     expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", process.cwd()).decision).toBe("deny")
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".synergy", "worktrees", "project", "README.md"), "workspace file")
+      },
+    })
+    const worktreeWorkspace = path.join(tmp.path, ".synergy", "worktrees", "project")
+    const worktreeFile = path.join(worktreeWorkspace, "README.md")
+    expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(worktreeFile).href, worktreeWorkspace).decision).toBe(
+      "allow",
+    )
   })
 })
 

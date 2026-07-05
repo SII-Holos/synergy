@@ -119,15 +119,20 @@ describe("tool exposure", () => {
     expect(internal.exposure).toEqual({ mode: "internal" })
   })
 
-  test("ToolResolver hides look_at when the active model supports image input", async () => {
+  test("ToolResolver exposes exactly one image inspection tool for active model capability", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
 
-        expect((await definitionIDs(session)).has("look_at")).toBe(true)
-        expect((await definitionIDs(session, { model: imageModel })).has("look_at")).toBe(false)
+        const textOnly = await definitionIDs(session)
+        expect(textOnly.has("look_at")).toBe(true)
+        expect(textOnly.has("view_image")).toBe(false)
+
+        const imageCapable = await definitionIDs(session, { model: imageModel })
+        expect(imageCapable.has("look_at")).toBe(false)
+        expect(imageCapable.has("view_image")).toBe(true)
       },
     })
   })

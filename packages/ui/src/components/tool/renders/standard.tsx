@@ -57,6 +57,32 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "view_image",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "image",
+          title: "View Image",
+          subtitle: props.input.filePath
+            ? getDirectory(props.input.filePath) + getFilename(props.input.filePath)
+            : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "list",
   render(props) {
     return (

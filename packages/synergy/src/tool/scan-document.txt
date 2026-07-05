@@ -4,7 +4,7 @@ Use this tool to inspect the content of document files (PDF, DOCX, XLSX, PPTX, H
 
 Use `offset` to skip ahead and `limit` to control how many lines to return (max 2000, default 2000). When the metadata field `truncated` is true, call again with offset incremented by `returned` to read the next chunk.
 
-For code files, use `view_file` instead. For image analysis, use `look_at` instead.
+For code files, use `view_file` instead. For image visual inspection, use `view_image` when it is available; use `look_at` when `view_image` is unavailable.
 
 Supported formats: PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), HTML, EPUB, Jupyter (.ipynb), CSV, XML, RSS, Atom, plain text, images (EXIF metadata only), audio (EXIF metadata only), ZIP archives (recursive).
 

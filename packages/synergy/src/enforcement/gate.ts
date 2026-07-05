@@ -591,7 +591,12 @@ export namespace EnforcementGate {
       }
 
       // Document / attachment tools
-      if (toolName === "scan_document" || toolName === "look_at" || toolName === "attach") {
+      if (
+        toolName === "scan_document" ||
+        toolName === "look_at" ||
+        toolName === "view_image" ||
+        toolName === "attach"
+      ) {
         const raw = args.filePath ?? args.file_path ?? ""
         const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
         if (filePath) {

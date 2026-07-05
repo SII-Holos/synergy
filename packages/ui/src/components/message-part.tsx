@@ -532,6 +532,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Read",
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "view_image":
+      return {
+        icon: "image",
+        title: "View Image",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "view_file":
       return {
         icon: "scan-eye",
