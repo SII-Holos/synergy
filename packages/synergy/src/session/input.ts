@@ -177,8 +177,8 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   const isRoot = input.noReply !== true
   const rootID = rootIDOverride ?? messageID
   // A reply-requiring message is always shown; a noReply injection is shown
-  // only when its origin renders as a chip (cortex/agenda/blueprint/channel/…).
-  const visible = isRoot || MessageV2.originRenders(origin)
+  // when its origin is user (steer/guide) or renders as a chip (cortex/agenda/…).
+  const visible = isRoot || origin.type === "user" || MessageV2.originRenders(origin)
 
   const info: MessageV2.Info = {
     id: messageID,

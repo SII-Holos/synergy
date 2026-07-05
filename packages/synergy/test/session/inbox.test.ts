@@ -77,7 +77,9 @@ describe("SessionInbox", () => {
         })
 
         expect(queued.mode).toBe("steer")
-        expect(queued.message?.visible).toBe(false)
+        // User-origin steer items (guide/插话) are always visible so the
+        // frontend renders them as chips or pending bubbles in the timeline.
+        expect(queued.message?.visible).toBe(true)
 
         SessionManager.unregisterRuntime(session.id)
       },

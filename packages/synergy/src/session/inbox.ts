@@ -296,6 +296,9 @@ export namespace SessionInbox {
   function visibleFor(mode: ItemMode, origin: MessageV2.OriginUser | undefined, explicit?: boolean): boolean {
     if (explicit !== undefined) return explicit
     if (mode === "task") return true
+    // User-origin steer items (guide/插话) are always visible;
+    // non-user origins need the chip-rendering check (cortex/agenda/…).
+    if (origin?.type === "user") return true
     return origin ? MessageV2.originRenders(origin) : false
   }
 
