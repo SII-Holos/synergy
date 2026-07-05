@@ -37,8 +37,19 @@ function bunEval(script: string) {
   const executable = process.execPath.replace(/\\/g, "/")
   const encoded = Buffer.from(script).toString("base64")
   const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
-  if (process.platform === "win32") return `& "${executable}" -e "${evalScript}"`
+  if (process.platform === "win32") return `"${executable}" -e "${evalScript}"`
   return `"${executable}" -e ${JSON.stringify(evalScript)}`
+}
+
+function sleepCommand(ms: number) {
+  return bunEval(`setTimeout(() => console.log("done"), ${ms})`)
+}
+
+async function withProjectScope<T>(fn: () => Promise<T>) {
+  return ScopeContext.provide({
+    scope: (await Scope.fromDirectory(projectRoot)).scope,
+    fn,
+  })
 }
 
 describe("tool.bash", () => {
@@ -57,6 +68,120 @@ describe("tool.bash", () => {
         expect(result.metadata.exit).toBe(0)
         expect(result.metadata.output).toContain("test")
       },
+    })
+  })
+
+  test("accepts new timing controls and ignores unknown old timing fields", async () => {
+    const bash = await BashTool.init()
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok" }).success).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        backgroundAfterSeconds: 0,
+        timeoutSeconds: 1,
+      }).success,
+    ).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        timeoutSeconds: 0,
+      }).success,
+    ).toBe(false)
+    expect(
+      bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", backgroundAfterSeconds: -1 }).success,
+    ).toBe(false)
+  })
+
+  test("auto-backgrounds long commands after backgroundAfterSeconds", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: sleepCommand(250),
+          description: "Sleep briefly",
+          backgroundAfterSeconds: 0.05,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBe(true)
+      expect(result.metadata.processId).toBeString()
+      expect(result.output).toContain("Command auto-backgrounded after 0.05s")
+      if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
+    })
+  })
+
+  test("backgroundAfterSeconds zero keeps short commands foregrounded", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: "echo foreground",
+          description: "Echo foreground",
+          backgroundAfterSeconds: 0,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBeUndefined()
+      expect(result.metadata.exit).toBe(0)
+      expect(result.output).toContain("foreground")
+    })
+  })
+
+  test("timeoutSeconds kills foreground commands", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: sleepCommand(1000),
+          description: "Timeout foreground",
+          backgroundAfterSeconds: 0,
+          timeoutSeconds: 0.05,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBeUndefined()
+      expect(result.output).toContain("command timed out after 0.05s")
+    })
+  })
+
+  test("timeoutSeconds kills auto-backgrounded commands through process registry", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: sleepCommand(1000),
+          description: "Timeout background",
+          backgroundAfterSeconds: 0.05,
+          timeoutSeconds: 0.1,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBe(true)
+      expect(result.metadata.processId).toBeString()
+      let finished = result.metadata.processId ? ProcessRegistry.getFinished(result.metadata.processId) : undefined
+      for (let i = 0; i < 20 && !finished; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        finished = result.metadata.processId ? ProcessRegistry.getFinished(result.metadata.processId) : undefined
+      }
+      expect(finished?.output).toContain("command timed out after 0.1s")
+      expect(finished?.status).toBe("killed")
+      if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
+    })
+  })
+
+  test("parallel bash calls return independent inline outputs", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const [left, right] = await Promise.all([
+        bash.execute({ command: "echo left", description: "Echo left" }, ctx),
+        bash.execute({ command: "echo right", description: "Echo right" }, ctx),
+      ])
+      expect(left.metadata.exit).toBe(0)
+      expect(right.metadata.exit).toBe(0)
+      expect(left.output).toContain("left")
+      expect(right.output).toContain("right")
     })
   })
 
