@@ -1113,20 +1113,21 @@ export const SessionRoute = new Hono()
         sessionID: Session.rollback.schema.shape.sessionID,
       }),
     ),
-    validator("json", Session.rollback.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      try {
-        const raw = await c.req.raw.clone().text()
-        log.warn("session.rollback raw body", { raw, sessionID })
-      } catch {}
-      log.info("session.rollback parsed", { sessionID, body })
-      if (body.numTurns == null && body.cutMessageID == null) {
+      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+      const numTurns = typeof body.numTurns === "number" ? body.numTurns : undefined
+      const cutMessageID = typeof body.cutMessageID === "string" ? body.cutMessageID : undefined
+      log.info("session.rollback", { sessionID, numTurns, cutMessageID })
+      if (numTurns == null && cutMessageID == null) {
         return c.json({ message: "rollback requires numTurns or cutMessageID in request body" }, 400)
       }
       try {
-        const event = await Session.rollback({ sessionID, ...body })
+        const event = await Session.rollback.force({
+          sessionID,
+          ...(numTurns != null ? { numTurns } : {}),
+          ...(cutMessageID != null ? { cutMessageID } : {}),
+        })
         return c.json(event)
       } catch (error) {
         log.warn("session.rollback failed", {
