@@ -16,6 +16,7 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import type { ProfileId } from "@/control-profile/types"
@@ -274,10 +275,31 @@ export namespace Session {
     return { ...result, working }
   }
 
+  // Dedup redundant session.updated publishes: a diff limited to time.updated
+  // (or a byte-identical payload) is throttled to a heartbeat, while any real
+  // field change publishes immediately (issue #319, defense in depth).
+  const lastPublish = new Map<string, { key: string; at: number }>()
+  const PUBLISH_DEDUP_THROTTLE_MS = 1000
+
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
-    Bus.publish(event, {
-      info: await withRuntimeInfo(session),
-    })
+    const info = await withRuntimeInfo(session)
+    const key = publishCompareKey(info)
+    const now = Date.now()
+    const prev = lastPublish.get(session.id)
+    if (
+      !decideSessionPublish({
+        prevKey: prev?.key,
+        prevAt: prev?.at,
+        nextKey: key,
+        now,
+        throttleMs: PUBLISH_DEDUP_THROTTLE_MS,
+      })
+    ) {
+      return
+    }
+    if (info.time.archived) lastPublish.delete(session.id)
+    else lastPublish.set(session.id, { key, at: now })
+    Bus.publish(event, { info })
   }
 
   export async function create(input?: {
