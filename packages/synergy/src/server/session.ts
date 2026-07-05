@@ -1117,18 +1117,9 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      try {
-        const event = await Session.rollback({ sessionID, ...body })
-        return c.json(event)
-      } catch (error) {
-        log.warn("session.rollback failed", {
-          sessionID,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
-          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
-        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
-      }
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
+      const event = await Session.rollback({ sessionID, ...body })
+      return c.json(event)
     },
   )
   .post(
