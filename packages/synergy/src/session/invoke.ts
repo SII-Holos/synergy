@@ -1342,6 +1342,10 @@ export namespace SessionInvoke {
       isRoot: true,
       rootID: userID,
       visible: true,
+      // Canonical context switch: action commands (promptVisible === false) are
+      // kept out of the model context. metadata.command.promptVisible is retained
+      // only as a frontend hint for action-command rendering.
+      includeInContext: command.promptVisible !== false,
       metadata,
     })
     await Session.updatePart({

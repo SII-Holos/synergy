@@ -346,7 +346,11 @@ function SessionPageContent() {
     const metadata = message.metadata as
       | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
       | undefined
-    return metadata?.command?.kind === "action" && metadata.promptVisible === false
+    if (metadata?.command?.kind !== "action") return false
+    // Prefer the canonical includeInContext; fall back to command.promptVisible
+    // for messages written before it was set.
+    if (message.includeInContext !== undefined) return message.includeInContext === false
+    return metadata.promptVisible === false
   }
 
   const mergeTimelineMessages = (items: Message[]) => {
