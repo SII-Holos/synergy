@@ -355,7 +355,35 @@ describe("tool exposure", () => {
         const processor = {
           message: { id: "message_test" },
           partFromToolCall: () => undefined,
-          trackExecution: (id: string, promise: Promise<any>) => executions.set(id, promise),
+          beginExecution: (id: string) => {
+            let outcome: any
+            let resolvePromise!: (value: any) => void
+            const promise = new Promise<any>((resolve) => {
+              resolvePromise = resolve
+            })
+            executions.set(id, promise)
+            return {
+              callID: id,
+              promise,
+              resolve(value: any) {
+                if (outcome) return
+                outcome = value
+                resolvePromise(value)
+              },
+              complete(input: unknown, result: any) {
+                this.resolve({ status: "completed", input, result })
+              },
+              fail(input: unknown, error: string, metadata?: Record<string, any>) {
+                this.resolve({ status: "error", input, error, metadata })
+              },
+              get outcome() {
+                return outcome
+              },
+              get status() {
+                return outcome ? "resolved" : "pending"
+              },
+            }
+          },
         } as any
 
         const resolved = await ToolResolver.resolveWithAvailability({

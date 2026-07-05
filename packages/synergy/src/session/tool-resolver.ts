@@ -953,6 +953,7 @@ export namespace ToolResolver {
       description: diagnostic.message,
       inputSchema: jsonSchema(schema),
       async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        const slot = input.processor.beginExecution(options.toolCallId)
         const error = new ToolDiagnosticError({
           ...diagnostic,
           metadata: {
@@ -960,15 +961,7 @@ export namespace ToolResolver {
             attemptedInput: args as Record<string, unknown>,
           },
         })
-        input.processor.trackExecution(
-          options.toolCallId,
-          Promise.resolve({
-            status: "error",
-            input: args,
-            error: error.message,
-            metadata: ToolDiagnostic.metadata(error.diagnostic),
-          }),
-        )
+        slot.fail(args, error.message, ToolDiagnostic.metadata(error.diagnostic))
         throw error
       },
       toModelOutput(result: { output: string }) {
@@ -1000,22 +993,13 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema as any),
             async execute(args, options) {
-              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                resolveExecution = r
-              })
-              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
-
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
               try {
                 const result = await item.execute(args as Record<string, unknown>)
-                resolveExecution({
-                  status: "completed",
-                  input: args,
-                  result: {
-                    title: result.title,
-                    output: result.output,
-                    metadata: result.metadata ?? {},
-                  },
+                slot.complete(args, {
+                  title: result.title,
+                  output: result.output,
+                  metadata: result.metadata ?? {},
                 })
                 return {
                   title: result.title,
@@ -1024,11 +1008,7 @@ export namespace ToolResolver {
                 }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                resolveExecution({
-                  status: "error",
-                  input: args,
-                  error: message,
-                })
+                slot.fail(args, message)
                 throw error
               }
             },
@@ -1062,11 +1042,7 @@ export namespace ToolResolver {
             async execute(args, options) {
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
-              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                resolveExecution = r
-              })
-              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
 
               try {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
@@ -1205,17 +1181,13 @@ export namespace ToolResolver {
                   result,
                 )
                 await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
-                resolveExecution({
-                  status: "completed",
-                  input: args,
-                  result: {
-                    output: result.output,
-                    title: result.title ?? "",
-                    metadata: approvalFromContext(ctx)
-                      ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
-                      : (result.metadata ?? {}),
-                    attachments: result.attachments,
-                  },
+                slot.complete(args, {
+                  output: result.output,
+                  title: result.title ?? "",
+                  metadata: approvalFromContext(ctx)
+                    ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
+                    : (result.metadata ?? {}),
+                  attachments: result.attachments,
                 })
                 await toolTrace.end({
                   outputChars: result.output.length,
@@ -1236,12 +1208,7 @@ export namespace ToolResolver {
                   callID: options.toolCallId,
                   error,
                 })
-                resolveExecution({
-                  status: "error",
-                  input: args,
-                  error: formatErrorForModel(error),
-                  metadata: metadataForError(error, approvalFromContext(ctx)),
-                })
+                slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
                 await toolTrace?.error(error)
                 throw error
               } finally {
@@ -1288,11 +1255,7 @@ export namespace ToolResolver {
               execute: async (args, opts) => {
                 const ctx = context(args, opts)
                 let toolTrace: ToolTrace | undefined
-                let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-                const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                  resolveExecution = r
-                })
-                runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
+                const slot = runtimeInput.processor.beginExecution(opts.toolCallId)
 
                 try {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
@@ -1413,17 +1376,13 @@ export namespace ToolResolver {
                   }
                   Tool.validateAttachmentResult(key, output)
 
-                  resolveExecution({
-                    status: "completed",
-                    input: args,
-                    result: {
-                      output: output.output,
-                      title: output.title,
-                      metadata: approvalFromContext(ctx)
-                        ? { approval: approvalFromContext(ctx), ...output.metadata }
-                        : output.metadata,
-                      attachments: output.attachments,
-                    },
+                  slot.complete(args, {
+                    output: output.output,
+                    title: output.title,
+                    metadata: approvalFromContext(ctx)
+                      ? { approval: approvalFromContext(ctx), ...output.metadata }
+                      : output.metadata,
+                    attachments: output.attachments,
                   })
 
                   await toolTrace.end({
@@ -1446,12 +1405,7 @@ export namespace ToolResolver {
                     callID: opts.toolCallId,
                     error,
                   })
-                  resolveExecution({
-                    status: "error",
-                    input: args,
-                    error: formatErrorForModel(error),
-                    metadata: metadataForError(error, approvalFromContext(ctx)),
-                  })
+                  slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
                   await toolTrace?.error(error)
                   throw error
                 } finally {
