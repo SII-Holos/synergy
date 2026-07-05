@@ -624,8 +624,6 @@ CREATE INDEX IF NOT EXISTS idx_perf_issues_status_severity_time ON perf_issues(s
 CREATE INDEX IF NOT EXISTS idx_perf_issues_trace_time ON perf_issues(trace_id,time);
 CREATE INDEX IF NOT EXISTS idx_perf_issues_module_time ON perf_issues(module,time);
 CREATE TABLE IF NOT EXISTS perf_browser_batches (batch_id TEXT PRIMARY KEY,received_time INTEGER NOT NULL,sent_at INTEGER NOT NULL,source TEXT NOT NULL,accepted INTEGER NOT NULL,rejected INTEGER NOT NULL,page_json TEXT NOT NULL DEFAULT '{}');
-CREATE TABLE IF NOT EXISTS perf_aggregates (bucket_start INTEGER NOT NULL,bucket_ms INTEGER NOT NULL,name TEXT NOT NULL,module TEXT,source TEXT,count INTEGER NOT NULL,min_value REAL,max_value REAL,avg_value REAL,p50_value REAL,p95_value REAL,p99_value REAL,sum_value REAL,PRIMARY KEY (bucket_start,bucket_ms,name,module,source));
-CREATE INDEX IF NOT EXISTS idx_perf_aggregates_name_bucket ON perf_aggregates(name,bucket_start);
 CREATE TABLE IF NOT EXISTS perf_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
 `
 }

@@ -52,6 +52,7 @@ export function usePerformance() {
         setError(null)
         const summaryResult = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
         void loadTraces(rangeMs)
+        void loadTimeline(rangeMs)
         return summaryResult.data ?? null
       } catch (err) {
         setError(getErrorMessage(err))

@@ -117,6 +117,29 @@ export namespace PerformanceIngestion {
     return clean
   }
 
+  const allowedBrowserLabels = new Set([
+    "name",
+    "rating",
+    "attribution",
+    "route",
+    "path",
+    "initiator",
+    "size",
+    "duration",
+    "value",
+    "type",
+    "component",
+    "routename",
+    "pathtemplate",
+    "initiatortype",
+    "transfersize",
+    "encodedbodysize",
+    "decodedbodysize",
+    "navigationtype",
+    "dominteractive",
+    "domcontentloaded",
+  ])
+
   function isAllowedBrowserLabel(key: string) {
     const normalized = key.toLowerCase()
     if (
@@ -125,7 +148,7 @@ export namespace PerformanceIngestion {
       )
     )
       return false
-    return /^(name|rating|attribution|route|path|initiator|size|duration|value|type|component)$/.test(normalized)
+    return allowedBrowserLabels.has(normalized)
   }
 
   function looksLikeUrlKey(key: string) {

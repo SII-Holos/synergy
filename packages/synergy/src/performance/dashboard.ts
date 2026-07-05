@@ -28,10 +28,7 @@ export namespace PerformanceDashboard {
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
-    const library = metrics.filter(
-      (row) =>
-        row.module === "library" && (row.name === "library.query.duration" || row.name.endsWith(".query.duration")),
-    )
+    const library = metrics.filter((row) => row.name === "library.operation.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>

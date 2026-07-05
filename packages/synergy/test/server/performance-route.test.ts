@@ -182,7 +182,9 @@ describe("performance routes", () => {
       ),
     ).toBe(true)
     const pointTimes = http.points.map((point: { time: number }) => point.time)
-    expect(pointTimes).toEqual([...pointTimes].sort((a, b) => a - b))
+    for (let i = 1; i < pointTimes.length; i++) {
+      expect(pointTimes[i - 1]).toBeLessThanOrEqual(pointTimes[i])
+    }
     expect(http.points.some((point: { value: number | null }) => point.value === null)).toBe(true)
   })
 
@@ -257,7 +259,9 @@ describe("performance routes", () => {
     expect(response.status).toBe(200)
     const body = await response.json()
     const pointTimes = body.series[0].points.map((point: { time: number }) => point.time)
-    expect(pointTimes).toEqual([...pointTimes].sort((a, b) => a - b))
+    for (let i = 1; i < pointTimes.length; i++) {
+      expect(pointTimes[i - 1]).toBeLessThanOrEqual(pointTimes[i])
+    }
     expect(body.series[0].points.some((point: { value: number | null }) => point.value === 10)).toBe(true)
     expect(body.series[0].points.some((point: { value: number | null }) => point.value === 20)).toBe(false)
     expect(body.series[0].points.some((point: { value: number | null }) => point.value === null)).toBe(true)

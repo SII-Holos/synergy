@@ -6551,6 +6551,7 @@ export type PerformanceTimelineData = {
     tool?: string
     providerID?: string
     module?: PerfModule
+    stat?: PerfTimelineStat
     windowMs?: number
   }
   url: "/global/performance/timeline"

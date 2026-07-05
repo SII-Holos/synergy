@@ -139,8 +139,8 @@ export function PerformanceDashboard() {
           description="CPU average percent and event-loop p95 latency from runtime timeline buckets"
           points={resourcePressurePoints(perf.timeline())}
           datasets={[
-            percentDataset("CPU avg", "cpu", CPU_COLOR, "Timeline process.cpu.utilization"),
-            durationDataset("Event loop p95", "eventLoopLag", REQUEST_COLOR, "Timeline process.event_loop.lag"),
+            percentDataset("CPU", "cpu", CPU_COLOR, "Timeline process.cpu.utilization"),
+            durationDataset("Event loop", "eventLoopLag", REQUEST_COLOR, "Timeline process.event_loop.lag", "p95"),
           ]}
           quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
           onVisible={() => void perf.loadTimeline(perf.windowMs())}
@@ -150,9 +150,9 @@ export function PerformanceDashboard() {
           description="RSS, heap used, and heap total as memory gauges in MB"
           points={memoryPoints(perf.timeline(), summary())}
           datasets={[
-            megabytesDataset("RSS latest", "memory", MEMORY_COLOR, "Timeline process.memory.rss"),
-            megabytesDataset("Heap used latest", "heapUsed", BROWSER_COLOR, "Timeline process.memory.heap_used"),
-            megabytesDataset("Heap total latest", "heapTotal", DISK_COLOR, "Timeline process.memory.heap_total"),
+            megabytesDataset("RSS", "memory", MEMORY_COLOR, "Timeline process.memory.rss"),
+            megabytesDataset("Heap used", "heapUsed", BROWSER_COLOR, "Timeline process.memory.heap_used"),
+            megabytesDataset("Heap total", "heapTotal", DISK_COLOR, "Timeline process.memory.heap_total"),
           ]}
           quality={timelineQuality(perf.timeline(), [
             "process.memory.rss",
@@ -166,7 +166,7 @@ export function PerformanceDashboard() {
           description="HTTP request p95 latency with request sample count per bucket"
           points={requestTimelinePoints(perf.timeline())}
           datasets={[
-            durationDataset("Request p95", "latency", CPU_COLOR, "Timeline http.request.duration"),
+            durationDataset("Request", "latency", CPU_COLOR, "Timeline http.request.duration", "p95"),
             countDataset(
               "Requests / bucket",
               "requests",
@@ -182,8 +182,8 @@ export function PerformanceDashboard() {
           description="Only real session timeline metrics are shown; current active sessions remain in summary cards"
           points={sessionPoints(perf.timeline())}
           datasets={[
-            countDataset("Active turns latest", "activeSessions", MEMORY_COLOR, "Timeline session.turn.active"),
-            durationDataset("Turn p95", "latency", BROWSER_COLOR, "Timeline session.turn.duration"),
+            countDataset("Active turns", "activeSessions", MEMORY_COLOR, "Timeline session.turn.active"),
+            durationDataset("Turn", "latency", BROWSER_COLOR, "Timeline session.turn.duration", "p95"),
           ]}
           quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
           emptyLabel="No historical session samples for this range"
@@ -195,7 +195,7 @@ export function PerformanceDashboard() {
           points={storagePoints(perf.timeline())}
           datasets={[
             countDataset("Operations / bucket", "diskOps", DISK_COLOR, "Timeline storage.operation.count"),
-            durationDataset("Operation p95", "latency", REQUEST_COLOR, "Timeline storage.operation.duration"),
+            durationDataset("Operation", "latency", REQUEST_COLOR, "Timeline storage.operation.duration", "p95"),
             bytesDataset("Read bytes / bucket", "readBytes", MEMORY_COLOR, "Timeline storage.read.bytes"),
             bytesDataset("Write bytes / bucket", "writeBytes", BROWSER_COLOR, "Timeline storage.write.bytes"),
           ]}
@@ -759,6 +759,7 @@ function durationDataset(
   field: keyof PerformanceMetricPoint,
   color: string,
   source: string,
+  stat?: string,
 ): ChartDatasetSpec {
   return {
     label,
@@ -766,7 +767,7 @@ function durationDataset(
     color,
     source,
     unit: "ms",
-    stat: label.includes("p95") ? "p95" : undefined,
+    stat,
     axisId: "duration",
     axisTitle: "Milliseconds",
     formatter: formatChartDuration,
