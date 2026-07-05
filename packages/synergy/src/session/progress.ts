@@ -1,9 +1,13 @@
 import { MessageV2 } from "./message-v2"
 
 export namespace SessionProgress {
-  /** @deprecated Replaced by needsModelCall. Kept for existing callers. */
+  /**
+   * Whether a user message owns a reply cycle (i.e. is a task root). Prefers the
+   * canonical isRoot; falls back to legacy noReply only for callers that receive
+   * non-canonicalized info (e.g. storage migrations reading raw message infos).
+   */
   export function isReplyRequiredUser(user: MessageV2.User) {
-    return user.metadata?.noReply !== true
+    return user.isRoot ?? user.metadata?.noReply !== true
   }
 
   export function isTerminalAssistant(assistant: MessageV2.Assistant) {

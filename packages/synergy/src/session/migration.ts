@@ -1648,8 +1648,15 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "20260704-message-v2-origin-fields",
-    description: "Backfill message origin, rootID, isRoot, visible fields and TextPart.origin for existing messages",
+    // Supersedes the earlier "20260704-message-v2-origin-fields" backfill, which
+    // used cruder per-message heuristics (rootID=self for non-roots, origin
+    // "forward", isRoot=!noReply). This re-runs and rewrites the canonical fields
+    // through the shared MessageV2.deriveSemantics so persisted values match what
+    // the read path computes. A new id ensures it applies even where the old one
+    // already ran.
+    id: "20260705-message-v2-semantics-derive",
+    description:
+      "Backfill canonical message semantics (rootID/isRoot/visible/origin, TextPart.origin) via shared derivation",
     async up(progress) {
       const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
       const tasks: Array<{ scopeID: string; sessionID: string }> = []
@@ -1668,104 +1675,49 @@ export const migrations: Migration[] = [
       for (const { scopeID, sessionID } of tasks) {
         const scope = Identifier.asScopeID(scopeID)
         const sid = Identifier.asSessionID(sessionID)
-        const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+        const messageIDs = (await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => []))
+          .slice()
+          .sort()
 
-        // Build a map of messageID -> info for parent chain walking
-        const infoByID = new Map<string, any>()
+        // Load the whole session (info + parts) in order so deriveSemantics can
+        // resolve rootID chains across roots, injected messages, and assistants.
+        const withParts: MessageV2.WithParts[] = []
         for (const messageID of messageIDs) {
           const mid = Identifier.asMessageID(messageID)
           const info = await Storage.read<any>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
-          if (info) infoByID.set(mid, info)
+          if (!info) continue
+          const partIDs = (await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])).slice().sort()
+          const parts: any[] = []
+          for (const partID of partIDs) {
+            const part = await Storage.read<any>(
+              StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(partID)),
+            ).catch(() => undefined)
+            if (part) parts.push(part)
+          }
+          withParts.push({ info, parts })
         }
 
-        for (const messageID of messageIDs) {
-          const mid = Identifier.asMessageID(messageID)
-          const info = infoByID.get(mid)
-          if (!info) continue
+        const derived = MessageV2.deriveSemantics(withParts)
 
-          const next = { ...info }
-          let changed = false
+        for (let i = 0; i < derived.length; i++) {
+          const before = withParts[i]
+          const after = derived[i]
+          const mid = Identifier.asMessageID(after.info.id)
 
-          if (info.role === "user") {
-            // Derive origin
-            if (!next.origin) {
-              const metadata = asRecord(info.metadata)
-              const source = metadata?.source
-              if (source === "cortex") {
-                next.origin = { type: "cortex", sessionID: metadata!.sourceSessionID }
-              } else if (source === "mailbox" || source === "agenda") {
-                next.origin = { type: "agenda", sessionID: metadata!.sourceSessionID }
-              } else if (typeof source === "string" && source.startsWith("blueprint_loop_")) {
-                next.origin = { type: "blueprint", detail: source }
-              } else if (metadata?.channelPush) {
-                next.origin = { type: "channel" }
-              } else if (typeof metadata?.sourceSessionID === "string" && metadata!.sourceSessionID.trim()) {
-                next.origin = { type: "forward", sessionID: metadata!.sourceSessionID }
-              } else {
-                next.origin = { type: "user" }
-              }
-              changed = true
-            }
-
-            // Derive isRoot
-            if (next.isRoot === undefined) {
-              const metadata = asRecord(info.metadata)
-              next.isRoot = metadata?.noReply !== true
-              changed = true
-            }
-
-            // Derive rootID (self for user messages)
-            if (!next.rootID) {
-              next.rootID = mid
-              changed = true
-            }
-
-            // Derive visible
-            if (next.visible === undefined) {
-              const metadata = asRecord(info.metadata)
-              next.visible = metadata?.synthetic !== true
-              changed = true
-            }
+          if (canonicalFieldsDiffer(before.info, after.info)) {
+            await Storage.write(StoragePath.messageInfo(scope, sid, mid), after.info)
           }
 
-          if (info.role === "assistant") {
-            // Derive rootID by walking parentID chain
-            if (!next.rootID) {
-              let walkID = info.parentID
-              while (walkID) {
-                const walkInfo = infoByID.get(walkID)
-                if (!walkInfo) break
-                if (walkInfo.role === "user") {
-                  next.rootID = walkID
-                  break
-                }
-                walkID = walkInfo.parentID
-              }
-              if (!next.rootID) next.rootID = mid
-              changed = true
+          for (let p = 0; p < after.parts.length; p++) {
+            const beforePart = before.parts[p] as { origin?: string } | undefined
+            const afterPart = after.parts[p]
+            if (afterPart.type !== "text") continue
+            if (beforePart?.origin !== afterPart.origin) {
+              await Storage.write(
+                StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(afterPart.id)),
+                afterPart,
+              )
             }
-
-            // Derive visible
-            if (next.visible === undefined) {
-              next.visible = true
-              changed = true
-            }
-          }
-
-          if (changed) {
-            await Storage.write(StoragePath.messageInfo(scope, sid, mid), next)
-          }
-
-          // Migrate TextPart.origin
-          const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
-          for (const partID of partIDs) {
-            const pid = Identifier.asPartID(partID)
-            const partKey = StoragePath.messagePart(scope, sid, mid, pid)
-            const part = await Storage.read<any>(partKey).catch(() => undefined)
-            if (!part || part.type !== "text") continue
-            if (part.origin) continue
-            part.origin = part.synthetic ? "system" : "user"
-            await Storage.write(partKey, part)
           }
         }
 
@@ -1773,8 +1725,18 @@ export const migrations: Migration[] = [
         progress(done, tasks.length)
       }
 
-      log.info("message origin fields backfill complete", { total: tasks.length })
+      log.info("message semantics backfill complete", { total: tasks.length })
     },
   },
 ]
+
+function canonicalFieldsDiffer(before: any, after: any): boolean {
+  return (
+    before?.isRoot !== after?.isRoot ||
+    before?.rootID !== after?.rootID ||
+    before?.visible !== after?.visible ||
+    before?.includeInContext !== after?.includeInContext ||
+    JSON.stringify(before?.origin) !== JSON.stringify(after?.origin)
+  )
+}
 MigrationRegistry.register("session", migrations)
