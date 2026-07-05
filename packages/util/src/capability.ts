@@ -84,6 +84,7 @@ export interface SynergyCapabilityManifest {
       permissionAsk?: "none" | "own" | "all"
       events?: "none" | "selected" | "all"
       eventNames?: string[]
+      config?: boolean
     }
     network?: { connectDomains?: string[] }
   }
@@ -286,6 +287,12 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Subscribe to Synergy events",
     description: "Can receive approved Synergy runtime events.",
   },
+  config_hook: {
+    category: "hooks",
+    severity: "medium",
+    title: "Observe runtime config",
+    description: "Can receive redacted runtime configuration snapshots when Synergy starts or reloads config.",
+  },
   session_state: {
     category: "session",
     severity: "low",
@@ -398,6 +405,7 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "tool_execution_hook",
   "permission_hook",
   "event_hook",
+  "config_hook",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -561,6 +569,7 @@ function buildCapabilitySet(
   const hooks = permissions?.hooks
   if (hooks?.promptTransform) caps.add("prompt_transform")
   if (hooks?.compactionTransform) caps.add("compaction_transform")
+  if (hooks?.config) caps.add("config_hook")
   if (hooks?.toolExecute && hooks.toolExecute !== "none") caps.add("tool_execution_hook")
   if (hooks?.permissionAsk && hooks.permissionAsk !== "none") caps.add("permission_hook")
   if (hooks?.events === "all" || (hooks?.events === "selected" && (hooks.eventNames?.length ?? 0) > 0)) {
@@ -782,6 +791,15 @@ function hookPermissionItems(manifest: SynergyCapabilityManifest): SynergyCapabi
       severity: "high",
       title: "Transform prompts",
       description: "Can modify the system prompt and message context sent to the LLM.",
+    })
+  }
+  if (hooks?.config) {
+    items.push({
+      key: "hooks.config",
+      category: "hooks",
+      severity: "medium",
+      title: "Observe runtime config",
+      description: "Can observe redacted runtime configuration snapshots when Synergy starts or reloads config.",
     })
   }
   if (hooks?.toolExecute === "all") {

@@ -7,11 +7,14 @@ import { RuntimeReload } from "../../src/runtime/reload"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
 import { GlobalBus } from "../../src/bus/global"
+import { Plugin } from "../../src/plugin"
 
 const originalConfigReload = Config.reload
+const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 
 afterEach(() => {
   Config.reload = originalConfigReload
+  ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   GlobalBus.removeAllListeners("event")
 })
 
@@ -208,6 +211,27 @@ describe("runtime.reload", () => {
         const reloadedEvent = events.find((e) => e.payload?.type === RuntimeReload.Event.Reloaded.type)
         expect(reloadedEvent).toBeDefined()
         expect(reloadedEvent!.payload.properties.executed).toContain("config")
+      },
+    })
+  })
+
+  test("config reload notifies plugin config hooks with changed fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const config = { model: "openai/gpt-4.1" } as Config.Info
+        Config.reload = mock(async () => ({
+          config,
+          changedFields: ["toast"],
+          oldConfig: {},
+        })) as typeof Config.reload
+        const notify = mock(async () => {})
+        ;(Plugin as any).notifyConfigHooks = notify
+
+        await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "hook-notify" })
+
+        expect(notify).toHaveBeenCalledWith({ source: "reload", config, changedFields: ["toast"] })
       },
     })
   })

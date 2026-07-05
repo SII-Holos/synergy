@@ -71,14 +71,28 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
       "trustedImport": false,
       "sandboxIframe": false,
     },
+    "hooks": {
+      "events": "selected",
+      "eventNames": [],
+      "config": false,
+      "toolExecute": "own",
+      "permissionAsk": "none",
+      "promptTransform": false,
+      "compactionTransform": false,
+    },
   },
 }
 ```
 
-`data.config` may be `none`, `plugin`, or `global`. It defaults to `none`; declare `plugin` or `global` only when the plugin reads Synergy configuration.
+`data.config` may be `none`, `plugin`, or `global`. It defaults to `none`; declare `plugin` or `global` only when the plugin reads Synergy configuration through plugin services. This is separate from `hooks.config`, which allows observing redacted runtime config snapshots.
 
-Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults.
-Unknown permission and capability keys are rejected during manifest validation.
+`hooks.events` may be `none`, `selected`, or `all`. In selected mode, `hooks.eventNames` supports exact event names, `*`, and suffix wildcards ending in `.*` such as `session.*`.
+
+`hooks.config: true` allows the plugin `config(input, output)` hook to receive redacted config snapshots on startup, plugin reload, and config reload. `input.source` is `startup`, `plugin_reload`, or `reload`; `input.changedFields` is present for config reload notifications.
+
+`hooks.promptTransform: true` allows `experimental.chat.system.transform` and `experimental.chat.messages.transform`. The system transform hook runs in `budget` and `final` phases; use `input.phase` to avoid duplicate prompt injection.
+
+Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults. Unknown permission and capability keys are rejected during manifest validation.
 
 ## Runtime Tool Contributions
 

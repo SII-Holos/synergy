@@ -2,7 +2,6 @@ import type {
   AgendaItem,
   AgendaRunLog,
   CortexTask,
-  Event,
   createSynergyClient,
   MemoryCategory,
   MemoryRecallMode,
@@ -429,6 +428,34 @@ export interface PluginDescriptor {
 // PluginHooks — what init() returns
 // ---------------------------------------------------------------------------
 
+export interface PluginEventHookInput {
+  event: {
+    type: string
+    properties: unknown
+  }
+}
+
+export interface PluginConfigHookInput {
+  source: "startup" | "reload" | "plugin_reload"
+  scopeID?: string
+  scopeType?: string
+  changedFields?: string[]
+  timestamp: number
+}
+
+export interface PluginConfigHookOutput {
+  config: Config
+}
+
+export interface PluginChatSystemTransformInput {
+  phase: "budget" | "final"
+  sessionID: string
+  agent: string
+  model: { providerID: string; modelID: string }
+  messageID?: string
+  small?: boolean
+}
+
 export interface PluginHooks {
   /** Called when the plugin is being unloaded (e.g. runtime reload) */
   dispose?(): Promise<void>
@@ -445,9 +472,9 @@ export interface PluginHooks {
   /** Provider runtime/catalog profiles */
   provider?: ProviderProfileHook | ProviderProfileHook[]
   /** Observe runtime bus events */
-  event?(input: { event: Event }): Promise<void>
-  /** Observe the loaded runtime config */
-  config?(input: Config): Promise<void>
+  event?(input: PluginEventHookInput): Promise<void>
+  /** Observe a redacted runtime config snapshot */
+  config?(input: PluginConfigHookInput, output: PluginConfigHookOutput): Promise<void>
   /** Rewrite incoming user messages */
   "chat.message"?(
     input: {
@@ -482,7 +509,10 @@ export interface PluginHooks {
     output: { messages: { info: Message; parts: Part[] }[] },
   ): Promise<void>
   /** Rewrite the assembled system prompt */
-  "experimental.chat.system.transform"?(input: {}, output: { system: string[] }): Promise<void>
+  "experimental.chat.system.transform"?(
+    input: PluginChatSystemTransformInput,
+    output: { system: string[] },
+  ): Promise<void>
   /** Customize session compaction */
   "experimental.session.compacting"?(
     input: { sessionID: string },

@@ -154,7 +154,18 @@ export namespace LLM {
     if (input.user.system) system.push(input.user.system)
 
     const original = clone(system)
-    await Plugin.trigger("experimental.chat.system.transform", {}, { system })
+    await Plugin.trigger(
+      "experimental.chat.system.transform",
+      {
+        phase: "final",
+        sessionID: input.sessionID,
+        agent: input.agent.name,
+        model: { providerID: input.model.providerID, modelID: input.model.id },
+        messageID: input.user.id,
+        small: input.small,
+      },
+      { system },
+    )
     if (system.length === 0) {
       system.push(...original)
     }

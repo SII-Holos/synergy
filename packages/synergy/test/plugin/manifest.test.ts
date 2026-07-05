@@ -185,6 +185,47 @@ describe("PluginManifest schema", () => {
     expect(result.success).toBe(false)
   })
 
+  test("config hook permission parses and defaults to false", () => {
+    const result = PluginManifest.safeParse({
+      name: "config-hook-plugin",
+      version: "1.0.0",
+      description: "Observes config hook snapshots",
+      permissions: {
+        hooks: {
+          config: true,
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.permissions?.hooks?.config).toBe(true)
+    }
+
+    const minimal = PluginManifest.parse({
+      name: "minimal-plugin",
+      version: "1.0.0",
+      description: "No hook permission",
+      permissions: {
+        hooks: {},
+      },
+    })
+    expect(minimal.permissions?.hooks?.config).toBe(false)
+  })
+
+  test("unknown hook permission fields are rejected", () => {
+    const result = PluginManifest.safeParse({
+      name: "future-hook-plugin",
+      version: "1.0.0",
+      description: "Uses an unknown hook permission",
+      permissions: {
+        hooks: {
+          futureHook: true,
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
   test("plugin-specific invoke permission is rejected", () => {
     const result = PluginManifest.safeParse({
       name: "invoke-permission-plugin",

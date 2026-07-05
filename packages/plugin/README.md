@@ -166,6 +166,69 @@ const plan = await context.task?.run({
 
 When `output.mode` is `structured`, Cortex validates the child task result against the schema and may run repair turns before completing. Cortex still stores its normal task trajectory summary in `task.result`; the structured value is returned to the plugin call site as `plan.outputResult.data`.
 
+## Hooks
+
+Plugins return hooks from `init()`. Hook permissions are declared in `plugin.json` and Synergy only invokes permissioned hooks.
+
+### Event hook
+
+`event(input)` observes runtime bus events without mutating them. Declare event access under `permissions.hooks`:
+
+```jsonc
+{
+  "permissions": {
+    "hooks": {
+      "events": "selected",
+      "eventNames": ["session.*", "message.updated"],
+    },
+  },
+}
+```
+
+`events` is `"none"`, `"selected"`, or `"all"`. In selected mode, `eventNames` supports exact names, `*` for all events, and suffix wildcards ending in `.*` such as `session.*`.
+
+```ts
+event(input) {
+  console.log(input.event.type, input.event.properties)
+}
+```
+
+### Config hook
+
+`config(input, output)` observes a redacted runtime config snapshot at startup, plugin reload, and config reload. Declare `permissions.hooks.config: true`; this permission is separate from `permissions.data.config`.
+
+```jsonc
+{
+  "permissions": {
+    "hooks": {
+      "config": true,
+    },
+  },
+}
+```
+
+```ts
+config(input, output) {
+  console.log(input.source, input.changedFields)
+  console.log(output.config.model)
+}
+```
+
+`input.source` is `"startup"`, `"plugin_reload"`, or `"reload"`. Secret fields in `output.config` are replaced with Synergy's redacted sentinel before dispatch.
+
+### System prompt transform
+
+`experimental.chat.system.transform(input, output)` can rewrite the assembled system prompt when `permissions.hooks.promptTransform` is `true`. Synergy calls this hook in two phases: `input.phase === "budget"` before token budgeting and `input.phase === "final"` before the provider call. The input includes `sessionID`, `agent`, `model`, `messageID`, and `small` for final calls.
+
+```ts
+"experimental.chat.system.transform"(input, output) {
+  if (input.phase !== "final") return
+  output.system.push("Additional final-call instruction.")
+}
+```
+
+If a transform empties `output.system`, Synergy restores the original system prompt.
+
 ## Plugin Input
 
 `init(input)` receives runtime services scoped to the active Synergy Scope:
