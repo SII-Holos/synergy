@@ -202,7 +202,8 @@ export namespace SessionInvoke {
         if (abort.aborted) break
         session = await Session.get(sessionID)
         scopeID = (session.scope as Scope).id
-        let msgs = await effectiveCompactedMessages(sessionID)
+        const allMessages = await Session.messages({ sessionID })
+        let msgs = await effectiveCompactedMessages(allMessages)
 
         // Find R: the latest root user message. R is the anchor for the entire
         // loop: rootID, model, agent, system, and compaction anchor all derive
@@ -264,6 +265,7 @@ export namespace SessionInvoke {
           sessionID,
           step,
           messages: msgs,
+          compactionHistory: SessionCompaction.completedCompactionHistory(allMessages, R.id),
           lastUser: R,
           lastUserParts: RParts!,
           lastFinished,
@@ -896,7 +898,9 @@ export namespace SessionInvoke {
   }
 
   function compactionPending(jobCtx: LoopJob.Context): boolean {
-    return !!SessionCompaction.pendingCompactionRequest(jobCtx.messages, jobCtx.lastUser.id, jobCtx.lastUserParts)
+    const history =
+      jobCtx.compactionHistory ?? SessionCompaction.completedCompactionHistory(jobCtx.messages, jobCtx.lastUser.id)
+    return !!SessionCompaction.pendingCompactionRequestFromHistory(history, jobCtx.lastUserParts)
   }
 
   // --- Helpers ---
@@ -1535,7 +1539,8 @@ export namespace SessionInvoke {
       if (!session) continue
       if (session.agenda) continue
 
-      const messages = await effectiveCompactedMessages(sessionID)
+      const allMessages = await Session.messages({ sessionID })
+      const messages = await effectiveCompactedMessages(allMessages)
       const pendingReply = SessionProgress.pendingReply(messages)
 
       if (session.pendingReply !== pendingReply) {
@@ -1562,8 +1567,7 @@ export namespace SessionInvoke {
     }
   }
 
-  async function effectiveCompactedMessages(sessionID: string) {
-    const messages = await Session.messages({ sessionID })
+  async function effectiveCompactedMessages(messages: MessageV2.WithParts[]) {
     return MessageV2.filterCompacted(newestFirst(messages))
   }
 

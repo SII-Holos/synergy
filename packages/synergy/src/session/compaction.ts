@@ -22,6 +22,10 @@ import type { ModelMessage } from "ai"
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
 
+  export interface CompactionCompletion {
+    requestPartID?: string
+  }
+
   export const Event = {
     Compacted: BusEvent.define(
       "session.compacted",
@@ -36,13 +40,20 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
-  function completedSummaries(messages: MessageV2.WithParts[], parentID: string): MessageV2.Assistant[] {
+  export function completedCompactionHistory(
+    messages: MessageV2.WithParts[],
+    parentID: string,
+  ): CompactionCompletion[] {
     return messages
       .map((m) => m.info)
       .filter(
         (info): info is MessageV2.Assistant =>
           info.role === "assistant" && info.summary === true && !!info.finish && info.parentID === parentID,
       )
+      .map((summary) => {
+        const requestPartID = summaryRequestID(summary)
+        return requestPartID ? { requestPartID } : {}
+      })
   }
 
   function summaryRequestID(summary: MessageV2.Assistant): string | undefined {
@@ -55,13 +66,20 @@ export namespace SessionCompaction {
     parentID: string,
     parts: MessageV2.Part[],
   ): MessageV2.CompactionPart | undefined {
+    return pendingCompactionRequestFromHistory(completedCompactionHistory(messages, parentID), parts)
+  }
+
+  export function pendingCompactionRequestFromHistory(
+    history: CompactionCompletion[],
+    parts: MessageV2.Part[],
+  ): MessageV2.CompactionPart | undefined {
     const requests = parts.filter((part): part is MessageV2.CompactionPart => part.type === "compaction")
     if (requests.length === 0) return undefined
 
     const requestIDs = new Set(requests.map((part) => part.id))
     const fulfilled = new Set<string>()
-    for (const summary of completedSummaries(messages, parentID)) {
-      const requestID = summaryRequestID(summary)
+    for (const completion of history) {
+      const requestID = completion.requestPartID
       if (requestID) {
         if (requestIDs.has(requestID)) fulfilled.add(requestID)
         continue
@@ -576,7 +594,8 @@ export namespace SessionCompaction {
       return []
     },
     async execute(ctx) {
-      const part = pendingCompactionRequest(ctx.messages, ctx.lastUser.id, ctx.lastUserParts)
+      const history = ctx.compactionHistory ?? completedCompactionHistory(ctx.messages, ctx.lastUser.id)
+      const part = pendingCompactionRequestFromHistory(history, ctx.lastUserParts)
       if (!part) return "pass"
       const result = await process({
         messages: ctx.messages,

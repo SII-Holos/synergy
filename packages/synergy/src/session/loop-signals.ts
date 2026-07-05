@@ -25,7 +25,8 @@ function lastAssistant(ctx: LoopJob.Context): AssistantMsg | undefined {
 LoopJob.defineSignal({
   type: "compact",
   detect(ctx) {
-    return !!SessionCompaction.pendingCompactionRequest(ctx.messages, ctx.lastUser.id, ctx.lastUserParts)
+    const history = ctx.compactionHistory ?? SessionCompaction.completedCompactionHistory(ctx.messages, ctx.lastUser.id)
+    return !!SessionCompaction.pendingCompactionRequestFromHistory(history, ctx.lastUserParts)
   },
 })
 

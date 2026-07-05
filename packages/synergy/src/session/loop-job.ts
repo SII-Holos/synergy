@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import type { SessionCompaction } from "./compaction"
 import type { Info } from "./types"
 import { Log } from "../util/log"
 
@@ -12,6 +13,7 @@ export namespace LoopJob {
     sessionID: string
     step: number
     messages: MessageV2.WithParts[]
+    compactionHistory?: SessionCompaction.CompactionCompletion[]
     lastUser: MessageV2.User
     lastUserParts: MessageV2.Part[]
     lastFinished?: MessageV2.Assistant

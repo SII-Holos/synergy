@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeAll } from "bun:test"
+import { SessionCompaction } from "../../src/session/compaction"
 import { LoopJob } from "../../src/session/loop-job"
 import { Log } from "../../src/util/log"
 
@@ -267,6 +268,37 @@ describe("loop-signals: compact signal", () => {
         { id: "p2", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true },
       ],
     )
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("compact")
+  })
+
+  test("uses full compaction history when compacted prompt history only keeps the latest summary", async () => {
+    const root = makeUserWrapper()
+    root.parts = [
+      { id: "p1", sessionID: "ses_test", messageID: "usr_test", type: "compaction", auto: true },
+      { id: "p2", sessionID: "ses_test", messageID: "usr_test", type: "compaction", auto: true },
+    ]
+    const firstSummary = makeSummary("usr_test", "p1")
+    const secondSummary = makeSummary("usr_test", "p2")
+    const ctx = makeCtx(3, [root, secondSummary], root.parts)
+    ctx.compactionHistory = SessionCompaction.completedCompactionHistory([firstSummary, secondSummary], root.info.id)
+
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("compact")
+  })
+
+  test("still detects a genuinely new request after completed compaction history", async () => {
+    const root = makeUserWrapper()
+    root.parts = [
+      { id: "p1", sessionID: "ses_test", messageID: "usr_test", type: "compaction", auto: true },
+      { id: "p2", sessionID: "ses_test", messageID: "usr_test", type: "compaction", auto: true },
+      { id: "p3", sessionID: "ses_test", messageID: "usr_test", type: "compaction", auto: true },
+    ]
+    const firstSummary = makeSummary("usr_test", "p1")
+    const secondSummary = makeSummary("usr_test", "p2")
+    const ctx = makeCtx(3, [root, secondSummary], root.parts)
+    ctx.compactionHistory = SessionCompaction.completedCompactionHistory([firstSummary, secondSummary], root.info.id)
+
     const fired = await LoopJob.detectSignals(ctx)
     expect(fired).toContain("compact")
   })
