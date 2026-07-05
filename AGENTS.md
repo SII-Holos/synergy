@@ -309,6 +309,14 @@ Monolithic config files are handled only by migrations. Do not add runtime load 
 
 Provider auth paths are distinct. The built-in `openai-codex` provider uses ChatGPT/Codex OAuth device-code credentials and the Codex backend; the normal `openai` provider remains the OpenAI Platform API-key path. Do not merge their config, auth storage semantics, or billing language.
 
+### Control profile semantics
+
+`full_access` is the author-at-own-risk profile: the permission system must silently allow every capability, including protected paths, secrets, destructive or hardline shell commands, external writes, identity/channel actions, and plugin/platform operations. It does not suppress non-permission failures such as validation errors, missing files, OS permission errors, failed tests, hooks, or network failures.
+
+`autonomous` is the unattended profile: it must never ask the user. Operations that cannot be automatically allowed must be automatically denied with a clear policy diagnostic. SmartAllow may auto-allow eligible false positives at high confidence, but failed SmartAllow checks deny instead of prompting.
+
+`smartAllow` reduces noise and false positives. In `guarded`, it can auto-allow safe asks before prompting. In `autonomous`, it can auto-allow eligible soft denies at a stricter threshold. It must use metadata or redacted evidence for secret-like files and must never send raw secret values to a model.
+
 ### Config-aware work
 
 If you change:

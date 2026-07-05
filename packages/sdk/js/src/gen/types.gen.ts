@@ -2689,7 +2689,7 @@ export type Config = {
   layout?: LayoutConfig
   permission?: PermissionConfig
   /**
-   * Use the Smart allow internal agent to auto-allow safe asks and soft denies
+   * Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow
    */
   smartAllow?: boolean
   tools?: {

@@ -76,11 +76,6 @@ export class ProcessRegistry {
     })
     const timeoutTimer = this.#scheduleBashTimeout(launched.record, request.timeoutSeconds)
 
-    if (request.background) {
-      launched.record.backgrounded = true
-      return this.#backgroundResult(launched.record, envID, request.description, "Background")
-    }
-
     const backgroundAfterSeconds = request.backgroundAfterSeconds ?? DEFAULT_BASH_BACKGROUND_AFTER_SECONDS
     if (backgroundAfterSeconds > 0) {
       const autoBackground = await Promise.race([
@@ -89,13 +84,7 @@ export class ProcessRegistry {
       ])
       if (autoBackground) {
         launched.record.backgrounded = true
-        return this.#backgroundResult(
-          launched.record,
-          envID,
-          request.description,
-          "Auto-Background",
-          backgroundAfterSeconds,
-        )
+        return this.#backgroundResult(launched.record, envID, request.description, backgroundAfterSeconds)
       }
     }
 
@@ -554,15 +543,11 @@ export class ProcessRegistry {
     record: ProcessRecord,
     envID: string,
     description: string,
-    mode: "Background" | "Auto-Background",
-    backgroundAfterSeconds?: number,
+    backgroundAfterSeconds: number,
   ): MetaProtocolBash.Result {
-    const prefix =
-      mode === "Auto-Background"
-        ? `Command auto-backgrounded after ${backgroundAfterSeconds}s.`
-        : "Command started in background."
+    const prefix = `Command auto-backgrounded after ${backgroundAfterSeconds}s.`
     return {
-      title: `[${mode}] ${description}`,
+      title: `[Auto-Background] ${description}`,
       metadata: {
         output: record.tail,
         description,

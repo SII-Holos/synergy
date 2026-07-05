@@ -320,7 +320,7 @@ Synergy also supports project-scoped extension directories under:
 .synergy/
 ```
 
-That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
+That scoped directory is where project-specific agents, commands, plugins, skills, generated outputs, and related assets may live. Project `.synergy/**` and non-secret global `~/.synergy/**` areas are normal Synergy-managed configuration/output space; auth roots such as `~/.synergy/data/auth/**` remain protected.
 
 ### Provider authentication
 
@@ -427,7 +427,7 @@ What they do:
 
 After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
 
-Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
+Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the active profile explicitly allows the operation; `full_access` is the author-at-own-risk profile that allows all permission-system capabilities without prompts.
 
 Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
@@ -449,17 +449,17 @@ Explicit configuration is always honored. For example, a top-level `controlProfi
 
 Blueprint runs started from the Notes side panel use the current session's control profile when running in the current session. New-session and worktree Blueprint runs create an execution session with at least `autonomous`; a top-level `full_access` profile remains `full_access`.
 
-`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. Autonomous sessions deny failed Smart allow checks.
+`smartAllow` enables a hidden internal agent that can auto-allow high-confidence safe asks in `guarded` and eligible false-positive denies in `autonomous`. It receives only metadata or redacted file evidence for secret-like paths, never raw secret values. It does not run for `full_access`, and failed autonomous SmartAllow checks deny instead of prompting.
 
 Risk levels follow the operation's effect. Ordinary reads, including non-protected external reads, are low risk. Revertible local edits, non-destructive shell commands, and network calls are medium risk. Protected paths, external writes, secrets, destructive shell commands, identity-affecting actions, and outbound communication are high risk.
 
 Built-in profiles:
 
-| Config value  | UI label    | Behavior                                                                                                                                                                                           |
-| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Guarded     | Protected mode for manual sessions. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
-| `autonomous`  | Autonomous  | Automation-oriented profile. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
-| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing. Explicit `full_access` remains valid for channel and automation sessions.                                               |
+| Config value  | UI label    | Behavior                                                                                                                                                                                                                                                       |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Guarded     | Manual-supervision profile. Auto-allows ordinary reads, workspace-local edits, ordinary network lookups, and non-secret `.synergy/**` operations; asks before operations that need human judgment when SmartAllow cannot safely auto-allow them.               |
+| `autonomous`  | Autonomous  | Unattended automation profile. Never prompts the user: ordinary development work is allowed, eligible false-positive denies may be auto-allowed by SmartAllow at high confidence, and anything that cannot be allowed is denied with a policy diagnostic.      |
+| `full_access` | Full Access | Author-at-own-risk profile. The permission system silently allows every capability, including protected paths, secrets, destructive or hardline shell commands, identity/channel actions, and external writes; non-permission failures still surface normally. |
 
 ### Sandbox
 

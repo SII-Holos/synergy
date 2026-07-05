@@ -7,10 +7,9 @@ export namespace MetaProtocolBash {
     command: z.string(),
     description: z.string(),
     workdir: z.string().optional(),
-    background: z.boolean().optional(),
     backgroundAfterSeconds: z
       .number()
-      .refine((value) => Number.isFinite(value) && value >= 0)
+      .refine((value) => Number.isFinite(value) && value > 0)
       .optional(),
     timeoutSeconds: z
       .number()

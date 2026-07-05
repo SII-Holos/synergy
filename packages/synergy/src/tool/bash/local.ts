@@ -411,7 +411,7 @@ export const LocalBashBackend: BashBackend = {
       cleanupAllTimers()
       if (metadataDirty) flushMetadata()
       const exitSignal = timedOut ? "SIGTERM" : signal
-      if (params.background || regProc.backgrounded) {
+      if (regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, exitSignal)
       } else {
         ProcessRegistry.remove(regProc.id)
@@ -427,13 +427,14 @@ export const LocalBashBackend: BashBackend = {
       resolveChildFinished("exited")
     })
 
+    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+
     await trace("process.spawn", {
       processId: regProc.id,
       pid: child.pid,
       command: params.command,
       sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      background: params.background === true,
-      backgroundAfterSeconds: params.backgroundAfterSeconds,
+      backgroundAfterSeconds,
       timeoutSeconds: params.timeoutSeconds,
     })
     if (childError) throw childError
@@ -459,32 +460,6 @@ export const LocalBashBackend: BashBackend = {
         void kill()
         resolveTimeout?.()
       }, params.timeoutSeconds * 1000)
-    }
-
-    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
-
-    if (params.background) {
-      ProcessRegistry.markBackgrounded(regProc)
-      cleanupForegroundWait()
-      return {
-        title: `[Background] ${params.description}`,
-        metadata: {
-          output: "",
-          description: params.description,
-          processId: regProc.id,
-          background: true,
-          backend: "local",
-        },
-        output: warnOutput(
-          `Command started in background.\n\n` +
-            `Process ID: ${regProc.id}\n` +
-            `Command: ${params.command}\n` +
-            `Status: running\n\n` +
-            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
-        ),
-      }
     }
 
     if (ctx.abort.aborted) {

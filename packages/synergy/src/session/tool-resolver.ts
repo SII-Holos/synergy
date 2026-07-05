@@ -538,6 +538,15 @@ export namespace ToolResolver {
     // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
 
+    if (profile.profileId === "full_access" && decision.action !== "allow") {
+      await setApprovalMetadata(
+        ctx,
+        ApprovalPolicy.metadata(approval, { ...decision, action: "allow" }, "auto_allowed"),
+      )
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
@@ -591,6 +600,7 @@ export namespace ToolResolver {
     if (smartAllowEligible) {
       const cfg = await Config.current()
       if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
+        const redactedEvidence = SmartAllow.buildRedactedEvidence(args, envelope.capabilities)
         const classification = await SmartAllow.classify({
           sessionID: ctx.sessionID,
           tool: toolName,
@@ -598,8 +608,9 @@ export namespace ToolResolver {
           capabilities: envelope.capabilities.map((c) => c.class),
           workspace: ScopeContext.current.directory,
           policyAction: decision.action,
+          redactedEvidence,
         })
-        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID)) {
+        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID, decision.action)) {
           await setApprovalMetadata(ctx, {
             ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
             source: "smart_allow",
@@ -620,6 +631,13 @@ export namespace ToolResolver {
       // should be visible both in the error message AND the frontend audit tooltip.
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+    }
+
+    if (profile.profileId === "autonomous" && decision.action === "ask") {
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, { ...decision, action: "deny" }, "auto_denied")
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
@@ -779,6 +797,24 @@ export namespace ToolResolver {
               profile.summary?.profileId ?? "unknown",
             )
           }
+          if (profile.summary?.profileId === "full_access") {
+            await setApprovalMetadata(
+              ctx,
+              ApprovalPolicy.metadata(profile.approval, { ...decision, action: "allow" }, "auto_allowed"),
+            )
+            return
+          }
+
+          if (profile.summary?.profileId === "autonomous" && decision.action === "ask") {
+            const approval = ApprovalPolicy.metadata(profile.approval, { ...decision, action: "deny" }, "auto_denied")
+            await setApprovalMetadata(ctx, approval)
+            throw new EnforcementError.PolicyDenied(
+              decision.reason,
+              decision.capabilities,
+              profile.summary?.profileId ?? "unknown",
+            )
+          }
+
           if (decision.action === "allow") {
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
             return
@@ -953,7 +989,22 @@ export namespace ToolResolver {
       description: diagnostic.message,
       inputSchema: jsonSchema(schema),
       async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        log.info("tool.execute.callback.start", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+        })
         const slot = input.processor.beginExecution(options.toolCallId)
+        log.info("tool.execute.callback.slot", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+          slotStatus: slot.status,
+        })
         const error = new ToolDiagnosticError({
           ...diagnostic,
           metadata: {
@@ -993,7 +1044,22 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema as any),
             async execute(args, options) {
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
+              })
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
+                slotStatus: slot.status,
+              })
               try {
                 const result = await item.execute(args as Record<string, unknown>)
                 slot.complete(args, {
@@ -1040,9 +1106,24 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+              })
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+                slotStatus: slot.status,
+              })
 
               try {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
@@ -1064,6 +1145,7 @@ export namespace ToolResolver {
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
                   readRoots: [synergyRoot],
+                  synergyRoot,
                 })
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                   profileId,
@@ -1189,6 +1271,14 @@ export namespace ToolResolver {
                     : (result.metadata ?? {}),
                   attachments: result.attachments,
                 })
+                log.info("tool.execute.callback.completed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
+                })
                 await toolTrace.end({
                   outputChars: result.output.length,
                   attachmentCount: result.attachments?.length ?? 0,
@@ -1209,6 +1299,14 @@ export namespace ToolResolver {
                   error,
                 })
                 slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                log.warn("tool.execute.callback.failed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
+                })
                 await toolTrace?.error(error)
                 throw error
               } finally {
@@ -1253,9 +1351,24 @@ export namespace ToolResolver {
             return {
               ...item,
               execute: async (args, opts) => {
+                log.info("tool.execute.callback.start", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                })
                 const ctx = context(args, opts)
                 let toolTrace: ToolTrace | undefined
                 const slot = runtimeInput.processor.beginExecution(opts.toolCallId)
+                log.info("tool.execute.callback.slot", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                  slotStatus: slot.status,
+                })
 
                 try {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
@@ -1276,6 +1389,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    synergyRoot: Global.Path.root,
                   })
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                     profileId,
@@ -1384,6 +1498,14 @@ export namespace ToolResolver {
                       : output.metadata,
                     attachments: output.attachments,
                   })
+                  log.info("tool.execute.callback.completed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
+                  })
 
                   await toolTrace.end({
                     outputChars: output.output.length,
@@ -1406,6 +1528,14 @@ export namespace ToolResolver {
                     error,
                   })
                   slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                  log.warn("tool.execute.callback.failed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
+                  })
                   await toolTrace?.error(error)
                   throw error
                 } finally {
