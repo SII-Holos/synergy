@@ -14,21 +14,17 @@ const ctx = {
 describe("tool.connect", () => {
   test("rejects local aliases with a semantic error", async () => {
     const tool = await ConnectTool.init()
-    await expect(tool.execute({ action: "status", envID: ":local" }, ctx)).rejects.toThrow(
-      'connect cannot use envID ":local" because it resolves to the local machine.',
-    )
+    await expect(tool.execute({ action: "status", linkID: ":local" }, ctx)).rejects.toThrow("Invalid linkID")
   })
 
-  test("rejects missing envID with local guidance", async () => {
+  test("rejects missing linkID for lifecycle actions", async () => {
     const tool = await ConnectTool.init()
-    await expect(tool.execute({ action: "open", targetAgentID: "agent_test" }, ctx)).rejects.toThrow(
-      "connect requires a real remote envID",
-    )
+    await expect(tool.execute({ action: "open", targetAgentID: "agent_test" }, ctx)).rejects.toThrow("Missing linkID")
   })
 
   test("rejects missing targetAgentID with semantic guidance", async () => {
     const tool = await ConnectTool.init()
-    await expect(tool.execute({ action: "open", envID: "env_test" }, ctx)).rejects.toThrow(
+    await expect(tool.execute({ action: "open", linkID: "link_test" }, ctx)).rejects.toThrow(
       "connect open requires targetAgentID",
     )
   })

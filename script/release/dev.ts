@@ -10,7 +10,7 @@ import { bunInstall } from "./nodes/bun-install"
 import { buildApp } from "./nodes/build-app"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildMetaProtocol } from "./nodes/build-meta-protocol"
+import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
@@ -18,13 +18,13 @@ import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
+import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
 import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
-// meta-synergy npm publish removed — package too large for npm registry
-// import { publishMetaSynergyCandidate } from "./nodes/publish-meta-synergy-candidate"
+// synergy-link npm publish removed — package too large for npm registry
+// import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -48,7 +48,7 @@ try {
   await rewriteVersions(version)
   await configureNpmAuth()
   await bunInstall()
-  await Promise.all([generateSchema(), generateSdk(), buildMetaProtocol(), buildUtil()])
+  await Promise.all([generateSchema(), generateSdk(), buildSynergyLinkProtocol(), buildUtil()])
   await buildPlugin()
   await buildPluginKit()
   await buildApp()
@@ -56,13 +56,13 @@ try {
   await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
   await publishSdkCandidate(version, channel)
-  await publishMetaProtocolCandidate(version, channel)
+  await publishSynergyLinkProtocolCandidate(version, channel)
   await publishUtilCandidate(version, channel)
   await publishPluginCandidate(version, channel)
   await publishPluginKitCandidate(version, channel)
   const synergy = await publishSynergyCandidate(version, channel)
-  // meta-synergy npm publish removed — package too large for npm registry
-  // await publishMetaSynergyCandidate(version, channel)
+  // synergy-link npm publish removed — package too large for npm registry
+  // await publishSynergyLinkCandidate(version, channel)
   state.registryPackages.push(...synergy.platformPackages)
   console.log("dev release", JSON.stringify(summarizeState(state), null, 2))
 } finally {

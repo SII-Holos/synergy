@@ -441,8 +441,8 @@ Releases are triggered through GitHub Actions. Keep versioning and release docs 
 
 The release workflow has two targets:
 
-- `product` for the full Synergy release, including app, desktop installers, schema, binaries, npm wrapper, platform packages, SDK, shared util package, plugin SDK, plugin kit, and meta-protocol.
-- `packages` for package-only npm releases such as `plugin-kit`, `plugin`, `util`, `sdk`, and `meta-protocol`; this path does not build app/binaries or create product GitHub release assets.
+- `product` for the full Synergy release, including app, desktop installers, schema, binaries, npm wrapper, platform packages, SDK, shared util package, plugin SDK, plugin kit, and synergy-link-protocol.
+- `packages` for package-only npm releases such as `plugin-kit`, `plugin`, `util`, `sdk`, and `synergy-link-protocol`; this path does not build app/binaries or create product GitHub release assets.
 
 If you change release behavior, update the internal documentation in the same task.
 

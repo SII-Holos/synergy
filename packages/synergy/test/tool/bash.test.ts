@@ -91,21 +91,22 @@ describe("tool.bash", () => {
     })
   })
 
-  test("rejects placeholder env IDs with semantic guidance", async () => {
+  test("runs locally with warning for placeholder link IDs", async () => {
     await ScopeContext.provide({
       scope: (await Scope.fromDirectory(projectRoot)).scope,
       fn: async () => {
         const bash = await BashTool.init()
-        await expect(
-          bash.execute(
-            {
-              envID: "undefined",
-              command: "echo 'bad env'",
-              description: "Echo bad env",
-            },
-            ctx,
-          ),
-        ).rejects.toThrow("do NOT include the envID parameter at all")
+        const result = await bash.execute(
+          {
+            linkID: "undefined",
+            command: "echo 'bad link'",
+            description: "Echo bad link",
+          },
+          ctx,
+        )
+        expect(result.output).toContain("Synergy Link warning")
+        expect(result.output).toContain("bad link")
+        expect(result.metadata.warnings?.[0]?.code).toBe("synergy_link.invalid_link_id")
       },
     })
   })

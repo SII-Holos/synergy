@@ -134,7 +134,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   network: {
     icon: "cable",
     label: "Connect",
-    subtitleKeys: ["envID"],
+    subtitleKeys: ["linkID"],
     argsKeys: ["action"],
   },
   analyze: {
@@ -282,7 +282,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   worktree_leave: "config",
   worktree_list: "config",
   connect: "network",
-  remote_session: "network",
   inspire_status: "config",
   inspire_config: "config",
   inspire_login: "config",

@@ -21,7 +21,7 @@ Examples:
     ./script/release-trigger packages patch plugin-kit,plugin next
 
 What gets released:
-    1. npm packages (sdk, util, meta-protocol, plugin, plugin-kit, synergy)
+    1. npm packages (sdk, util, synergy-link-protocol, plugin, plugin-kit, synergy)
     2. CLI binaries (uploaded to GitHub Release draft, then finalized)
 
 Local dev publishes now use:
@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
             BUMP_TYPE="$1"
             shift
             ;;
-        plugin-kit|plugin|util|sdk|meta|meta-protocol|*,*)
+        plugin-kit|plugin|util|sdk|meta|synergy-link-protocol|*,*)
             PACKAGES="$1"
             shift
             ;;

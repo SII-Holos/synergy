@@ -29,10 +29,10 @@ Usage notes:
   - The `command` parameter is required.
   - The `description` parameter is required — write a clear, concise description (5-10 words).
   - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output — just run the command directly.
-  - `envID` is optional. Omit it to run in the current local environment; provide it to target a remote execution backend.
-  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
-  - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
-  - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
+  - `linkID` is optional. Omit it to run in the current local environment; provide it to target a Synergy Link target.
+  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
+  - When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote bash does not implicitly create sessions.
+  - Remote linkIDs always start with `link_` (e.g. `"link_abc123"`). Any other value will be rejected.
 
   - Use `yieldSeconds` for commands that may run longer than expected:
     - Set `yieldSeconds` to auto-background if the command exceeds that duration. Default behavior: the tool waits for completion with no hard time limit.

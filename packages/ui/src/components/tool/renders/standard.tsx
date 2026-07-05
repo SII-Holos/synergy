@@ -1549,7 +1549,7 @@ ToolRegistry.register({
         trigger={{
           icon: "cable",
           title: "Connect",
-          subtitle: props.input.envID || "",
+          subtitle: props.input.linkID || "",
           tags: (() => {
             const l = statusLabel() || actionLabel()
             return l ? [{ label: l }] : undefined

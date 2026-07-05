@@ -109,35 +109,6 @@
         "typescript": "catalog:",
       },
     },
-    "packages/meta-protocol": {
-      "name": "@ericsanchezok/meta-protocol",
-      "version": "1.1.26",
-      "dependencies": {
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@tsconfig/node22": "catalog:",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/meta-synergy": {
-      "name": "@ericsanchezok/meta-synergy",
-      "version": "1.1.26",
-      "bin": {
-        "meta-synergy": "./src/cli.ts",
-      },
-      "dependencies": {
-        "@ericsanchezok/meta-protocol": "workspace:*",
-        "jsonc-parser": "3.3.1",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@tsconfig/node22": "catalog:",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
       "version": "1.1.26",
@@ -228,7 +199,7 @@
         "@ai-sdk/vercel": "1.0.31",
         "@ai-sdk/xai": "2.0.42",
         "@clack/prompts": "1.0.0-alpha.1",
-        "@ericsanchezok/meta-protocol": "workspace:*",
+        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-script": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
@@ -308,6 +279,35 @@
         "@types/turndown": "5.0.5",
         "@types/yargs": "17.0.33",
         "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/synergy-link": {
+      "name": "@ericsanchezok/synergy-link",
+      "version": "1.1.26",
+      "bin": {
+        "synergy-link": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@ericsanchezok/synergy-link-protocol": "workspace:*",
+        "jsonc-parser": "3.3.1",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/synergy-link-protocol": {
+      "name": "@ericsanchezok/synergy-link-protocol",
+      "version": "2.0.0",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -570,13 +570,13 @@
 
     "@emnapi/runtime": ["@emnapi/runtime@1.9.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-VYi5+ZVLhpgK4hQ0TAjiQiZ6ol0oe4mBx7mVv7IflsiEp0OWoVsp/+f9Vc1hOhE0TtkORVrI1GvzyreqpgWtkA=="],
 
-    "@ericsanchezok/meta-protocol": ["@ericsanchezok/meta-protocol@workspace:packages/meta-protocol"],
-
-    "@ericsanchezok/meta-synergy": ["@ericsanchezok/meta-synergy@workspace:packages/meta-synergy"],
-
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:packages/app"],
 
     "@ericsanchezok/synergy-desktop": ["@ericsanchezok/synergy-desktop@workspace:packages/desktop"],
+
+    "@ericsanchezok/synergy-link": ["@ericsanchezok/synergy-link@workspace:packages/synergy-link"],
+
+    "@ericsanchezok/synergy-link-protocol": ["@ericsanchezok/synergy-link-protocol@workspace:packages/synergy-link-protocol"],
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 

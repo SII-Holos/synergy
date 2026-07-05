@@ -2247,7 +2247,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "status", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "status", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
@@ -2258,7 +2258,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "open", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "open", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
@@ -2269,7 +2269,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "close", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "close", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)

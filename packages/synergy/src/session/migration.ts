@@ -746,6 +746,85 @@ async function migrateSessionToolDisplayMetadata(progress: (current: number, tot
   log.info("session tool display metadata migration complete", { total: tasks.length, changed: changedCount })
 }
 
+function migrateSynergyLinkToolMetadataValue(value: unknown): { value: unknown; changed: boolean } {
+  if (Array.isArray(value)) {
+    let changed = false
+    const next = value.map((item) => {
+      const migrated = migrateSynergyLinkToolMetadataValue(item)
+      changed ||= migrated.changed
+      return migrated.value
+    })
+    return { value: next, changed }
+  }
+
+  const record = asRecord(value)
+  if (!record) return { value, changed: false }
+
+  let changed = false
+  const next: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(record)) {
+    const migrated = migrateSynergyLinkToolMetadataValue(entry)
+    const nextKey = key === "envID" ? "linkID" : key
+    if (nextKey !== key || migrated.changed) changed = true
+    next[nextKey] = migrated.value
+  }
+  return { value: next, changed }
+}
+
+function migrateSynergyLinkToolMetadataPart(part: Record<string, unknown>): {
+  value: Record<string, unknown>
+  changed: boolean
+} {
+  let next = { ...part }
+  let changed = false
+
+  const metadata = migrateSynergyLinkToolMetadataValue(next.metadata)
+  if (metadata.changed) {
+    next = { ...next, metadata: metadata.value }
+    changed = true
+  }
+
+  const state = asRecord(next.state)
+  if (state) {
+    const stateMetadata = migrateSynergyLinkToolMetadataValue(state.metadata)
+    if (stateMetadata.changed) {
+      next = { ...next, state: { ...state, metadata: stateMetadata.value } }
+      changed = true
+    }
+  }
+
+  return { value: next, changed }
+}
+
+async function migrateSynergyLinkToolMetadata(progress: (current: number, total: number) => void) {
+  const tasks = await collectLegacyToolDisplayPartCandidates()
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changedCount = 0
+  for (const { key, text } of tasks) {
+    let part: any
+    try {
+      part = JSON.parse(text)
+    } catch {
+      part = await Storage.read<any>(key).catch(() => undefined)
+    }
+
+    if (part?.type === "tool") {
+      const migrated = migrateSynergyLinkToolMetadataPart(part)
+      if (migrated.changed) {
+        await Storage.write(key, migrated.value)
+        changedCount++
+      }
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("session Synergy Link tool metadata migration complete", { total: tasks.length, changed: changedCount })
+}
+
 async function migrateBoundedSessionData(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"])
   const sessions: Array<{ scopeID: string; sessionID: string }> = []

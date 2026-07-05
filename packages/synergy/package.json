@@ -72,7 +72,7 @@
     "@ai-sdk/vercel": "1.0.31",
     "@ai-sdk/xai": "2.0.42",
     "@clack/prompts": "1.0.0-alpha.1",
-    "@ericsanchezok/meta-protocol": "workspace:*",
+    "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-script": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
