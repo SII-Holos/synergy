@@ -7,6 +7,7 @@ import { BasicTool } from "./basic-tool"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
+import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
 
 type FileDiff = ToolDiffPreviewFileDiff
 
@@ -304,7 +305,6 @@ export function AnchoredReviseTool(props: ToolProps) {
 export function AnchoredSaveTool(props: ToolProps) {
   const codeComponent = useCodeComponent()
   const filePath = () => pathFromProps(props)
-  const filediff = () => props.metadata?.filediff as FileDiff | undefined
   const content = () => (props.input.content ?? "") as string
   const isOverwrite = () => props.metadata?.exists === true
   const diagnostics = () => diagnosticCount(props.metadata)
@@ -313,7 +313,8 @@ export function AnchoredSaveTool(props: ToolProps) {
     diagnostics() > 0 ? { label: `diagnostics ${diagnostics()}`, tone: "danger" as const } : undefined,
     props.metadata?.previousHasConflicts ? { label: "resolved conflict", tone: "warning" as const } : undefined,
   ]
-  const existingDiff = () => (isOverwrite() ? filediff() : undefined)
+  const saveDiff = () => saveFilePreviewDiff(props)
+  const hasContentInput = () => hasSaveFileContentInput(props)
   return (
     <BasicTool
       {...props}
@@ -329,9 +330,9 @@ export function AnchoredSaveTool(props: ToolProps) {
       <SummaryGrid rows={[{ label: "Mode", value: isOverwrite() ? "Overwrite existing file" : "Create new file" }]} />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
       <Show
-        when={existingDiff()}
+        when={saveDiff()}
         fallback={
-          <Show when={content() || filePath()} fallback={<RawOutput output={props.output} />}>
+          <Show when={hasContentInput()} fallback={<RawOutput output={props.output} />}>
             <div data-component="write-content">
               <Dynamic
                 component={codeComponent}
