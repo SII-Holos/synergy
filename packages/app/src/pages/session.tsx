@@ -235,8 +235,11 @@ function SessionPageContent() {
         partsByMessage={sync.data.part}
         onRewind={async (cutMessageID, restoreFiles) => {
           if (!sessionID) return
+          // Abort if running. After abort, give the runtime a moment to settle
+          // so assertIdle in rollback doesn't reject with BusyError.
           if (status().type !== "idle") {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
+            await new Promise((r) => setTimeout(r, 500))
           }
           const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
           if (restoreFiles && result.data?.id) {

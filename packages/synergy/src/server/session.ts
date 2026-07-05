@@ -18,6 +18,7 @@ import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
 
@@ -1117,8 +1118,13 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
       log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
-      const event = await Session.rollback({ sessionID, ...body })
-      return c.json(event)
+      try {
+        const event = await Session.rollback({ sessionID, ...body })
+        return c.json(event)
+      } catch (error) {
+        if (error instanceof BusyError) return c.json({ message: error.message }, 409)
+        throw error
+      }
     },
   )
   .post(
