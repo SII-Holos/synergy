@@ -5,33 +5,34 @@ import { PerformanceSchema } from "./schema"
 import { PerformanceStore } from "./store"
 
 export namespace PerformanceDashboard {
+  type MetricRow = PerformanceStore.StoredMetric & { labels: Record<string, unknown> }
+
   export async function summary(
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
     const since = Date.now() - windowMs
-    const metrics = PerformanceStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_000 })
+    const rows = PerformanceStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
+    const truncated = rows.length > 50_000
+    const metrics = (truncated ? rows.slice(-50_000) : rows).map((row) => ({
+      ...row,
+      labels: parseLabels(row.labels_json),
+    }))
     const resources = PerformanceStore.latestResource({ scopeID: input.scopeID })
     const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const http = metrics.filter((row) => row.name === "http.request.duration")
     const httpDurations = http.map((row) => row.value)
-    const httpErrors = http.filter(
-      (row) => parseLabels(row.labels_json).status && Number(parseLabels(row.labels_json).status) >= 500,
-    ).length
+    const httpErrors = http.filter((row) => row.labels.status && Number(row.labels.status) >= 500).length
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
-    const library = metrics.filter(
-      (row) =>
-        row.module === "library" && (row.name === "library.query.duration" || row.name.endsWith(".query.duration")),
-    )
+    const library = metrics.filter((row) => row.name === "library.operation.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>
-      last(metrics.filter((row) => row.name === "frontend.web_vital" && parseLabels(row.labels_json).name === name))
-        ?.value
+      last(metrics.filter((row) => row.name === "frontend.web_vital" && row.labels.name === name))?.value
     const criticalIssueCount = issues.filter((issue) => issue.severity === "critical").length
     const score = Math.max(
       0,
@@ -44,6 +45,7 @@ export namespace PerformanceDashboard {
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
+      quality: truncated ? { truncated: true, partial: true } : undefined,
       health: { status, score, openIssueCount: issues.length, criticalIssueCount },
       backend: {
         requestCount: http.length,
@@ -102,22 +104,28 @@ export namespace PerformanceDashboard {
         slowRoutes: rank(http, "path"),
         slowSessions: rank(turns, "session_id"),
         slowTools: rank(tools, "tool"),
-        slowProviders: rank(llm, "provider", "providerID", "model"),
+        slowProviders: rank(llm, "providerID", "provider", "modelID", "model"),
         slowStorage: rank(storage, "operation"),
         slowLibrary: rank(library, "operation"),
-        slowFrontend: rank([...frontendResources, ...frontendLongTasks], "route"),
+        slowFrontend: rank(
+          [...frontendResources, ...frontendLongTasks],
+          "routeName",
+          "pathTemplate",
+          "route",
+          "name",
+          "attribution",
+        ),
       },
       issues,
     })
   }
 
-  function rank(rows: PerformanceStore.StoredMetric[], ...labelKeys: string[]): PerformanceSchema.RankedItem[] {
+  function rank(rows: MetricRow[], ...labelKeys: string[]): PerformanceSchema.RankedItem[] {
     return [...rows]
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
       .map((row, index) => {
-        const labels = parseLabels(row.labels_json)
-        const label = String(firstLabel(labels, labelKeys) ?? row.tool ?? row.session_id ?? row.name)
+        const label = String(firstLabel(row.labels, labelKeys) ?? row.tool ?? row.session_id ?? row.name)
         return {
           id: `${row.metric_id}-${index}`,
           label,
@@ -138,7 +146,7 @@ export namespace PerformanceDashboard {
     }
   }
 
-  function activeSessionCount(rows: PerformanceStore.StoredMetric[]) {
+  function activeSessionCount(rows: MetricRow[]) {
     const active = new Set<string>()
     const recentCutoff = Date.now() - 5 * 60_000
     for (const row of rows) {
