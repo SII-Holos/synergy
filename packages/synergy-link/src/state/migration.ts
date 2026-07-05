@@ -3,6 +3,7 @@ import path from "node:path"
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
 import { SynergyLinkStore, type SynergyLinkAuthState } from "./store"
 import { SynergyLinkHolosAuth } from "../holos/auth"
+import { SynergyLinkLocalService } from "../service/local"
 import type { SynergyLinkMigration } from "../migration/types"
 
 const CUTOVER_ID = "20260705-meta-synergy-to-synergy-link"
@@ -61,6 +62,11 @@ async function migrateLegacyRoot() {
     )
   }
 
+  const oldStatePath = path.join(sourceRoot, "state.json")
+  const rawState = await readFile(oldStatePath, "utf8").catch(() => undefined)
+  const parsedState = rawState ? (JSON.parse(rawState) as Record<string, unknown>) : undefined
+  assertLegacyRuntimeStopped(parsedState, sourceRoot)
+
   await writeFile(lockPath, `${process.pid}\n`)
   const files: string[] = []
   const manifest: MigrationManifest = {
@@ -74,11 +80,8 @@ async function migrateLegacyRoot() {
   await writeManifest(manifestPath, manifest)
 
   try {
-    const oldStatePath = path.join(sourceRoot, "state.json")
-    const rawState = await readFile(oldStatePath, "utf8").catch(() => undefined)
-    if (rawState) {
-      const parsed = JSON.parse(rawState) as Record<string, unknown>
-      const rewritten = SynergyLinkStore.hydrateStateForMigration(rewriteLegacyState(parsed, destinationRoot))
+    if (parsedState) {
+      const rewritten = SynergyLinkStore.hydrateStateForMigration(rewriteLegacyState(parsedState, destinationRoot))
       await writeFile(SynergyLinkStore.statePath(), JSON.stringify(rewritten, null, 2) + "\n")
       files.push("state.json")
     }
@@ -128,6 +131,18 @@ async function hasLegacyPayload(root: string) {
     (await exists(path.join(root, "owner.json"))) ||
     (await exists(path.join(root, "migrations.json"))) ||
     (await exists(path.join(root, "logs", "runtime.log")))
+  )
+}
+
+function assertLegacyRuntimeStopped(input: Record<string, unknown> | undefined, sourceRoot: string) {
+  const service = typeof input?.service === "object" && input.service ? input.service : undefined
+  if (!service || !("pid" in service)) return
+  const pid = Number((service as { pid?: unknown }).pid)
+  if (!Number.isInteger(pid) || pid <= 0) return
+  if (!SynergyLinkLocalService.isPidRunning(pid)) return
+
+  throw new Error(
+    `Cannot migrate legacy MetaSynergy state from ${sourceRoot} while runtime pid ${pid} appears active. Stop old MetaSynergy before running Synergy Link migration.`,
   )
 }
 

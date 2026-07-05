@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
@@ -8,6 +8,12 @@ import { SynergyLinkStore } from "../src/state/store"
 
 async function createTempRoot() {
   return await mkdtemp(path.join(os.tmpdir(), "synergy-link-migration-test-"))
+}
+
+async function fileExists(filePath: string) {
+  return await stat(filePath)
+    .then(() => true)
+    .catch(() => false)
 }
 
 describe("synergy-link migration runner", () => {
@@ -105,5 +111,25 @@ describe("synergy-link migration runner", () => {
     expect(log["old-migration"]).toBe(1)
     expect(typeof log["20260705-meta-synergy-to-synergy-link"]).toBe("number")
     expect(typeof log["20260408-normalize-state"]).toBe("number")
+  })
+
+  test("aborts cutover when legacy runtime pid is still running", async () => {
+    originalSynergyLinkHome = process.env.SYNERGY_LINK_HOME
+    originalMetaSynergyHome = process.env.META_SYNERGY_HOME
+    const root = await createTempRoot()
+    const legacyRoot = await createTempRoot()
+    process.env.SYNERGY_LINK_HOME = root
+    process.env.META_SYNERGY_HOME = legacyRoot
+
+    await writeFile(
+      path.join(legacyRoot, "state.json"),
+      JSON.stringify({
+        envID: "env_active",
+        service: { desiredState: "running", runtimeStatus: "running", pid: process.pid },
+      }),
+    )
+
+    await expect(SynergyLinkMigrationRunner.run()).rejects.toThrow("Stop old MetaSynergy")
+    expect(await fileExists(SynergyLinkStore.statePath())).toBe(false)
   })
 })
