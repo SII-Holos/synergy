@@ -55,6 +55,7 @@ export function buildLineChartModel(input: {
         tension: 0.35,
         borderWidth: 2,
         pointRadius: 0,
+        spanGaps: true,
         pointHoverRadius: 4,
         yAxisID: dataset.axisId,
       })),
