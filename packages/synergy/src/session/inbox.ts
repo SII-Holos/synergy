@@ -158,7 +158,6 @@ export namespace SessionInbox {
 
   export type StoredItem = Item & {
     input?: InvokeInput
-    mail?: SessionManager.SessionMail
   }
 
   async function readSession(sessionID: string): Promise<Info> {
@@ -511,7 +510,6 @@ export namespace SessionInbox {
       time: { created: Date.now() },
       orderKey: itemID,
       messageID,
-      mail: input.mail,
     }
     return publicItem(await writeItem(item))
   }

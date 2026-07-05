@@ -301,7 +301,12 @@ export namespace SessionManager {
 
   // --- Inbox delivery ---
 
-  /** @deprecated Use SessionInbox.deliver instead. Kept for existing callers (session-send, blueprint, etc.). */
+  /**
+   * Deliver a SessionMail into the persistent inbox and wake the target session
+   * when appropriate. Thin adapter over SessionInbox: it converts the mail DTO
+   * to a mode-based inbox item (with source labels) and owns the idle-wake logic
+   * that SessionInbox cannot (runtime management lives here).
+   */
   export async function deliver(input: {
     target: string | SessionEndpoint.Info
     mail: SessionMail
