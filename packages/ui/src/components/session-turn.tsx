@@ -414,7 +414,14 @@ function TimelineDisplay(props: {
   onRewind?: () => void
 }) {
   if (props.item.kind === "guided-user") {
-    return <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
+    // A user's own mid-run message: same right-aligned bubble as a root turn,
+    // sharing the reserved rewind gutter so both flush to the same edge. Steer
+    // messages are intentionally not rewindable, so no button is rendered.
+    return (
+      <div data-slot="session-turn-rewind-wrapper" data-align="right">
+        <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
+      </div>
+    )
   }
   if (props.item.kind === "non-root-user") {
     return (
@@ -768,7 +775,7 @@ export function SessionTurn(
                         <MailboxSourceBadge message={msg() as UserMessage} />
                       </Show>
                       {/* User message */}
-                      <div data-slot="session-turn-rewind-wrapper">
+                      <div data-slot="session-turn-rewind-wrapper" data-align="right">
                         <Show
                           when={specialUserMessageRenderer()}
                           fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}

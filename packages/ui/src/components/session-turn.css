@@ -63,6 +63,29 @@
     width: 100%;
   }
 
+  /* Right-aligned user bubbles (root turns + user steer messages): the bubble
+     aligns to a shared right edge and the hover-revealed rewind button floats in
+     a reserved gutter just outside it — so a steer bubble (no button) and a root
+     bubble (with button) line up identically, and the button never pushes or
+     overlaps the bubble. */
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding-inline-end: 28px;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] [data-slot="session-turn-rewind-button"] {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 4px;
+    padding: 4px;
+
+    & span {
+      display: none;
+    }
+  }
+
   [data-slot="session-turn-content"] {
     flex-grow: 1;
     width: 100%;
