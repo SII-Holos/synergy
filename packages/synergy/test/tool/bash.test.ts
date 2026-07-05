@@ -616,17 +616,33 @@ describe("tool.bash output cap", () => {
         const processId = result.metadata.processId as string
         expect(processId).toBeTruthy()
 
-        // Wait for process to finish
-        const proc = ProcessRegistry.get(processId)
-        if (proc) {
-          // Wait up to 10s for exit
-          for (let i = 0; i < 50; i++) {
-            if (proc.exited) break
-            await Bun.sleep(200)
+        // Wait deterministically for the process to finish. A fast-exiting
+        // background process moves from the running registry to the finished
+        // registry, so poll both rather than holding a single snapshot (which
+        // races the exit and can skip the assertions entirely).
+        let output: string | undefined
+        let tail: string | undefined
+        for (let i = 0; i < 50; i++) {
+          const done = ProcessRegistry.getFinished(processId)
+          if (done) {
+            output = done.output
+            tail = done.tail
+            break
           }
-          expect(proc.output.length).toBeLessThanOrEqual(200_000)
-          expect(proc.tail.length).toBeLessThanOrEqual(2_000)
+          const running = ProcessRegistry.get(processId)
+          if (running?.exited) {
+            output = running.output
+            tail = running.tail
+            break
+          }
+          await Bun.sleep(200)
         }
+
+        // The process wrote 300K chars, so once it completes the registry must
+        // have capped it to exactly the 200K limit.
+        expect(output).toBeDefined()
+        expect(output!.length).toBe(200_000)
+        expect(tail!.length).toBeLessThanOrEqual(2_000)
 
         // Clean up
         ProcessRegistry.remove(processId)
