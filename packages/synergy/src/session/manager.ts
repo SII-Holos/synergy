@@ -55,6 +55,7 @@ export namespace SessionManager {
       onComplete(result: MessageV2.WithParts): void
       onCancel(): void
     }[]
+    /** @deprecated Use SessionInbox.deliver directly. Kept for existing callers. */
     mailbox: SessionMail[]
     lastActiveAt: number
   }
@@ -320,6 +321,7 @@ export namespace SessionManager {
     }
   }
 
+  /** @deprecated Use SessionInbox.deliver instead. Kept for existing callers (session-send, blueprint, etc.). */
   export async function deliver(input: {
     target: string | SessionEndpoint.Info
     mail: SessionMail

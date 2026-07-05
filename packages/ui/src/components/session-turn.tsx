@@ -163,8 +163,11 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
+/**
+ * @deprecated Use isRoot/rootID/visible fields instead.
+ * Kept for backward compat with old sessions that lack rootID.
+ */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "metadata">): boolean {
-  // Use new isRoot/visible fields when available, fall back to old metadata
   const msg = message as UserMessage
   if (msg.isRoot !== undefined) return msg.isRoot === false && msg.visible !== false
   const metadata = message.metadata
