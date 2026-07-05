@@ -307,24 +307,11 @@ function SessionPageContent() {
   const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
   const lastRenderableUserMessage = lastRoot
-  const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
-  // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
-  createEffect(
-    on(
-      () =>
-        [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, lastRoot()?.variant, selectableAgentNames()] as const,
-      () => {
-        const msg = lastRoot()
-        if (!msg) return
-        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
-        local.agent.set(msg.agent)
-        if (msg.model) {
-          local.model.set(msg.model)
-          local.model.variant.set(msg.variant, msg.model)
-        }
-      },
-    ),
-  )
+  // Composer agent/model inheritance is handled inside local.model/local.agent as
+  // a read-only "sessionDefault" derivation (server modelOverride, else the last
+  // root message). The old effect that wrote lastRoot's agent/model back into the
+  // local selector store was removed: it let a late message load silently
+  // overwrite the user's explicit in-composer choice (issue #318).
 
   const renderedUserMessages = createMemo(() => {
     const msgs = visibleRoots()

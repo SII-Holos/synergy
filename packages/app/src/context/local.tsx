@@ -16,6 +16,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { createModelVariantSession } from "./model-variant"
+import * as ComposerIntent from "./composer-intent"
 
 export type LocalFile = WorkspaceFileNode &
   Partial<{
@@ -82,44 +83,61 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
+    // Composer intent is scoped per session visit; a not-yet-created session
+    // (new-session composer) uses a stable sentinel key so a selection made
+    // before the session exists still applies to the first prompt.
+    const NEW_SESSION_INTENT_KEY = "__new__"
+    const intentKey = () => params.id ?? NEW_SESSION_INTENT_KEY
+
     const agent = (() => {
       const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+      // draft: explicit per-session user choice; global: last choice, used for the
+      // new-session composer. History (sessionDefault) is a read-only derivation
+      // and is never written back here — that is the #318 fix.
       const [store, setStore] = createStore<{
-        current?: string
+        global?: string
+        draft: Record<string, string>
       }>({
-        current: list()[0]?.name,
+        global: undefined,
+        draft: {},
+      })
+      const sessionDefault = createMemo(() =>
+        ComposerIntent.sessionDefaultAgent(params.id ? sync.data.message[params.id] : undefined),
+      )
+      const isSelectable = (name: string) => list().some((x) => x.name === name)
+      const currentName = createMemo(() => {
+        const available = list()
+        if (available.length === 0) return undefined
+        return (
+          ComposerIntent.resolveAgent([store.draft[intentKey()], sessionDefault(), store.global], isSelectable) ??
+          available[0].name
+        )
       })
       return {
         list,
         current() {
           const available = list()
           if (available.length === 0) return undefined
-          return available.find((x) => x.name === store.current) ?? available[0]
+          const name = currentName()
+          return available.find((x) => x.name === name) ?? available[0]
         },
         set(name: string | undefined) {
           const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          if (name && available.some((x) => x.name === name)) {
-            setStore("current", name)
-            return
-          }
-          setStore("current", available[0].name)
+          if (available.length === 0) return
+          const target = name && isSelectable(name) ? name : available[0].name
+          setStore("draft", intentKey(), target)
+          setStore("global", target)
         },
         move(direction: 1 | -1) {
           const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          let next = available.findIndex((x) => x.name === store.current) + direction
+          if (available.length === 0) return
+          let next = available.findIndex((x) => x.name === currentName()) + direction
           if (next < 0) next = available.length - 1
           if (next >= available.length) next = 0
           const value = available[next]
           if (!value) return
-          setStore("current", value.name)
+          setStore("draft", intentKey(), value.name)
+          setStore("global", value.name)
           if (value.model)
             model.set({
               providerID: value.model.providerID,
@@ -167,7 +185,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }),
       )
 
-      const [ephemeral, setEphemeral] = createStore<{
+      // Session-scoped draft of the user's explicit model choice (keyed by
+      // session id, or the new-session sentinel). Replaces the old agent-scoped
+      // ephemeral store, which leaked model choices across sessions sharing an
+      // agent and could not distinguish user intent from history (#318).
+      const [draft, setDraft] = createStore<{
         model: Record<string, ModelKey>
       }>({
         model: {},
@@ -319,11 +341,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return undefined
       })
 
+      // Layer 2: the session's default model — server modelOverride, else the
+      // model inherited from the last root user message. Read-only derivation;
+      // never written back, so it cannot clobber the user's draft (#318).
+      const sessionDefaultModel = createMemo((): ModelKey | undefined => {
+        const id = params.id
+        if (!id) return undefined
+        return ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, sync.data.message[id])
+      })
+
       const current = createMemo(() => {
         const a = agent.current()
         if (!a) return undefined
         const key = getFirstValidModel(
-          () => ephemeral.model[a.name],
+          () => draft.model[intentKey()],
+          () => sessionDefaultModel(),
           () => a.model,
           fallbackModel,
         )
@@ -401,11 +433,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
-            const currentAgent = agent.current()
-            if (currentAgent) {
-              const resolved = model ?? fallbackModel()
-              if (resolved) setEphemeral("model", currentAgent.name, resolved)
-            }
+            // Explicit user choice → session-scoped draft (layer 1). Falling back
+            // to fallbackModel() keeps a concrete value when the caller clears.
+            const resolved = model ?? fallbackModel()
+            if (resolved) setDraft("model", intentKey(), resolved)
             if (model) updateQuickSwitcherPreference(model, true)
             if (options?.recent && model) {
               const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
