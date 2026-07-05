@@ -1,9 +1,13 @@
+import { PerformanceCatalog } from "./catalog"
 import { PerformanceConfig } from "./config"
 import { PerformanceError } from "./error"
+import { PerformanceMetrics } from "./metrics"
 import { PerformanceSchema } from "./schema"
 import { PerformanceStore } from "./store"
 
 export namespace PerformanceTimeline {
+  const ROW_LIMIT = 50_000
+
   export function get(query: PerformanceSchema.TimelineQuery): PerformanceSchema.Timeline {
     const now = Date.now()
     const to = parseTime(query.to, now)
@@ -21,37 +25,59 @@ export namespace PerformanceTimeline {
     }
 
     const metrics = normalizeMetrics(query.metric)
+    const storageNames = [...new Set(metrics.flatMap((name) => PerformanceCatalog.storageNamesFor(name)))]
     const rows = PerformanceStore.queryMetrics({
       since: from,
-      names: metrics,
+      until: to,
+      names: storageNames,
       module: query.module,
       scopeID: query.scopeID,
       sessionID: query.sessionID,
       tool: query.tool,
       providerID: query.providerID,
-      limit: 50_000,
+      limit: ROW_LIMIT + 1,
+      newestFirst: true,
     })
+    const truncated = rows.length > ROW_LIMIT
+    const usableRows = truncated ? rows.slice(-ROW_LIMIT) : rows
+    const buckets = bucketStarts(from, to, bucketMs)
+    const bucketed = bucketRows(usableRows, metrics, from, bucketMs, buckets.length)
+
     const series = metrics.map((name) => {
-      const matching = rows.filter((row) => row.name === name)
-      const points: Array<{ time: number; value: number | null }> = []
-      for (let bucket = from; bucket <= to; bucket += bucketMs) {
-        const values = matching
-          .filter((row) => row.time >= bucket && row.time < bucket + bucketMs)
-          .map((row) => row.value)
-        points.push({
-          time: bucket,
-          value: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
-        })
-      }
+      const info = PerformanceCatalog.get(name)
+      if (!info) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400)
+      const stat = query.stat ?? info.defaultStat
+      const bucketsForMetric = bucketed.get(name) ?? new Map<number, Bucket>()
+      const points = buckets.map((time, index) => {
+        const bucket = bucketsForMetric.get(index)
+        return {
+          time,
+          value: bucket ? aggregate(bucket, stat, bucketMs) : null,
+          sampleCount: bucket?.values.length ?? 0,
+        }
+      })
+      const sampleCount = points.reduce((total, point) => total + (point.sampleCount ?? 0), 0)
       return PerformanceSchema.TimelineSeries.parse({
         name,
-        unit: matching[0]?.unit ?? "count",
-        module: matching[0]?.module,
-        source: matching[0]?.source,
+        label: info.label,
+        unit: info.unit,
+        kind: info.kind,
+        stat,
+        sampleCount,
+        module: info.module,
+        source: info.source,
+        quality: truncated ? { truncated: true, partial: true } : undefined,
         points,
       })
     })
-    return PerformanceSchema.Timeline.parse({ generatedAt: new Date().toISOString(), from, to, bucketMs, series })
+    return PerformanceSchema.Timeline.parse({
+      generatedAt: new Date().toISOString(),
+      from,
+      to,
+      bucketMs,
+      quality: truncated ? { truncated: true, partial: true } : undefined,
+      series,
+    })
   }
 
   function parseTime(value: string | undefined, fallback: number) {
@@ -62,9 +88,10 @@ export namespace PerformanceTimeline {
   }
 
   function normalizeMetrics(metric: string | string[] | undefined) {
-    const metrics = Array.isArray(metric) ? metric : metric ? [metric] : defaultMetrics
-    const unique = [...new Set(metrics)]
-    const invalid = unique.filter((name) => !allowedMetrics.has(name))
+    const requested = Array.isArray(metric) ? metric : metric ? [metric] : PerformanceCatalog.defaultMetricNames
+    const resolved = requested.map((name) => PerformanceCatalog.resolveName(name))
+    const unique = [...new Set(resolved)]
+    const invalid = unique.filter((name) => !PerformanceCatalog.get(name))
     if (invalid.length) {
       throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400, {
         invalidMetrics: invalid,
@@ -73,64 +100,61 @@ export namespace PerformanceTimeline {
     return unique
   }
 
-  export const allowedMetricNames = [
-    "http.request.duration",
-    "http.request.size",
-    "http.response.size",
-    "session.turn.duration",
-    "session.turn.active",
-    "session.turn.error",
-    "session.turn.retry",
-    "session.tool.count",
-    "session.llm.count",
-    "llm.call.duration",
-    "llm.stream.start_ms",
-    "llm.first_token.ms",
-    "llm.output.chars",
-    "llm.tokens.input",
-    "llm.tokens.output",
-    "tool.execution.duration",
-    "tool.execution.count",
-    "tool.execution.error",
-    "tool.execution.stalled",
-    "tool.phase.duration",
-    "storage.operation.duration",
-    "storage.operation.count",
-    "storage.operation.error",
-    "storage.read.bytes",
-    "storage.write.bytes",
-    "library.operation.duration",
-    "library.operation.error",
-    "frontend.web_vital",
-    "frontend.resource.duration",
-    "frontend.long_task.duration",
-    "frontend.collector.rejected",
-    "process.memory.rss",
-    "process.memory.heap_used",
-    "process.cpu.utilization",
-    "process.event_loop.lag",
-    "process.active.count",
-    "pty.session.duration",
-    "pty.connection.open",
-    "pty.connection.duration",
-    "pty.write.failure",
-    "server.sse.connection.open",
-    "server.sse.connection.duration",
-    "server.sse.heartbeat",
-    "server.sse.write_dropped",
-    "server.sse.write_failure",
-    "observability.writer.dropped",
-    "observability.writer.queue_depth",
-    "observability.writer.flush.duration",
-    "observability.writer.append_failure",
-  ]
+  function bucketStarts(from: number, to: number, bucketMs: number) {
+    const buckets: number[] = []
+    for (let bucket = from; bucket <= to; bucket += bucketMs) buckets.push(bucket)
+    return buckets
+  }
 
-  const allowedMetrics = new Set<string>(allowedMetricNames)
+  interface Bucket {
+    values: number[]
+    latestTime: number
+    latestValue: number
+  }
 
-  const defaultMetrics = [
-    "http.request.duration",
-    "process.memory.rss",
-    "process.cpu.utilization",
-    "process.event_loop.lag",
-  ]
+  function bucketRows(
+    rows: PerformanceStore.StoredMetric[],
+    metrics: string[],
+    from: number,
+    bucketMs: number,
+    bucketCount: number,
+  ) {
+    const requested = new Set(metrics)
+    const bucketed = new Map<string, Map<number, Bucket>>()
+    for (const row of rows) {
+      const name = PerformanceCatalog.resolveName(row.name)
+      if (!requested.has(name)) continue
+      const bucketIndex = Math.floor((row.time - from) / bucketMs)
+      if (bucketIndex < 0 || bucketIndex >= bucketCount) continue
+      let metricBuckets = bucketed.get(name)
+      if (!metricBuckets) {
+        metricBuckets = new Map()
+        bucketed.set(name, metricBuckets)
+      }
+      let bucket = metricBuckets.get(bucketIndex)
+      if (!bucket) {
+        bucket = { values: [], latestTime: row.time, latestValue: row.value }
+        metricBuckets.set(bucketIndex, bucket)
+      }
+      bucket.values.push(row.value)
+      if (row.time >= bucket.latestTime) {
+        bucket.latestTime = row.time
+        bucket.latestValue = row.value
+      }
+    }
+    return bucketed
+  }
+
+  function aggregate(bucket: Bucket, stat: PerformanceCatalog.Stat, bucketMs: number) {
+    if (stat === "latest") return bucket.latestValue
+    if (stat === "sum") return bucket.values.reduce((sum, value) => sum + value, 0)
+    if (stat === "rate") return bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucketMs / 1000)
+    if (stat === "max") return Math.max(...bucket.values)
+    if (stat === "p50") return PerformanceMetrics.percentile(bucket.values, 50) ?? null
+    if (stat === "p95") return PerformanceMetrics.percentile(bucket.values, 95) ?? null
+    if (stat === "p99") return PerformanceMetrics.percentile(bucket.values, 99) ?? null
+    return bucket.values.reduce((sum, value) => sum + value, 0) / bucket.values.length
+  }
+
+  export const allowedMetricNames = PerformanceCatalog.allMetricNames()
 }

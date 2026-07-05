@@ -8,6 +8,6 @@ export namespace LibraryPerformanceInstrumentation {
   export const endQuerySpan = PerformanceSpans.end
 
   export function recordQueryDuration(durationMs: number, operation: string) {
-    recordMetric("library", "library.query.duration", durationMs, "ms", { labels: { operation } })
+    recordMetric("library", "library.operation.duration", durationMs, "ms", { labels: { operation } })
   }
 }
