@@ -1117,7 +1117,14 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, body, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
+      try {
+        const raw = await c.req.raw.clone().text()
+        log.warn("session.rollback raw body", { raw, sessionID })
+      } catch {}
+      log.info("session.rollback parsed", { sessionID, body })
+      if (body.numTurns == null && body.cutMessageID == null) {
+        return c.json({ message: "rollback requires numTurns or cutMessageID in request body" }, 400)
+      }
       try {
         const event = await Session.rollback({ sessionID, ...body })
         return c.json(event)
