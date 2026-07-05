@@ -137,373 +137,320 @@ describe("SessionProcessor.streamToolErrorOutcome", () => {
   })
 })
 
-describe("SessionProcessor tracked execution settlement", () => {
-  test("settles a completed tool outcome even when the stream omits tool-result", async () => {
-    const originalStream = LLM.stream
-    const originalUpdatePart = Session.updatePart
-    const originalParts = MessageV2.parts
-    const originalUpdateMessage = Session.updateMessage
-    const originalUpdateLastExchange = Session.updateLastExchange
-    const originalConfigCurrent = Config.current
-    const originalPluginTrigger = Plugin.trigger
-    const originalExperienceComplete = ExperienceEncoder.onComplete
-    const parts = new Map<string, MessageV2.Part>()
-    let processor!: SessionProcessor.Info
+type SettlementScenario = {
+  messageID: string
+  stream(processor: SessionProcessor.Info): AsyncGenerator<Record<string, unknown>>
+  config?: Record<string, unknown>
+  updatePart?: (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => Promise<MessageV2.Part>
+}
 
-    try {
-      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
-        const part = "part" in input ? input.part : input
-        parts.set(part.id, part)
-        return part
-      })
-      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
-      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
-      ;(Session.updateLastExchange as any) = mock(async () => {})
-      ;(Config.current as any) = mock(async () => ({ experimental: {} }))
-      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
-      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
-      ;(LLM.stream as any) = mock(async () => ({
-        fullStream: (async function* () {
-          yield { type: "start" }
-          yield {
-            type: "tool-call",
-            toolCallId: "call_done",
-            toolName: "bash",
-            input: { command: "git log --oneline -10" },
-          }
-          processor.trackExecution(
-            "call_done",
-            Promise.resolve({
-              status: "completed",
-              input: { command: "git log --oneline -10" },
-              result: {
-                output: "abc123 first commit\n",
-                title: "Recent commits",
-                metadata: { exit: 0 },
-              },
-            }),
-          )
-        })(),
-      }))
+async function runSettlementScenario(scenario: SettlementScenario) {
+  const originalStream = LLM.stream
+  const originalUpdatePart = Session.updatePart
+  const originalParts = MessageV2.parts
+  const originalUpdateMessage = Session.updateMessage
+  const originalUpdateLastExchange = Session.updateLastExchange
+  const originalConfigCurrent = Config.current
+  const originalPluginTrigger = Plugin.trigger
+  const originalExperienceComplete = ExperienceEncoder.onComplete
+  const parts = new Map<string, MessageV2.Part>()
+  let processor!: SessionProcessor.Info
 
-      processor = SessionProcessor.create({
-        assistantMessage: {
-          id: "msg_assistant",
-          sessionID: "ses_test",
-          role: "assistant",
-          parentID: "msg_user",
-          modelID: "test-model",
-          providerID: "test-provider",
-          mode: "build",
-          agent: "synergy",
-          path: { cwd: "/tmp", root: "/tmp" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: 0 },
-        },
+  try {
+    TimeoutConfig.invalidate()
+    ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
+      const part = scenario.updatePart ? await scenario.updatePart(input) : "part" in input ? input.part : input
+      parts.set(part.id, part)
+      return part
+    })
+    ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
+    ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
+    ;(Session.updateLastExchange as any) = mock(async () => {})
+    ;(Config.current as any) = mock(
+      async () => scenario.config ?? { experimental: {}, timeout: { tool: { default_sec: 60 } } },
+    )
+    ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+    ;(ExperienceEncoder.onComplete as any) = mock(() => {})
+    ;(LLM.stream as any) = mock(async () => ({
+      fullStream: scenario.stream(processor),
+    }))
+
+    processor = SessionProcessor.create({
+      assistantMessage: {
+        id: scenario.messageID,
         sessionID: "ses_test",
-        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
-        abort: new AbortController().signal,
-      })
+        role: "assistant",
+        parentID: "msg_user",
+        modelID: "test-model",
+        providerID: "test-provider",
+        mode: "build",
+        agent: "synergy",
+        path: { cwd: "/tmp", root: "/tmp" },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: 0 },
+      },
+      sessionID: "ses_test",
+      model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
+      abort: new AbortController().signal,
+    })
 
-      await processor.process({} as any)
+    await processor.process({} as any)
+    return [...parts.values()]
+  } finally {
+    TimeoutConfig.invalidate()
+    ;(LLM.stream as any) = originalStream
+    ;(Session.updatePart as any) = originalUpdatePart
+    ;(MessageV2.parts as any) = originalParts
+    ;(Session.updateMessage as any) = originalUpdateMessage
+    ;(Session.updateLastExchange as any) = originalUpdateLastExchange
+    ;(Config.current as any) = originalConfigCurrent
+    ;(Plugin.trigger as any) = originalPluginTrigger
+    ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+  }
+}
 
-      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
-      expect(tool?.state.status).toBe("completed")
-      if (tool?.state.status === "completed") {
-        expect(tool.state.output).toBe("abc123 first commit\n")
-        expect(tool.state.metadata.exit).toBe(0)
-      }
-    } finally {
-      ;(LLM.stream as any) = originalStream
-      ;(Session.updatePart as any) = originalUpdatePart
-      ;(MessageV2.parts as any) = originalParts
-      ;(Session.updateMessage as any) = originalUpdateMessage
-      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
-      ;(Config.current as any) = originalConfigCurrent
-      ;(Plugin.trigger as any) = originalPluginTrigger
-      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+function firstTool(parts: MessageV2.Part[], callID?: string) {
+  return parts.find((part): part is MessageV2.ToolPart => part.type === "tool" && (!callID || part.callID === callID))
+}
+
+function completedOutcome(tool: string, output: string, metadata: Record<string, any> = {}) {
+  return {
+    output,
+    title: `${tool} result`,
+    metadata,
+  }
+}
+
+describe("SessionProcessor execution slot settlement", () => {
+  test("settles a synthetic non-bash slot that resolves before the running part exists", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_slot_first",
+      async *stream(processor) {
+        yield { type: "start" }
+        processor
+          .beginExecution("call_slot_first")
+          .complete({ value: 1 }, completedOutcome("synthetic", "slot completed first", { family: "synthetic" }))
+        yield { type: "tool-call", toolCallId: "call_slot_first", toolName: "synthetic", input: { value: 1 } }
+      },
+    })
+
+    const tool = firstTool(parts, "call_slot_first")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") {
+      expect(tool.state.output).toBe("slot completed first")
+      expect(tool.state.metadata.family).toBe("synthetic")
     }
   })
 
-  test("waits for a tracked tool outcome past the fixed settle grace period", async () => {
-    const originalStream = LLM.stream
-    const originalUpdatePart = Session.updatePart
-    const originalParts = MessageV2.parts
-    const originalUpdateMessage = Session.updateMessage
-    const originalUpdateLastExchange = Session.updateLastExchange
-    const originalConfigCurrent = Config.current
-    const originalPluginTrigger = Plugin.trigger
-    const originalExperienceComplete = ExperienceEncoder.onComplete
-    const originalSetTimeout = globalThis.setTimeout
-    const parts = new Map<string, MessageV2.Part>()
-    let processor!: SessionProcessor.Info
+  test("settles a synthetic non-bash slot when the running part exists before resolution", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_part_first",
+      async *stream(processor) {
+        yield { type: "start" }
+        yield { type: "tool-call", toolCallId: "call_part_first", toolName: "synthetic", input: { value: 2 } }
+        processor
+          .beginExecution("call_part_first")
+          .complete({ value: 2 }, completedOutcome("synthetic", "part completed first"))
+      },
+    })
 
-    try {
-      TimeoutConfig.invalidate()
-      ;(globalThis.setTimeout as any) = ((handler: (...args: any[]) => void, timeout?: number, ...args: any[]) => {
-        return originalSetTimeout(handler, timeout === 5_000 ? 0 : timeout, ...args)
-      }) as typeof setTimeout
-      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
-        const part = "part" in input ? input.part : input
-        parts.set(part.id, part)
-        return part
-      })
-      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
-      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
-      ;(Session.updateLastExchange as any) = mock(async () => {})
-      ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
-      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
-      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
-      ;(LLM.stream as any) = mock(async () => ({
-        fullStream: (async function* () {
-          yield { type: "start" }
-          yield {
-            type: "tool-call",
-            toolCallId: "call_slow",
-            toolName: "bash",
-            input: { command: "git status" },
-          }
-          processor.trackExecution(
-            "call_slow",
-            new Promise<SessionProcessor.ToolOutcome>((resolve) => {
-              originalSetTimeout(() => {
-                resolve({
-                  status: "completed",
-                  input: { command: "git status" },
-                  result: {
-                    output: "working tree clean\n",
-                    title: "Git status",
-                    metadata: { exit: 0 },
-                  },
-                })
-              }, 1)
-            }),
-          )
-        })(),
-      }))
+    const tool = firstTool(parts, "call_part_first")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") expect(tool.state.output).toBe("part completed first")
+  })
 
-      processor = SessionProcessor.create({
-        assistantMessage: {
-          id: "msg_assistant_slow",
-          sessionID: "ses_test",
-          role: "assistant",
-          parentID: "msg_user",
-          modelID: "test-model",
-          providerID: "test-provider",
-          mode: "build",
-          agent: "synergy",
-          path: { cwd: "/tmp", root: "/tmp" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: 0 },
-        },
-        sessionID: "ses_test",
-        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
-        abort: new AbortController().signal,
-      })
+  test("settles a synthetic non-bash slot without any tool-result stream event", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_no_tool_result",
+      async *stream(processor) {
+        yield { type: "start" }
+        const slot = processor.beginExecution("call_no_tool_result")
+        yield { type: "tool-call", toolCallId: "call_no_tool_result", toolName: "synthetic", input: { value: 3 } }
+        slot.complete({ value: 3 }, completedOutcome("synthetic", "no tool-result needed"))
+      },
+    })
 
-      await processor.process({} as any)
+    const tool = firstTool(parts, "call_no_tool_result")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") expect(tool.state.output).toBe("no tool-result needed")
+  })
 
-      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
-      expect(tool?.state.status).toBe("completed")
-      if (tool?.state.status === "completed") {
-        expect(tool.state.output).toBe("working tree clean\n")
-        expect(tool.state.metadata.exit).toBe(0)
-      }
-    } finally {
-      ;(globalThis.setTimeout as any) = originalSetTimeout
-      TimeoutConfig.invalidate()
-      ;(LLM.stream as any) = originalStream
-      ;(Session.updatePart as any) = originalUpdatePart
-      ;(MessageV2.parts as any) = originalParts
-      ;(Session.updateMessage as any) = originalUpdateMessage
-      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
-      ;(Config.current as any) = originalConfigCurrent
-      ;(Plugin.trigger as any) = originalPluginTrigger
-      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+  test("settles a synthetic tool error outcome instead of unresolved", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_slot_error",
+      async *stream(processor) {
+        yield { type: "start" }
+        const slot = processor.beginExecution("call_slot_error")
+        yield { type: "tool-call", toolCallId: "call_slot_error", toolName: "synthetic", input: { value: 4 } }
+        slot.fail({ value: 4 }, "synthetic failed", { reason: "expected_failure" })
+      },
+    })
+
+    const tool = firstTool(parts, "call_slot_error")
+    expect(tool?.state.status).toBe("error")
+    if (tool?.state.status === "error") {
+      expect(tool.state.error).toBe("synthetic failed")
+      expect(tool.state.metadata?.reason).toBe("expected_failure")
     }
   })
 
-  test("waits briefly for tool execution registration after a tool-call", async () => {
-    const originalStream = LLM.stream
-    const originalUpdatePart = Session.updatePart
-    const originalParts = MessageV2.parts
-    const originalUpdateMessage = Session.updateMessage
-    const originalUpdateLastExchange = Session.updateLastExchange
-    const originalConfigCurrent = Config.current
-    const originalPluginTrigger = Plugin.trigger
-    const originalExperienceComplete = ExperienceEncoder.onComplete
-    const parts = new Map<string, MessageV2.Part>()
-    let processor!: SessionProcessor.Info
+  test("settles a save_file create-file outcome without tool-result", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_save_file",
+      async *stream(processor) {
+        yield { type: "start" }
+        const input = { filePath: "/tmp/new-file.txt", content: "hello" }
+        const slot = processor.beginExecution("call_save_file")
+        yield { type: "tool-call", toolCallId: "call_save_file", toolName: "save_file", input }
+        slot.complete(input, {
+          output: "[/tmp/new-file.txt#ABCD]\n1:hello",
+          title: "Create File",
+          metadata: { filepath: "/tmp/new-file.txt", exists: false, tag: "ABCD" },
+        })
+      },
+    })
 
-    try {
-      TimeoutConfig.invalidate()
-      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
-        const part = "part" in input ? input.part : input
-        parts.set(part.id, part)
-        return part
-      })
-      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
-      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
-      ;(Session.updateLastExchange as any) = mock(async () => {})
-      ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
-      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
-      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
-      ;(LLM.stream as any) = mock(async () => ({
-        fullStream: (async function* () {
-          yield { type: "start" }
-          yield {
-            type: "tool-call",
-            toolCallId: "call_late_registration",
-            toolName: "bash",
-            input: { command: "git status --porcelain=v1 --branch" },
-          }
-          queueMicrotask(() => {
-            processor.trackExecution(
-              "call_late_registration",
-              Promise.resolve({
-                status: "completed",
-                input: { command: "git status --porcelain=v1 --branch" },
-                result: {
-                  output: "## dev...origin/dev\n",
-                  title: "Git status",
-                  metadata: { exit: 0 },
-                },
-              }),
-            )
-          })
-        })(),
-      }))
-
-      processor = SessionProcessor.create({
-        assistantMessage: {
-          id: "msg_assistant_late_registration",
-          sessionID: "ses_test",
-          role: "assistant",
-          parentID: "msg_user",
-          modelID: "test-model",
-          providerID: "test-provider",
-          mode: "build",
-          agent: "synergy",
-          path: { cwd: "/tmp", root: "/tmp" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: 0 },
-        },
-        sessionID: "ses_test",
-        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
-        abort: new AbortController().signal,
-      })
-
-      await processor.process({} as any)
-
-      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
-      expect(tool?.state.status).toBe("completed")
-      if (tool?.state.status === "completed") {
-        expect(tool.state.output).toBe("## dev...origin/dev\n")
-      }
-    } finally {
-      TimeoutConfig.invalidate()
-      ;(LLM.stream as any) = originalStream
-      ;(Session.updatePart as any) = originalUpdatePart
-      ;(MessageV2.parts as any) = originalParts
-      ;(Session.updateMessage as any) = originalUpdateMessage
-      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
-      ;(Config.current as any) = originalConfigCurrent
-      ;(Plugin.trigger as any) = originalPluginTrigger
-      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    const tool = firstTool(parts, "call_save_file")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") {
+      expect(tool.tool).toBe("save_file")
+      expect(tool.state.metadata.exists).toBe(false)
+      expect(tool.state.output).toContain("#ABCD")
     }
   })
 
-  test("settles bash from running metadata when the tracked outcome is unavailable", async () => {
-    const originalStream = LLM.stream
-    const originalUpdatePart = Session.updatePart
-    const originalParts = MessageV2.parts
-    const originalUpdateMessage = Session.updateMessage
-    const originalUpdateLastExchange = Session.updateLastExchange
-    const originalConfigCurrent = Config.current
-    const originalPluginTrigger = Plugin.trigger
-    const originalExperienceComplete = ExperienceEncoder.onComplete
-    const parts = new Map<string, MessageV2.Part>()
+  test("settles a save_file error outcome as tool error", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_save_file_error",
+      async *stream(processor) {
+        yield { type: "start" }
+        const input = { filePath: "/tmp/denied.txt", content: "hello" }
+        const slot = processor.beginExecution("call_save_file_error")
+        yield { type: "tool-call", toolCallId: "call_save_file_error", toolName: "save_file", input }
+        slot.fail(input, "permission denied", { source: "permission" })
+      },
+    })
 
-    try {
-      TimeoutConfig.invalidate()
-      ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
+    const tool = firstTool(parts, "call_save_file_error")
+    expect(tool?.state.status).toBe("error")
+    if (tool?.state.status === "error") {
+      expect(tool.state.error).toBe("permission denied")
+      expect(tool.state.metadata?.source).toBe("permission")
+    }
+  })
+
+  test("settles a write-like outcome without metadata fallback", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_write",
+      async *stream(processor) {
+        yield { type: "start" }
+        const input = { filePath: "/tmp/write.txt", content: "updated" }
+        const slot = processor.beginExecution("call_write")
+        yield { type: "tool-call", toolCallId: "call_write", toolName: "write", input }
+        slot.complete(input, completedOutcome("write", "Wrote /tmp/write.txt", { filepath: "/tmp/write.txt" }))
+      },
+    })
+
+    const tool = firstTool(parts, "call_write")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") {
+      expect(tool.tool).toBe("write")
+      expect(tool.state.output).toBe("Wrote /tmp/write.txt")
+    }
+  })
+
+  test("settles bash from the slot instead of running metadata", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_bash_slot",
+      async *stream(processor) {
+        yield { type: "start" }
+        const input = { command: "git status --short" }
+        const slot = processor.beginExecution("call_bash")
+        yield { type: "tool-call", toolCallId: "call_bash", toolName: "bash", input }
+        slot.complete(input, completedOutcome("bash", " M file.ts\n", { exit: 0 }))
+      },
+    })
+
+    const tool = firstTool(parts, "call_bash")
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") {
+      expect(tool.state.output).toBe(" M file.ts\n")
+      expect(tool.state.metadata.exit).toBe(0)
+    }
+  })
+
+  test("settles parallel tool calls independently", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_parallel",
+      async *stream(processor) {
+        yield { type: "start" }
+        const first = processor.beginExecution("call_parallel_a")
+        const second = processor.beginExecution("call_parallel_b")
+        yield { type: "tool-call", toolCallId: "call_parallel_a", toolName: "write", input: { filePath: "a" } }
+        yield { type: "tool-call", toolCallId: "call_parallel_b", toolName: "bash", input: { command: "git log -1" } }
+        second.complete({ command: "git log -1" }, completedOutcome("bash", "commit b\n"))
+        first.complete({ filePath: "a" }, completedOutcome("write", "wrote a"))
+      },
+    })
+
+    const first = firstTool(parts, "call_parallel_a")
+    const second = firstTool(parts, "call_parallel_b")
+    expect(first?.state.status).toBe("completed")
+    expect(second?.state.status).toBe("completed")
+    if (first?.state.status === "completed") expect(first.state.output).toBe("wrote a")
+    if (second?.state.status === "completed") expect(second.state.output).toBe("commit b\n")
+  })
+
+  test("keeps a resolved outcome available when the first settlement write fails and retries in finalization", async () => {
+    let failedOnce = false
+    const parts = new Map<string, MessageV2.Part>()
+    const settledParts = await runSettlementScenario({
+      messageID: "msg_assistant_retry_settlement",
+      updatePart: async (input) => {
         const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "completed" && !failedOnce) {
+          failedOnce = true
+          throw new Error("transient update failure")
+        }
         parts.set(part.id, part)
         return part
-      })
-      ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
-      ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
-      ;(Session.updateLastExchange as any) = mock(async () => {})
-      ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 0.001 } } }))
-      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
-      ;(ExperienceEncoder.onComplete as any) = mock(() => {})
-      ;(LLM.stream as any) = mock(async () => ({
-        fullStream: (async function* () {
-          yield { type: "start" }
-          yield {
-            type: "tool-call",
-            toolCallId: "call_metadata_only",
-            toolName: "bash",
-            input: { command: "git rev-parse --verify refs/heads/missing" },
-          }
-          const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
-          if (tool?.state.status === "running") {
-            await Session.updatePart({
-              ...tool,
-              state: {
-                ...tool.state,
-                metadata: {
-                  output: "fatal: Needed a single revision\n",
-                  exit: 128,
-                  description: "Tests nonzero git exit handling",
-                },
-              },
-            })
-          }
-        })(),
-      }))
+      },
+      async *stream(processor) {
+        yield { type: "start" }
+        const slot = processor.beginExecution("call_retry_settlement")
+        yield {
+          type: "tool-call",
+          toolCallId: "call_retry_settlement",
+          toolName: "write",
+          input: { filePath: "retry" },
+        }
+        slot.complete({ filePath: "retry" }, completedOutcome("write", "settled after retry"))
+      },
+    })
 
-      const processor = SessionProcessor.create({
-        assistantMessage: {
-          id: "msg_assistant_metadata_only",
-          sessionID: "ses_test",
-          role: "assistant",
-          parentID: "msg_user",
-          modelID: "test-model",
-          providerID: "test-provider",
-          mode: "build",
-          agent: "synergy",
-          path: { cwd: "/tmp", root: "/tmp" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: 0 },
-        },
-        sessionID: "ses_test",
-        model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
-        abort: new AbortController().signal,
-      })
+    const tool = firstTool(settledParts, "call_retry_settlement")
+    expect(failedOnce).toBe(true)
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") expect(tool.state.output).toBe("settled after retry")
+  })
 
-      await processor.process({} as any)
+  test("marks a running part without an execution slot as missing_execution_slot", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_missing_slot",
+      config: { experimental: {}, timeout: { tool: { default_sec: 0.001 } } },
+      async *stream() {
+        yield { type: "start" }
+        yield { type: "tool-call", toolCallId: "call_missing_slot", toolName: "bash", input: { command: "git status" } }
+      },
+    })
 
-      const tool = [...parts.values()].find((part): part is MessageV2.ToolPart => part.type === "tool")
-      expect(tool?.state.status).toBe("completed")
-      if (tool?.state.status === "completed") {
-        expect(tool.state.output).toBe("fatal: Needed a single revision\n")
-        expect(tool.state.metadata.exit).toBe(128)
-      }
-    } finally {
-      TimeoutConfig.invalidate()
-      ;(LLM.stream as any) = originalStream
-      ;(Session.updatePart as any) = originalUpdatePart
-      ;(MessageV2.parts as any) = originalParts
-      ;(Session.updateMessage as any) = originalUpdateMessage
-      ;(Session.updateLastExchange as any) = originalUpdateLastExchange
-      ;(Config.current as any) = originalConfigCurrent
-      ;(Plugin.trigger as any) = originalPluginTrigger
-      ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    const tool = firstTool(parts, "call_missing_slot")
+    expect(tool?.state.status).toBe("error")
+    if (tool?.state.status === "error") {
+      expect(tool.state.error).toBe("Tool execution did not return a final result")
+      expect(tool.state.metadata?.reason).toBe("missing_execution_slot")
+      expect(tool.state.metadata?.tool).toBe("bash")
     }
   })
 })

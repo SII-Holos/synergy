@@ -17,7 +17,7 @@ import { Provider } from "@/provider/provider"
 import { ScopeContext } from "@/scope/context"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
-import type { SessionProcessor } from "@/session/processor"
+import { SessionProcessor } from "@/session/processor"
 import type { Tool } from "@/tool/tool"
 import { permissionCapability } from "@ericsanchezok/synergy-util/capability"
 import * as ManifestReader from "./manifest-reader"
@@ -162,7 +162,7 @@ export async function invokePluginTool(input: {
   const processor = {
     message: { id: input.context.messageID },
     partFromToolCall: () => undefined,
-    trackExecution: () => {},
+    beginExecution: (callID: string) => SessionProcessor.createSlot(callID),
   } as unknown as SessionProcessor.Info
 
   const tools = await ToolResolver.resolve({
