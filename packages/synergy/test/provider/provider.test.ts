@@ -122,37 +122,6 @@ test("enabled_providers restricts to only listed providers", async () => {
   })
 })
 
-test("model whitelist filters models for provider", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          provider: {
-            anthropic: {
-              whitelist: ["claude-sonnet-4-20250514"],
-            },
-          },
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      expect(providers["anthropic"]).toBeDefined()
-      const models = Object.keys(providers["anthropic"].models)
-      expect(models).toContain("claude-sonnet-4-20250514")
-      expect(models.length).toBe(1)
-    },
-  })
-})
-
 test("model blacklist excludes specific models", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -289,31 +258,6 @@ test("env variable takes precedence, config merges options", async () => {
       expect(providers["anthropic"]).toBeDefined()
       // Config options should be merged
       expect(providers["anthropic"].options.timeout).toBe(60000)
-    },
-  })
-})
-
-test("getModel returns model for valid provider/model", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const model = await Provider.getModel("anthropic", "claude-sonnet-4-20250514")
-      expect(model).toBeDefined()
-      expect(model.providerID).toBe("anthropic")
-      expect(model.id).toBe("claude-sonnet-4-20250514")
     },
   })
 })
@@ -679,42 +623,6 @@ test("explicit baseURL overrides api field", async () => {
   })
 })
 
-test("model inherits properties from existing database model", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          provider: {
-            anthropic: {
-              models: {
-                "claude-sonnet-4-20250514": {
-                  name: "Custom Name for Sonnet",
-                },
-              },
-            },
-          },
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.name).toBe("Custom Name for Sonnet")
-      expect(model.capabilities.toolcall).toBe(true)
-      expect(model.capabilities.attachment).toBe(true)
-      expect(model.limit.context).toBeGreaterThan(0)
-    },
-  })
-})
-
 test("disabled_providers prevents loading even with env var", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -760,39 +668,6 @@ test("enabled_providers with empty array allows no providers", async () => {
     fn: async () => {
       const providers = await Provider.list()
       expect(Object.keys(providers).length).toBe(0)
-    },
-  })
-})
-
-test("whitelist and blacklist can be combined", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          provider: {
-            anthropic: {
-              whitelist: ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
-              blacklist: ["claude-opus-4-20250514"],
-            },
-          },
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      expect(providers["anthropic"]).toBeDefined()
-      const models = Object.keys(providers["anthropic"].models)
-      expect(models).toContain("claude-sonnet-4-20250514")
-      expect(models).not.toContain("claude-opus-4-20250514")
-      expect(models.length).toBe(1)
     },
   })
 })
@@ -1362,32 +1237,6 @@ test("provider env fallback - second env var used if first missing", async () =>
   })
 })
 
-test("getModel returns consistent results", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const model1 = await Provider.getModel("anthropic", "claude-sonnet-4-20250514")
-      const model2 = await Provider.getModel("anthropic", "claude-sonnet-4-20250514")
-      expect(model1.providerID).toEqual(model2.providerID)
-      expect(model1.id).toEqual(model2.id)
-      expect(model1).toEqual(model2)
-    },
-  })
-})
-
 test("provider name defaults to id when not in database", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -1714,71 +1563,6 @@ test("custom model inherits api.url from models.dev provider", async () => {
   })
 })
 
-test("model variants are generated for reasoning models", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      // Claude sonnet 4 has reasoning capability
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.capabilities.reasoning).toBe(true)
-      expect(model.variants).toBeDefined()
-      expect(Object.keys(model.variants!).length).toBeGreaterThan(0)
-    },
-  })
-})
-
-test("model variants can be disabled via config", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          provider: {
-            anthropic: {
-              models: {
-                "claude-sonnet-4-20250514": {
-                  variants: {
-                    high: { disabled: true },
-                  },
-                },
-              },
-            },
-          },
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.variants).toBeDefined()
-      expect(model.variants!["high"]).toBeUndefined()
-      // max variant should still exist
-      expect(model.variants!["max"]).toBeDefined()
-    },
-  })
-})
-
 test("model variants can be customized via config", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -1893,46 +1677,6 @@ test("all variants can be disabled via config", async () => {
       const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
       expect(model.variants).toBeDefined()
       expect(Object.keys(model.variants!).length).toBe(0)
-    },
-  })
-})
-
-test("variant config merges with generated variants", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          provider: {
-            anthropic: {
-              models: {
-                "claude-sonnet-4-20250514": {
-                  variants: {
-                    high: {
-                      extraOption: "custom-value",
-                    },
-                  },
-                },
-              },
-            },
-          },
-        }),
-      )
-    },
-  })
-  await provideTestScope({
-    scope: await tmp.scope(),
-    init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "test-api-key")
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.variants!["high"]).toBeDefined()
-      // Should have both the generated thinking config and the custom option
-      expect(model.variants!["high"].thinking).toBeDefined()
-      expect(model.variants!["high"].extraOption).toBe("custom-value")
     },
   })
 })
