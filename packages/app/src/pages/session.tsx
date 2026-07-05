@@ -24,6 +24,8 @@ import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-s
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
+import { extractPromptDraft } from "@/utils/prompt"
+import { inlineLength } from "@/components/prompt-input/content"
 import { getDraggableId } from "@/utils/solid-dnd"
 import { SessionReviewTab } from "@/components/session"
 
@@ -243,10 +245,13 @@ function SessionPageContent() {
               await sdk.client.session.files.restore({ sessionID, rollbackID: rb.id }).catch(() => {})
             }
           }
-          // Navigate to the message before the cut point.
-          // Prompt backfill is intentionally omitted from hover rewind —
-          // the user is rewinding to before a specific message, not rewriting it.
-          prompt.resetDraft()
+          // Backfill prompt from the cut message per spec §3.5
+          const cutParts = sync.data.part[targetMsg.id]
+          if (cutParts) {
+            const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
+            prompt.set(restored.prompt, inlineLength(restored.prompt))
+            prompt.context.set(restored.context)
+          }
           setActiveMessage(userMessages().findLast((x) => x.id < cutMessageID))
         }}
       />
