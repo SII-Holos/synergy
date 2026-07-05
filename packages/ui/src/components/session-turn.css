@@ -195,12 +195,19 @@
   [data-slot="session-turn-timeline-item"]:is(
     [data-kind="text"],
     [data-kind="reasoning"],
-    [data-kind="guided-user"],
     [data-kind="non-root-user"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);
     margin-inline: auto;
+  }
+
+  /* A user's steer message is a right-aligned user bubble, not part of the
+     centered assistant reading column — it must span the full turn width so its
+     bubble flushes to the same right edge as the root turn's bubble. */
+  [data-slot="session-turn-timeline-item"][data-kind="guided-user"] {
+    max-width: 100%;
+    margin-inline: 0;
   }
 
   [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {

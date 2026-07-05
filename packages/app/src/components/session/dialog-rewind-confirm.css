@@ -19,11 +19,13 @@
 .rewind-confirm-count-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: var(--font-size-small);
   color: var(--text-base);
 
   & [data-component="icon"] {
+    flex-shrink: 0;
+    margin-inline-end: 2px;
     color: var(--text-subtle);
   }
 }
@@ -53,12 +55,13 @@
 .rewind-confirm-checkbox-label {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
   font-size: var(--font-size-small);
   color: var(--text-base);
   cursor: pointer;
 
   input[type="checkbox"] {
+    flex-shrink: 0;
     margin-top: 2px;
     accent-color: var(--accent-base);
   }
