@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { checkProtectedPath } from "@/enforcement/classify"
+import path from "node:path"
 
 describe("checkProtectedPath - write mode", () => {
   test("flags .git/", () => {
@@ -195,5 +196,26 @@ describe("checkProtectedPath - Synergy auth and dotenv candidates", () => {
 
   test(".envrc is not a dotenv secret path", () => {
     expect(checkProtectedPath(".envrc", "write", { workspaceRoot: "/workspace" }).matched).toBe(false)
+  })
+
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "/home/unknown"
+
+  test("global Synergy auth root via ~/ is an exact secret root", () => {
+    const r = checkProtectedPath("~/.synergy/data/auth/provider-auth.json", "read", {
+      workspaceRoot: "/workspace",
+      synergyRoot: path.join(home, ".synergy"),
+    })
+    expect(r.matched).toBe(true)
+    expect(r.category).toBe("credentials")
+    expect(r.exactSecretRoot).toBe(true)
+  })
+
+  test("plugin auth file via ~/ is an exact secret root", () => {
+    const r = checkProtectedPath("~/.synergy/data/plugin/my-plugin/auth.json", "write", {
+      workspaceRoot: "/workspace",
+      synergyRoot: path.join(home, ".synergy"),
+    })
+    expect(r.matched).toBe(true)
+    expect(r.exactSecretRoot).toBe(true)
   })
 })

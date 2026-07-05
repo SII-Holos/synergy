@@ -37,6 +37,13 @@ const SECRET_CANDIDATE_PATTERNS = [
 
 const PLACEHOLDER_ENV_PATTERN = /(^|[/\\])\.env\.(example|template|sample)$/i
 
+function expandHomeDir(input: string): string {
+  if (input === "~" || input === "~/" || input === "~\\") return process.env.HOME ?? process.env.USERPROFILE ?? ""
+  if (input.startsWith("~/") || input.startsWith("~\\"))
+    return path.join(process.env.HOME ?? process.env.USERPROFILE ?? "", input.slice(2))
+  return input
+}
+
 function normalizePath(input: string): string {
   return path.normalize(input.replace(/^~[/\\]/, ""))
 }
@@ -79,9 +86,10 @@ export namespace SensitivePathPolicy {
   export function classify(pathInput: string, options: SensitivePathOptions): SensitivePathMatch {
     if (!pathInput) return { matched: false }
     const normalized = normalizeForMatch(pathInput)
-    const absoluteCandidate = path.isAbsolute(pathInput)
-      ? path.normalize(pathInput)
-      : path.resolve(options.workspaceRoot ?? process.cwd(), pathInput)
+    const homeExpanded = expandHomeDir(pathInput)
+    const absoluteCandidate = path.isAbsolute(homeExpanded)
+      ? path.normalize(homeExpanded)
+      : path.resolve(options.workspaceRoot ?? process.cwd(), homeExpanded)
 
     if (options.synergyRoot && isSynergyAuthRoot(absoluteCandidate, options.synergyRoot)) {
       return {
@@ -146,7 +154,7 @@ export namespace SensitivePathPolicy {
       }
     }
 
-    if (isProjectSynergyPath(pathInput, options.workspaceRoot)) return { matched: false }
+    if (isProjectSynergyPath(homeExpanded, options.workspaceRoot)) return { matched: false }
     if (options.synergyRoot && isInside(absoluteCandidate, options.synergyRoot)) return { matched: false }
 
     return { matched: false }
