@@ -136,6 +136,7 @@ export namespace MessageV2 {
     type: z.literal("text"),
     text: z.string(),
     synthetic: z.boolean().optional(),
+    /** @deprecated Dead field — no writes exist. Kept for backward compat reads. */
     ignored: z.boolean().optional(),
     origin: z.enum(["user", "system"]).optional(),
     time: z
@@ -661,6 +662,7 @@ export namespace MessageV2 {
   }
 
   export function isPromptVisible(msg: WithParts) {
+    if (msg.info.includeInContext !== undefined) return msg.info.includeInContext
     const metadata = msg.info.metadata
     if (metadata?.promptVisible === false) return false
     const command = metadata?.command

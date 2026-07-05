@@ -26,6 +26,7 @@ export namespace SessionHistory {
       numTurns: z.number(),
       droppedMessageIDs: z.array(Identifier.schema("message")),
       droppedUserMessageIDs: z.array(Identifier.schema("message")),
+      cutMessageID: z.string().optional(),
       files: z.array(z.string()),
       patchPartIDs: z.array(Identifier.schema("part")),
     })
@@ -58,6 +59,7 @@ export namespace SessionHistory {
       messageID: Identifier.schema("message").optional(),
       droppedMessageIDs: z.array(Identifier.schema("message")),
       droppedUserMessageIDs: z.array(Identifier.schema("message")),
+      cutMessageID: z.string().optional(),
       files: z.array(z.string()),
       patchPartIDs: z.array(Identifier.schema("part")),
       canUnrollback: z.boolean(),
@@ -91,26 +93,53 @@ export namespace SessionHistory {
     }),
   )
 
+  function getCutMessageID(event: { cutMessageID?: string; droppedMessageIDs: string[] }): string | undefined {
+    return (
+      event.cutMessageID ??
+      (event.droppedMessageIDs.length ? event.droppedMessageIDs.reduce((a, b) => (a < b ? a : b)) : undefined)
+    )
+  }
+
   export const rollback = fn(
     z.object({
       sessionID: Identifier.schema("session"),
-      numTurns: z.number().int().min(1),
+      numTurns: z.number().int().min(1).optional(),
+      cutMessageID: z.string().optional(),
     }),
     async (input) => {
+      if ((input.numTurns == null) === (input.cutMessageID == null)) {
+        throw new Error("Provide exactly one of numTurns or cutMessageID")
+      }
       SessionManager.assertIdle(input.sessionID)
       const [raw, events] = await Promise.all([
         rawMessages({ sessionID: input.sessionID }),
         readEvents(input.sessionID),
       ])
       const effective = applyEvents(raw, events)
-      const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
 
-      if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
+      let cutMessageID: string | undefined
+      let dropped: MessageV2.WithParts[] = []
 
-      const selected = turnStarts.slice(-input.numTurns)
-      const cutoff = selected[0].index
-      const dropped = effective.slice(cutoff)
-      if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
+      if (input.cutMessageID) {
+        // cutMessageID mode: drop everything from cutMessageID onward
+        cutMessageID = input.cutMessageID
+        const cutIndex = effective.findIndex((msg) => msg.info.id >= cutMessageID!)
+        if (cutIndex >= 0) {
+          dropped = effective.slice(cutIndex)
+        }
+      } else {
+        // numTurns mode (must be defined due to .refine)
+        const numTurns = input.numTurns!
+        const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
+        if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
+        const selected = turnStarts.slice(-numTurns)
+        const cutoff = selected[0].index
+        dropped = effective.slice(cutoff)
+        if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
+        cutMessageID = selected[0].msg.info.id
+      }
+
+      const selectedTurns = dropped.filter(isRollbackUser).length
 
       const event: RollbackEvent = {
         id: Identifier.ascending("history"),
@@ -119,7 +148,8 @@ export namespace SessionHistory {
         time: {
           created: Date.now(),
         },
-        numTurns: selected.length,
+        numTurns: selectedTurns,
+        cutMessageID,
         droppedMessageIDs: dropped.map((msg) => msg.info.id),
         droppedUserMessageIDs: dropped.filter(isRollbackUser).map((msg) => msg.info.id),
         ...summarizePatches(dropped),
@@ -282,6 +312,7 @@ export namespace SessionHistory {
         messageID: rollback.droppedUserMessageIDs[0],
         droppedMessageIDs: rollback.droppedMessageIDs,
         droppedUserMessageIDs: rollback.droppedUserMessageIDs,
+        cutMessageID: getCutMessageID(rollback),
         files: rollback.files,
         patchPartIDs: rollback.patchPartIDs,
         canUnrollback: canUnrollbackInfo(messages, rollback),
@@ -350,7 +381,15 @@ export namespace SessionHistory {
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {
-    return !messages.some((msg) => msg.time.created > event.time.created)
+    // Only invalidate when a new root user message was created after the rollback.
+    // Non-root user messages and assistant messages do not invalidate.
+    return !messages.some((msg) => {
+      if (msg.role !== "user") return false
+      const user = msg as MessageV2.User
+      if (user.isRoot === false) return false
+      if (user.metadata?.synthetic === true) return false
+      return msg.time.created > event.time.created
+    })
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {

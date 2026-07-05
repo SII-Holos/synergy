@@ -2567,6 +2567,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       numTurns?: number
+      cutMessageID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2579,6 +2580,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "numTurns" },
+            { in: "body", key: "cutMessageID" },
           ],
         },
       ],

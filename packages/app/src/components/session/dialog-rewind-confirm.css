@@ -1,0 +1,74 @@
+.rewind-confirm-dialog {
+  [data-slot="dialog-body"] {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+.rewind-confirm-counts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rewind-confirm-count-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-base);
+}
+
+.rewind-confirm-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 24px;
+}
+
+.rewind-confirm-file-item {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--background-weak);
+  font-size: var(--font-size-x-small);
+  color: var(--text-weak);
+  font-family: var(--font-family-mono);
+}
+
+.rewind-confirm-file-more {
+  font-size: var(--font-size-x-small);
+  color: var(--text-subtle);
+  padding: 1px 4px;
+}
+
+.rewind-confirm-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-base);
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    accent-color: var(--accent-base);
+  }
+}
+
+.rewind-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rewind-confirm-button[data-tone="danger"] {
+  --button-background: var(--danger-background, var(--red-600));
+  --button-color: var(--danger-color, white);
+}
+
+.rewind-confirm-spinner {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}

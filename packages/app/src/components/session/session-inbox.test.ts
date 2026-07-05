@@ -14,6 +14,8 @@ function item(
     kind,
     state: kind === "guiding" ? "guiding" : "queued",
     deliveryTarget,
+    mode: kind === "guiding" ? "steer" : kind === "agent_update" ? "steer" : ("task" as const),
+    messageID: `msg_${id}`,
     summary: { title: id },
     source: { type: "test" },
     time: { created: 1 },

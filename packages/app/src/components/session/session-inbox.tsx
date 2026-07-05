@@ -16,19 +16,35 @@ type SessionInboxProps = {
   sessionID: string
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
+  freezeHint?: boolean
 }
 
-const labelByKind: Record<SessionInboxItem["kind"], string> = {
-  queued_user: "Queued by you",
-  guiding: "Guiding current run",
-  agent_update: "Agent updates",
+function labelByMode(item: SessionInboxItem): string {
+  if (item.mode) {
+    if (item.mode === "task") return "Queued by you"
+    if (item.mode === "steer") return "Guiding current run"
+    if (item.mode === "context") return "Context update"
+  }
+  // Legacy fallback by kind
+  if (item.kind === "queued_user") return "Queued by you"
+  if (item.kind === "guiding") return "Guiding current run"
+  if (item.kind === "agent_update") return "Agent updates"
+  return "Update"
 }
 
-function timingLabel(item: SessionInboxItem) {
+function timingLabel(item: SessionInboxItem): string {
+  if (item.mode === "task") return "After turn"
+  if (item.mode === "steer") return "Next call"
+  if (item.mode === "context") return "Context"
+  // Legacy fallback by deliveryTarget
   return item.deliveryTarget === "next_model_call" ? "Next call" : "After turn"
 }
 
 function deliveryDescription(item: SessionInboxItem) {
+  if (item.mode === "task") return "Sends after this turn; multiple queued items share one reply cycle."
+  if (item.mode === "steer") return "Joins the current run before its next model request."
+  if (item.mode === "context") return "Joined to the ongoing model call as context."
+  // Legacy fallback by deliveryTarget
   if (item.deliveryTarget === "next_model_call") return "Joins the current run before its next model request."
   return "Sends after this turn; multiple queued items share one reply cycle."
 }
@@ -38,9 +54,16 @@ function itemCountLabel(count: number) {
 }
 
 function queueNote(items: SessionInboxItem[]) {
-  const nextCall = items.filter((item) => item.deliveryTarget === "next_model_call").length
-  const afterTurn = items.filter((item) => item.deliveryTarget === "after_turn").length
+  const steers = items.filter((item) => item.mode === "steer").length
+  const tasks = items.filter((item) => item.mode === "task").length
+  const nextCall = items.filter((item) => item.mode !== "task" || item.deliveryTarget === "next_model_call").length
+  const afterTurn = items.filter((item) => item.mode === "task" || item.deliveryTarget === "after_turn").length
 
+  if (steers > 0 && tasks > 0) return `${steers} next call · ${tasks} after turn`
+  if (steers > 1) return `${steers} items join the next model call`
+  if (steers === 1) return "Joins the current run's next model call"
+  if (tasks > 1) return `${tasks} items send together in one reply`
+  if (tasks === 1) return "Sends automatically after this turn"
   if (nextCall > 0 && afterTurn > 0) return `${nextCall} next call · ${afterTurn} after turn`
   if (nextCall > 1) return `${nextCall} items join the next model call`
   if (nextCall === 1) return "Joins the current run's next model call"
@@ -59,7 +82,7 @@ function detailText(item: SessionInboxItem) {
 function InboxDetail(props: { item: SessionInboxItem }) {
   return (
     <div class="session-inbox-detail">
-      <div class="text-12-medium text-text-strong">{labelByKind[props.item.kind]}</div>
+      <div class="text-12-medium text-text-strong">{labelByMode(props.item)}</div>
       <Markdown
         text={detailText(props.item)}
         cacheKey={`session-inbox-detail-${props.item.id}`}
@@ -93,7 +116,7 @@ function InboxRow(props: {
       <Tooltip placement="left" class="session-inbox-row-tooltip" value={<InboxDetail item={props.item} />}>
         <div class="session-inbox-row-main">
           <div class="session-inbox-row-meta">
-            <span class="session-inbox-row-label">{labelByKind[props.item.kind]}</span>
+            <span class="session-inbox-row-label">{labelByMode(props.item)}</span>
             <span class="session-inbox-row-status" data-target={props.item.deliveryTarget}>
               {timingLabel(props.item)}
             </span>
@@ -187,6 +210,19 @@ export function SessionInbox(props: SessionInboxProps) {
 
   const remove = async (item: SessionInboxItem) => {
     await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
+    showToast({
+      type: "info",
+      title: "Removed queued message",
+      description: "The message has been removed from the inbox.",
+      actions: [
+        {
+          label: "Restore",
+          onClick: () => {
+            void props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id }).catch(() => {})
+          },
+        },
+      ],
+    })
   }
   const confirmRemove = (item: SessionInboxItem) => {
     confirm.show({
@@ -234,6 +270,9 @@ export function SessionInbox(props: SessionInboxProps) {
           </Match>
           <Match when={true}>
             <div class="session-inbox-list">
+              <Show when={props.freezeHint}>
+                <div class="px-1 py-1 text-11-medium text-text-subtle">Inbox frozen while rewinding</div>
+              </Show>
               <div class="session-inbox-queue-note">
                 <span>{note()}</span>
                 <Show when={actionableItems().length > 1}>

@@ -81,6 +81,7 @@ export const HistoryInfo = z
         messageID: Identifier.schema("message").optional(),
         droppedMessageIDs: z.array(Identifier.schema("message")),
         droppedUserMessageIDs: z.array(Identifier.schema("message")),
+        cutMessageID: Identifier.schema("message").optional(),
         files: z.array(z.string()),
         patchPartIDs: z.array(Identifier.schema("part")),
         canUnrollback: z.boolean(),
