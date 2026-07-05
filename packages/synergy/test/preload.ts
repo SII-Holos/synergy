@@ -35,22 +35,14 @@ const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
 
-// Pre-fetch models.json so tests don't need the macro fallback
-// Also write the cache version file to prevent global/index.ts from clearing the cache
+// Write deterministic models.dev fixture data so provider tests do not drift with
+// the live registry.
 const cacheDir = path.join(testHome, ".synergy", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "15")
 const modelsCachePath = path.join(cacheDir, "models.json")
-try {
-  const response = await fetch("https://models.dev/api.json", {
-    signal: AbortSignal.timeout(2000),
-  })
-  if (!response.ok) throw new Error(`unexpected status ${response.status}`)
-  await fs.writeFile(modelsCachePath, await response.text())
-} catch {
-  const fixture = await Bun.file(new URL("./tool/fixtures/models-api.json", import.meta.url)).text()
-  await fs.writeFile(modelsCachePath, fixture)
-}
+const fixture = await Bun.file(new URL("./tool/fixtures/models-api.json", import.meta.url)).text()
+await fs.writeFile(modelsCachePath, fixture)
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
