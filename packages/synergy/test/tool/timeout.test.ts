@@ -49,17 +49,36 @@ describe("ToolTimeout", () => {
     })
   })
 
-  test("does not invent bash timeout when yieldSeconds is absent", () => {
+  test("uses bash auto-background metadata by default and supports timeoutSeconds", () => {
     expect(metadata("bash")).toMatchObject({
+      operationTimeoutMs: 30_000,
+      displayMs: 30_000,
+      source: "auto_background",
+    })
+    expect(metadata("bash", { backgroundAfterSeconds: 5 })).toMatchObject({
+      operationTimeoutMs: 5_000,
+      displayMs: 5_000,
+      source: "auto_background",
+    })
+    expect(metadata("bash", { timeoutSeconds: 7 })).toMatchObject({
+      operationTimeoutMs: 7_000,
+      displayMs: 7_000,
+      source: "wait",
+    })
+    expect(metadata("bash", { backgroundAfterSeconds: 5, timeoutSeconds: 7 })).toMatchObject({
+      operationTimeoutMs: 5_000,
+      displayMs: 5_000,
+      source: "auto_background",
+    })
+    expect(metadata("bash", { backgroundAfterSeconds: 0 })).toMatchObject({
       toolTimeoutMs,
       displayMs: toolTimeoutMs,
       source: "tool_timeout",
     })
-    expect(metadata("bash").operationTimeoutMs).toBeUndefined()
-    expect(metadata("bash", { yieldSeconds: 5 })).toMatchObject({
-      operationTimeoutMs: 5_000,
-      displayMs: 5_000,
-      source: "auto_background",
+    expect(metadata("bash", { backgroundAfterSeconds: 0, timeoutSeconds: 7 })).toMatchObject({
+      operationTimeoutMs: 7_000,
+      displayMs: 7_000,
+      source: "wait",
     })
   })
 

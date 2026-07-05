@@ -26,14 +26,20 @@ const parameters = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
+      "Run command in background immediately. Returns immediately with processId. Use process tool to monitor/interact with the process.",
     ),
-  yieldSeconds: z
+  backgroundAfterSeconds: z
     .number()
+    .refine((value) => Number.isFinite(value) && value >= 0)
     .optional()
     .describe(
-      "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
+      "Seconds to wait before auto-backgrounding. Defaults to 30. Set to 0 only when the command must remain foregrounded until completion or timeout.",
     ),
+  timeoutSeconds: z
+    .number()
+    .refine((value) => Number.isFinite(value) && value > 0)
+    .optional()
+    .describe("Hard command termination timeout in seconds. Applies to foreground and backgrounded commands."),
   envID: MetaProtocolEnv.EnvID.optional().describe(
     "Optional execution environment ID. Omit for local execution; provide one to target a remote execution backend.",
   ),
@@ -56,6 +62,9 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   },
   parameters,
   async execute(params, ctx) {
-    return selectBackend(params.envID).execute(params, ctx)
+    return selectBackend(params.envID).execute(
+      { ...params, backgroundAfterSeconds: params.backgroundAfterSeconds ?? 30 },
+      ctx,
+    )
   },
 })

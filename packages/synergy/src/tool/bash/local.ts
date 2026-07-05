@@ -10,7 +10,6 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
-import { EnforcementError } from "@/enforcement/errors"
 import { ShellSafety } from "@/enforcement/shell-safety"
 import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@/session/message-v2"
@@ -287,78 +286,9 @@ export const LocalBashBackend: BashBackend = {
       scheduleMetadata()
     }
 
-    // ── Synchronous sandboxed execution via unified sandbox path ──
-    // executeAsync handles env allowlist, timeout, output cap, signal,
-    // sandbox denial detection, and temp cleanup — all in one call.
-    if (sandboxWrapper && !sandboxWrapper.skipReason && !params.background && !params.yieldSeconds) {
-      try {
-        await trace("bash.sandbox.execute.start", {
-          command: sandboxWrapper.command,
-          args: sandboxWrapper.args,
-        })
-        const result = await SandboxBackend.executeAsync(sandboxWrapper, {
-          fallbackPolicy: sandboxFallback ?? "warn",
-          env: sandboxEnv,
-          cwd,
-          signal: ctx.abort,
-          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 24-hour hard ceiling
-          maxOutputBytes: 1024 * 1024, // 1 MB
-          onStdout: append,
-          onStderr: append,
-        })
-        await trace("bash.sandbox.execute.end", {
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          outputChars: regProc.output.length,
-        })
-
-        if (metadataDirty) flushMetadata()
-
-        if (ctx.abort.aborted || result.timedOut) {
-          const abortReason = deriveAbortReason(ctx.abort.reason)
-          const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
-          ProcessRegistry.remove(regProc.id)
-          return {
-            title: params.description,
-            metadata: {
-              output: truncateMetadataOutput(regProc.output + abortTag),
-              exit: result.exitCode,
-              description: params.description,
-              backend: "local",
-            },
-            output: warnOutput(regProc.output + abortTag),
-          }
-        }
-
-        ProcessRegistry.remove(regProc.id)
-        return withAttachments({
-          title: params.description,
-          metadata: {
-            output: truncateMetadataOutput(regProc.output),
-            exit: result.exitCode,
-            description: params.description,
-            backend: "local",
-          },
-          output: warnOutput(regProc.output),
-        })
-      } catch (e: unknown) {
-        ProcessRegistry.remove(regProc.id)
-        await trace(
-          "bash.sandbox.execute.error",
-          {
-            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
-          },
-          "error",
-        )
-        if (e instanceof EnforcementError.SandboxBlocked) throw e
-        throw e
-      }
-    }
-
     let child: ReturnType<typeof spawn>
     try {
       if (sandboxWrapper && !sandboxWrapper.skipReason) {
-        // Sandboxed path: use allowlisted env
         child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
           cwd,
           env: sandboxEnv,
@@ -366,7 +296,6 @@ export const LocalBashBackend: BashBackend = {
           detached: process.platform !== "win32",
         })
       } else {
-        // Unsandboxed path: check for deny policy on skip
         if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
           throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
         }
@@ -398,17 +327,64 @@ export const LocalBashBackend: BashBackend = {
       )
       throw e
     }
+
     let aborted = false
+    let timedOut = false
+    let timeoutMarkerAdded = false
+    let hardCeilingReached = false
     let exited = false
-    let yielded = false
     let childError: Error | undefined
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
       resolveChildFinished = resolve
     })
+
+    const appendTimeoutMarker = (message: string) => {
+      if (timeoutMarkerAdded) return
+      timeoutMarkerAdded = true
+      ProcessRegistry.appendOutput(regProc, `\n\n<bash_metadata>\n${message}\n</bash_metadata>`)
+      scheduleMetadata()
+    }
+
+    const kill = () => Shell.killTree(child, { exited: () => exited })
+
+    let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
+    let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
+    let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
+    let resolveTimeout: (() => void) | undefined
+    const commandTimeout = new Promise<"timeout">((resolve) => {
+      resolveTimeout = () => resolve("timeout")
+    })
+
+    const cleanupForegroundWait = () => {
+      if (autoBackgroundTimer) {
+        clearTimeout(autoBackgroundTimer)
+        autoBackgroundTimer = undefined
+      }
+      ctx.abort.removeEventListener("abort", abortHandler)
+    }
+
+    const cleanupAllTimers = () => {
+      cleanupForegroundWait()
+      if (hardCeilingTimer) {
+        clearTimeout(hardCeilingTimer)
+        hardCeilingTimer = undefined
+      }
+      if (commandTimeoutTimer) {
+        clearTimeout(commandTimeoutTimer)
+        commandTimeoutTimer = undefined
+      }
+    }
+
+    const timeoutMessage = () =>
+      hardCeilingReached
+        ? "The command was interrupted: bash hard ceiling timed out."
+        : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
+
     child.once("error", (error) => {
       childError = error
       exited = true
+      cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
@@ -422,7 +398,7 @@ export const LocalBashBackend: BashBackend = {
       )
       resolveChildFinished("error")
     })
-    // Wire the spawned child into the existing ProcessRegistry entry
+
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
@@ -432,9 +408,11 @@ export const LocalBashBackend: BashBackend = {
 
     child.once("exit", (code, signal) => {
       exited = true
+      cleanupAllTimers()
       if (metadataDirty) flushMetadata()
+      const exitSignal = timedOut ? "SIGTERM" : signal
       if (params.background || regProc.backgrounded) {
-        ProcessRegistry.markExited(regProc, code, signal)
+        ProcessRegistry.markExited(regProc, code, exitSignal)
       } else {
         ProcessRegistry.remove(regProc.id)
       }
@@ -455,12 +433,39 @@ export const LocalBashBackend: BashBackend = {
       command: params.command,
       sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
       background: params.background === true,
-      yieldSeconds: params.yieldSeconds,
+      backgroundAfterSeconds: params.backgroundAfterSeconds,
+      timeoutSeconds: params.timeoutSeconds,
     })
     if (childError) throw childError
 
+    hardCeilingTimer = setTimeout(() => {
+      if (exited) return
+      hardCeilingReached = true
+      timedOut = true
+      log.warn("bash hard ceiling reached, killing", { description: params.description })
+      appendTimeoutMarker(timeoutMessage())
+      void kill()
+      resolveTimeout?.()
+    }, ToolTimeout.DEFAULTS.bashHardCeilingMs)
+
+    if (params.timeoutSeconds !== undefined) {
+      commandTimeoutTimer = setTimeout(() => {
+        if (exited) return
+        timedOut = true
+        appendTimeoutMarker(timeoutMessage())
+        void trace("bash.command.timeout", {
+          timeoutSeconds: params.timeoutSeconds,
+        })
+        void kill()
+        resolveTimeout?.()
+      }, params.timeoutSeconds * 1000)
+    }
+
+    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+
     if (params.background) {
       ProcessRegistry.markBackgrounded(regProc)
+      cleanupForegroundWait()
       return {
         title: `[Background] ${params.description}`,
         metadata: {
@@ -482,88 +487,83 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 24 hours absolute hard limit
-
-    const kill = () => Shell.killTree(child, { exited: () => exited })
-
-    const hardCeilingTimer = setTimeout(() => {
-      if (!exited && !yielded) {
-        log.warn("bash hard ceiling reached, killing", { description: params.description })
-        kill()
-      }
-    }, HARD_BASH_CEILING_MS)
-
     if (ctx.abort.aborted) {
       aborted = true
-      clearTimeout(hardCeilingTimer)
+      cleanupAllTimers()
       await kill()
     }
 
-    const abortHandler = () => {
+    function abortHandler() {
       aborted = true
-      clearTimeout(hardCeilingTimer)
+      cleanupAllTimers()
       void kill()
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
-    const yieldS = params.yieldSeconds
-    const yieldResult = await new Promise<"exited" | "yielded" | "error">((resolve, reject) => {
-      const yieldTimer = yieldS
-        ? setTimeout(() => {
-            yielded = true
-            resolve("yielded")
-          }, yieldS * 1000)
-        : undefined
-
-      const cleanup = () => {
-        clearTimeout(hardCeilingTimer)
-        if (yieldTimer) clearTimeout(yieldTimer)
-        ctx.abort.removeEventListener("abort", abortHandler)
-      }
-
-      if (childError) {
-        cleanup()
-        reject(childError)
-        return
-      }
-      childFinished.then((result) => {
-        cleanup()
-        if (result === "error") {
-          reject(childError ?? new Error("Bash child process failed"))
-          return
-        }
-        resolve("exited")
-      })
+    const autoBackground = new Promise<"background">((resolve) => {
+      if (backgroundAfterSeconds <= 0) return
+      autoBackgroundTimer = setTimeout(() => {
+        if (!exited) resolve("background")
+      }, backgroundAfterSeconds * 1000)
     })
 
-    if (yieldResult === "yielded") {
-      ProcessRegistry.markBackgrounded(regProc)
-      return {
-        title: `[Auto-Background] ${params.description}`,
-        metadata: {
-          output: truncateMetadataOutput(regProc.output),
-          description: params.description,
-          processId: regProc.id,
-          background: true,
-          backend: "local",
-        },
-        output: warnOutput(
-          `Command auto-backgrounded after ${yieldS}s.\n\n` +
-            `Process ID: ${regProc.id}\n` +
-            `Command: ${params.command}\n` +
-            `Status: running\n\n` +
-            `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
-            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
-        ),
+    const waitResult = await Promise.race([childFinished.then((result) => result), autoBackground, commandTimeout])
+
+    if (waitResult === "error") {
+      throw childError ?? new Error("Bash child process failed")
+    }
+
+    if (waitResult === "timeout") {
+      cleanupForegroundWait()
+      await childFinished
+    }
+
+    if (waitResult === "background") {
+      cleanupForegroundWait()
+      if (!exited) {
+        ProcessRegistry.markBackgrounded(regProc)
+        return {
+          title: `[Auto-Background] ${params.description}`,
+          metadata: {
+            output: truncateMetadataOutput(regProc.output),
+            description: params.description,
+            processId: regProc.id,
+            background: true,
+            backend: "local",
+          },
+          output: warnOutput(
+            `Command auto-backgrounded after ${backgroundAfterSeconds}s.\n\n` +
+              `Process ID: ${regProc.id}\n` +
+              `Command: ${params.command}\n` +
+              `Status: running\n\n` +
+              `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+              `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+              `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+              `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+          ),
+        }
       }
     }
+
+    cleanupAllTimers()
 
     const output = regProc.output
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
+    if (timedOut) {
+      return {
+        title: params.description,
+        metadata: {
+          output: truncateMetadataOutput(output),
+          exit: child.exitCode,
+          description: params.description,
+          backend: "local",
+        },
+        output: warnOutput(output),
+      }
+    }
+
     if (aborted) {
       return {
         title: params.description,
