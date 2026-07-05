@@ -12,13 +12,13 @@ export namespace TimeoutConfig {
   }
 
   const DEFAULTS: Resolved = {
-    invokeMs: 900_000,
-    providerTtfbMs: 600_000,
-    providerIdleMs: 180_000,
+    invokeMs: 21_600_000,
+    providerTtfbMs: 3_600_000,
+    providerIdleMs: 900_000,
     providerWallMs: 0,
-    toolDefaultMs: 300_000,
+    toolDefaultMs: 7_200_000,
     toolOverrides: {},
-    permissionAskMs: 300_000,
+    permissionAskMs: 3_600_000,
   }
 
   let cached: Resolved | undefined
@@ -40,7 +40,7 @@ export namespace TimeoutConfig {
 
     const providerIdleRaw = timeout?.provider?.idle_sec
     const providerIdleMs =
-      providerIdleRaw === false
+      providerIdleRaw === false || providerIdleRaw === 0
         ? (false as const)
         : providerIdleRaw !== undefined
           ? providerIdleRaw * 1000

@@ -192,7 +192,7 @@ function buildTimeoutPatch(cfg: Config, runtime: SettingsState["runtime"]) {
 
   const provider: Record<string, unknown> = {}
   const ttfb = positiveNumber(runtime.providerTtfbTimeout)
-  const idle = nonNegativeNumber(runtime.providerIdleTimeout)
+  const idle = idleTimeoutValue(runtime.providerIdleTimeout)
   const wall = nonNegativeNumber(runtime.providerWallTimeout)
   if (ttfb !== undefined) provider.ttfb_sec = ttfb
   if (idle !== undefined) provider.idle_sec = idle
@@ -420,6 +420,12 @@ function nonNegativeNumber(value: string): number | undefined {
   if (!value.trim()) return undefined
   const parsed = Number(value)
   return !Number.isNaN(parsed) && parsed >= 0 ? parsed : undefined
+}
+
+function idleTimeoutValue(value: string): number | false | undefined {
+  const trimmed = value.trim().toLowerCase()
+  if (trimmed === "false") return false
+  return nonNegativeNumber(value)
 }
 
 function boundedNumber(value: string, min: number, max: number): number | undefined {

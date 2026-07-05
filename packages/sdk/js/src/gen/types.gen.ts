@@ -1623,7 +1623,7 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
-     * Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.
+     * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */
     timeout?: number | false
     [key: string]: unknown | string | boolean | number | false | undefined
@@ -2468,22 +2468,22 @@ export type Config = {
     }
   }
   /**
-   * Timeout configuration for agent turns, provider requests, and tool execution
+   * Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts
    */
   timeout?: {
     /**
-     * Max wall-clock seconds for one agent turn (default: 900 = 15min)
+     * Max wall-clock seconds for one assistant step (default: 21600 = 6h)
      */
     invoke_sec?: number
     provider?: {
       /**
-       * Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min
+       * Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h
        */
       ttfb_sec?: number
       /**
-       * Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.
+       * Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.
        */
-      idle_sec?: number
+      idle_sec?: number | false
       /**
        * Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB
        */
@@ -2491,7 +2491,7 @@ export type Config = {
     }
     tool?: {
       /**
-       * Default timeout per tool execution in seconds (default: 300 = 5min)
+       * Default timeout per tool execution in seconds (default: 7200 = 2h)
        */
       default_sec?: number
       /**
@@ -2500,6 +2500,12 @@ export type Config = {
       overrides?: {
         [key: string]: number
       }
+    }
+    permission?: {
+      /**
+       * Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)
+       */
+      ask_sec?: number
     }
   }
   watcher?: {
@@ -2677,7 +2683,7 @@ export type Config = {
   }
   question?: {
     /**
-     * Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)
+     * Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)
      */
     timeout?: number
   }

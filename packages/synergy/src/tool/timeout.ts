@@ -39,9 +39,9 @@ export namespace ToolTimeout {
     taskAutoBackgroundMs: 300_000,
     taskOutputWaitMs: 300_000,
     processPollWaitMs: 30_000,
-    questionMs: 1_800_000,
+    questionMs: 3_600_000,
     lookAtMs: 120_000,
-    bashHardCeilingMs: 3_600_000,
+    bashHardCeilingMs: 86_400_000,
   } as const
 
   export function create(input: { toolTimeoutMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {

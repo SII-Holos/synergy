@@ -320,8 +320,8 @@ export namespace Config {
     if (result.default_agent === undefined) result.default_agent = "synergy"
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
-    if (result.question === undefined) result.question = { timeout: 1800 }
-    else if (result.question.timeout === undefined) result.question.timeout = 1800
+    if (result.question === undefined) result.question = { timeout: 3600 }
+    else if (result.question.timeout === undefined) result.question.timeout = 3600
     if (result.compaction === undefined) {
       result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8 }
     } else {

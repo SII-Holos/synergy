@@ -45,6 +45,40 @@ description: bad: yaml: here
     })
   })
 
+  test("loads project skill references from references directory", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        const skillDir = path.join(dir, ".synergy", "skill", "reference-skill")
+        await Bun.write(
+          path.join(skillDir, "SKILL.md"),
+          `---
+name: reference-skill
+description: Project skill with references.
+---
+
+# Reference Skill
+
+Read references/guide.md.
+`,
+        )
+        await Bun.write(path.join(skillDir, "references", "guide.md"), "# Guide\n\nProject reference body.\n")
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await SkillTool.init()
+        const skillResult = await tool.execute({ name: "reference-skill" }, ctx)
+        expect(skillResult.output).toContain("references/guide.md")
+
+        const referenceResult = await tool.execute({ name: "reference-skill", reference: "references/guide.md" }, ctx)
+        expect(referenceResult.output).toBe("# Guide\n\nProject reference body.")
+      },
+    })
+  })
+
   test("external skill output includes source and compatibility details", async () => {
     await using tmp = await tmpdir({
       git: true,

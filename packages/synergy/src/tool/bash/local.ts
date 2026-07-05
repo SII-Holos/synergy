@@ -27,8 +27,8 @@ function deriveAbortReason(reason: unknown): string {
     if (reason.name === "TimeoutError") {
       return "The command was interrupted: tool execution timed out."
     }
-    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
-      return "The command was interrupted: session turn timed out."
+    if (typeof reason.message === "string" && reason.message.includes("Assistant step timed out")) {
+      return "The command was interrupted: assistant step timed out."
     }
     return "The command was interrupted: " + (reason.message || reason.name)
   }
@@ -301,7 +301,7 @@ export const LocalBashBackend: BashBackend = {
           env: sandboxEnv,
           cwd,
           signal: ctx.abort,
-          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 60-minute hard ceiling
+          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 24-hour hard ceiling
           maxOutputBytes: 1024 * 1024, // 1 MB
           onStdout: append,
           onStderr: append,
@@ -482,7 +482,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 60 minutes absolute hard limit
+    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 24 hours absolute hard limit
 
     const kill = () => Shell.killTree(child, { exited: () => exited })
 
