@@ -179,9 +179,20 @@ export function SessionConversation(props: {
                 <div
                   data-slot="pending-timeline-item"
                   data-mode={item.mode}
+                  data-frozen={props.rollbackActive === true}
                   class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
                 >
-                  <Icon name="clock" size="small" />
+                  <Show
+                    when={props.rollbackActive && item.mode !== "task"}
+                    fallback={<Icon name="clock" size="small" />}
+                  >
+                    <span
+                      class="text-xs opacity-70"
+                      title="Delivery paused during rollback. Will resume on redo or new task."
+                    >
+                      <Icon name="clock" size="small" /> Paused
+                    </span>
+                  </Show>
                   <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
                     <span class="text-xs">{label()}</span>
                   </Show>

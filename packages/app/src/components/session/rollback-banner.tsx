@@ -16,7 +16,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
   const { rollback } = props
   const numTurns = rollback.numTurns ?? 0
   const numMessages = rollback.droppedMessageIDs?.length ?? 0
-  const numFiles = rollback.patchPartIDs?.length ?? 0
+  const numFiles = rollback.files?.length ?? 0
 
   const handleRedo = async () => {
     if (!rollback.canUnrollback) {

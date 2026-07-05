@@ -788,7 +788,9 @@ export namespace MessageV2 {
         }
         result.push(userMessage)
         for (const part of msg.parts) {
-          if (part.type === "text" && !part.ignored)
+          // part.origin has no effect on model visibility (spec §4.4):
+          // system-injected text is meant for the model too.
+          if (part.type === "text")
             userMessage.parts.push({
               type: "text",
               text: part.text,
