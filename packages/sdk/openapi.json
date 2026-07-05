@@ -17992,6 +17992,26 @@
         },
         "additionalProperties": {}
       },
+      "PerfTimelineQuality": {
+        "type": "object",
+        "properties": {
+          "truncated": {
+            "type": "boolean"
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "retentionLimited": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        }
+      },
       "PerfModule": {
         "type": "string",
         "enum": [
@@ -18176,6 +18196,9 @@
           },
           "windowMs": {
             "type": "number"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/PerfTimelineQuality"
           },
           "health": {
             "type": "object",
@@ -18433,6 +18456,14 @@
           "issues"
         ]
       },
+      "PerfMetricKind": {
+        "type": "string",
+        "enum": ["duration", "gauge", "counter", "rate", "size", "ratio"]
+      },
+      "PerfTimelineStat": {
+        "type": "string",
+        "enum": ["avg", "latest", "sum", "rate", "p50", "p95", "p99", "max"]
+      },
       "PerfSource": {
         "type": "string",
         "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
@@ -18452,6 +18483,11 @@
                 "type": "null"
               }
             ]
+          },
+          "sampleCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           }
         },
         "required": ["time", "value"]
@@ -18462,14 +18498,31 @@
           "name": {
             "type": "string"
           },
+          "label": {
+            "type": "string"
+          },
           "unit": {
             "$ref": "#/components/schemas/PerfUnit"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PerfMetricKind"
+          },
+          "stat": {
+            "$ref": "#/components/schemas/PerfTimelineStat"
+          },
+          "sampleCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           },
           "module": {
             "$ref": "#/components/schemas/PerfModule"
           },
           "source": {
             "$ref": "#/components/schemas/PerfSource"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/PerfTimelineQuality"
           },
           "points": {
             "type": "array",
@@ -18494,6 +18547,9 @@
           },
           "bucketMs": {
             "type": "number"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/PerfTimelineQuality"
           },
           "series": {
             "type": "array",

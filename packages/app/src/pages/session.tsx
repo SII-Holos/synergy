@@ -314,12 +314,16 @@ function SessionPageContent() {
   // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
   createEffect(
     on(
-      () => [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, selectableAgentNames()] as const,
+      () => [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, lastRoot()?.variant, selectableAgentNames()] as const,
       () => {
         const msg = lastRoot()
         if (!msg) return
-        if (msg.agent && selectableAgentNames().has(msg.agent)) local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
+        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
+        local.agent.set(msg.agent)
+        if (msg.model) {
+          local.model.set(msg.model)
+          local.model.variant.set(msg.variant, msg.model)
+        }
       },
     ),
   )

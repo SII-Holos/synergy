@@ -1,5 +1,6 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { CHART_METRICS } from "./chart-model"
 import type {
   BrowserMetricSample,
   PerformanceEvent,
@@ -51,6 +52,7 @@ export function usePerformance() {
         setError(null)
         const summaryResult = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
         void loadTraces(rangeMs)
+        void loadTimeline(rangeMs)
         return summaryResult.data ?? null
       } catch (err) {
         setError(getErrorMessage(err))
@@ -163,9 +165,10 @@ export function usePerformance() {
   async function loadTimeline(rangeMs = windowMs()) {
     const now = Date.now()
     const result = await sdk.client.performance.timeline(
-      { from: new Date(now - rangeMs).toISOString() },
+      { from: new Date(now - rangeMs).toISOString(), metric: CHART_METRICS },
       { throwOnError: true },
     )
+
     setTimeline(result.data ?? null)
   }
 

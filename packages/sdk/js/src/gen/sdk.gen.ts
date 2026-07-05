@@ -291,6 +291,7 @@ import type {
   PerformanceTracesDetailResponses,
   PerformanceTracesListResponses,
   PerfSpanStatus,
+  PerfTimelineStat,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
@@ -3063,6 +3064,7 @@ export class Performance extends HeyApiClient {
       tool?: string
       providerID?: string
       module?: PerfModule
+      stat?: PerfTimelineStat
       windowMs?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -3081,6 +3083,7 @@ export class Performance extends HeyApiClient {
             { in: "query", key: "tool" },
             { in: "query", key: "providerID" },
             { in: "query", key: "module" },
+            { in: "query", key: "stat" },
             { in: "query", key: "windowMs" },
           ],
         },
