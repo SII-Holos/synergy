@@ -11,7 +11,7 @@ export class PartWriteBuffer<T, P = string> {
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(
-    private readonly write: (path: P, value: T) => void,
+    private readonly write: (path: P, value: T) => void | Promise<void>,
     private readonly intervalMs = 500,
   ) {}
 
@@ -21,24 +21,28 @@ export class PartWriteBuffer<T, P = string> {
     if (!this.timers.has(key)) {
       this.timers.set(
         key,
-        setTimeout(() => this.flush(key), this.intervalMs),
+        setTimeout(() => void this.flush(key), this.intervalMs),
       )
     }
   }
 
   /** Flush the buffered value for a key now (used by the timer and on shutdown). */
-  flush(key: string): void {
+  flush(key: string): void | Promise<void> {
     const timer = this.timers.get(key)
     if (timer) clearTimeout(timer)
     this.timers.delete(key)
     const entry = this.latest.get(key)
     this.latest.delete(key)
-    if (entry) this.write(entry.path, entry.value)
+    if (entry) return this.write(entry.path, entry.value)
   }
 
-  /** Flush every pending write (e.g. on session idle / shutdown). */
-  flushAll(): void {
-    for (const key of [...this.latest.keys()]) this.flush(key)
+  /**
+   * Flush every pending write and await them (e.g. before finalizing a turn so
+   * the persisted parts reflect all streamed content, even when a mid-stream
+   * interruption skipped the terminal write — issue #327).
+   */
+  async flushAll(): Promise<void> {
+    await Promise.all([...this.latest.keys()].map((key) => this.flush(key)))
   }
 
   /** Drop any pending deferred write for a key without persisting it. Used when

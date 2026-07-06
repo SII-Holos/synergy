@@ -937,9 +937,17 @@ export namespace Session {
   // deltas are coalesced to at most one disk write per interval; discrete updates
   // (tool state, the final no-delta part write) persist immediately so nothing is
   // lost at a meaningful boundary. The event is always broadcast on every delta.
-  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => {
-    void Storage.write(path, value)
-  })
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => Storage.write(path, value))
+
+  /**
+   * Flush all buffered streaming part writes to disk and await them. Called at
+   * turn finalization so the persisted parts reflect everything streamed — most
+   * importantly when a turn is interrupted mid-stream and the terminal part
+   * write that normally flushes never fired (issue #327).
+   */
+  export function flushPartWrites() {
+    return partWriteBuffer.flushAll()
+  }
 
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)

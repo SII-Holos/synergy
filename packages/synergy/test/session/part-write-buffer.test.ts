@@ -3,7 +3,12 @@ import { PartWriteBuffer } from "../../src/session/part-write-buffer"
 
 function recorder() {
   const writes: Array<{ path: string; value: unknown }> = []
-  return { writes, write: (path: string, value: unknown) => writes.push({ path, value }) }
+  return {
+    writes,
+    write: (path: string, value: unknown) => {
+      writes.push({ path, value })
+    },
+  }
 }
 
 describe("PartWriteBuffer", () => {
@@ -28,15 +33,27 @@ describe("PartWriteBuffer", () => {
     expect(r.writes).toEqual([])
   })
 
-  test("independent keys don't interfere", () => {
+  test("independent keys don't interfere", async () => {
     const r = recorder()
     const buf = new PartWriteBuffer<string>(r.write, 10_000)
     buf.defer("p1", "path/p1", "one")
     buf.defer("p2", "path/p2", "two")
-    buf.flushAll()
+    await buf.flushAll()
     expect(r.writes).toContainEqual({ path: "path/p1", value: "one" })
     expect(r.writes).toContainEqual({ path: "path/p2", value: "two" })
     expect(r.writes).toHaveLength(2)
+  })
+
+  test("flushAll awaits async writes (durability before finalize)", async () => {
+    const order: string[] = []
+    const buf = new PartWriteBuffer<string>(async (path, value) => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      order.push(`${path}=${value}`)
+    }, 10_000)
+    buf.defer("p1", "path/p1", "final")
+    await buf.flushAll()
+    // the async write completed before flushAll resolved
+    expect(order).toEqual(["path/p1=final"])
   })
 
   test("the timer flushes without an explicit flush call", async () => {
