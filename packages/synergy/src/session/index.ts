@@ -17,6 +17,7 @@ import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
+import { PartWriteBuffer } from "./part-write-buffer"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import type { ProfileId } from "@/control-profile/types"
@@ -932,15 +933,33 @@ export namespace Session {
     }),
   ])
 
+  // Write-behind for streaming part persistence (perf hotspot S1). Text/reasoning
+  // deltas are coalesced to at most one disk write per interval; discrete updates
+  // (tool state, the final no-delta part write) persist immediately so nothing is
+  // lost at a meaningful boundary. The event is always broadcast on every delta.
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => {
+    void Storage.write(path, value)
+  })
+
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
     const session = await SessionManager.requireSession(part.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(
-      StoragePath.messagePart(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID), asPartID(part.id)),
-      part,
+    const path = StoragePath.messagePart(
+      scopeID,
+      asSessionID(part.sessionID),
+      asMessageID(part.messageID),
+      asPartID(part.id),
     )
+    if (delta !== undefined) {
+      partWriteBuffer.defer(part.id, path, part)
+    } else {
+      // Discrete/terminal update: cancel any pending streamed write and persist
+      // durably before returning (preserves the original write-through contract).
+      partWriteBuffer.cancel(part.id)
+      await Storage.write(path, part)
+    }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,
