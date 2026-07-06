@@ -280,7 +280,7 @@ export namespace ExternalAgentProcessor {
     )
 
     const parts = await MessageV2.parts({ sessionID, messageID: assistantMessage.id })
-    return { info: { ...assistantMessage, visible: true }, parts }
+    return { info: assistantMessage, parts }
   }
 
   async function finalizeTextPart(part: MessageV2.TextPart | undefined) {

@@ -115,6 +115,15 @@ describe("Codex external adapter CLI args", () => {
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-5.5")
     expect(args.join(" ")).not.toContain("model_provider")
     expect(args.join(" ")).not.toContain("SYNERGY_CODEX_API_KEY")
+
+    // Simulate the turn() env construction + nativeAuth deletion pattern:
+    // buildCodexProcessEnv copies injected SYNERGY_CODEX_API_KEY in,
+    // then nativeAuth deletes it before passing to the child process.
+    const configEnv = (adapter.adapterConfig?.env as Record<string, string> | undefined) ?? {}
+    const env = buildCodexProcessEnv(process.env, adapter.env ?? {}, configEnv)
+    expect(env.SYNERGY_CODEX_API_KEY).toBe("should-not-be-used")
+    delete env.SYNERGY_CODEX_API_KEY
+    expect(env.SYNERGY_CODEX_API_KEY).toBeUndefined()
   })
 
   test("does not let sandbox config bypass controlProfile", async () => {

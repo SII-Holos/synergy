@@ -361,7 +361,8 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
-          const override = await resolveExternalModelOverride(R.model, adapter.name)
+          const codexNativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
+          const override = codexNativeAuth ? undefined : await resolveExternalModelOverride(R.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
