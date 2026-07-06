@@ -222,7 +222,7 @@ function canReceivePermissionAsk(plugin: LoadedPlugin, input: unknown): boolean 
   if (scope === "none") return false
   if (scope === "all") return true
   const toolId = (input as any)?.tool as string | undefined
-  if (!toolId || !PluginToolId.is(toolId)) return true
+  if (!toolId || !PluginToolId.is(toolId)) return false
   return PluginToolId.parse(toolId)?.pluginId === plugin.id
 }
 

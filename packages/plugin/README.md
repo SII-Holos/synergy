@@ -185,7 +185,7 @@ Plugins return hooks from `init()`. Hook permissions are declared in `plugin.jso
 }
 ```
 
-`events` is `"none"`, `"selected"`, or `"all"`. In selected mode, `eventNames` supports exact names, `*` for all events, and suffix wildcards ending in `.*` such as `session.*`.
+`events` is `"none"`, `"selected"`, or `"all"`. In selected mode, `eventNames` supports exact names, `*` for all events, and prefix wildcards ending in `.*` such as `session.*`.
 
 ```ts
 event(input) {

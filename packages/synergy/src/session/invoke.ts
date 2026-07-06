@@ -651,7 +651,7 @@ export namespace SessionInvoke {
         const promptPlan = await PromptBudgeter.buildPlan({
           sessionID,
           agent: agent.name,
-          messageID: lastUser.id,
+          messageID: R.id,
           model,
           system: systemParts,
           systemCacheBreakpoint,

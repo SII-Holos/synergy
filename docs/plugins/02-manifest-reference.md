@@ -86,7 +86,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
 
 `data.config` may be `none`, `plugin`, or `global`. It defaults to `none`; declare `plugin` or `global` only when the plugin reads Synergy configuration through plugin services. This is separate from `hooks.config`, which allows observing redacted runtime config snapshots.
 
-`hooks.events` may be `none`, `selected`, or `all`. In selected mode, `hooks.eventNames` supports exact event names, `*`, and suffix wildcards ending in `.*` such as `session.*`.
+`hooks.events` may be `none`, `selected`, or `all`. In selected mode, `hooks.eventNames` supports exact event names, `*`, and prefix wildcards ending in `.*` such as `session.*`.
 
 `hooks.config: true` allows the plugin `config(input, output)` hook to receive redacted config snapshots on startup, plugin reload, and config reload. `input.source` is `startup`, `plugin_reload`, or `reload`; `input.changedFields` is present for config reload notifications.
 
