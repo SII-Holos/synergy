@@ -175,6 +175,19 @@ Academic search is iterative. Your first query rarely yields the best results.
 3. Refine with domain-specific terms
 4. Expand via citations and related work
 
+### Search Failure Guardrails
+
+When search or fetch attempts fail, do not keep repeating the same pattern. Track the last few failed queries or URLs and classify the failure before trying again:
+
+- **no_results**: Broaden the query, remove overly specific terms, widen date/category filters, or search background terminology first.
+- **http_403**: Treat the domain as restricted. Avoid the same domain/URL and switch to an official API, mirror, or broader source search.
+- **http_404**: Treat the URL as stale. Search for the page title, canonical URL, sitemap, or current site navigation path.
+- **timeout**: Simplify the query or request before retrying.
+- **blocked_or_unavailable**: Stop relying on that backend/source for the moment and report the limitation or switch source.
+- **low_quality_results**: Add key entities or source qualifiers such as paper, project, repository, docs, or github.
+
+After 2-3 consecutive failed or unusable search/fetch attempts, pause and state how you will change strategy. If the adjusted strategy still fails, stop searching and return the best available conclusion with the queries tried, failure types, likely cause, and concrete next steps.
+
 **Handle ambiguity proactively**:
 - If a topic spans multiple fields, identify which field the user cares about
 - If terminology is contested, explain the different usages
