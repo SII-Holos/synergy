@@ -391,7 +391,7 @@ function classifyProtectedPathCapability(
     protectedMatch.category === "secrets" || protectedMatch.exactSecretRoot ? "secrets" : "protected_op"
   uniqueCapability(caps, {
     class: capabilityClass,
-    nonBypassable: protectedMatch.exactSecretRoot === true,
+    nonBypassable: protectedMatch.smartAllowEligible !== true,
     opaque: protectedMatch.exactSecretRoot === true,
     reason: protectedMatch.reason,
     metadata: {

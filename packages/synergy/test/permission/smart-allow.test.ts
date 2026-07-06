@@ -48,12 +48,12 @@ describe("SmartAllow eligibility", () => {
     expect(SmartAllow.isEligible("deny", caps)).toBe(true)
   })
 
-  test("rejects non-bypassable, opaque, and hard capabilities", () => {
+  test("rejects non-bypassable and opaque capabilities", () => {
     expect(SmartAllow.isEligible("ask", [{ class: "file_write", nonBypassable: true }])).toBe(false)
     expect(SmartAllow.isEligible("ask", [{ class: "file_write", nonBypassable: false, opaque: true }])).toBe(false)
-    expect(SmartAllow.isEligible("deny", [{ class: "shell_destructive", nonBypassable: false }])).toBe(false)
-    expect(SmartAllow.isEligible("deny", [{ class: "identity_act", nonBypassable: false }])).toBe(false)
-    expect(SmartAllow.isEligible("deny", [{ class: "secrets", nonBypassable: false }])).toBe(false)
+    expect(SmartAllow.isEligible("deny", [{ class: "shell_destructive", nonBypassable: false }])).toBe(true)
+    expect(SmartAllow.isEligible("deny", [{ class: "identity_act", nonBypassable: false }])).toBe(true)
+    expect(SmartAllow.isEligible("deny", [{ class: "secrets", nonBypassable: false }])).toBe(true)
   })
 
   test("allows explicitly marked secret-candidate false positives", () => {

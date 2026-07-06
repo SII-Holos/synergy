@@ -5,7 +5,6 @@ import { LLM } from "@/session/llm"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
-import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 
 export namespace SmartAllow {
   const log = Log.create({ service: "permission.smart-allow" })
@@ -40,18 +39,6 @@ export namespace SmartAllow {
     disabled: boolean
   }
 
-  const HARD_CAPABILITIES = new Set([
-    "shell_destructive",
-    "secrets",
-    "shell_hardline",
-    "identity_act",
-    "communication_email",
-    "channel_outbound",
-    "permission_hook",
-    "prompt_transform",
-    "compaction_transform",
-    "browser_eval_trusted",
-  ])
   const SECRET_VALUE_PATTERN = /(api[_-]?key|token|secret|password|credential|cookie)/i
   const PLACEHOLDER_VALUE_PATTERN =
     /^(|example|placeholder|changeme|change_me|your[_-]?(key|token|secret|password)?[_-]?here|xxx+|todo)$/i
@@ -79,8 +66,8 @@ export namespace SmartAllow {
 
   export function hasHardBoundary(capabilities: Capability[]): boolean {
     return capabilities.some((cap) => {
-      if (cap.metadata?.smartAllowEligible === true && cap.metadata?.exactSecretRoot !== true) return false
-      return cap.nonBypassable || cap.opaque || capabilityNonBypassable(cap.class) || HARD_CAPABILITIES.has(cap.class)
+      if (cap.metadata?.smartAllowEligible === true) return false
+      return cap.nonBypassable || cap.opaque
     })
   }
 
@@ -221,7 +208,6 @@ export namespace SmartAllow {
       user,
       tools: {},
       model,
-      small: true,
       messages: [{ role: "user", content: buildPrompt(input) }],
       abort: AbortSignal.timeout(10_000),
       sessionID,
@@ -264,7 +250,7 @@ export namespace SmartAllow {
           .join("\n")}`
       : ""
 
-    return `Assess whether this eligible ${input.policyAction} should be auto-allowed.
+    return `Evaluate whether this tool operation should skip the normal permission prompt.
 
 Tool: ${input.tool}
 Workspace: ${input.workspace}
@@ -273,9 +259,7 @@ ${path ? `Path: ${path}` : ""}
 ${url ? `URL: ${url}` : ""}
 ${query ? `Query: ${query}` : ""}${evidence}
 
-Remember: this classifier only receives bypassable metadata and redacted evidence. If context is missing, classify as risky.
-
-Respond JSON only: {"risk":"safe|risky|dangerous","reason":"brief","confidence":0.0-1.0}`
+Return one JSON object only, with no markdown or extra text: {"risk":"safe|risky|dangerous","reason":"brief","confidence":0.0-1.0}`
   }
 
   export function shouldAutoAllow(
