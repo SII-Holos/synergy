@@ -36,7 +36,7 @@ export function McpPanel(props: {
           when={props.entries.length > 0}
           fallback={
             <div class="settings-integration-empty">
-              <Icon name={getSemanticIcon("settings.mcp")} size="normal" />
+              <Icon name={getSemanticIcon("mcp.main")} size="normal" />
               <div>
                 <div class="settings-integration-empty-title">No MCP servers yet</div>
                 <div class="settings-integration-empty-copy">Add a server when a workflow needs external tools.</div>

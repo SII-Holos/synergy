@@ -2,6 +2,7 @@ import { createSignal, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Panel } from "@/components/panel"
 import { ViewTab } from "@/components/library/shared"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type LucidView = "lucid" | "files"
 
@@ -44,7 +45,7 @@ function LucidViewPlaceholder() {
               background: "radial-gradient(circle, currentColor, transparent 70%)",
             }}
           />
-          <Icon name="sparkles" size="large" class="relative text-text-weak size-10" />
+          <Icon name={getSemanticIcon("command.rmslop")} size="large" class="relative text-text-weak size-10" />
         </div>
 
         <h2 class="text-18-medium text-text-strong mb-3 tracking-tight">See your code, not read it.</h2>
@@ -114,7 +115,7 @@ function FilesViewPlaceholder() {
               background: "radial-gradient(circle, currentColor, transparent 70%)",
             }}
           />
-          <Icon name="folder" size="large" class="relative text-text-weak size-9" />
+          <Icon name={getSemanticIcon("workspace.main")} size="large" class="relative text-text-weak size-9" />
         </div>
 
         <h3 class="text-14-medium text-text-strong mb-2">File Explorer</h3>
@@ -145,8 +146,8 @@ function FileTreeSection(props: { label: string; children: any }) {
   return (
     <div>
       <div class="flex items-center gap-1.5 py-1.5 px-1 text-text-weak hover:text-text-base transition-colors cursor-pointer">
-        <Icon name="chevron-down" size="small" class="size-3.5 shrink-0" />
-        <Icon name="folder" size="small" class="size-4 shrink-0 text-text-weak" />
+        <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="size-3.5 shrink-0" />
+        <Icon name={getSemanticIcon("workspace.main")} size="small" class="size-4 shrink-0 text-text-weak" />
         <span class="text-12-medium">{props.label}</span>
       </div>
       <div class="ml-3.5">{props.children}</div>

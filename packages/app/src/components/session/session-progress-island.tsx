@@ -3,6 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { formatProgressIslandLabel, type ProgressIslandSnapshot, type ProgressMode } from "./session-progress-summary"
 import "./session-progress-island.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface SessionProgressIslandProps {
   mode: Exclude<ProgressMode, "none">
@@ -153,7 +154,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
             {(detail) => <span class="session-progress-island-detail">{detail()}</span>}
           </Show>
           <Icon
-            name="chevron-down"
+            name={getSemanticIcon("navigation.collapse")}
             size="small"
             class="session-progress-island-chevron"
             classList={{ "is-expanded": props.expanded }}

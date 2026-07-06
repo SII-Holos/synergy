@@ -141,7 +141,7 @@ export function ProviderConnectionFlow(props: {
   function methodIcon(item: ProviderAuthMethod) {
     if (item.type === "api" || item.type === "import") return getSemanticIcon("account.import")
     if (item.type === "oauth") return getSemanticIcon("action.open")
-    return getSemanticIcon("settings.providers")
+    return getSemanticIcon("providers.main")
   }
 
   return (

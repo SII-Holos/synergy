@@ -2,6 +2,7 @@ import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type View = "stats" | "memory" | "experience" | "skill"
 
@@ -209,7 +210,7 @@ export function SelectionCheckbox(props: { selected: boolean }) {
       }}
     >
       <Show when={props.selected}>
-        <Icon name="check" size="small" class="scale-75" />
+        <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" />
       </Show>
     </div>
   )

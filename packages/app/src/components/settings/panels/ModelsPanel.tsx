@@ -6,6 +6,7 @@ import { groupByProvider } from "../types"
 import { ModelRoleRow } from "../components/ModelRoleRow"
 import type { ModelKey, ModelsStore, ProviderModel } from "../types"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function ModelsPanel(props: {
   models: ModelsStore
@@ -51,7 +52,13 @@ export function ModelsPanel(props: {
       title="Models"
       description="Choose specialist role models and decide which connected models appear in quick switcher."
       actions={
-        <Button type="button" variant="ghost" size="small" icon="plus" onClick={props.onConnectProvider}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="small"
+          icon={getSemanticIcon("action.add")}
+          onClick={props.onConnectProvider}
+        >
           Connect provider
         </Button>
       }

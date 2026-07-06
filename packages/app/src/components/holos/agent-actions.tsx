@@ -241,7 +241,7 @@ export function DialogSwitchHolosAgent(props: {
           when={props.accounts.length > 0}
           fallback={
             <div class="holos-agent-switch-empty">
-              <Icon name="user" size="normal" />
+              <Icon name={getSemanticIcon("settings.account")} size="normal" />
               <span>No saved agents</span>
             </div>
           }

@@ -274,43 +274,47 @@ function SummaryCards(props: { summary: PerformanceSummary | null | undefined; i
   const frontend = () => summary()?.frontend
   return (
     <div class="performance-summary-grid">
-      <MetricCard label="Health" value={summary()?.health.status ?? "Unknown"} icon="perf.health" />
-      <MetricCard label="HTTP p95" value={formatChartDuration(summary()?.backend.p95RequestMs)} icon="perf.latency" />
+      <MetricCard label="Health" value={summary()?.health.status ?? "Unknown"} icon="performance.health" />
+      <MetricCard
+        label="HTTP p95"
+        value={formatChartDuration(summary()?.backend.p95RequestMs)}
+        icon="performance.latency"
+      />
       <MetricCard
         label="Sessions"
         value={`${summary()?.backend.activeSessions ?? 0} active · ${summary()?.backend.pendingSessions ?? 0} pending`}
-        icon="perf.trace"
+        icon="performance.trace"
       />
       <MetricCard
         label="Issues"
         value={String(props.issues.length)}
-        icon="perf.issue"
+        icon="performance.issue"
         tone={props.issues.length > 0 ? "warning" : "default"}
       />
       <MetricCard
         label="CPU"
         value={formatChartPercent(ratioToPercent(resources()?.cpuUtilizationRatio))}
-        icon="perf.cpu"
+        icon="performance.cpu"
       />
-      <MetricCard label="Memory" value={formatChartBytes(resources()?.rssBytes)} icon="perf.memory" />
+      <MetricCard label="Memory" value={formatChartBytes(resources()?.rssBytes)} icon="performance.memory" />
       <MetricCard
         label="Event loop p95"
         value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
-        icon="perf.latency"
+        icon="performance.latency"
       />
       <MetricCard
         label="Disk IO"
         value={`${formatChartBytes(resources()?.appReadBytes)} read · ${formatChartBytes(resources()?.appWrittenBytes)} write`}
-        icon="perf.disk"
+        icon="performance.disk"
       />
       <MetricCard
         label="Disk ops"
         value={`${resources()?.appReadOps ?? 0} read · ${resources()?.appWriteOps ?? 0} write`}
-        icon="perf.disk"
+        icon="performance.disk"
       />
-      <MetricCard label="LLM calls" value={String(summary()?.sessions?.llmCallCount ?? 0)} icon="perf.network" />
-      <MetricCard label="Tool calls" value={String(summary()?.sessions?.toolCallCount ?? 0)} icon="perf.trace" />
-      <MetricCard label="Long tasks" value={String(frontend()?.longTaskCount ?? 0)} icon="perf.frontend" />
+      <MetricCard label="LLM calls" value={String(summary()?.sessions?.llmCallCount ?? 0)} icon="performance.network" />
+      <MetricCard label="Tool calls" value={String(summary()?.sessions?.toolCallCount ?? 0)} icon="performance.trace" />
+      <MetricCard label="Long tasks" value={String(frontend()?.longTaskCount ?? 0)} icon="performance.frontend" />
     </div>
   )
 }
@@ -340,7 +344,7 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("perf.health")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak" />
         <div>
           <h3 class="text-14-semibold text-text-strong">Runtime health and support</h3>
           <p class="mt-1 text-11-regular text-text-weak">
@@ -420,7 +424,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("perf.timeline")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak" />
         <h3 class="text-14-semibold text-text-strong">Trace timeline</h3>
       </div>
       <Show when={props.traces.length > 0} fallback={<EmptyState label="No trace spans reported" />}>
@@ -453,7 +457,7 @@ function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: Perform
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("perf.issue")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak" />
         <h3 class="text-14-semibold text-text-strong">Performance issues</h3>
       </div>
       <Show when={props.issues.length > 0} fallback={<EmptyState label="No active performance issues" />}>
@@ -499,12 +503,12 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
   const groups = createMemo(() => {
     const top = props.summary?.top
     return [
-      { title: "Slow routes", icon: "perf.routes" as const, items: top?.slowRoutes ?? [] },
-      { title: "Slow sessions", icon: "perf.sessions" as const, items: top?.slowSessions ?? [] },
-      { title: "Slow tools", icon: "perf.tools" as const, items: top?.slowTools ?? [] },
-      { title: "Slow providers", icon: "perf.providers" as const, items: top?.slowProviders ?? [] },
-      { title: "Slow storage", icon: "perf.storage" as const, items: top?.slowStorage ?? [] },
-      { title: "Slow library", icon: "perf.library" as const, items: top?.slowLibrary ?? [] },
+      { title: "Slow routes", icon: "performance.routes" as const, items: top?.slowRoutes ?? [] },
+      { title: "Slow sessions", icon: "performance.sessions" as const, items: top?.slowSessions ?? [] },
+      { title: "Slow tools", icon: "performance.tools" as const, items: top?.slowTools ?? [] },
+      { title: "Slow providers", icon: "performance.providers" as const, items: top?.slowProviders ?? [] },
+      { title: "Slow storage", icon: "performance.storage" as const, items: top?.slowStorage ?? [] },
+      { title: "Slow library", icon: "performance.library" as const, items: top?.slowLibrary ?? [] },
     ]
   })
   return (
@@ -574,7 +578,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
     <div class="performance-frontend-grid">
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("perf.frontend")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak" />
           <h3 class="text-14-semibold text-text-strong">Slow frontend</h3>
         </div>
         <Show when={slow().length > 0} fallback={<EmptyState label="No slow frontend routes in this range" />}>
@@ -597,7 +601,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
       </div>
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("perf.vitals")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak" />
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">

@@ -8,6 +8,7 @@ import type { useLayout } from "@/context/layout"
 import type { usePrompt } from "@/context/prompt"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { filePreviewModel } from "./file-preview-model"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface FileTabContentProps {
   tab: string
@@ -154,7 +155,7 @@ export function FileTabContent(props: FileTabContentProps) {
                   props.prompt.context.add({ type: "file", path: p, selection: sel() })
                 }}
               >
-                <Icon name="plus" size="small" />
+                <Icon name={getSemanticIcon("action.add")} size="small" />
                 <span>Add {selectionLabel()} to context</span>
               </button>
             </div>

@@ -28,6 +28,7 @@ import {
 } from "./activity-state"
 import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 import "./agenda-dialog.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type AgendaAction = "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove"
 
@@ -277,7 +278,7 @@ export function AgendaPanel() {
                 class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
                 onClick={openCreate}
               >
-                <Icon name="plus" size="small" class="text-background-base" />
+                <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />
                 <span>New Agenda</span>
               </button>
             </AppPanel.HeaderRow>
@@ -465,10 +466,10 @@ function DetailPopover(props: {
           onClick={props.onEdit}
           title="Edit"
         >
-          <Icon name="pen-line" size="small" />
+          <Icon name={getSemanticIcon("action.rename")} size="small" />
         </button>
         <ActionIconBtn
-          icon="trash-2"
+          icon={getSemanticIcon("action.remove")}
           title="Delete"
           loading={props.isLoading(props.item.id, "remove")}
           onClick={() => props.onAction("remove")}
@@ -481,7 +482,7 @@ function DetailPopover(props: {
           onClick={props.onClose}
           title="Close"
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       </div>
 

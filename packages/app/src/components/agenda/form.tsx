@@ -7,6 +7,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import type { AgendaItem, AgendaTrigger, AgendaCreateInput, AgendaPatchInput } from "@ericsanchezok/synergy-sdk/client"
 import { AppPanel } from "@/components/app-panel"
 import { startOfDay, addDays, addMonths, startOfWeek, MONTH_NAMES_SHORT, DAY_LABELS_MINI } from "./date"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 // ---------------------------------------------------------------------------
 // Repeat — "every N unit" model
@@ -307,7 +308,7 @@ export function AgendaForm(props: {
       <Show when={!isDialog()}>
         <AppPanel.Header>
           <AppPanel.HeaderRow>
-            <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
+            <AppPanel.Action icon={getSemanticIcon("navigation.back")} title="Back" onClick={props.onBack} />
             <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
             <div class="flex items-center gap-1.5">
               <button
@@ -390,7 +391,7 @@ export function AgendaForm(props: {
                       setRepeatMode("off")
                     }}
                   >
-                    <Icon name="x" size="small" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </div>
               </Show>

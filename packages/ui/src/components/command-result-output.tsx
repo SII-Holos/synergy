@@ -6,6 +6,7 @@ import { Icon } from "./icon"
 import { DateTime } from "luxon"
 
 import "./command-result-output.css"
+import { getSemanticIcon } from "./semantic-icon"
 
 export function CommandResultOutput(props: {
   message: AssistantMessage
@@ -43,7 +44,7 @@ export function CommandResultOutput(props: {
       <div data-slot="command-result-container" class={props.classes?.container}>
         <div data-slot="command-result-header">
           <div data-slot="command-result-source">
-            <Icon name="terminal" size="small" />
+            <Icon name={getSemanticIcon("settings.commands")} size="small" />
             <span data-slot="command-result-label">{label()}</span>
           </div>
           <span data-slot="command-result-time">{timestamp()}</span>

@@ -56,7 +56,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     const fullSession = store.session.find((session) => session.id === entry.id)
 
     if (fullSession?.blueprint?.loopID) {
-      const blueprintIcon = getSemanticIcon("orchestration.blueprint")
+      const blueprintIcon = getSemanticIcon("blueprint.main")
       if (waiting)
         return { icon: blueprintIcon, label: "Blueprint waiting for you", tone: "blueprint-waiting", pulse: true }
       if (fullSession.blueprint.loopRole === "audit") {
@@ -104,7 +104,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   }
   if (entry.category === "channel") {
     return {
-      icon: getSemanticIcon("session.channel"),
+      icon: getSemanticIcon("channels.main"),
       label: `Channel session${unread ? "; response ready" : ""}`,
       tone: "muted",
       completionUnread: unread || undefined,

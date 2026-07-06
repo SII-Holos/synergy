@@ -124,7 +124,7 @@ describe("resolveSessionVisualState", () => {
 
   test("keeps category icons as the idle fallback", () => {
     expect(resolveSessionVisualState(store(), entry({ category: "channel" })).icon).toBe(
-      getSemanticIcon("session.channel"),
+      getSemanticIcon("channels.main"),
     )
     expect(resolveSessionVisualState(store(), entry({ category: "background" })).icon).toBe(
       getSemanticIcon("session.background"),
@@ -150,7 +150,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
     expect(visual.label).toBe("Blueprint session")
     expect(visual.tone).toBe("blueprint")
     expect(visual.pulse).toBeUndefined()
@@ -165,7 +165,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
     expect(visual.label).toBe("Running Blueprint")
     expect(visual.tone).toBe("blueprint-running")
     expect(visual.pulse).toBe(true)
@@ -194,7 +194,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
     expect(visual.label).toBe("Blueprint waiting for you")
     expect(visual.tone).toBe("blueprint-waiting")
     expect(visual.pulse).toBe(true)

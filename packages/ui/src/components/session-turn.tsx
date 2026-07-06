@@ -29,6 +29,7 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "./semantic-icon"
 import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
@@ -389,27 +390,27 @@ function displayItemVisualKind(
   return timelineVisualKind(item)
 }
 
-function originIconName(origin: { type: string; label?: string; detail?: string } | undefined): string {
-  if (!origin || !origin.type) return "message-square"
+function originIconToken(origin: { type: string; label?: string; detail?: string } | undefined): SemanticIconTokenName {
+  if (!origin || !origin.type) return "session.default"
   switch (origin.type) {
     case "cortex":
-      return "bot"
+      return "cortex.main"
     case "agenda":
-      return "calendar-days"
+      return "session.background"
     case "blueprint":
-      return "clipboard-list"
+      return "blueprint.main"
     case "channel":
-      return "message-circle"
+      return "channels.main"
     case "agent":
-      return "corner-down-left"
+      return "prompt.submit"
     case "compaction":
-      return "archive"
+      return "settings.compaction"
     case "plugin":
-      return "puzzle"
+      return "plugins.main"
     case "system":
-      return "cpu"
+      return "settings.models"
     default:
-      return "bot"
+      return "session.default"
   }
 }
 
@@ -433,7 +434,7 @@ function TimelineDisplay(props: {
     return (
       <div data-slot="session-turn-rewind-wrapper">
         <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
-          <Icon name={originIconName(props.item.message.origin)} size="small" />
+          <Icon name={getSemanticIcon(originIconToken(props.item.message.origin))} size="small" />
           <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
         </div>
         <button
@@ -445,7 +446,7 @@ function TimelineDisplay(props: {
           }}
           title="Rewind to before this message"
         >
-          <Icon name="undo-2" size="small" />
+          <Icon name={getSemanticIcon("session.rewind")} size="small" />
           <span>Rewind</span>
         </button>
       </div>
@@ -484,7 +485,7 @@ function MailboxSourceBadge(props: { message: UserMessage }) {
 
   return (
     <div data-slot="session-turn-mailbox-source">
-      <Icon name="message-square" size="small" />
+      <Icon name={getSemanticIcon("session.inbox")} size="small" />
       <span>
         From{" "}
         <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
@@ -807,7 +808,7 @@ export function SessionTurn(
                             }}
                             title="Rewind to before this message"
                           >
-                            <Icon name="undo-2" size="small" />
+                            <Icon name={getSemanticIcon("session.rewind")} size="small" />
                             <span>Rewind</span>
                           </button>
                         </Show>

@@ -5,6 +5,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { SessionRollbackSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface RollbackBannerProps {
   sessionID: string
@@ -81,7 +82,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
     <Portal>
       <div data-component="rollback-banner">
         <div data-slot="rollback-banner-content">
-          <Icon name="undo-2" size="small" />
+          <Icon name={getSemanticIcon("session.rewind")} size="small" />
           <span data-slot="rollback-banner-text">
             Rewound {numMessages} message{numMessages === 1 ? "" : "s"} ({numTurns} turn{numTurns === 1 ? "" : "s"})
           </span>
@@ -115,7 +116,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
             onClick={props.onDismiss}
             aria-label="Dismiss"
           >
-            <Icon name="x" size="small" />
+            <Icon name={getSemanticIcon("action.close")} size="small" />
           </Button>
         </div>
       </div>

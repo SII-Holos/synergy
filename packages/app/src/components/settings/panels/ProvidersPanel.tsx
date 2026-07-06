@@ -142,7 +142,7 @@ export function ProvidersPanel(props: {
             when={selected()}
             fallback={
               <div class="providers-empty-detail">
-                <Icon name={getSemanticIcon("settings.providers")} size="large" />
+                <Icon name={getSemanticIcon("providers.main")} size="large" />
                 <span>Select a provider to connect it.</span>
               </div>
             }

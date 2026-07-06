@@ -11,6 +11,7 @@ import { ConversationViewport } from "./conversation-viewport"
 import { navMark } from "@/utils/perf"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -185,12 +186,15 @@ export function SessionConversation(props: {
                   data-frozen={props.rollbackActive === true}
                   class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
                 >
-                  <Show when={props.rollbackActive} fallback={<Icon name="clock" size="small" />}>
+                  <Show
+                    when={props.rollbackActive}
+                    fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}
+                  >
                     <span
                       class="text-xs opacity-70"
                       title="Delivery paused during rollback. Will resume on redo or new task."
                     >
-                      <Icon name="clock" size="small" /> Paused
+                      <Icon name={getSemanticIcon("agenda.main")} size="small" /> Paused
                     </span>
                   </Show>
                   <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
@@ -212,7 +216,7 @@ export function SessionConversation(props: {
                       title="Remove pending message"
                       onClick={() => props.onPendingRemove?.(item)}
                     >
-                      <Icon name="x" size="small" />
+                      <Icon name={getSemanticIcon("action.close")} size="small" />
                       <span>Withdraw</span>
                     </button>
                   </div>

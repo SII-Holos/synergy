@@ -97,7 +97,7 @@ function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: Blueprint
     label: "Blueprint",
     detail: "No active run",
     tone: "idle",
-    icon: getSemanticIcon("orchestration.blueprint"),
+    icon: getSemanticIcon("blueprint.main"),
   }
 }
 
@@ -209,7 +209,7 @@ function NoteCard(props: {
       <Show when={isBlueprint()}>
         <div class={`note-blueprint-card-header note-blueprint-card-header--${blueprintState().tone}`}>
           <span class="note-blueprint-card-kicker">
-            <Icon name={getSemanticIcon("orchestration.blueprint")} size="small" class="size-3.5" />
+            <Icon name={getSemanticIcon("blueprint.main")} size="small" class="size-3.5" />
             Blueprint
           </span>
           <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
@@ -261,13 +261,13 @@ function NoteCard(props: {
             <div class="flex items-center gap-2">
               <Show when={props.originName}>
                 <span class="note-card-origin">
-                  <Icon name="folder" class="size-3 shrink-0" />
+                  <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
                   <span class="truncate">From {props.originName}</span>
                 </span>
               </Show>
               <Show when={props.note.pinned}>
                 <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
-                  <Icon name="pin" size="small" class="size-3" />
+                  <Icon name={getSemanticIcon("notes.pin")} size="small" class="size-3" />
                 </span>
               </Show>
               <span class="flex-1" />
@@ -281,13 +281,13 @@ function NoteCard(props: {
             </span>
             <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
             <Show when={props.note.pinned}>
-              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-weak" />
+              <Icon name={getSemanticIcon("notes.pin")} size="small" class="size-3 shrink-0 text-text-weak" />
             </Show>
           </div>
           <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
             <Show when={props.originName}>
               <span class="note-card-origin">
-                <Icon name="folder" class="size-3 shrink-0" />
+                <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
                 <span class="truncate">From {props.originName}</span>
               </span>
             </Show>
@@ -472,7 +472,7 @@ function RunMenu(props: {
               title="Close"
               aria-label="Close run menu"
             >
-              <Icon name="x" size="small" class="size-3" />
+              <Icon name={getSemanticIcon("action.close")} size="small" class="size-3" />
             </button>
           </div>
         </div>
@@ -512,7 +512,7 @@ function RunMenu(props: {
               title="Back"
               aria-label="Back to session mode"
             >
-              <Icon name="chevron-left" size="small" class="size-3.5" />
+              <Icon name={getSemanticIcon("navigation.back")} size="small" class="size-3.5" />
             </button>
             <div class="min-w-0 flex-1">
               <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
@@ -527,7 +527,7 @@ function RunMenu(props: {
               title="Close"
               aria-label="Close run menu"
             >
-              <Icon name="x" size="small" class="size-3" />
+              <Icon name={getSemanticIcon("action.close")} size="small" class="size-3" />
             </button>
           </div>
         </div>
@@ -546,7 +546,7 @@ function RunMenu(props: {
                 <span class="settings-model-trigger-title">{currentModelOption()?.label}</span>
                 <span class="settings-model-trigger-detail">{currentModelOption()?.description}</span>
               </span>
-              <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />
             </KobaltePopover.Trigger>
             <KobaltePopover.Portal>
               <KobaltePopover.Content class="settings-model-picker-popover note-run-model-picker flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
@@ -574,7 +574,7 @@ function RunMenu(props: {
             </KobaltePopover.Portal>
           </KobaltePopover>
           <button type="button" class="note-run-model-run" onClick={handleRun}>
-            <Icon name="zap" size="small" class="size-3.5" />
+            <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3.5" />
             Run with selected model
           </button>
         </div>
@@ -653,16 +653,16 @@ function ScopeSection(props: {
             class="shrink-0 text-icon-weak transition-transform duration-150"
             classList={{ "rotate-90": props.expanded }}
           >
-            <Icon name="chevron-right" size="small" />
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
           </span>
           <Show when={props.group.scopeType === "home"}>
-            <Icon name="home" size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("navigation.home")} size="small" class="text-icon-weak shrink-0" />
           </Show>
           <Show when={props.group.scopeType === "project" && !props.group.archived}>
-            <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("notes.folder")} size="small" class="text-icon-weak shrink-0" />
           </Show>
           <Show when={props.group.archived}>
-            <Icon name="archive" size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("notes.archive")} size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
@@ -712,7 +712,7 @@ function ScopeSection(props: {
             <Show when={hasMore()}>
               <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
                 View all {props.group.notes.length} notes
-                <Icon name="chevron-right" size="small" class="size-3" />
+                <Icon name={getSemanticIcon("navigation.expand")} size="small" class="size-3" />
               </button>
             </Show>
           </Show>
@@ -1178,7 +1178,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 onClick={() => setShowArchived((v) => !v)}
                 title={showArchived() ? "Show active" : "Show archived"}
               >
-                <Icon name="archive" size="small" />
+                <Icon name={getSemanticIcon("notes.archive")} size="small" />
               </button>
               <Show when={!selecting()}>
                 <button
@@ -1187,7 +1187,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   onClick={() => setSelecting(true)}
                   title="Select notes"
                 >
-                  <Icon name="square-check" size="small" />
+                  <Icon name={getSemanticIcon("notes.select")} size="small" />
                 </button>
               </Show>
               <button
@@ -1196,7 +1196,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 onClick={() => refetch()}
                 title="Refresh"
               >
-                <Icon name="refresh-ccw" size="small" />
+                <Icon name={getSemanticIcon("action.refresh")} size="small" />
               </button>
             </div>
           </div>
@@ -1287,7 +1287,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 when={displayGroups().length > 0}
                 fallback={
                   <div class="flex flex-col items-center justify-center py-16 gap-3">
-                    <Icon name="notebook-pen" size="large" class="text-icon-weak" />
+                    <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak" />
                     <div class="text-14-medium text-text-weak">No notes found</div>
                   </div>
                 }
@@ -2009,7 +2009,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                   title="Run Blueprint"
                 >
                   <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                    <Icon name="zap" size="small" class="size-3" />
+                    <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3" />
                   </Show>
                   <span>Run</span>
                 </button>
@@ -2023,7 +2023,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 onClick={togglePin}
                 title={baseNote()!.pinned ? "Unpin" : "Pin"}
               >
-                <Icon name="pin" size="small" />
+                <Icon name={getSemanticIcon("notes.pin")} size="small" />
                 <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
               </button>
 
@@ -2047,7 +2047,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 title="Download as Markdown"
                 aria-label="Download as Markdown"
               >
-                <Icon name="download" size="small" />
+                <Icon name={getSemanticIcon("action.download")} size="small" />
               </button>
 
               <button
@@ -2066,7 +2066,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               >
                 <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
                   <Icon
-                    name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("orchestration.blueprint")}
+                    name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("blueprint.main")}
                     size="small"
                   />
                 </Show>
@@ -2083,7 +2083,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                     title="Archive"
                     aria-label="Archive"
                   >
-                    <Icon name="archive" size="small" />
+                    <Icon name={getSemanticIcon("notes.archive")} size="small" />
                   </button>
                 }
               >
@@ -2094,7 +2094,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                   title="Restore"
                   aria-label="Restore"
                 >
-                  <Icon name="rotate-ccw" size="small" />
+                  <Icon name={getSemanticIcon("notes.restore")} size="small" />
                 </button>
                 <button
                   type="button"
@@ -2188,14 +2188,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                     class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
                     onClick={() => removeTag(tag)}
                   >
-                    <Icon name="x" size="small" class="size-2.5" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" class="size-2.5" />
                   </button>
                   {tag}
                 </span>
               )}
             </For>
             <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
-              <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
+              <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
                 class="min-w-0 flex-1 bg-transparent text-11-regular text-text-base outline-none placeholder:text-text-weaker"

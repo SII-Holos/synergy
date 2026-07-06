@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface PaginationBarProps {
   total: number
@@ -57,7 +58,7 @@ export function PaginationBar(props: PaginationBarProps) {
           disabled={props.currentPage <= 1 || props.loading}
           onClick={() => props.onPageChange(props.currentPage - 1)}
         >
-          <Icon name="arrow-left" size="small" />
+          <Icon name={getSemanticIcon("navigation.back")} size="small" />
         </button>
 
         <For each={getPageNumbers(props.currentPage, props.totalPages)}>
@@ -83,7 +84,7 @@ export function PaginationBar(props: PaginationBarProps) {
           disabled={props.currentPage >= props.totalPages || props.loading}
           onClick={() => props.onPageChange(props.currentPage + 1)}
         >
-          <Icon name="arrow-right" size="small" />
+          <Icon name={getSemanticIcon("navigation.forward")} size="small" />
         </button>
       </div>
     </div>
