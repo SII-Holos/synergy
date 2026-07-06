@@ -6,8 +6,7 @@ import { access, mkdtemp, rm } from "fs/promises"
 import os from "os"
 import path from "path"
 import {
-  META_PROTOCOL_DIR,
-  PLUGIN_DIR,
+  SYNERGY_LINK_PROTOCOL_DIR,
   PLUGIN_KIT_DIR,
   SDK_DIR,
   SYNERGY_DIST_DIR,
@@ -26,7 +25,7 @@ import { currentGitRemoteUrl } from "./release/shared/git"
 const publishablePackages: PublishablePackage[] = [
   { name: "@ericsanchezok/synergy-sdk", dir: SDK_DIR, build: true, attw: true },
   { name: "@ericsanchezok/synergy-util", dir: UTIL_DIR, build: true, attw: true },
-  { name: "@ericsanchezok/meta-protocol", dir: META_PROTOCOL_DIR, build: true, attw: true },
+  { name: "@ericsanchezok/synergy-link-protocol", dir: SYNERGY_LINK_PROTOCOL_DIR, build: true, attw: true },
   {
     name: "@ericsanchezok/synergy-plugin",
     dir: PLUGIN_DIR,

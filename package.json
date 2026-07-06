@@ -36,8 +36,8 @@
     "packages": [
       "packages/app",
       "packages/desktop",
-      "packages/meta-protocol",
-      "packages/meta-synergy",
+      "packages/synergy-link-protocol",
+      "packages/synergy-link",
       "packages/plugin",
       "packages/plugin-kit",
       "packages/script",
