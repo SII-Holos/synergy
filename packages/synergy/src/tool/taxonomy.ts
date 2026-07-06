@@ -197,6 +197,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
+  openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
@@ -263,7 +264,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^question/i, kind: "communication.question" },
   // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
   {
-    pattern: /^(openai[-_])?image[-_]gen/i,
+    pattern: /^(openai[-_])?image[-_](gen|edit)/i,
     kind: "communication.visual",
     traits: { externalIO: true, stateful: true },
   },

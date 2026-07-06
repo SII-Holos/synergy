@@ -52,6 +52,7 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 import { OpenAIImageGenTool } from "./openai-image-gen"
+import { OpenAIImageEditTool } from "./openai-image-edit"
 
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
@@ -439,7 +440,7 @@ export namespace ToolRegistry {
       allowMissing: true,
       refreshIfExpiring: false,
     }).catch(() => undefined)
-    if (codexAccess) builtin.push(OpenAIImageGenTool)
+    if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
 
     return [...builtin, ...custom]
   }

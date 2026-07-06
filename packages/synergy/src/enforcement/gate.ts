@@ -297,6 +297,13 @@ function firstPathArg(args: Record<string, any>): string {
     ""
   )
 }
+function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
+  const read = Array.isArray(args.input_paths)
+    ? args.input_paths.filter((item: unknown): item is string => typeof item === "string" && item.length > 0)
+    : []
+  const outputPath = firstPathArg(args)
+  return { read, write: outputPath ? [outputPath] : [] }
+}
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
@@ -432,7 +439,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      const arg = raw.replace(/^[\"']/, "").replace(/[\"']$/, "")
+      const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
       paths.push(arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg) ? arg : `${cwd}/${arg}`)
     }
   }
@@ -490,13 +497,15 @@ export namespace EnforcementGate {
       // Sensitive path candidates are classified before generic path ownership
       // so secret roots/candidates get profile-aware handling instead of a
       // blanket .synergy/.env hard boundary.
-      const pathArg = firstPathArg(args)
-      if (pathArg) {
-        const mode =
-          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
-            ? "write"
-            : "read"
-        classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
+      if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
+        const pathArg = firstPathArg(args)
+        if (pathArg) {
+          const mode =
+            toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+              ? "write"
+              : "read"
+          classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
+        }
       }
 
       // MCP tools: mcp__server__tool
@@ -941,13 +950,17 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      if (toolName === "openai_image_gen") {
-        const outputPath = firstPathArg(args)
-        if (outputPath) {
+      if (toolName === "openai_image_gen" || toolName === "openai_image_edit") {
+        const imagePaths = imagePathArgs(args)
+        for (const inputPath of imagePaths.read) {
+          classifyProtectedPathCapability(caps, inputPath, "read", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, inputPath, { activeWorkspace, originalCheckout, readRoots })
+        }
+        for (const outputPath of imagePaths.write) {
           classifyProtectedPathCapability(caps, outputPath, "write", { activeWorkspace, originalCheckout, synergyRoot })
           classifyPathCapability(caps, outputPath, { activeWorkspace, originalCheckout, write: true })
         }
-        caps.push({ class: "network_request", nonBypassable: true })
+        caps.push({ class: "network_request", nonBypassable: false })
         return { capabilities: caps }
       }
 

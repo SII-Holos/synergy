@@ -1715,3 +1715,28 @@ ToolRegistry.register({
     )
   },
 })
+
+ToolRegistry.register({
+  name: "openai_image_edit",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "image",
+          title: "Edit Image",
+          subtitlePath: (props.input.output_path as string | undefined) ?? undefined,
+          tags: props.input.quality ? [{ label: props.input.quality as string }] : undefined,
+        }}
+      >
+        <Show keyed when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})

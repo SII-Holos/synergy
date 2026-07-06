@@ -98,7 +98,7 @@ describe("EnforcementGate path classification", () => {
     expect(external.nonBypassable).toBe(true)
   })
 
-  test("openai_image_gen classifies output_path as write path and external request", async () => {
+  test("openai_image_gen classifies output_path as write path and bypassable external request", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -108,12 +108,40 @@ describe("EnforcementGate path classification", () => {
       output_path: "/Users/test/synergy-control-profile/assets/generated/star.png",
     })
 
+    expect(result.capabilities.some((c: any) => c.class === "file_read")).toBe(false)
     const write = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(write).toBeDefined()
     expect(write.paths).toContain("/Users/test/synergy-control-profile/assets/generated/star.png")
     const network = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(network).toBeDefined()
-    expect(network.nonBypassable).toBe(true)
+    expect(network.nonBypassable).toBe(false)
+  })
+
+  test("openai_image_edit classifies input_paths as reads, output_path as write, and external request as bypassable", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("openai_image_edit", {
+      input_paths: [
+        "/Users/test/synergy-control-profile/assets/input/source.png",
+        "/Users/test/synergy-control-profile/assets/input/reference.webp",
+      ],
+      output_path: "/Users/test/synergy-control-profile/assets/generated/source-edit.png",
+    })
+
+    const reads = result.capabilities.filter((c: any) => c.class === "file_read")
+    expect(reads.flatMap((cap: any) => cap.paths ?? [])).toEqual([
+      "/Users/test/synergy-control-profile/assets/input/source.png",
+      "/Users/test/synergy-control-profile/assets/input/reference.webp",
+    ])
+    const write = result.capabilities.find((c: any) => c.class === "file_write")!
+    expect(write).toBeDefined()
+    expect(write.paths).toEqual(["/Users/test/synergy-control-profile/assets/generated/source-edit.png"])
+    const network = result.capabilities.find((c: any) => c.class === "network_request")!
+    expect(network).toBeDefined()
+    expect(network.nonBypassable).toBe(false)
   })
 
   test("revise_file target path is classified from hashline patch header", async () => {
@@ -629,6 +657,25 @@ describe("EnforcementGate profile integration", () => {
     })
     // autonomous allows file_external — reading outside workspace is permitted
     expect(external.decision).toBe("allow")
+  })
+
+  test("autonomous allows workspace-internal openai image generation and edit", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
+    const generation = gate.evaluate("openai_image_gen", {
+      output_path: "/Users/test/synergy-control-profile/assets/generated/star.png",
+    })
+    expect(generation.decision).toBe("allow")
+
+    const edit = gate.evaluate("openai_image_edit", {
+      input_paths: ["/Users/test/synergy-control-profile/assets/input/source.png"],
+      output_path: "/Users/test/synergy-control-profile/assets/generated/source-edit.png",
+    })
+    expect(edit.decision).toBe("allow")
   })
 
   test("gate with full_access allows external reads", async () => {

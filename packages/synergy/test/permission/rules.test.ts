@@ -19,6 +19,12 @@ describe("PermissionRules.extractPattern", () => {
       "assets/generated/*",
     )
     expect(PermissionRules.extractPattern("openai_image_gen", { outputPath: "images/star.png" })).toBe("images/*")
+    expect(
+      PermissionRules.extractPattern("openai_image_edit", {
+        input_paths: ["assets/input/source.png"],
+        output_path: "assets/generated/source-edit.png",
+      }),
+    ).toBe("assets/input/*")
   })
 
   test("returns wildcard for unknown tool shapes", () => {

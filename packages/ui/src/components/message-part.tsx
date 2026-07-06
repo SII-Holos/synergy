@@ -747,6 +747,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Generate Image",
         subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
       }
+    case "openai_image_edit":
+      return {
+        icon: "image",
+        title: "Edit Image",
+        subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
+      }
     case "diagram":
       return {
         icon: "workflow",

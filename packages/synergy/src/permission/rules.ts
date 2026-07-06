@@ -24,6 +24,20 @@ export namespace PermissionRules {
 
   const sessionRules = new Map<string, Rule[]>()
 
+  function firstPathArg(args: Record<string, any>): string | undefined {
+    const inputPath = Array.isArray(args.input_paths)
+      ? args.input_paths.find((item: unknown): item is string => typeof item === "string" && item.length > 0)
+      : undefined
+    return (
+      (args.path as string) ??
+      (args.file_path as string) ??
+      (args.filePath as string) ??
+      inputPath ??
+      (args.output_path as string) ??
+      (args.outputPath as string)
+    )
+  }
+
   export function extractPattern(toolName: string, args: Record<string, any>): string {
     if (toolName === "bash") {
       const command = (args.command as string) ?? ""
@@ -33,12 +47,7 @@ export namespace PermissionRules {
       const tokens = stripped.split(/\s+/).slice(0, 2)
       return tokens.length > 0 ? tokens.join(" ") + " *" : "*"
     }
-    const path =
-      (args.path as string) ??
-      (args.file_path as string) ??
-      (args.filePath as string) ??
-      (args.output_path as string) ??
-      (args.outputPath as string)
+    const path = firstPathArg(args)
     if (path) {
       const parts = path.replace(/^\.\//, "").split("/")
       if (parts.length > 1) {
