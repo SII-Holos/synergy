@@ -650,6 +650,7 @@ export namespace MessageV2 {
         part: Part,
         delta: z.string().optional(),
       }),
+      { streaming: true },
     ),
     PartRemoved: BusEvent.define(
       "message.part.removed",

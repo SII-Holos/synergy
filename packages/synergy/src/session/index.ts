@@ -16,6 +16,8 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
+import { PartWriteBuffer } from "./part-write-buffer"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import type { ProfileId } from "@/control-profile/types"
@@ -274,10 +276,31 @@ export namespace Session {
     return { ...result, working }
   }
 
+  // Dedup redundant session.updated publishes: a diff limited to time.updated
+  // (or a byte-identical payload) is throttled to a heartbeat, while any real
+  // field change publishes immediately (issue #319, defense in depth).
+  const lastPublish = new Map<string, { key: string; at: number }>()
+  const PUBLISH_DEDUP_THROTTLE_MS = 1000
+
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
-    Bus.publish(event, {
-      info: await withRuntimeInfo(session),
-    })
+    const info = await withRuntimeInfo(session)
+    const key = publishCompareKey(info)
+    const now = Date.now()
+    const prev = lastPublish.get(session.id)
+    if (
+      !decideSessionPublish({
+        prevKey: prev?.key,
+        prevAt: prev?.at,
+        nextKey: key,
+        now,
+        throttleMs: PUBLISH_DEDUP_THROTTLE_MS,
+      })
+    ) {
+      return
+    }
+    if (info.time.archived) lastPublish.delete(session.id)
+    else lastPublish.set(session.id, { key, at: now })
+    Bus.publish(event, { info })
   }
 
   export async function create(input?: {
@@ -910,15 +933,41 @@ export namespace Session {
     }),
   ])
 
+  // Write-behind for streaming part persistence (perf hotspot S1). Text/reasoning
+  // deltas are coalesced to at most one disk write per interval; discrete updates
+  // (tool state, the final no-delta part write) persist immediately so nothing is
+  // lost at a meaningful boundary. The event is always broadcast on every delta.
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => Storage.write(path, value))
+
+  /**
+   * Flush all buffered streaming part writes to disk and await them. Called at
+   * turn finalization so the persisted parts reflect everything streamed — most
+   * importantly when a turn is interrupted mid-stream and the terminal part
+   * write that normally flushes never fired (issue #327).
+   */
+  export function flushPartWrites() {
+    return partWriteBuffer.flushAll()
+  }
+
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
     const session = await SessionManager.requireSession(part.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(
-      StoragePath.messagePart(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID), asPartID(part.id)),
-      part,
+    const path = StoragePath.messagePart(
+      scopeID,
+      asSessionID(part.sessionID),
+      asMessageID(part.messageID),
+      asPartID(part.id),
     )
+    if (delta !== undefined) {
+      partWriteBuffer.defer(part.id, path, part)
+    } else {
+      // Discrete/terminal update: cancel any pending streamed write and persist
+      // durably before returning (preserves the original write-through contract).
+      partWriteBuffer.cancel(part.id)
+      await Storage.write(path, part)
+    }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,
