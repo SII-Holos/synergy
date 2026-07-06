@@ -1321,6 +1321,13 @@
   background: var(--sb-hover-bg);
 }
 
+.sb-channel-partner-group .sb-session-group-header > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .sb-channel-partner-group .sb-sessions {
   padding-left: 20px;
 }

@@ -1069,7 +1069,10 @@ export namespace Session {
     if (existing) {
       const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
       const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
-      const chatNameChanged = newChatName != null && existingChatName !== newChatName
+      const isPlatformID = (name: string | undefined): boolean => !!name && /^(ou_|on_|oc_|user_)/.test(name)
+      const chatNameChanged =
+        (newChatName != null && existingChatName !== newChatName) ||
+        (isPlatformID(existingChatName) && newChatName == null)
       if (chatNameChanged) {
         return update(existing.id, (draft) => {
           if (draft.endpoint?.kind === "channel") {
