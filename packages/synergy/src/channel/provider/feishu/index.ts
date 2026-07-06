@@ -554,7 +554,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       chatNamePromise,
     ])
 
-    const chatName = resolvedChatName ?? senderName ?? (senderId !== "unknown" ? senderId : undefined)
+    const chatName = resolvedChatName ?? senderName
 
     if (MEDIA_MESSAGE_TYPES.has(messageType) || messageType === "post") {
       log.info("feishu media resolved", {
