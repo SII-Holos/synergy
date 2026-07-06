@@ -98,6 +98,24 @@ describe("EnforcementGate path classification", () => {
     expect(external.nonBypassable).toBe(true)
   })
 
+  test("openai_image_gen classifies output_path as write path and external request", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("openai_image_gen", {
+      output_path: "/Users/test/synergy-control-profile/assets/generated/star.png",
+    })
+
+    const write = result.capabilities.find((c: any) => c.class === "file_write")!
+    expect(write).toBeDefined()
+    expect(write.paths).toContain("/Users/test/synergy-control-profile/assets/generated/star.png")
+    const network = result.capabilities.find((c: any) => c.class === "network_request")!
+    expect(network).toBeDefined()
+    expect(network.nonBypassable).toBe(true)
+  })
+
   test("revise_file target path is classified from hashline patch header", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

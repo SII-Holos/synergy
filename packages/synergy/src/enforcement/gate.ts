@@ -287,6 +287,16 @@ function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approve
   if (caps.some((existing) => existing.class === cap.class)) return
   caps.push({ ...cap })
 }
+function firstPathArg(args: Record<string, any>): string {
+  return (
+    (args.path as string) ??
+    (args.file_path as string) ??
+    (args.filePath as string) ??
+    (args.output_path as string) ??
+    (args.outputPath as string) ??
+    ""
+  )
+}
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
@@ -480,7 +490,7 @@ export namespace EnforcementGate {
       // Sensitive path candidates are classified before generic path ownership
       // so secret roots/candidates get profile-aware handling instead of a
       // blanket .synergy/.env hard boundary.
-      const pathArg = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
+      const pathArg = firstPathArg(args)
       if (pathArg) {
         const mode =
           toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
@@ -581,7 +591,7 @@ export namespace EnforcementGate {
             classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
           }
         } else {
-          const filePath = args.filePath ?? args.path ?? ""
+          const filePath = firstPathArg(args)
           if (filePath) {
             classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
             classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
@@ -928,6 +938,16 @@ export namespace EnforcementGate {
       }
       if (toolName === "browser_view") {
         caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      if (toolName === "openai_image_gen") {
+        const outputPath = firstPathArg(args)
+        if (outputPath) {
+          classifyProtectedPathCapability(caps, outputPath, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, outputPath, { activeWorkspace, originalCheckout, write: true })
+        }
+        caps.push({ class: "network_request", nonBypassable: true })
         return { capabilities: caps }
       }
 

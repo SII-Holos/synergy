@@ -33,7 +33,12 @@ export namespace PermissionRules {
       const tokens = stripped.split(/\s+/).slice(0, 2)
       return tokens.length > 0 ? tokens.join(" ") + " *" : "*"
     }
-    const path = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
+    const path =
+      (args.path as string) ??
+      (args.file_path as string) ??
+      (args.filePath as string) ??
+      (args.output_path as string) ??
+      (args.outputPath as string)
     if (path) {
       const parts = path.replace(/^\.\//, "").split("/")
       if (parts.length > 1) {
