@@ -21,6 +21,7 @@ import { navStart } from "@/utils/perf"
 import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { MobileDrawer } from "@/components/mobile-drawer"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ConnectionBanner } from "@/components/connection-banner"
 import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
 import { DesktopNativeTitlebar } from "@/components/desktop-native-titlebar"
@@ -457,6 +458,15 @@ function LayoutContent(
       }}
     >
       <MobileDrawer />
+      {/* Global mobile hamburger — visible on every page at <768px */}
+      <button
+        type="button"
+        class="md:hidden fixed left-2.5 top-2.5 z-[99] flex items-center justify-center size-10 rounded-xl bg-surface-raised-base/90 backdrop-blur-sm border border-border-weaker-base/60 text-icon-base shadow-md active:scale-95 transition-transform"
+        aria-label="Open navigation"
+        onClick={() => layout.mobileSidebar.toggle()}
+      >
+        <Icon name="panel-left-open" size="normal" />
+      </button>
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
       <ConnectionBanner />
