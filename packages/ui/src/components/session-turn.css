@@ -191,7 +191,6 @@
     [data-kind="text"],
     [data-kind="reasoning"],
     [data-kind="non-root-user"],
-    [data-kind="tool-attachments"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);
