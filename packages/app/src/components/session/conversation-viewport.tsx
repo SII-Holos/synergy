@@ -23,7 +23,7 @@ export function ConversationViewport(props: {
       <Show when={props.overlay}>{props.overlay}</Show>
       <Show when={props.scrolledUp}>
         <div
-          class={`absolute right-4 md:right-6 z-20 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
+          class={`absolute right-4 md:right-6 z-20 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-4 md:bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
           style={{ animation: "scroll-btn-enter 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
         >
           <IconButton

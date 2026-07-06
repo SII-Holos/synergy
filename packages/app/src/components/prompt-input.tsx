@@ -466,49 +466,76 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     void togglePlanMode()
   }
 
-  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
-    {
-      id: "context",
-      label: "Context",
-      items: [
-        {
-          id: "files",
-          label: "Add files",
-          description: "Attach files or images",
-          icon: getSemanticIcon("prompt.attach"),
-          onSelect: () => fileInputRef.click(),
-        },
-      ],
-    },
-    {
-      id: "workflow",
-      label: "Workflow",
-      items: [
-        {
-          id: "plan-mode",
-          label: "Plan mode",
-          description: planMode() ? "Planning before execution" : "Ask for an approach first",
-          icon: getSemanticIcon("prompt.plan"),
-          selected: planMode(),
-          ariaDisabled: blueprintModeLocked() || planMode(),
-          title: blueprintModeLocked()
-            ? "Plan Mode is unavailable while a Blueprint is equipped"
-            : planMode()
-              ? "Plan Mode is already enabled"
-              : undefined,
-          tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
-          iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-          labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
-          classList: {
-            "bg-workbench-selected-bg": planMode(),
-            "text-text-base": planMode(),
-            "opacity-60": blueprintModeLocked(),
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
+    const agentSection: PromptAddMenuSection = {
+      id: "agent",
+      label: "Agent",
+      items: local.agent.list().filter((a) => !a.hidden).map((agent) => {
+        const visual = getAgentVisual(agent)
+        const disabled = sessionHasMessages() && !!agent.external
+        return {
+          id: `agent-${agent.name}`,
+          label: visual.label,
+          icon: getSemanticIcon("settings.agents"),
+          selected: local.agent.current() === agent.name,
+          disabled,
+          tooltip: disabled ? "Create a new session to use this external agent" : undefined,
+          onSelect: () => {
+            if (!disabled) local.agent.set(agent.name)
           },
-          onSelect: selectPlanModeFromMenu,
-        },
-      ],
-    },
-  ])
+        }
+      }),
+    }
+    return [
+      {
+        id: "context",
+        label: "Context",
+        items: [
+          {
+            id: "files",
+            label: "Add files",
+            description: "Attach files or images",
+            icon: getSemanticIcon("prompt.attach"),
+            onSelect: () => fileInputRef.click(),
+          },
+        ],
+      },
+      ...(props.hideAgentSelector || layout.isDesktop() ? [] : [agentSection]),
+      {
+        id: "workflow",
+        label: "Workflow",
+        items: [
+          {
+            id: "plan-mode",
+            label: "Plan mode",
+            description: planMode() ? "Planning before execution" : "Ask for an approach first",
+            icon: getSemanticIcon("prompt.plan"),
+            selected: planMode(),
+            ariaDisabled: blueprintModeLocked() || planMode(),
+            title: blueprintModeLocked()
+              ? "Plan Mode is unavailable while a Blueprint is equipped"
+              : planMode()
+                ? "Plan Mode is already enabled"
+                : undefined,
+            tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
+            iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
+            classList: {
+              "bg-workbench-selected-bg": planMode(),
+              "text-text-base": planMode(),
+              "opacity-60": blueprintModeLocked(),
+            },
+            onSelect: selectPlanModeFromMenu,
+          },
+        ],
+      },
+    ]
+  })
 
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
     if (params.id) return []
@@ -575,10 +602,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
-  })
-  const sessionHasMessages = createMemo(() => {
-    if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
   })
   const cortexRunning = createMemo(() => {
     const id = params.id
@@ -1103,7 +1126,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
-        <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+        <div class="absolute -top-3 right-5 z-20 hidden md:flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
           <QuickActions
             class="relative"
@@ -1265,6 +1288,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </Match>
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
+                  <div class="hidden md:block">
                   <ToolbarSelectorPopover
                     trigger={
                       <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
@@ -1322,6 +1346,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       </List>
                     )}
                   </ToolbarSelectorPopover>
+                  </div>
                 </Show>
                 <PermissionModeSelector
                   working={working}

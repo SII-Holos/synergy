@@ -69,7 +69,7 @@ export function SessionConversation(props: {
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 transition-[margin] md:px-5"
+      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 text-sm md:text-base transition-[margin] md:px-5"
       contentClassList={{
         "max-w-full": true,
         "md:max-w-[60rem]": !props.showTabs(),

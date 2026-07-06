@@ -41,7 +41,7 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkbenchPanelsProvider, useWorkbenchPanels } from "@/context/workbench-panels"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
@@ -65,11 +65,7 @@ const handoff = {
 }
 
 export default function Page() {
-  return (
-    <WorkbenchPanelsProvider>
-      <SessionPageContent />
-    </WorkbenchPanelsProvider>
-  )
+  return <SessionPageContent />
 }
 
 function SessionPageContent() {
