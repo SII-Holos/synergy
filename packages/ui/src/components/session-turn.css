@@ -51,11 +51,6 @@
     opacity: 1;
   }
 
-  [data-slot="session-turn-rewind-button"][data-rollback-active="true"] {
-    opacity: 0;
-    pointer-events: none;
-  }
-
   [data-slot="session-turn-rewind-wrapper"] {
     display: flex;
     align-items: center;
