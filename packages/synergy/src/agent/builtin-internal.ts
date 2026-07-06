@@ -142,7 +142,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       temperature: 0,
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_SMART_ALLOW,
-      ...resolveAgentModelRole(ctx, "mini"),
+      ...resolveAgentModelRole(ctx, "mid"),
     },
     "agent-generator": {
       name: "agent-generator",

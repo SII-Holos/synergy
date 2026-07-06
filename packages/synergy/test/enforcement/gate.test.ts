@@ -2481,4 +2481,35 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(secrets).toBeDefined()
     expect(secrets!.metadata?.protectedCategory).toBe("secrets")
   })
+
+  test("real secret candidates are explicit nonBypassable boundaries", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env#abcd]\nSWAP 1..1:\n+SECRET=x\n",
+    })
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")
+    expect(secrets).toBeDefined()
+    expect(secrets!.nonBypassable).toBe(true)
+  })
+
+  test("dotenv examples stay SmartAllow-eligible", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env.example#abcd]\nSWAP 1..1:\n+OPENAI_API_KEY=your_key_here\n",
+    })
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")
+    expect(secrets).toBeDefined()
+    expect(secrets!.nonBypassable).toBe(false)
+    expect(secrets!.metadata?.smartAllowEligible).toBe(true)
+  })
 })
