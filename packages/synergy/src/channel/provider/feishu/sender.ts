@@ -117,11 +117,11 @@ export class ChatNameCache {
       const result = (await response.json()) as {
         code?: number
         msg?: string
-        data?: { chat?: { name?: string } }
+        data?: { name?: string; chat_id?: string; description?: string }
       }
 
-      if (result.code === 0 && result.data?.chat?.name) {
-        const name = result.data.chat.name
+      if (result.code === 0 && result.data?.name) {
+        const name = result.data.name
         this.cache.set(normalized, { name, expiresAt: now + this.ttlMs })
         this.negativeCache.delete(normalized)
         return name
