@@ -151,6 +151,10 @@ function createGlobalSync() {
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
   const [noteVersion, setNoteVersion] = createSignal(0)
+  // Bumped on every (re)connect resync so component-level resources that are not
+  // in the normalized store — e.g. blueprint loop state, which the server cannot
+  // replay after a restart — refetch their state (issue #331).
+  const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
   function bumpNoteVersion() {
     setNoteVersion((v) => v + 1)
@@ -1227,6 +1231,8 @@ function createGlobalSync() {
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
+    // Signal reconnect so store-external resources (blueprint loops) refetch.
+    setReconnectVersion((v) => v + 1)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
       replayOrResync(directory).catch(() => undefined),
     ).finally(() => {
@@ -1320,6 +1326,7 @@ function createGlobalSync() {
     touchMessageBucket,
     bootstrap,
     noteVersion,
+    reconnectVersion,
     noteUpdate,
     get agenda() {
       return globalStore.agenda

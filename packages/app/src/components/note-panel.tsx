@@ -821,8 +821,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   )
 
   const [loops, { refetch: refetchLoops }] = createResource(
-    () => directory(),
-    async (dir) => {
+    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion() }),
+    async ({ dir }) => {
       if (!dir) return [] as BlueprintLoopInfo[]
       try {
         const result = await sdk.client.blueprint.loop.list({ directory: dir })
@@ -1422,7 +1422,12 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }),
   )
   const [noteLoops, { refetch: refetchLoops }] = createResource(
-    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+    () => ({
+      id: props.id,
+      dir: directory(),
+      ver: globalSync.noteVersion(),
+      reconnect: globalSync.reconnectVersion(),
+    }),
     async ({ id, dir }) => {
       if (!dir) return [] as BlueprintLoopInfo[]
       try {
