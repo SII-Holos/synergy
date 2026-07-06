@@ -444,6 +444,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   network_request: "network_request",
   scan_document: "file_read",
   look_at: "file_read",
+  view_image: "file_read",
   attach: "file_read",
   ast_grep: "file_read",
   lsp: "file_read",

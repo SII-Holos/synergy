@@ -7,6 +7,7 @@ import { FileSearchTool } from "./file-search"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
+import { ViewImageTool } from "./view-image"
 import { ReviseFileTool } from "./revise-file"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
@@ -331,6 +332,7 @@ export namespace ToolRegistry {
       ProcessTool,
       ConnectTool,
       ReadTool,
+      ViewImageTool,
       ViewFileTool,
       ScanFilesTool,
       FileSearchTool,

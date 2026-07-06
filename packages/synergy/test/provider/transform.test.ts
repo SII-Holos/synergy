@@ -536,7 +536,7 @@ describe("ProviderTransform.message - empty image handling", () => {
     expect(result[0].content).toHaveLength(2)
     expect(result[0].content[1]).toMatchObject({
       type: "text",
-      text: '["huge.png" was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use the look_at tool with the file\'s local path to analyze it or attach a smaller image.]',
+      text: '["huge.png" was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use view_image with a smaller local image when the active model supports image input, use look_at for separate vision-model analysis, or attach a smaller image.]',
     })
   })
 })
