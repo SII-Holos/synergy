@@ -62,6 +62,19 @@ function hookDispatchContext(input: unknown): Record<string, unknown> | undefine
     ...(model && typeof model === "object" ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
   }
 }
+function mergeHookOutput(output: unknown, nextOutput: unknown): void {
+  if (!nextOutput || typeof nextOutput !== "object" || !output || typeof output !== "object") return
+  const target = output as Record<string, unknown>
+  const source = nextOutput as Record<string, unknown>
+  for (const [key, value] of Object.entries(source)) {
+    const current = target[key]
+    if (Array.isArray(current) && Array.isArray(value)) {
+      current.splice(0, current.length, ...value)
+      continue
+    }
+    target[key] = value
+  }
+}
 
 export async function trigger<
   Name extends Exclude<
@@ -101,9 +114,7 @@ export async function trigger<
             before,
           })
           const nextOutput = await triggerRuntimeHook(id, String(name), input, output)
-          if (nextOutput && typeof nextOutput === "object" && output && typeof output === "object") {
-            Object.assign(output as any, nextOutput)
-          }
+          mergeHookOutput(output, nextOutput)
           log.debug("plugin hook completed", {
             id,
             hook: String(name),
