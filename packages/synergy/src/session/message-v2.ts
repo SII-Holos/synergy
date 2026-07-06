@@ -1174,19 +1174,44 @@ export namespace MessageV2 {
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
     const result = [] as MessageV2.WithParts[]
-    const completed = new Set<string>()
+    const skipped = [] as MessageV2.WithParts[]
+    let boundaryUserID: string | undefined
+    let foundBoundary = false
     for await (const msg of stream) {
-      result.push(msg)
+      if (!boundaryUserID) {
+        result.push(msg)
+        if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) boundaryUserID = msg.info.parentID
+        continue
+      }
+
       if (
-        msg.info.role === "user" &&
-        completed.has(msg.info.id) &&
-        msg.parts.some((part) => part.type === "compaction")
+        msg.info.role !== "user" ||
+        msg.info.id !== boundaryUserID ||
+        !msg.parts.some((part) => part.type === "compaction")
+      ) {
+        skipped.push(msg)
+        continue
+      }
+
+      const boundaryID = boundaryUserID
+      result.push(
+        ...skipped
+          .filter((item) => isFulfilledCompactionSummary(item, boundaryID))
+          .map((item) => ({ ...item, info: { ...item.info, includeInContext: false } })),
       )
-        break
-      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
+      result.push(msg)
+      foundBoundary = true
+      break
     }
+    if (boundaryUserID && !foundBoundary) result.push(...skipped)
     result.reverse()
     return result
+  }
+
+  function isFulfilledCompactionSummary(msg: MessageV2.WithParts, parentID: string): boolean {
+    if (msg.info.role !== "assistant") return false
+    const assistant = msg.info as MessageV2.Assistant
+    return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {

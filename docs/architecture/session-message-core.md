@@ -182,7 +182,8 @@ steer 唤醒的 loop 与普通 loop 完全同构：R 不变，模型看到新注
 - **anchor 解析**：`resolveAnchor(R) = R 的 parts 中 origin=="user" 的 text`，找不到文本（纯附件/agenda 触发的任务）时退到 `R.summary.title`。删除三级 fallback、删除 `isAnchorEligibleUser` 启发式、删除 `compactionAnchor` metadata 接力。因为 R 是持久化消息，跨多次 compaction 依然可以按 `rootID` 直接读到——**不依赖它还在上下文窗口里**。
 - **auto-continue**："Continue if you have next steps" + anchor 文本作为一条 `steer` 注入（`rootID = R.id`，`origin: {type:"compaction"}`，`visible: false`）。它不再成为新 parent，turn 不再断裂，`Turn.resolveRealUser` 这类回溯补丁可删。
 - **emergency compaction**（`invoke.ts:892-911`）：同样从"创建新 user message 当新 parent"改为注入 steer + compaction part。
-- `filterCompacted`、prune、mechanical fallback、`compaction_recovery` part 全部机制不变。
+- **有效视图裁剪**：`filterCompacted` 以最新完成的 compaction summary assistant 作为截断点；保留任务 root R、已完成的 compaction summaries（较旧 summary 标记 `includeInContext:false` 仅供调度计数）、以及最新 summary 之后的新消息。这样 root 继续承担任务归属，summary 承担上下文压缩边界。
+- prune、mechanical fallback、`compaction_recovery` part 全部机制不变。
 
 ---
 
