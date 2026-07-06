@@ -1728,6 +1728,25 @@ export const migrations: Migration[] = [
       log.info("message semantics backfill complete", { total: tasks.length })
     },
   },
+  {
+    id: "20260706-session-nav-channel-fields",
+    description: "Rebuild session nav indexes to backfill channel grouping fields (chatId, chatName, chatType)",
+    async up(progress) {
+      const scopeIDs: string[] = await Storage.scan(["sessions"]).catch(() => [])
+      const allScopeIDs = scopeIDs.includes("home") ? scopeIDs : ["home", ...scopeIDs]
+      if (allScopeIDs.length === 0) return
+
+      let done = 0
+      for (const scopeID of allScopeIDs) {
+        await SessionNav.buildNavIndex(scopeID).catch((error) => {
+          log.warn("failed to rebuild nav index for channel fields backfill", { scopeID, error: String(error) })
+        })
+        done++
+        progress(done, allScopeIDs.length)
+      }
+      log.info("session nav channel fields backfill complete", { scopes: allScopeIDs.length })
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

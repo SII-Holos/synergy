@@ -809,6 +809,9 @@ export type SessionNavEntry = {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
   }
