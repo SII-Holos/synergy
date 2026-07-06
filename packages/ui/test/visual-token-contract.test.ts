@@ -127,6 +127,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "font-size-x-large",
     "font-weight-regular",
     "font-weight-medium",
+    "line-height-base",
     "line-height-large",
     "line-height-x-large",
     "line-height-2x-large",
