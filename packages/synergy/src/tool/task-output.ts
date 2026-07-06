@@ -1,6 +1,7 @@
 import { Tool } from "./tool"
 import z from "zod"
 import { ToolTimeout } from "./timeout"
+import { CortexTypes } from "../cortex/types"
 
 const DEFAULT_WAIT_S = ToolTimeout.DEFAULTS.taskOutputWaitMs / 1_000
 
@@ -24,6 +25,7 @@ interface TaskOutputMetadata {
   timeout?: number
   mode?: string
   visibleTaskIds?: string[]
+  output?: CortexTypes.TaskOutput
 }
 
 function formatDuration(startedAt: number, completedAt?: number) {
@@ -43,7 +45,7 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
 - **mode** (optional): Output mode:
   - \`progress\` — live status (health, tool calls, duration)
   - \`tail\` — recent session activity from the subagent
-  - \`full\` — final result with progress summary (default)
+  - \`full\` — final result with progress summary, including structured output as rendered JSON (default)
   - \`summary\` — compact one-liner (status, health, elapsed)
 - **block** (optional): Wait for completion if still running
 - **timeout** (optional): Maximum seconds to wait (default: 300)
@@ -153,6 +155,7 @@ task_output(task_id: "ctx_abc123", block: true)
         timeout: params.timeout,
         mode: params.mode ?? "full",
         visibleTaskIds: visibleTasks.map((item) => item.id),
+        output: current.output,
       },
       output,
     }

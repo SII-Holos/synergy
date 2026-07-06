@@ -175,7 +175,7 @@ Plugins that call `context.task.run()` must declare the task permission under `p
 agent allowlist. At runtime Synergy still uses the existing Cortex task flow and existing `task` permission;
 `visibility: "hidden"` hides the delegated task from the ordinary chat step list and SubagentDock but preserves
 audit/session data. If `output.mode: "structured"` is passed to `context.task.run()`, Cortex validates the child
-result into `task.outputResult` without changing the normal trajectory-summary `task.result`.
+result and returns the real payload as `result.output.value` when `result.output.mode === "structured"`.
 
 ## UI Contributions
 

@@ -134,9 +134,14 @@ export async function runPluginTask(input: {
       toolInvocationTimeoutMs: limits.toolInvocationTimeoutMs,
     })
     const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil(timeoutMs / 1_000)))
-    if (!completed || completed.status === "queued" || completed.status === "running") {
+    if (
+      !completed ||
+      completed.status === "queued" ||
+      completed.status === "running" ||
+      completed.status === "pending"
+    ) {
       await Cortex.cancel(task.id)
-      return taskResult(task, "timeout", undefined, "Delegated task timed out")
+      return taskResult(task, "timeout", "Delegated task timed out")
     }
     return taskResult(completed, completed.status)
   } finally {
@@ -324,15 +329,13 @@ export function resolvePluginTaskWaitTimeoutMs(input: { requestedTimeoutMs: numb
 function taskResult(
   task: CortexTypes.Task,
   status: ToolTaskRunResult["status"],
-  output = task.result ?? "",
   error = task.error,
 ): ToolTaskRunResult {
   return {
     taskId: task.id,
     sessionId: task.sessionID,
     status,
-    output,
-    outputResult: task.outputResult as ToolTaskRunResult["outputResult"],
+    output: task.output as ToolTaskRunResult["output"],
     error,
   }
 }

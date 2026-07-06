@@ -59,7 +59,9 @@ export function DiffPreview(props: DiffPreviewProps) {
 
   return (
     <div data-component="diff-preview" data-variant={variant()}>
-      <Show when={summary()}>{(text) => <div data-slot="diff-preview-summary">{text()}</div>}</Show>
+      <Show keyed when={summary()}>
+        {(text) => <div data-slot="diff-preview-summary">{text}</div>}
+      </Show>
       <Show
         when={lines().length > 0}
         fallback={<div data-slot="diff-preview-empty">{TOOL_DIFF_PREVIEW_EMPTY_MESSAGE}</div>}

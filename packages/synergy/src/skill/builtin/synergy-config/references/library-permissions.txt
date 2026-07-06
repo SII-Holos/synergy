@@ -6,7 +6,7 @@ The `library` section configures the memory/knowledge system.
 
 ### Embedding and rerank config
 
-These live at the top level of config:
+These are top-level fields in `00-general.jsonc`, not library-specific config:
 
 ```jsonc
 {
@@ -63,7 +63,7 @@ These live at the top level of config:
 | `library.memory.retrieval.topK` | Number of memories to retrieve per category (default: 3) |
 | `library.memory.dedup.threshold` | Similarity threshold for deduplication (default: 0.75) |
 | `library.experience.encode` | Learn from conversations — extract intent, reward, and scripts |
-| `library.experience.retrieve` | Inject relevant past experiences into new conversations |
+| `library.experience.retrieve` | Boolean or a passive retrieval object with `simThreshold`, `topK`, `epsilon`, `wSim`, `wQ`, `explorationConstant`. When `true`, uses defaults. |
 | `library.autonomy` | Enable autonomous background routines like anima (default: true) |
 
 ### Experience learning config (advanced)
@@ -138,6 +138,8 @@ synergy library memory     — Configure memory parameters
 ## Permissions
 
 Permissions control tool access: allow, deny, or require approval.
+
+Canonical permission keys are tool names such as `edit`, `read`, and `bash`. Use `edit` for file modification rules; legacy agent `tools.write`, `tools.patch`, and `tools.multiedit` booleans are converted to `permission.edit`.
 
 ### Permission actions
 
@@ -227,12 +229,42 @@ Top-level shorthand for all tools:
 
 Equivalent to setting all tools to `"allow"`.
 
+### Control profiles
+
+Control profiles set the overall approval, sandbox, and network posture. Agents inherit a profile and can override it.
+
+| Profile | Approval summary | Sandbox | Network |
+|---|---|---|---|
+| `guarded` | Low-risk allow; many medium/high-risk actions ask; hardline shell is denied | `workspace_write` | `restricted` |
+| `autonomous` | Low/medium-risk allow; high-risk deny unless explicitly allowed by the profile; asks are converted to denies when unattended | `workspace_write` | `restricted` |
+| `full_access` | Silent allow of every capability, including protected paths, secrets, destructive shell, external writes, identity/channel actions, and plugin/platform operations | `none` | `enabled` |
+
+Per-agent override:
+```jsonc
+{
+  "agent": {
+    "my-agent": {
+      "controlProfile": "autonomous"
+    }
+  }
+}
+```
+
+### SmartAllow
+
+SmartAllow reduces prompt frequency by auto-approving certain operations without user interaction.
+
+- **Safe eligible cases** — low-risk reads, known-safe patterns, non-destructive operations.
+- **Redacted evidence** — for secret-like files (`.env`, credentials), metadata or redacted evidence is used instead of raw content.
+- **Stricter autonomous threshold** — in `autonomous` profile, SmartAllow applies a higher confidence bar. Cases below the threshold are auto-denied (not prompted).
+- **Circuit breaker** — after three high-confidence disagreements between the classifier and user feedback, SmartAllow disables itself for that session and falls back to normal policy handling.
+
 ### Common permission patterns
 
 **Read-only agent** — can read and search but never modify:
 
 ```jsonc
-{ "permission": { "edit": "deny", "write": "deny", "bash": "deny" } }
+{ "permission": { "edit": "deny", "bash": "deny" } }
 ```
 
 **Sandboxed execution** — bash allowed only for specific safe commands:
@@ -256,7 +288,7 @@ Equivalent to setting all tools to `"allow"`.
 **Source code only** — only edit source files, not config:
 
 ```jsonc
-{ "permission": { "edit": { "*": "ask", "src/**": "allow", "test/**": "allow" }, "write": { "*": "ask", "src/**": "allow" } } }
+{ "permission": { "edit": { "*": "ask", "src/**": "allow", "test/**": "allow" } } }
 ```
 
 ### Troubleshooting

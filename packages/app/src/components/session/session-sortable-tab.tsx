@@ -41,7 +41,9 @@ export function SortableTab(props: { tab: string; onTabClose: (tab: string) => v
           hideCloseButton
           onMiddleClick={() => props.onTabClose(props.tab)}
         >
-          <Show when={path()}>{(p) => <FileVisual path={p()} />}</Show>
+          <Show keyed when={path()}>
+            {(filePath) => <FileVisual path={filePath} />}
+          </Show>
         </Tabs.Trigger>
       </div>
     </div>
