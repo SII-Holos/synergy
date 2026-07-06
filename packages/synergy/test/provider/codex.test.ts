@@ -310,6 +310,35 @@ test("fetchModelCatalog parses Codex context windows without filtering supported
   ])
 })
 
+test("Codex metadata overrides source context without mutating OpenAI model metadata", () => {
+  const source: ModelsDev.Model = {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    family: "gpt-5",
+    release_date: "2026-06-25",
+    attachment: true,
+    reasoning: true,
+    temperature: true,
+    tool_call: true,
+    cost: { input: 0, output: 0 },
+    limit: { context: 1_050_000, input: 1_050_000, output: 128_000 },
+    modalities: {
+      input: ["text", "image"],
+      output: ["text"],
+    },
+    options: {},
+    provider: {
+      npm: "@ai-sdk/openai",
+    },
+  }
+  const catalog = CodexProvider.modelsDevProvider(["gpt-5.5"], { "gpt-5.5": source })
+
+  expect(catalog.models["gpt-5.5"].limit.context).toBe(CodexProvider.DEFAULT_CODEX_CONTEXT_WINDOW)
+  expect(catalog.models["gpt-5.5"].limit.input).toBe(CodexProvider.DEFAULT_CODEX_CONTEXT_WINDOW)
+  expect(source.limit.context).toBe(1_050_000)
+  expect(source.limit.input).toBe(1_050_000)
+})
+
 test("provider catalog includes OpenAI Codex before login", async () => {
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
@@ -324,7 +353,6 @@ test("provider catalog includes OpenAI Codex before login", async () => {
   expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
   expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
   expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
-  expect(catalog.openai.models["gpt-5.5"].limit.context).toBe(1_050_000)
 })
 
 test("logged-in Codex provider applies fallback context when live metadata omits context_window", async () => {

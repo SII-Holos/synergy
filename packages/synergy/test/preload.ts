@@ -35,18 +35,16 @@ const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
 
-// Pre-fetch models.json so tests don't need the macro fallback
-// Also write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(testHome, ".synergy", "cache")
-await fs.mkdir(cacheDir, { recursive: true })
-await fs.writeFile(path.join(cacheDir, "version"), "15")
-const modelsCachePath = path.join(cacheDir, "models.json")
 // Always seed the model catalog from the checked-in fixture rather than fetching
 // models.dev live. The live catalog drifts (models get renamed/removed), which
 // makes tests that reference specific models non-deterministic — a network-
 // reachable-but-drifted catalog turns CI red with no code change (e.g.
 // claude-sonnet-4-20250514 was removed upstream). The fixture is the pinned
 // source of truth; update it deliberately when a test needs a new model.
+const cacheDir = path.join(testHome, ".synergy", "cache")
+await fs.mkdir(cacheDir, { recursive: true })
+await fs.writeFile(path.join(cacheDir, "version"), "15")
+const modelsCachePath = path.join(cacheDir, "models.json")
 const fixture = await Bun.file(new URL("./tool/fixtures/models-api.json", import.meta.url)).text()
 await fs.writeFile(modelsCachePath, fixture)
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath

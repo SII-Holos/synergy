@@ -439,7 +439,6 @@ function TimelineDisplay(props: {
         <button
           type="button"
           data-slot="session-turn-rewind-button"
-          data-rollback-active={props.rollbackActive}
           onClick={(e) => {
             e.stopPropagation()
             props.onRewind?.()
@@ -802,7 +801,6 @@ export function SessionTurn(
                           <button
                             type="button"
                             data-slot="session-turn-rewind-button"
-                            data-rollback-active={props.rollbackActive === true}
                             onClick={(e) => {
                               e.stopPropagation()
                               props.onRewind?.()
