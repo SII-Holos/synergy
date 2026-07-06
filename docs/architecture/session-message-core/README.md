@@ -1,6 +1,6 @@
 # Session 核心重构：细化设计文档集
 
-总纲：[`../session-core-redesign.md`](../session-core-redesign.md) · Issue：SII-Holos/synergy#281（含两条设计补充评论：撤回/rewind 机制、context mode piggyback 规则）
+总纲：[`../session-message-core.md`](../session-message-core.md) · Issue：SII-Holos/synergy#281（含两条设计补充评论：撤回/rewind 机制、context mode piggyback 规则）
 
 | 文档                                                         | 内容                                                                                                      | 主要对应代码                                                                              |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |

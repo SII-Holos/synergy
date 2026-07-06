@@ -1,7 +1,7 @@
 # Session 核心重构设计：消息语义、Loop 与 Inbox
 
 > 状态：设计稿（未实施）。已立项为 issue #281（含撤回/rewind 与 context piggyback 两条补充评论）。
-> 细化设计文档集：[`session-core-redesign/`](./session-core-redesign/README.md)（01 后端消息组装管线 / 02 前端消息同步与派生 / 03 undo·rewind 统一撤回交互）
+> 细化设计文档集：[`session-message-core/`](./session-message-core/README.md)（01 后端消息组装管线 / 02 前端消息同步与派生 / 03 undo·rewind 统一撤回交互）
 > 范围：`packages/synergy/src/session/*`、`packages/synergy/src/cortex|agenda|channel` 的投递侧、`packages/app` / `packages/ui` 的渲染侧
 
 ---

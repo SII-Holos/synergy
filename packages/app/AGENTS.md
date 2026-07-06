@@ -10,7 +10,7 @@
 
 ## Data sync
 
-Frontend data loading and event handling follow `docs/frontend-sync-redesign.md`. Read it before changing `src/context/{global-sync,sync,local,layout}.tsx` or `pages/session.tsx`.
+Frontend data loading and event handling follow `docs/architecture/frontend-data-sync.md`. Read it before changing `src/context/{global-sync,sync,local,layout}.tsx` or `pages/session.tsx`.
 
 - Apply store updates with `reconcile` (or targeted `setStore(path, index, reconcile(value))`), never a whole-object replace — a whole-object replace gives the row a new identity and re-runs the entire reactive chain (the #319 flash).
 - Read entities by key (`sync.session.get(id)`), not by scanning an array with `find`/`Binary.search`, so a memo only subscribes to the entity it reads.

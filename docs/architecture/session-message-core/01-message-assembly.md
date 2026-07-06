@@ -1,6 +1,6 @@
 # 消息组装管线：从落盘消息到模型请求
 
-> 所属：Session 核心重构（issue #281，总纲见 `docs/session-core-redesign.md`）
+> 所属：Session 核心重构（issue #281，总纲见 `docs/architecture/session-message-core.md`）
 > 范围：后端。`session/invoke.ts`、`session/message-v2.ts`、`session/llm.ts`、`session/history.ts`、`session/compaction.ts`、`session/plan-mode-user-wrapper.ts`
 > 本文写法：每个阶段先描述现状（含代码位置），再给出新设计下的变化。末尾附完整伪代码与字段消费对照。
 

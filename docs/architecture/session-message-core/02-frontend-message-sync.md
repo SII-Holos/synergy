@@ -1,6 +1,6 @@
 # 前端消息同步：拉取、增量事件与渲染派生
 
-> 所属：Session 核心重构（issue #281，总纲见 `docs/session-core-redesign.md`）
+> 所属：Session 核心重构（issue #281，总纲见 `docs/architecture/session-message-core.md`）
 > 范围：前端数据层。`packages/app/src/context/sync.tsx`、`packages/app/src/context/global-sync.tsx`、`packages/app/src/pages/session.tsx` 的派生 memo、`packages/ui/src/components/session-turn.tsx` 的分组
 > 本文写法：先完整存档现状数据流（重构期间不动的部分要有契约可查），再给出新设计的替换点。
 
