@@ -33,7 +33,7 @@ describe("SessionModePolicy Plan Mode visibility", () => {
 })
 
 describe("SessionModePolicy Plan Mode bash calls", () => {
-  test("allows read-only repository inspection commands", async () => {
+  test("does not add a Plan Mode-only bash restriction", async () => {
     await expect(bashDiagnostic('rg "ToolResolver" packages/synergy/src')).resolves.toBeUndefined()
     await expect(
       bashDiagnostic("ls -la && cat package.json && git diff -- packages/synergy/src/session/tool-resolver.ts"),
@@ -41,13 +41,8 @@ describe("SessionModePolicy Plan Mode bash calls", () => {
     await expect(bashDiagnostic("git status --short")).resolves.toBeUndefined()
     await expect(bashDiagnostic("npm view @ericsanchezok/synergy-plugin versions --json")).resolves.toBeUndefined()
     await expect(bashDiagnostic("bun pm view @ericsanchezok/synergy-plugin version")).resolves.toBeUndefined()
-  })
-
-  test("blocks shell commands that can mutate state", async () => {
     for (const command of ["echo hi > file.txt", "rm file.txt", "git commit -m test", "git push origin main"]) {
-      const diagnostic = await bashDiagnostic(command)
-      expect(diagnostic?.code).toBe("plan_mode_blocked")
-      expect(Array.isArray(diagnostic?.metadata?.blockedCapabilities)).toBe(true)
+      await expect(bashDiagnostic(command)).resolves.toBeUndefined()
     }
   })
 })
