@@ -1,5 +1,5 @@
-import { MetaSynergyHost, type MetaSynergyHostOptions } from "../host"
-import type { HostTransport, RemoteHostIdentity } from "../types"
+import { MetaSynergyHost, type MetaSynergyHostOptions } from "../host.js"
+import type { HostTransport, RemoteHostIdentity } from "../types.js"
 
 export interface HolosClientOptions extends MetaSynergyHostOptions {
   transport?: HostTransport

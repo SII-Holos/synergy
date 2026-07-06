@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyControlClient } from "../src/control/client"
-import { MetaSynergyRuntime } from "../src/runtime"
+import { MetaSynergyControlClient } from "../src/control/client.js"
+import { MetaSynergyRuntime } from "../src/runtime.js"
 
 const originalHome = process.env.META_SYNERGY_HOME
 const tempRoots: string[] = []

@@ -3,9 +3,9 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyCLIBackend } from "../src/cli-backend"
-import { MetaSynergyHolosAuth } from "../src/holos/auth"
-import { MetaSynergyStore } from "../src/state/store"
+import { MetaSynergyCLIBackend } from "../src/cli-backend.js"
+import { MetaSynergyHolosAuth } from "../src/holos/auth.js"
+import { MetaSynergyStore } from "../src/state/store.js"
 
 const originalMetaHome = process.env.META_SYNERGY_HOME
 const originalSynergyHome = process.env.SYNERGY_TEST_HOME

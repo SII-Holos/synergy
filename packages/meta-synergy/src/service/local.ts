@@ -1,7 +1,7 @@
 import process from "node:process"
 import { readFile, stat, unlink } from "node:fs/promises"
 import { watch } from "node:fs"
-import { Platform } from "../platform"
+import { Platform } from "../platform.js"
 
 export namespace MetaSynergyLocalService {
   export function isPidRunning(pid: number) {

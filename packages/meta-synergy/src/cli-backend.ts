@@ -1,16 +1,16 @@
-import { MetaSynergyControlClient } from "./control/client"
-import { MetaSynergyHolosAuth, type MetaSynergyHolosAuthSource } from "./holos/auth"
-import { MetaSynergyHolosLogin } from "./holos/login"
-import { MetaSynergyService } from "./service"
+import { MetaSynergyControlClient } from "./control/client.js"
+import { MetaSynergyHolosAuth, type MetaSynergyHolosAuthSource } from "./holos/auth.js"
+import { MetaSynergyHolosLogin } from "./holos/login.js"
+import { MetaSynergyService } from "./service.js"
 import {
   MetaSynergyStore,
   type MetaSynergyApprovalMode,
   type MetaSynergyAuthState,
   type MetaSynergyPendingRequest,
   type MetaSynergyState,
-} from "./state/store"
-import { MetaSynergyDisplay, type MetaSynergyHiddenReason } from "./display"
-import { MetaSynergyOwnerRegistry } from "./owner-registry"
+} from "./state/store.js"
+import { MetaSynergyDisplay, type MetaSynergyHiddenReason } from "./display.js"
+import { MetaSynergyOwnerRegistry } from "./owner-registry.js"
 
 export type MetaSynergyTrustSubject = "agent" | "user"
 

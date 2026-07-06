@@ -1,8 +1,8 @@
 import process from "node:process"
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { MetaProtocolBash, MetaProtocolEnv, MetaProtocolProcess } from "@ericsanchezok/meta-protocol"
-import { MetaSynergyHost } from "../host"
-import { Platform } from "../platform"
+import { MetaSynergyHost } from "../host.js"
+import { Platform } from "../platform.js"
 
 const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2_000

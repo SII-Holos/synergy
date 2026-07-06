@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises"
-import { MetaSynergyStore } from "./state/store"
+import { MetaSynergyStore } from "./state/store.js"
 
 export interface MetaSynergyLocalOwnerRegistryState {
   ownerIDs: string[]

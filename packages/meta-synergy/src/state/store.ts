@@ -2,7 +2,7 @@ import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
-import { MetaSynergyOwnerRegistry, type MetaSynergyOwnerRegistryState } from "../owner-registry"
+import { MetaSynergyOwnerRegistry, type MetaSynergyOwnerRegistryState } from "../owner-registry.js"
 
 export type MetaSynergyApprovalMode = "auto" | "manual" | "trusted-only"
 export type MetaSynergyPendingRequestStatus = "pending" | "approved" | "denied"
@@ -160,10 +160,8 @@ export namespace MetaSynergyStore {
   }
 
   export async function saveState(state: MetaSynergyState): Promise<void> {
-    const rootDir = root()
-    const sp = path.join(rootDir, "state.json")
-    await mkdir(rootDir, { recursive: true })
-    await writeFile(sp, JSON.stringify(hydrateState(state), null, 2) + "\n")
+    await ensureRoot()
+    await writeFile(statePath(), JSON.stringify(hydrateState(state), null, 2) + "\n")
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {

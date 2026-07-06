@@ -16,8 +16,9 @@ regexes = [
   '''placeholder[_-]?(token|secret|key)'''
 ]
 stopwords = [
-  "DUT9wguAFiMl6pkFL8gcHWrmnoc",
-  "OGrmdkSyPoxLdrxLc9xceKH7nfd",
+  # Public OAuth client IDs from provider modules:
+  # - Ov23li8tweQw6odWQebz: packages/synergy/src/provider/copilot.ts · CopilotOAuth.OAUTH_CLIENT_ID
+  # - 9d1c250a-e61b-44d9-88ed-5944d1962f5e: packages/synergy/src/provider/anthropic-oauth.ts · AnthropicOAuth.OAUTH_CLIENT_ID
   "Ov23li8tweQw6odWQebz",
   "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 ]

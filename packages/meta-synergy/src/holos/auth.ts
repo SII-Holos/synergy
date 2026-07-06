@@ -3,7 +3,7 @@ import path from "node:path"
 import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { applyEdits, modify } from "jsonc-parser"
 import z from "zod"
-import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store"
+import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store.js"
 
 export type MetaSynergyHolosAuthSource = "shared" | "legacy-migrated"
 

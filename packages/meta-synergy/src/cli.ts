@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 import process from "node:process"
-import { MetaSynergyCLIBackend, type MetaSynergyTrustSubject } from "./cli-backend"
-import type { MetaSynergyApprovalMode } from "./state/store"
-import { MetaSynergyRuntime } from "./runtime"
-import { MetaSynergyService } from "./service"
-import { MetaSynergyHolosLogin } from "./holos/login"
-import { MetaSynergyDisplay } from "./display"
+import { MetaSynergyCLIBackend, type MetaSynergyTrustSubject } from "./cli-backend.js"
+import type { MetaSynergyApprovalMode } from "./state/store.js"
+import { MetaSynergyRuntime } from "./runtime.js"
+import { MetaSynergyService } from "./service.js"
+import { MetaSynergyHolosLogin } from "./holos/login.js"
+import { MetaSynergyDisplay } from "./display.js"
 
 interface CLIContext {
   json: boolean

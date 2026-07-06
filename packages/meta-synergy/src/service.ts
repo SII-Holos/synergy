@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process"
 import { closeSync, openSync } from "node:fs"
-import { MetaSynergyControlClient } from "./control/client"
-import type { MetaSynergyLogsPayload, MetaSynergyServiceSnapshot } from "./control/schema"
-import { Platform } from "./platform"
-import { MetaSynergyStore, type MetaSynergyState } from "./state/store"
-import { MetaSynergyLocalService } from "./service/local"
+import { MetaSynergyControlClient } from "./control/client.js"
+import type { MetaSynergyLogsPayload, MetaSynergyServiceSnapshot } from "./control/schema.js"
+import { Platform } from "./platform.js"
+import { MetaSynergyStore, type MetaSynergyState } from "./state/store.js"
+import { MetaSynergyLocalService } from "./service/local.js"
 
 interface MetaSynergyLaunchContext {
   launcherPath: string

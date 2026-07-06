@@ -72,9 +72,12 @@ async function main() {
 async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string) {
   console.log(`\n=== package check: ${pkg.name} ===\n`)
   const sdkOpenApiPath = path.join(SDK_DIR, "openapi.json")
-  const sdkOpenApiBefore =
-    pkg.dir === SDK_DIR && (await exists(sdkOpenApiPath)) ? await Bun.file(sdkOpenApiPath).text() : null
+  const isSdkBuild = pkg.dir === SDK_DIR
+  let sdkOpenApiBefore: string | null = null
   try {
+    if (isSdkBuild && (await exists(sdkOpenApiPath))) {
+      sdkOpenApiBefore = await Bun.file(sdkOpenApiPath).text()
+    }
     if (pkg.build) {
       await $`bun run build`.cwd(pkg.dir)
     }

@@ -3,9 +3,9 @@ import { createServer, type IncomingMessage } from "node:http"
 import { spawn } from "node:child_process"
 import { createInterface } from "node:readline/promises"
 import { stdin as input, stdout as output } from "node:process"
-import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store"
-import { HOLOS_PORTAL_URL, HOLOS_URL, MetaSynergyHolosAuth } from "./auth"
-import { MetaSynergyHolosProtocol } from "./protocol"
+import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store.js"
+import { HOLOS_PORTAL_URL, HOLOS_URL, MetaSynergyHolosAuth } from "./auth.js"
+import { MetaSynergyHolosProtocol } from "./protocol.js"
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000
 

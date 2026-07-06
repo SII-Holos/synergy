@@ -3,8 +3,8 @@ import { access, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyHolosAuth } from "../src/holos/auth"
-import { MetaSynergyStore } from "../src/state/store"
+import { MetaSynergyHolosAuth } from "../src/holos/auth.js"
+import { MetaSynergyStore } from "../src/state/store.js"
 
 async function createTempRoot() {
   return await mkdtemp(path.join(os.tmpdir(), "meta-synergy-auth-test-"))

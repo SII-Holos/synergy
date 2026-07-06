@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyRuntime } from "../src/runtime"
-import { MetaSynergyStore } from "../src/state/store"
+import { MetaSynergyRuntime } from "../src/runtime.js"
+import { MetaSynergyStore } from "../src/state/store.js"
 
 const originalMetaHome = process.env.META_SYNERGY_HOME
 const originalSynergyHome = process.env.SYNERGY_TEST_HOME

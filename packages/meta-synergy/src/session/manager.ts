@@ -1,6 +1,6 @@
 import { MetaProtocolEnv, MetaProtocolError, MetaProtocolSession } from "@ericsanchezok/meta-protocol"
-import type { HolosCaller } from "../types"
-import { MetaSynergyLog } from "../log"
+import type { HolosCaller } from "../types.js"
+import { MetaSynergyLog } from "../log.js"
 
 export interface SessionRecord {
   sessionID: MetaProtocolEnv.SessionID

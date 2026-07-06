@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 bun script/check-bun-version.ts
 bun run format:check
