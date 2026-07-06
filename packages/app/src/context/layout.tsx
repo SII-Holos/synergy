@@ -72,6 +72,9 @@ export interface NavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: string
   completionNotice: {
     unread: boolean
   }
@@ -330,6 +333,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           scopeID: "home",
           category,
           parentOnly: "true",
+          includeArchived: category === "channel" ? "true" : undefined,
           limit: ROOT_NAV_SECTION_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
         })
@@ -439,6 +443,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           scopeID: "home",
           category,
           parentOnly: "true",
+          includeArchived: category === "channel" ? "true" : undefined,
           limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
         })
         if (!res.data) return

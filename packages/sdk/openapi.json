@@ -19679,6 +19679,15 @@
             "type": "string",
             "const": "channel"
           },
+          "chatId": {
+            "type": "string"
+          },
+          "chatName": {
+            "type": "string"
+          },
+          "chatType": {
+            "type": "string"
+          },
           "completionNotice": {
             "type": "object",
             "properties": {
@@ -24955,9 +24964,6 @@
                         "synthetic": {
                           "type": "boolean"
                         },
-                        "ignored": {
-                          "type": "boolean"
-                        },
                         "origin": {
                           "type": "string",
                           "enum": ["user", "system"]
@@ -25185,9 +25191,6 @@
             "type": "string"
           },
           "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
             "type": "boolean"
           },
           "origin": {
@@ -25641,9 +25644,6 @@
             "type": "string"
           },
           "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
             "type": "boolean"
           },
           "origin": {

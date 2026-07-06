@@ -85,4 +85,55 @@ export class SenderNameCache {
   }
 }
 
+export class ChatNameCache {
+  private cache = new Map<string, { name: string; expiresAt: number }>()
+  private ttlMs: number
+
+  constructor(opts?: { ttlMs?: number }) {
+    this.ttlMs = opts?.ttlMs ?? DEFAULT_TTL_MS
+  }
+
+  async resolve(ctx: FeishuApiContext, chatId: string, fallbackName?: string): Promise<string | undefined> {
+    const normalized = chatId.trim()
+    if (!normalized) return undefined
+
+    const now = Date.now()
+    const cached = this.cache.get(normalized)
+    if (cached && cached.expiresAt > now) return cached.name
+
+    try {
+      const token = await ctx.getAccessToken()
+      const response = await fetch(`${ctx.apiBase}/im/v1/chats/${normalized}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS),
+      })
+
+      const result = (await response.json()) as {
+        code?: number
+        msg?: string
+        data?: { chat?: { name?: string } }
+      }
+
+      if (result.code === 0 && result.data?.chat?.name) {
+        const name = result.data.chat.name
+        this.cache.set(normalized, { name, expiresAt: now + this.ttlMs })
+        return name
+      }
+
+      log.warn("failed to resolve chat name", { chatId: normalized, code: result.code, msg: result.msg })
+      if (fallbackName) {
+        this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })
+      }
+      return fallbackName
+    } catch (err) {
+      log.warn("failed to resolve chat name", { chatId: normalized, error: String(err) })
+      if (fallbackName) {
+        this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })
+      }
+      return fallbackName
+    }
+  }
+}
+
 export const senderNameCache = new SenderNameCache()
+export const chatNameCache = new ChatNameCache()

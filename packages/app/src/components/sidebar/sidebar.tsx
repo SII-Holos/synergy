@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
@@ -90,6 +90,7 @@ export function Sidebar(props: SidebarProps) {
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
   const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
+  const [feishuGroupOpen, setFeishuGroupOpen] = createSignal(true)
   const [backgroundSectionOpen, setBackgroundSectionOpen] = createSignal(false)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
@@ -190,6 +191,52 @@ export function Sidebar(props: SidebarProps) {
   )
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
+
+  const channelGroupedEntries = createMemo(() => {
+    const entries = channelEntries()
+    const groups = new Map<string, NavEntry[]>()
+    let orphanSessions: NavEntry[] = []
+
+    for (const entry of entries) {
+      const key = entry.chatId
+      if (!key) {
+        orphanSessions.push(entry)
+        continue
+      }
+      const existing = groups.get(key)
+      if (existing) {
+        existing.push(entry)
+      } else {
+        groups.set(key, [entry])
+      }
+    }
+
+    const result = Array.from(groups.entries())
+      .map(([chatId, sessions]) => {
+        const first = sessions[0]!
+        const typePrefix = first.chatType === "group" ? "[G] " : first.chatType === "dm" ? "[D] " : ""
+        return {
+          chatId,
+          name: `${typePrefix}${first.chatName ?? chatId.slice(-8)}`,
+          sessions: sessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
+        }
+      })
+      .sort((a, b) => {
+        const aTime = a.sessions[0]!.lastActivityAt
+        const bTime = b.sessions[0]!.lastActivityAt
+        return bTime - aTime
+      })
+
+    if (orphanSessions.length > 0) {
+      result.push({
+        chatId: "__orphan__",
+        name: "Other",
+        sessions: orphanSessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
+      })
+    }
+
+    return result
+  })
 
   const dir = createMemo(() => {
     if (params.dir) {
@@ -524,14 +571,36 @@ export function Sidebar(props: SidebarProps) {
                 />
               </div>
               <Show when={channelSectionOpen()}>
-                <Show when={channelEntries().length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
+                <Show
+                  when={channelGroupedEntries().length > 0}
+                  fallback={<div class="sb-section-empty">No sessions</div>}
+                >
                   <div class="sb-session-group">
-                    <div class="sb-session-group-header">Feishu</div>
-                    <SidebarSessionList
-                      entries={channelEntries()}
-                      activeID={params.id}
-                      onSessionClick={handleNavEntryClick}
-                    />
+                    <div
+                      class="sb-session-group-header"
+                      onClick={() => setFeishuGroupOpen((v) => !v)}
+                      role="button"
+                      tabindex="0"
+                    >
+                      <Icon
+                        name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
+                        size="small"
+                        class="sb-section-chevron"
+                      />
+                      <span>Feishu</span>
+                    </div>
+                    <Show when={feishuGroupOpen()}>
+                      <For each={channelGroupedEntries()}>
+                        {(group) => (
+                          <ChannelChatPartnerGroup
+                            name={group.name}
+                            sessions={group.sessions}
+                            activeID={params.id}
+                            onSessionClick={handleNavEntryClick}
+                          />
+                        )}
+                      </For>
+                    </Show>
                   </div>
                   <Show when={layout.nav.hasMoreRootNavSection("channel")}>
                     <button
@@ -991,6 +1060,27 @@ function GroupedSessionList(props: {
       stopPropagation
       onSessionClick={props.onSessionClick}
     />
+  )
+}
+
+function ChannelChatPartnerGroup(props: {
+  name: string
+  sessions: NavEntry[]
+  activeID?: string
+  onSessionClick: (entry: NavEntry) => void
+}) {
+  const [open, setOpen] = createSignal(true)
+
+  return (
+    <div class="sb-channel-partner-group">
+      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+        <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
+        <span>{props.name}</span>
+      </div>
+      <Show when={open()}>
+        <SidebarSessionList entries={props.sessions} activeID={props.activeID} onSessionClick={props.onSessionClick} />
+      </Show>
+    </div>
   )
 }
 

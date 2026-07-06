@@ -435,6 +435,7 @@ export namespace Channel {
           accountId: ctx.accountId,
           chatId: ctx.chatId,
           chatType: ctx.chatType,
+          chatName: ctx.chatName,
           senderId: ctx.senderId,
           senderName: ctx.senderName,
           scopeKey: ctx.scopeKey,

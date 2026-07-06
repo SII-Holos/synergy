@@ -6,7 +6,7 @@ import { Config } from "../../../config/config"
 import * as ChannelTypes from "../../types"
 import { FeishuStreamingCard } from "./streaming-card"
 import { feishuDedup } from "./dedup"
-import { senderNameCache } from "./sender"
+import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
 import {
   parseMessageContent,
@@ -542,11 +542,19 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       return results.length > 0 ? results : undefined
     })()
 
-    const [senderName, quotedContent, attachments] = await Promise.all([
+    const chatNamePromise =
+      account && filterResult.isGroup
+        ? chatNameCache.resolve(apiCtx!, msg.chat_id!).catch(() => undefined)
+        : Promise.resolve(undefined)
+
+    const [senderName, quotedContent, attachments, resolvedChatName] = await Promise.all([
       senderNamePromise,
       quotedContentPromise,
       attachmentsPromise,
+      chatNamePromise,
     ])
+
+    const chatName = filterResult.isGroup ? resolvedChatName : senderName
 
     if (MEDIA_MESSAGE_TYPES.has(messageType) || messageType === "post") {
       log.info("feishu media resolved", {
@@ -573,6 +581,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       accountId,
       chatId: msg.chat_id!,
       chatType: filterResult.isGroup ? "group" : "dm",
+      chatName,
       senderId,
       senderName: senderName ?? sender?.sender_id?.user_id,
       text,
