@@ -4,9 +4,11 @@ import { Plugin } from "@/plugin"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Token } from "@/util/token"
+import { Log } from "@/util/log"
 import { ToolResolver } from "./tool-resolver"
 
 export namespace PromptBudgeter {
+  const log = Log.create({ service: "prompt-budgeter" })
   const DEFAULT_OVERFLOW_THRESHOLD = 0.85
   const TOOL_OVERHEAD_PER_TOOL = 48
   const MESSAGE_OVERHEAD_PER_ITEM = 12
@@ -80,6 +82,15 @@ export namespace PromptBudgeter {
       { system },
     )
     const normalizedSystem = system.length > 0 ? system : original
+    log.debug("system transform budget result", {
+      sessionID: input.sessionID,
+      ...(input.messageID ? { messageID: input.messageID } : {}),
+      agent: input.agent,
+      model: { providerID: input.model.providerID, modelID: input.model.id },
+      beforeSystemCount: original.length,
+      afterSystemCount: normalizedSystem.length,
+      restoredEmptySystem: system.length === 0,
+    })
 
     return {
       system: normalizedSystem,
