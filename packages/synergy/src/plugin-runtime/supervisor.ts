@@ -111,6 +111,20 @@ function runtimeHasLiveClient(entry: RuntimeEntry): boolean {
   if (entry.mode === "process") return Boolean(entry.process)
   return false
 }
+function runtimeRequestLabel(message: RuntimeRequestMessage): Record<string, unknown> {
+  return message.type === "triggerHook"
+    ? { requestType: message.type, hook: message.hook }
+    : { requestType: message.type, toolId: message.toolId }
+}
+
+function runtimeValueMetrics(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const record = value as Record<string, unknown>
+  return {
+    ...(Array.isArray(record.system) ? { systemCount: record.system.length } : {}),
+    ...(Array.isArray(record.messages) ? { messageCount: record.messages.length } : {}),
+  }
+}
 
 function fileHashOrMissing(filepath: string | undefined): string {
   if (!filepath) return "missing:"
@@ -323,8 +337,16 @@ export class PluginRuntimeSupervisor {
     }
     runtime.onMessage((msg) => {
       if (msg.type === "ready") {
-        entry.tools = msg.tools ?? []
-        entry.hooks = msg.hooks ?? []
+        const tools = msg.tools ?? []
+        const hooks = msg.hooks ?? []
+        entry.tools = tools
+        entry.hooks = hooks
+        log.info("plugin runtime ready capabilities", {
+          pluginId,
+          mode: entry.mode,
+          toolCount: tools.length,
+          hooks,
+        })
         this.#saveState()
         return
       }
@@ -344,6 +366,9 @@ export class PluginRuntimeSupervisor {
     entry.send = runtime.send
     entry.request = (message) =>
       new Promise((resolve, reject) => {
+        const startedAt = Date.now()
+        const label = runtimeRequestLabel(message)
+        log.debug("plugin runtime request dispatch", { pluginId, mode: entry.mode, ...label })
         const controller = new AbortController()
         const abortKeys = this.#registerRuntimeRequestAbort(pluginId, message, controller)
         const timeoutMs =
@@ -355,12 +380,36 @@ export class PluginRuntimeSupervisor {
         }
         const timeout = setTimeout(() => {
           const reason = `Plugin runtime ${message.type === "triggerHook" ? "hook" : "tool"} timed out after ${timeoutMs}ms for "${pluginId}"`
+          log.warn("plugin runtime request timed out", { pluginId, mode: entry.mode, ...label, timeoutMs })
           cleanup()
           controller.abort(new Error(reason))
           if (message.type === "invokeTool") runtime.send({ type: "abortTool", requestId: message.requestId, reason })
           reject(new Error(reason))
         }, timeoutMs)
-        pending.set(message.requestId, { resolve, reject, timeout, abortKeys })
+        pending.set(message.requestId, {
+          resolve(value) {
+            log.debug("plugin runtime request completed", {
+              pluginId,
+              mode: entry.mode,
+              ...label,
+              durationMs: Date.now() - startedAt,
+              output: runtimeValueMetrics(value),
+            })
+            resolve(value)
+          },
+          reject(error) {
+            log.warn("plugin runtime request failed", {
+              pluginId,
+              mode: entry.mode,
+              ...label,
+              durationMs: Date.now() - startedAt,
+              error: error.message,
+            })
+            reject(error)
+          },
+          timeout,
+          abortKeys,
+        })
         runtime.send(message as HostToPlugin)
       })
   }
@@ -950,7 +999,10 @@ export class PluginRuntimeSupervisor {
 
   async triggerHook(pluginId: string, hook: string, input: unknown, output: unknown): Promise<unknown> {
     const entry = this.#registry.get(pluginId)
-    if (!entry?.request) return output
+    if (!entry?.request) {
+      log.debug("plugin runtime hook skipped: runtime is not running", { pluginId, hook, state: entry?.state })
+      return output
+    }
     return entry.request({
       type: "triggerHook",
       requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,

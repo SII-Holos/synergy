@@ -8,6 +8,8 @@ import { Plugin } from "../../src/plugin"
 import { PromptBudgeter } from "../../src/session/prompt-budgeter"
 import { Provider } from "../../src/provider/provider"
 import { ScopeContext } from "../../src/scope/context"
+import { defaultRuntimeRegistry } from "../../src/plugin-runtime/registry"
+import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
 import { tmpdir } from "../fixture/fixture"
 import type { Agent } from "../../src/agent/agent"
 
@@ -40,6 +42,7 @@ afterEach(() => {
   ;(Config as any).global = originalGlobal
   ;(Plugin as any).trigger = originalTrigger
   ;(Provider as any).getLanguage = originalGetLanguage
+  defaultRuntimeRegistry.clear()
 })
 
 async function writeSystemTransformPlugin(
@@ -201,5 +204,58 @@ describe("plugin system transform hooks", () => {
         small: true,
       },
     ])
+  })
+
+  test("process runtime system transform hook writes returned system output", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const dir = await writeSystemTransformPlugin(tmp.path, {
+      id: "process-system-transform",
+      promptTransform: true,
+      hookBody: `output.system.push("unused local hook")`,
+    })
+    ;(Config as any).global = mock(async () => ({
+      plugin: [pathToFileURL(dir).href],
+      pluginMarketplace: { enabled: false },
+      pluginRuntimePolicy: { allowLocalInProcess: false, highRiskRequiresProcess: true },
+    }))
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const loaded = await Plugin.getLoaded()
+        const plugin = loaded.find((item) => item.id === "process-system-transform")
+        expect(plugin?.runtimeMode).toBe("process")
+
+        defaultRuntimeRegistry.set({
+          pluginId: "process-system-transform",
+          mode: "process",
+          state: "ready",
+          restarts: 0,
+          warnings: [],
+          limits: DEFAULT_LIMITS,
+          hooks: ["experimental.chat.system.transform"],
+          request: mock(async (message: any) => {
+            expect(message.type).toBe("triggerHook")
+            expect(message.hook).toBe("experimental.chat.system.transform")
+            return { system: [...message.output.system, "runtime-added"] }
+          }),
+        } as any)
+
+        const output = { system: ["base"] }
+        await Plugin.trigger(
+          "experimental.chat.system.transform",
+          {
+            phase: "final",
+            sessionID: "session-runtime",
+            agent: "synergy-max",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            messageID: "message-runtime",
+          },
+          output,
+        )
+
+        expect(output.system).toEqual(["base", "runtime-added"])
+      },
+    })
   })
 })

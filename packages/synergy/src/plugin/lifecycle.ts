@@ -40,6 +40,29 @@ const pluginEventState = ScopedState.create(
 // Hook triggering — unchanged interface for all existing consumers
 // ---------------------------------------------------------------------------
 
+function hookOutputMetrics(output: unknown): Record<string, unknown> | undefined {
+  if (!output || typeof output !== "object") return undefined
+  const record = output as Record<string, unknown>
+  return {
+    ...(Array.isArray(record.system) ? { systemCount: record.system.length } : {}),
+    ...(Array.isArray(record.messages) ? { messageCount: record.messages.length } : {}),
+    ...(record.config && typeof record.config === "object" ? { hasConfig: true } : {}),
+  }
+}
+
+function hookDispatchContext(input: unknown): Record<string, unknown> | undefined {
+  if (!input || typeof input !== "object") return undefined
+  const record = input as Record<string, unknown>
+  const model = record.model as Record<string, unknown> | undefined
+  return {
+    ...(typeof record.phase === "string" ? { phase: record.phase } : {}),
+    ...(typeof record.agent === "string" ? { agent: record.agent } : {}),
+    ...(typeof record.sessionID === "string" ? { sessionID: record.sessionID } : {}),
+    ...(typeof record.messageID === "string" ? { messageID: record.messageID } : {}),
+    ...(model && typeof model === "object" ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
+  }
+}
+
 export async function trigger<
   Name extends Exclude<
     keyof Required<PluginHooks>,
@@ -52,26 +75,78 @@ export async function trigger<
   for (const plugin of await state().then((x) => [...x.loaded])) {
     const { id, hooks, runtimeMode } = plugin
     const fn = hooks[name]
-    if (!fn) continue
-    if (!canReceiveHook(plugin, String(name), input)) continue
+    if (!fn) {
+      if (String(name).startsWith("experimental.chat.")) {
+        log.debug("plugin hook skipped: hook not registered", { id, hook: String(name), runtimeMode })
+      }
+      continue
+    }
+    if (!canReceiveHook(plugin, String(name), input)) {
+      log.debug("plugin hook skipped: permission denied", { id, hook: String(name), runtimeMode })
+      continue
+    }
 
     try {
+      const before = hookOutputMetrics(output)
+      const context = hookDispatchContext(input)
       if (runtimeMode && runtimeMode !== "in-process") {
         const runtime = getRuntime(id)
         if (runtime?.hooks?.includes(String(name))) {
+          log.debug("plugin hook dispatch", {
+            id,
+            hook: String(name),
+            runtimeMode,
+            runtimeState: runtime.state,
+            ...context,
+            before,
+          })
           const nextOutput = await triggerRuntimeHook(id, String(name), input, output)
           if (nextOutput && typeof nextOutput === "object" && output && typeof output === "object") {
             Object.assign(output as any, nextOutput)
           }
+          log.debug("plugin hook completed", {
+            id,
+            hook: String(name),
+            runtimeMode,
+            runtimeState: runtime.state,
+            ...context,
+            before,
+            after: hookOutputMetrics(output),
+          })
+        } else {
+          log.debug("plugin hook skipped: runtime hook not advertised", {
+            id,
+            hook: String(name),
+            runtimeMode,
+            runtimeState: runtime?.state,
+            advertisedHooks: runtime?.hooks,
+            ...context,
+          })
         }
         continue
       }
 
+      log.debug("plugin hook dispatch", { id, hook: String(name), runtimeMode: "in-process", ...context, before })
       // @ts-expect-error - hook signature variance
       await withTimeout(Promise.resolve(fn(input, output)), await hookInvocationTimeoutMs(plugin), {
         message: `Plugin hook "${String(name)}" timed out`,
       })
+      log.debug("plugin hook completed", {
+        id,
+        hook: String(name),
+        runtimeMode: "in-process",
+        ...context,
+        before,
+        after: hookOutputMetrics(output),
+      })
     } catch (err) {
+      log.error("plugin hook failed", {
+        id,
+        hook: String(name),
+        runtimeMode,
+        ...hookDispatchContext(input),
+        error: err instanceof Error ? err.message : String(err),
+      })
       await disableLoadedPlugin(plugin, "hook", err)
       continue
     }

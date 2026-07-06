@@ -166,9 +166,20 @@ export namespace LLM {
       },
       { system },
     )
-    if (system.length === 0) {
+    const emptiedByTransform = system.length === 0
+    if (emptiedByTransform) {
       system.push(...original)
     }
+    l.debug("system transform final result", {
+      sessionID: input.sessionID,
+      messageID: input.user.id,
+      agent: input.agent.name,
+      model: { providerID: input.model.providerID, modelID: input.model.id },
+      small: input.small,
+      beforeSystemCount: original.length,
+      afterSystemCount: system.length,
+      restoredEmptySystem: emptiedByTransform,
+    })
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
