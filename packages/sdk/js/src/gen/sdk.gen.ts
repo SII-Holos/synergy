@@ -1701,6 +1701,10 @@ export class Session extends HeyApiClient {
       time?: {
         archived?: number
       }
+      modelOverride?: {
+        providerID: string
+        modelID: string
+      } | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1717,6 +1721,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "controlProfile" },
             { in: "body", key: "completionNotice" },
             { in: "body", key: "time" },
+            { in: "body", key: "modelOverride" },
           ],
         },
       ],

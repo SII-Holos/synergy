@@ -444,6 +444,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               setStore("recent", uniq)
             }
           })
+          // A genuine selector pick (recent) persists as the session's
+          // modelOverride (layer 2), so the choice survives reload and matches
+          // the channel /model command. Fire-and-forget; the draft already
+          // reflects it locally. Skipped for the new-session composer.
+          if (options?.recent && model && params.id) {
+            void sdk.client.session
+              .update({ sessionID: params.id, modelOverride: { providerID: model.providerID, modelID: model.modelID } })
+              .catch(() => {})
+          }
         },
         inQuickSwitcher,
         setQuickSwitcher(model: ModelKey, included: boolean) {

@@ -441,6 +441,15 @@ export const SessionRoute = new Hono()
             archived: z.number().optional(),
           })
           .optional(),
+        // Per-session model preference set from the composer's model selector.
+        // Pass null to clear it and fall back to history/agent/provider default.
+        modelOverride: z
+          .object({
+            providerID: z.string(),
+            modelID: z.string(),
+          })
+          .nullable()
+          .optional(),
       }),
     ),
     async (c) => {
@@ -451,7 +460,8 @@ export const SessionRoute = new Hono()
         updates.title !== undefined ||
         updates.pinned !== undefined ||
         updates.controlProfile !== undefined ||
-        updates.time?.archived !== undefined
+        updates.time?.archived !== undefined ||
+        updates.modelOverride !== undefined
 
       if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
         return c.json(await Session.clearCompletionNotice(sessionID))
@@ -462,6 +472,7 @@ export const SessionRoute = new Hono()
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
         if (updates.completionNotice?.unread === false) session.completionNotice.unread = false
+        if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
       }
 
       const updatedSession =
