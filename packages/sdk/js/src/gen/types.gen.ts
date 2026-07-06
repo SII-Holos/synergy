@@ -811,7 +811,7 @@ export type SessionNavEntry = {
   endpointKind?: "channel"
   chatId?: string
   chatName?: string
-  chatType?: string
+  chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
   }
