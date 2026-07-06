@@ -3,6 +3,7 @@ import { LoopJob } from "./loop-job"
 import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
+import { SessionCompaction } from "./compaction"
 import { Log } from "@/util/log"
 import { ScopeContext } from "../scope/context"
 const log = Log.create({ service: "session.loop-signals" })
@@ -24,17 +25,12 @@ function lastAssistant(ctx: LoopJob.Context): AssistantMsg | undefined {
 LoopJob.defineSignal({
   type: "compact",
   detect(ctx) {
-    if (!ctx.lastUserParts.some((p) => p.type === "compaction")) return false
     // The compaction part lives on the task root R (issue #281 §7), so it stays
-    // in the window after compaction runs. Fire only while the request is still
-    // pending — i.e. no completed compaction summary for R exists yet — otherwise
-    // the loop would re-compact endlessly instead of resuming the task.
-    const fulfilled = ctx.messages.some((m) => {
-      if (m.info.role !== "assistant") return false
-      const a = m.info as MessageV2.Assistant
-      return a.summary === true && !!a.finish && a.parentID === ctx.lastUser.id
-    })
-    return !fulfilled
+    // in the window after compaction runs. Fire only while a request is still
+    // pending — more compaction parts than completed summaries for R — so a long
+    // task can compact repeatedly (issue #321) without re-compacting endlessly
+    // instead of resuming the task.
+    return SessionCompaction.hasPendingCompaction(ctx.lastUserParts, ctx.messages, ctx.lastUser.id)
   },
 })
 

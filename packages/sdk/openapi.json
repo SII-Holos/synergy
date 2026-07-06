@@ -4396,6 +4396,25 @@
                         "type": "number"
                       }
                     }
+                  },
+                  "modelOverride": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "modelID": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["providerID", "modelID"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -17323,6 +17342,67 @@
         ]
       }
     },
+    "/event/replay": {
+      "get": {
+        "operationId": "event.replay",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Replay missed events",
+        "description": "After a reconnect, return the state events published for this scope since `since`. Returns status \"reset\" when the client's epoch is stale or the required events have aged out of the journal, in which case the client must resync from snapshots.",
+        "responses": {
+          "200": {
+            "description": "Replay result"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.event.replay({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/event": {
       "get": {
         "operationId": "event.subscribe",
@@ -24955,9 +25035,6 @@
                         "synthetic": {
                           "type": "boolean"
                         },
-                        "ignored": {
-                          "type": "boolean"
-                        },
                         "origin": {
                           "type": "string",
                           "enum": ["user", "system"]
@@ -25185,9 +25262,6 @@
             "type": "string"
           },
           "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
             "type": "boolean"
           },
           "origin": {
@@ -25641,9 +25715,6 @@
             "type": "string"
           },
           "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
             "type": "boolean"
           },
           "origin": {

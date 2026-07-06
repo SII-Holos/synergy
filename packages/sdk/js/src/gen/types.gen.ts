@@ -8254,6 +8254,10 @@ export type SessionUpdateData = {
     time?: {
       archived?: number
     }
+    modelOverride?: {
+      providerID: string
+      modelID: string
+    } | null
   }
   path: {
     sessionID: string
@@ -14261,6 +14265,34 @@ export type AuthSetResponses = {
 }
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
+
+export type EventReplayData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    since: number
+    epoch?: string
+  }
+  url: "/event/replay"
+}
+
+export type EventReplayErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type EventReplayError = EventReplayErrors[keyof EventReplayErrors]
+
+export type EventReplayResponses = {
+  /**
+   * Replay result
+   */
+  200: unknown
+}
 
 export type EventSubscribeData = {
   body?: never

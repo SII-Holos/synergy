@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { NavEntry, NavListState } from "./layout"
-import { mergeNavListByID, orderNavEntries } from "./layout-nav"
+import { applySessionToNavList, mergeNavListByID, navUpdateFromSession, orderNavEntries } from "./layout-nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
   return {
@@ -61,5 +61,73 @@ describe("mergeNavListByID", () => {
 
     expect(merged.items.map((item) => item.id)).toEqual(["b", "c"])
     expect(merged.total).toBe(2)
+  })
+})
+
+describe("navUpdateFromSession", () => {
+  test("projects nav-relevant fields from a session info", () => {
+    const u = navUpdateFromSession({
+      id: "s1",
+      title: "Hello",
+      pinned: 3,
+      parentID: "p1",
+      time: { updated: 1234, archived: 0 },
+      completionNotice: { unread: true },
+    })
+    expect(u).toEqual({
+      id: "s1",
+      title: "Hello",
+      pinned: 3,
+      lastActivityAt: 1234,
+      archived: false,
+      parentID: "p1",
+      completionNoticeUnread: true,
+    })
+  })
+
+  test("marks archived when time.archived is set", () => {
+    expect(navUpdateFromSession({ id: "s1", time: { archived: 999 } }).archived).toBe(true)
+  })
+})
+
+describe("applySessionToNavList", () => {
+  test("returns applied=false when the session is not in the list", () => {
+    const l = list([entry({ id: "a" })])
+    const r = applySessionToNavList(l, navUpdateFromSession({ id: "missing", time: { updated: 5 } }))
+    expect(r.applied).toBe(false)
+    expect(r.list).toBe(l)
+  })
+
+  test("updates title/pin/activity in place for an existing entry", () => {
+    const l = list([entry({ id: "a", title: "old", lastActivityAt: 1 }), entry({ id: "b" })])
+    const r = applySessionToNavList(
+      l,
+      navUpdateFromSession({ id: "a", title: "new", pinned: 7, time: { updated: 99 } }),
+    )
+    expect(r.applied).toBe(true)
+    const updated = r.list.items.find((e) => e.id === "a")!
+    expect(updated.title).toBe("new")
+    expect(updated.pinned).toBe(7)
+    expect(updated.lastActivityAt).toBe(99)
+    // updating lastActivityAt in place is enough — orderNavEntries reorders at read
+    expect(orderNavEntries(r.list.items).map((e) => e.id)).toEqual(["a", "b"])
+  })
+
+  test("removes an archived entry and decrements total", () => {
+    const l = list([entry({ id: "a" }), entry({ id: "b" })])
+    const r = applySessionToNavList(l, navUpdateFromSession({ id: "a", time: { archived: 1 } }))
+    expect(r.applied).toBe(true)
+    expect(r.list.items.map((e) => e.id)).toEqual(["b"])
+    expect(r.list.total).toBe(1)
+  })
+
+  test("preserves prior fields when the update omits them", () => {
+    const l = list([entry({ id: "a", title: "keep", pinned: 2, completionNotice: { unread: true } })])
+    const r = applySessionToNavList(l, { id: "a", archived: false, lastActivityAt: 50 })
+    const updated = r.list.items[0]
+    expect(updated.title).toBe("keep")
+    expect(updated.pinned).toBe(2)
+    expect(updated.completionNotice.unread).toBe(true)
+    expect(updated.lastActivityAt).toBe(50)
   })
 })

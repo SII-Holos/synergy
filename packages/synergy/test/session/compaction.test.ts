@@ -319,6 +319,61 @@ describe("session.compaction.isContextExceeded", () => {
       true,
     )
   })
+
+  // issue #321: recognize the context-window signal even when the error was
+  // wrapped or normalized to a shape other than APIError.
+  test("detects a wrapped/plain error via top-level message", () => {
+    expect(SessionCompaction.isContextExceeded({ name: "Error", message: "context_length_exceeded" })).toBe(true)
+  })
+
+  test("detects a nested error code when the shape was rewritten", () => {
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "ProviderError",
+        data: { error: { type: "invalid_request_error", code: "context_length_exceeded" } },
+      }),
+    ).toBe(true)
+  })
+
+  test("still rejects unrelated wrapped errors", () => {
+    expect(SessionCompaction.isContextExceeded({ name: "Error", message: "network timeout" })).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.hasPendingCompaction (issue #321)
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.hasPendingCompaction", () => {
+  const rootID = "msg_root"
+  const compactionPart = () => ({ type: "compaction" }) as any
+  const textPart = () => ({ type: "text", text: "hi" }) as any
+  const summary = (parentID = rootID) =>
+    ({ info: { role: "assistant", summary: true, finish: "stop", parentID }, parts: [] }) as any
+  const assistant = () => ({ info: { role: "assistant", finish: "stop" }, parts: [] }) as any
+
+  test("no compaction part → not pending", () => {
+    expect(SessionCompaction.hasPendingCompaction([textPart()], [assistant()], rootID)).toBe(false)
+  })
+
+  test("one compaction part, no summary yet → pending", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [assistant()], rootID)).toBe(true)
+  })
+
+  test("one compaction part fulfilled by a summary → not pending (task resumes)", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary()], rootID)).toBe(false)
+  })
+
+  test("second compaction request after a fulfilled first → pending again (repeatable)", () => {
+    // Two compaction parts on R but only one completed summary so far.
+    expect(
+      SessionCompaction.hasPendingCompaction([compactionPart(), compactionPart()], [summary(), assistant()], rootID),
+    ).toBe(true)
+  })
+
+  test("a summary anchored on a different root does not count", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary("msg_other")], rootID)).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
