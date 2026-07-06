@@ -23,6 +23,7 @@ import {
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { planCompactionReplace } from "./session-compaction"
+import { observeWatermark, type Watermark } from "./sync-watermark"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -680,10 +681,12 @@ function createGlobalSync() {
       .catch((e) => setGlobalStore("error", e))
   }
 
-  const unsub = globalSDK.event.listen((e) => {
-    const scopeKey = e.name
-    const event = e.details
+  // Per-scope event watermark (highest applied state-event seq + epoch), used
+  // for reconnect replay and gap detection (frontend sync redesign, phase 1).
+  const watermarks = new Map<string, Watermark>()
+  const replayInFlight = new Set<string>()
 
+  function applyEvent(scopeKey: string, event: any) {
     if (event?.type === "global.disposed") {
       bootstrap()
       return
@@ -781,7 +784,7 @@ function createGlobalSync() {
       }
       return
     }
-    if (e.name === "global") return
+    if (scopeKey === "global") return
 
     const [store, setStore] = ensureScopeState(scopeKey)
     switch (event.type) {
@@ -1116,6 +1119,18 @@ function createGlobalSync() {
         break
       }
     }
+  }
+
+  const unsub = globalSDK.event.listen((e) => {
+    // Track the scope's event watermark before applying, and trigger a replay
+    // if a gap or epoch change is detected. Streaming events carry no seq and
+    // leave the watermark untouched.
+    // seq/epoch are additive envelope fields not present in the generated Event
+    // type; read them structurally.
+    const observed = observeWatermark(watermarks.get(e.name), e.details as unknown as { epoch?: string; seq?: number })
+    if (observed.next) watermarks.set(e.name, observed.next)
+    if (observed.epochChanged || observed.gap) void replayOrResync(e.name)
+    applyEvent(e.name, e.details)
   })
   onCleanup(() => {
     unsub()
@@ -1125,11 +1140,45 @@ function createGlobalSync() {
     cortexRefreshTimers.clear()
   })
 
+  // Reconnect recovery: try to replay only the events missed since our
+  // watermark instead of refetching everything. Falls back to a full resync on
+  // reset (stale epoch / pruned journal) or any error — so it can never lose
+  // updates, only do more work.
+  async function replayOrResync(scopeKey: string) {
+    if (scopeKey === "global" || !children[scopeKey]) return
+    if (replayInFlight.has(scopeKey)) return
+    const wm = watermarks.get(scopeKey)
+    if (!wm) {
+      await resyncInstance(scopeKey).catch(() => undefined)
+      return
+    }
+    replayInFlight.add(scopeKey)
+    try {
+      const sdk = createScopedClient(scopeKey)
+      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
+      const data = res.data as
+        | { status: "ok"; epoch: string; seq: number; events: any[] }
+        | { status: "reset"; epoch: string; seq: number }
+        | undefined
+      if (!data || data.status === "reset") {
+        watermarks.delete(scopeKey)
+        await resyncInstance(scopeKey).catch(() => undefined)
+        return
+      }
+      for (const ev of data.events) applyEvent(scopeKey, ev)
+      watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
+    } catch {
+      await resyncInstance(scopeKey).catch(() => undefined)
+    } finally {
+      replayInFlight.delete(scopeKey)
+    }
+  }
+
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
-      resyncInstance(directory).catch(() => undefined),
+      replayOrResync(directory).catch(() => undefined),
     ).finally(() => {
       resyncInstancesPromise = undefined
     })
