@@ -1,12 +1,13 @@
 import { GitHealth } from "../project/git-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
+import { SessionInbox } from "./inbox"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { SessionCompaction } from "./compaction"
 import { Log } from "@/util/log"
 import { ScopeContext } from "../scope/context"
-import { SearchGuard } from "@/tool/search-guard"
+import { SearchGuard, getFailureAnalyzers, type ToolFailureAnalyzer } from "@/tool/search-guard"
 
 const log = Log.create({ service: "session.loop-signals" })
 
@@ -22,86 +23,50 @@ function lastAssistant(ctx: LoopJob.Context): AssistantMsg | undefined {
   return recentAssistants(ctx, 1).at(0)
 }
 
-async function appendSyntheticUserText(ctx: LoopJob.Context, text: string) {
-  const part = (await Session.updatePart({
-    id: Identifier.ascending("part"),
-    messageID: ctx.lastUser.id,
-    sessionID: ctx.sessionID,
-    type: "text",
-    text,
-    synthetic: true,
-    time: { start: Date.now(), end: Date.now() },
-  })) as MessageV2.Part
-
-  ctx.lastUserParts.push(part)
-  const userMessage = ctx.messages.find((msg) => msg.info.id === ctx.lastUser.id)
-  if (userMessage && userMessage.parts !== ctx.lastUserParts) userMessage.parts.push(part)
-}
-
-function hasSyntheticMarker(ctx: LoopJob.Context, marker: string): boolean {
-  return ctx.lastUserParts.some((part) => part.type === "text" && part.synthetic && part.text.includes(marker))
-}
-
-function isScholarContext(ctx: LoopJob.Context): boolean {
-  return ctx.lastUser.agent === "scholar" || recentAssistants(ctx, 8).some((msg) => msg.info.agent === "scholar")
-}
-
-function recentSearchRecords(ctx: LoopJob.Context): SearchGuard.SearchRecord[] {
+function recentToolRecords(ctx: LoopJob.Context, tools: Set<string>): SearchGuard.SearchRecord[] {
   return recentAssistants(ctx, 8).flatMap((msg) =>
     msg.parts.flatMap((part) => {
       if (part.type !== "tool") return []
+      if (!tools.has(part.tool)) return []
       const record = SearchGuard.buildRecord(part)
       return record ? [record] : []
     }),
   )
 }
 
-function dominantFailureType(failures: SearchGuard.SearchRecord[]): SearchGuard.FailureType | undefined {
-  const counts = new Map<SearchGuard.FailureType, number>()
-  for (const failure of failures) {
-    if (!failure.failureType) continue
-    counts.set(failure.failureType, (counts.get(failure.failureType) ?? 0) + 1)
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+/** Check if the current context contains already-injected markers for an analyzer. */
+function hasInjectedMarker(ctx: LoopJob.Context, analyzer: ToolFailureAnalyzer): boolean {
+  return ctx.lastUserParts.some(
+    (part) =>
+      part.type === "text" &&
+      part.synthetic &&
+      (part.text.includes(analyzer.reflectionMarker) || part.text.includes(analyzer.earlyStopMarker)),
+  )
 }
 
-function formatSearchFailures(failures: SearchGuard.SearchRecord[]): string {
-  return failures
-    .map((failure) => {
-      const target = failure.query ?? failure.domain ?? "(unknown target)"
-      const domain = failure.domain ? ` domain=${failure.domain}` : ""
-      return `- ${failure.tool}: ${target} -> ${failure.failureType ?? "unknown"}${domain}`
-    })
-    .join("\n")
-}
+/** Find the first analyzer that matches the current agent context and has failures. */
+function detectToolFailurePattern(
+  ctx: LoopJob.Context,
+): { analyzer: ToolFailureAnalyzer; pattern: SearchGuard.FailurePattern } | null {
+  const analyzers = getFailureAnalyzers()
+  for (const analyzer of analyzers.values()) {
+    if (analyzer.agentFilter && !analyzer.agentFilter.includes(ctx.lastUser.agent)) {
+      const hasAssistantMatch = recentAssistants(ctx, 8).some((msg) => analyzer.agentFilter!.includes(msg.info.agent))
+      if (!hasAssistantMatch) continue
+    }
 
-function formatDomainSummary(failures: SearchGuard.SearchRecord[]): string | undefined {
-  const byDomain = new Map<string, Map<string, number>>()
-  for (const failure of failures) {
-    if (!failure.domain || !failure.failureType) continue
-    const counts = byDomain.get(failure.domain) ?? new Map<string, number>()
-    counts.set(failure.failureType, (counts.get(failure.failureType) ?? 0) + 1)
-    byDomain.set(failure.domain, counts)
-  }
-  if (byDomain.size === 0) return undefined
-  return [...byDomain.entries()]
-    .map(([domain, counts]) => {
-      const summary = [...counts.entries()].map(([type, count]) => `${type}:${count}`).join(", ")
-      return `- ${domain}: ${summary}`
-    })
-    .join("\n")
-}
+    if (hasInjectedMarker(ctx, analyzer)) continue
 
-function buildSearchAnalysis(ctx: LoopJob.Context) {
-  const records = recentSearchRecords(ctx)
-  const failures = SearchGuard.trailingFailures(records)
-  const dominant = dominantFailureType(failures)
-  return {
-    records,
-    failures,
-    dominant,
-    hasSimilarQueries: SearchGuard.hasSimilarQueries(records.slice(-6)),
+    const records = recentToolRecords(ctx, analyzer.tools)
+    const failures = SearchGuard.trailingFailures(records)
+    if (failures.length < analyzer.reflectionThreshold) continue
+
+    const pattern = analyzer.detect(failures)
+    if (!pattern) continue
+
+    return { analyzer, pattern }
   }
+  return null
 }
 
 // ─── compact signal ────────────────────────────────────────────────
@@ -109,11 +74,6 @@ function buildSearchAnalysis(ctx: LoopJob.Context) {
 LoopJob.defineSignal({
   type: "compact",
   detect(ctx) {
-    // The compaction part lives on the task root R (issue #281 §7), so it stays
-    // in the window after compaction runs. Fire only while a request is still
-    // pending — more compaction parts than completed summaries for R — so a long
-    // task can compact repeatedly (issue #321) without re-compacting endlessly
-    // instead of resuming the task.
     return SessionCompaction.hasPendingCompaction(ctx.lastUserParts, ctx.messages, ctx.lastUser.id)
   },
 })
@@ -285,116 +245,59 @@ LoopJob.register({
   },
 })
 
-// ─── scholar search reflection: repeated search/fetch failures need strategy change ───
-
-const SEARCH_REFLECTION_THRESHOLD = 2
-const SEARCH_EARLY_STOP_THRESHOLD = 4
+// ─── tool failure pattern: category-specific escalations ───────────
+//
+// Generic signal that delegates failure pattern detection to registered
+// ToolFailureAnalyzers. Each analyzer owns its category's thresholds,
+// markers, agent filter, and intervention text.
+//
+// Current analyzers (auto-registered in search-guard.ts):
+//   - search: scholar agent search/fetch failures → reflection → early stop
 
 LoopJob.defineSignal({
-  type: "search_failure_reflection",
+  type: "tool_failure_pattern",
   detect(ctx) {
-    if (!isScholarContext(ctx)) return false
-    if (hasSyntheticMarker(ctx, SearchGuard.REFLECTION_MARKER)) return false
-    if (hasSyntheticMarker(ctx, SearchGuard.EARLY_STOP_MARKER)) return false
-
-    const analysis = buildSearchAnalysis(ctx)
-    return analysis.failures.length >= SEARCH_REFLECTION_THRESHOLD
+    return detectToolFailurePattern(ctx) !== null
   },
 })
 
 LoopJob.register({
-  type: "search_failure_reflector",
+  type: "tool_failure_pattern_injector",
   phase: "pre",
   blocking: true,
-  signals: ["search_failure_reflection"],
+  signals: ["tool_failure_pattern"],
   collect() {
     return []
   },
   async execute(ctx) {
-    const analysis = buildSearchAnalysis(ctx)
-    if (analysis.failures.length < SEARCH_REFLECTION_THRESHOLD) return "pass"
+    const result = detectToolFailurePattern(ctx)
+    if (!result) return "pass"
 
-    const dominant = analysis.dominant ?? "blocked_or_unavailable"
-    const domainSummary = formatDomainSummary(analysis.failures)
-    const warning = [
-      SearchGuard.REFLECTION_MARKER,
-      `The last ${analysis.failures.length} scholar search/fetch attempts failed or produced unusable results.`,
-      "",
-      "Recent failed attempts:",
-      formatSearchFailures(analysis.failures),
-      ...(domainSummary ? ["", "Domain failure summary:", domainSummary] : []),
-      "",
-      `Dominant failure type: ${dominant}`,
-      `Adjustment advice: ${SearchGuard.advice(dominant)}`,
-      analysis.hasSimilarQueries
-        ? "Repeated or very similar queries were detected. Do not repeat the same query; rewrite it or switch source."
-        : "Before searching again, change the query or source based on the failure type.",
-      "",
-      "Reflect briefly before the next tool call: classify the failure, explain the strategy change, then either try one meaningfully different query/source or stop and report the limitation.",
-    ].join("\n")
+    const { analyzer, pattern } = result
+    const text = analyzer.buildIntervention(pattern)
 
-    await appendSyntheticUserText(ctx, warning)
-    return "pass"
-  },
-})
+    // Inject as a steer message via the inbox so it has a proper origin
+    // (issue #281 steer injection model).
+    await SessionInbox.deliver({
+      sessionID: ctx.sessionID,
+      mode: "steer",
+      message: {
+        role: "user",
+        parts: [{ type: "text", text }],
+        origin: {
+          type: "system",
+          detail: pattern.type === "early_stop" ? "search_early_stop" : "search_failure_reflection",
+        },
+        visible: true,
+      },
+    })
 
-LoopJob.defineSignal({
-  type: "search_early_stop",
-  detect(ctx) {
-    if (!isScholarContext(ctx)) return false
-    if (!hasSyntheticMarker(ctx, SearchGuard.REFLECTION_MARKER)) return false
-    if (hasSyntheticMarker(ctx, SearchGuard.EARLY_STOP_MARKER)) return false
-
-    const analysis = buildSearchAnalysis(ctx)
-    return analysis.failures.length >= SEARCH_EARLY_STOP_THRESHOLD
-  },
-})
-
-LoopJob.register({
-  type: "search_early_stop_injector",
-  phase: "pre",
-  blocking: true,
-  signals: ["search_early_stop"],
-  collect() {
-    return []
-  },
-  async execute(ctx) {
-    const analysis = buildSearchAnalysis(ctx)
-    if (analysis.failures.length < SEARCH_EARLY_STOP_THRESHOLD) return "pass"
-
-    const dominant = analysis.dominant ?? "blocked_or_unavailable"
-    const domainSummary = formatDomainSummary(analysis.failures)
-    const message = [
-      SearchGuard.EARLY_STOP_MARKER,
-      `Scholar search has continued to fail after reflection (${analysis.failures.length} consecutive failed or unusable search/fetch attempts).`,
-      "",
-      "Stop calling search tools for this turn unless the user explicitly asks for more attempts.",
-      "",
-      "Return the best available conclusion now. Include:",
-      "- the queries or URLs already tried",
-      "- the main failure types observed",
-      "- your current diagnosis",
-      "- a concrete next step the user can take, such as using a different source, API, exact title, or manual browser access",
-      "",
-      "Recent failed attempts:",
-      formatSearchFailures(analysis.failures),
-      ...(domainSummary ? ["", "Domain failure summary:", domainSummary] : []),
-      "",
-      `Main failure type: ${dominant}`,
-      `Likely next move: ${SearchGuard.advice(dominant)}`,
-    ].join("\n")
-
-    await appendSyntheticUserText(ctx, message)
     return "pass"
   },
 })
 
 // ─── git health cache invalidation ─────────────────────────────────
 
-// When the agent runs a bash command, the repo state may have changed
-// (uncommitted edits added/removed, branches created/deleted, etc.).
-// Invalidate the GitHealth cache so the next system prompt assembly
-// picks up the current state instead of returning stale diagnostics.
 LoopJob.register({
   type: "git_health_cache_invalidator",
   phase: "post",

@@ -23,6 +23,15 @@ export namespace SearchGuard {
     error?: string
   }
 
+  export interface FailurePattern {
+    type: "reflection" | "early_stop"
+    category: string
+    failures: SearchRecord[]
+    dominant: FailureType | undefined
+    hasSimilarQueries: boolean
+    domainSummary?: string
+  }
+
   const recentSearches = new Map<string, string[]>()
   const MAX_RECENT_SEARCHES = 50
 
@@ -142,8 +151,7 @@ export namespace SearchGuard {
     const metadata = part.state.metadata ?? {}
     if (typeof metadata.searchFailureType === "string") return metadata.searchFailureType as FailureType
     const output = part.state.output.toLowerCase()
-    if (output.includes("no search results found") || output.includes("no papers found matching"))
-      return "no_results"
+    if (output.includes("no search results found") || output.includes("no papers found matching")) return "no_results"
     if (output.includes("search skipped: this exact query")) return "duplicate_query"
     if (output.includes("search quality warning")) return "low_quality_results"
     return undefined
@@ -206,7 +214,8 @@ export namespace SearchGuard {
     if (compact.length < 300) {
       return {
         failureType: "low_quality_results" as const,
-        reason: "Fetched HTML produced very little readable content; this may be a navigation shell, login page, or JavaScript-rendered page.",
+        reason:
+          "Fetched HTML produced very little readable content; this may be a navigation shell, login page, or JavaScript-rendered page.",
       }
     }
     return undefined
@@ -246,3 +255,159 @@ export namespace SearchGuard {
     return intersection / (left.size + right.size - intersection)
   }
 }
+
+// ─── Tool failure pattern detection (issue #29) ────────────────────
+//
+// Generic framework for detecting tool-category-specific failure patterns.
+// Each category (search, file, shell, ...) registers an analyzer that the
+// loop signal layer queries. This keeps domain knowledge out of loop-signals.
+
+export interface ToolFailureAnalyzer {
+  /** Unique category identifier, e.g. "search". */
+  category: string
+  /** Tool names that belong to this category. */
+  tools: Set<string>
+  /** If set, restrict detection to these agent names. */
+  agentFilter?: string[]
+  /** Threshold of consecutive failures before reflection. */
+  reflectionThreshold: number
+  /** Threshold of consecutive failures before early stop (must be > reflectionThreshold). */
+  earlyStopThreshold: number
+  /** Marker text used to detect if reflection has already been injected. */
+  reflectionMarker: string
+  /** Marker text used to detect if early stop has already been injected. */
+  earlyStopMarker: string
+  /** Build a failure pattern from a set of consecutive failures. Returns null if no pattern. */
+  detect(failures: SearchGuard.SearchRecord[]): SearchGuard.FailurePattern | null
+  /** Build an intervention message injected before the next model call. */
+  buildIntervention(pattern: SearchGuard.FailurePattern): string
+}
+
+function formatDomainSummaryForPattern(failures: SearchGuard.SearchRecord[]): string | undefined {
+  const byDomain = new Map<string, Map<string, number>>()
+  for (const failure of failures) {
+    if (!failure.domain || !failure.failureType) continue
+    const counts = byDomain.get(failure.domain) ?? new Map<string, number>()
+    counts.set(failure.failureType, (counts.get(failure.failureType) ?? 0) + 1)
+    byDomain.set(failure.domain, counts)
+  }
+  if (byDomain.size === 0) return undefined
+  return [...byDomain.entries()]
+    .map(([domain, counts]) => {
+      const summary = [...counts.entries()].map(([type, count]) => `${type}:${count}`).join(", ")
+      return `- ${domain}: ${summary}`
+    })
+    .join("\n")
+}
+
+function dominantFailureTypeForPattern(failures: SearchGuard.SearchRecord[]): SearchGuard.FailureType | undefined {
+  const counts = new Map<SearchGuard.FailureType, number>()
+  for (const failure of failures) {
+    if (!failure.failureType) continue
+    counts.set(failure.failureType, (counts.get(failure.failureType) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+}
+
+function formatFailuresForPattern(failures: SearchGuard.SearchRecord[]): string {
+  return failures
+    .map((failure) => {
+      const target = failure.query ?? failure.domain ?? "(unknown target)"
+      const domain = failure.domain ? ` domain=${failure.domain}` : ""
+      return `- ${failure.tool}: ${target} -> ${failure.failureType ?? "unknown"}${domain}`
+    })
+    .join("\n")
+}
+
+/**
+ * Scholar search failure analyzer.
+ *
+ * Detects patterns of consecutive failed search/fetch tool calls by a
+ * scholar agent. Two-stage escalation via loop signals:
+ *   - ≥2 consecutive failures → "reflection": injected as a steer message
+ *     asking the agent to adjust its search strategy.
+ *   - ≥4 consecutive failures → "early_stop": injected as a steer message
+ *     instructing the agent to stop searching and report findings.
+ */
+export const SearchFailureAnalyzer: ToolFailureAnalyzer = {
+  category: "search",
+  tools: SearchGuard.SEARCH_TOOLS,
+  agentFilter: ["scholar"],
+  reflectionThreshold: 2,
+  earlyStopThreshold: 4,
+  reflectionMarker: SearchGuard.REFLECTION_MARKER,
+  earlyStopMarker: SearchGuard.EARLY_STOP_MARKER,
+
+  detect(failures) {
+    if (failures.length < this.reflectionThreshold) return null
+
+    const dominant = dominantFailureTypeForPattern(failures)
+    const type = failures.length >= this.earlyStopThreshold ? "early_stop" : "reflection"
+
+    return {
+      type,
+      category: this.category,
+      failures,
+      dominant,
+      hasSimilarQueries: SearchGuard.hasSimilarQueries(failures),
+      domainSummary: formatDomainSummaryForPattern(failures),
+    }
+  },
+
+  buildIntervention(pattern) {
+    const dominant = pattern.dominant ?? "blocked_or_unavailable"
+
+    if (pattern.type === "early_stop") {
+      return [
+        this.earlyStopMarker,
+        `Scholar search has continued to fail after reflection (${pattern.failures.length} consecutive failed or unusable search/fetch attempts).`,
+        "",
+        "Stop calling search tools for this turn unless the user explicitly asks for more attempts.",
+        "",
+        "Return the best available conclusion now. Include:",
+        "- the queries or URLs already tried",
+        "- the main failure types observed",
+        "- your current diagnosis",
+        "- a concrete next step the user can take, such as using a different source, API, exact title, or manual browser access",
+        "",
+        "Recent failed attempts:",
+        formatFailuresForPattern(pattern.failures),
+        ...(pattern.domainSummary ? ["", "Domain failure summary:", pattern.domainSummary] : []),
+        "",
+        `Main failure type: ${dominant}`,
+        `Likely next move: ${SearchGuard.advice(dominant)}`,
+      ].join("\n")
+    }
+
+    return [
+      this.reflectionMarker,
+      `The last ${pattern.failures.length} scholar search/fetch attempts failed or produced unusable results.`,
+      "",
+      "Recent failed attempts:",
+      formatFailuresForPattern(pattern.failures),
+      ...(pattern.domainSummary ? ["", "Domain failure summary:", pattern.domainSummary] : []),
+      "",
+      `Dominant failure type: ${dominant}`,
+      `Adjustment advice: ${SearchGuard.advice(dominant)}`,
+      pattern.hasSimilarQueries
+        ? "Repeated or very similar queries were detected. Do not repeat the same query; rewrite it or switch source."
+        : "Before searching again, change the query or source based on the failure type.",
+      "",
+      "Reflect briefly before the next tool call: classify the failure, explain the strategy change, then either try one meaningfully different query/source or stop and report the limitation.",
+    ].join("\n")
+  },
+}
+
+/** Registry of active tool failure analyzers. */
+const failureAnalyzers = new Map<string, ToolFailureAnalyzer>()
+
+export function registerFailureAnalyzer(analyzer: ToolFailureAnalyzer) {
+  failureAnalyzers.set(analyzer.category, analyzer)
+}
+
+export function getFailureAnalyzers(): ReadonlyMap<string, ToolFailureAnalyzer> {
+  return failureAnalyzers
+}
+
+// Register the built-in search analyzer by default.
+registerFailureAnalyzer(SearchFailureAnalyzer)
