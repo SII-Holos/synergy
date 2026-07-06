@@ -191,6 +191,7 @@
     [data-kind="text"],
     [data-kind="reasoning"],
     [data-kind="non-root-user"],
+    [data-kind="tool-attachments"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);
@@ -282,8 +283,7 @@
   }
 
   [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {
-    padding-top: 0;
-    padding-bottom: 0;
+    padding: 0;
   }
 
   [data-slot="session-turn-timeline-item"] > [data-component="text-part"] [data-component="markdown"],
