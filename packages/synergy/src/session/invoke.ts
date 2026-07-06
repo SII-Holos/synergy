@@ -1366,9 +1366,9 @@ export namespace SessionInvoke {
   function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
     switch (adapterName) {
       case "codex":
-        config.model = override.model
-        if (override.providerID) config.providerID = override.providerID
-        if (override.baseURL) config.baseURL = override.baseURL
+        // Codex external agent uses the native Codex/ChatGPT authentication path.
+        // It should only be exposed after the openai-codex provider is authenticated,
+        // and must not receive OpenAI-compatible baseURL/API-key overrides.
         break
       case "claude-code":
         config.model = override.model

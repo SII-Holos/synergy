@@ -100,7 +100,7 @@ export namespace ExternalAgent {
     readonly capabilities: Capabilities
 
     /** Check whether the external binary is available on this machine. */
-    discover(): Promise<{ available: boolean; path?: string; version?: string }>
+    discover(config?: Record<string, unknown>): Promise<{ available: boolean; path?: string; version?: string }>
 
     /** Spawn or connect to the external agent process. */
     start(opts: StartOptions): Promise<void>
