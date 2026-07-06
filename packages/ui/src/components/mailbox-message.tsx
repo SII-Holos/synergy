@@ -19,7 +19,10 @@ export function MailboxMessage(props: {
   const parts = createMemo(() => data.store.part[props.message.id] ?? [])
 
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
-  const sourceSessionID = createMemo(() => props.message.metadata?.sourceSessionID as string | undefined)
+  const sourceSessionID = createMemo(() => {
+    const origin = (props.message as { origin?: { sessionID?: string } }).origin
+    return (origin?.sessionID ?? props.message.metadata?.sourceSessionID) as string | undefined
+  })
   const sourceLabel = createMemo(() => sourceName() ?? sourceSessionID() ?? "another session")
 
   const timestamp = createMemo(() => {

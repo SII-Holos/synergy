@@ -125,7 +125,9 @@ export namespace SessionSummary {
 
     const fallbackModel = await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID)
 
-    const textPart = msgWithParts.parts.find((p) => p.type === "text" && !p.synthetic) as MessageV2.TextPart | undefined
+    const textPart = msgWithParts.parts.find((p) => p.type === "text" && !MessageV2.isSystemPart(p)) as
+      | MessageV2.TextPart
+      | undefined
     const hasStepFinish = messages.some(
       (m) => m.info.role === "assistant" && m.parts.some((p) => p.type === "step-finish" && p.reason !== "tool-calls"),
     )

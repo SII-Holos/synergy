@@ -8,16 +8,16 @@ import {
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { sha256File, sha256JSON } from "../lib/crypto"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { sha256File, sha256JSON } from "../lib/crypto.js"
 import {
   collectPackagedAssets,
   copyPackagedAsset,
   hashPackagedFiles,
   rewritePackagedManifestPaths,
-} from "../lib/artifact-assets"
-import { resolveEntryFromPluginDir } from "../lib/spec"
+} from "../lib/artifact-assets.js"
+import { resolveEntryFromPluginDir } from "../lib/spec.js"
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true })

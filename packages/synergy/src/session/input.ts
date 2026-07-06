@@ -126,34 +126,27 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
   return parts
 }
 
+/**
+ * Whether a user message is a task root. Messages read via effectiveMessages
+ * are canonicalized (issue #281 §12.2), so isRoot is always populated.
+ */
+function isUserAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
+  info: MessageV2.User
+} {
+  return item.info.role === "user" && (item.info as MessageV2.User).isRoot === true
+}
+
 export async function lastModel(sessionID: string) {
   const messages = await effectiveMessages(sessionID)
   for (let i = messages.length - 1; i >= 0; i--) {
     const item = messages[i]
-    if (isSessionIdentityAnchor(item) && item.info.model) return item.info.model
+    if (isUserAnchor(item) && item.info.model) return item.info.model
   }
   const { Provider } = await import("@/provider/provider")
   return Provider.defaultModel()
 }
 
-export function isSessionIdentityAnchor(item: Pick<MessageV2.WithParts, "info">): item is MessageV2.WithParts & {
-  info: MessageV2.User
-} {
-  if (item.info.role !== "user") return false
-  const metadata = item.info.metadata
-  if (!metadata) return true
-
-  const source = metadata.source
-  if (metadata.guided === true && metadata.noReply === true) return false
-  if (metadata.mailbox === true || metadata.channelPush === true) return false
-  if (typeof metadata.sourceSessionID === "string" && metadata.sourceSessionID.trim()) return false
-  if (source === "cortex" || source === "mailbox" || source === "agenda") return false
-  if (typeof source === "string" && source.startsWith("blueprint_loop_")) return false
-
-  return true
-}
-
-export async function createUserMessage(input: InvokeInput) {
+export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -165,7 +158,7 @@ export async function createUserMessage(input: InvokeInput) {
     const messages = await effectiveMessages(input.sessionID)
     for (let i = messages.length - 1; i >= 0; i--) {
       const item = messages[i]
-      if (isSessionIdentityAnchor(item)) {
+      if (isUserAnchor(item)) {
         agentName = item.info.agent
         break
       }
@@ -179,8 +172,16 @@ export async function createUserMessage(input: InvokeInput) {
     agentName: agent.name,
   })
   const externalMetadata = PlanModeUserWrapper.stripReservedMetadata(input.metadata)
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const origin = MessageV2.originFromMetadata(input.metadata)
+  const isRoot = input.noReply !== true
+  const rootID = rootIDOverride ?? messageID
+  // A reply-requiring message is always shown; a noReply injection is shown
+  // when its origin is user (steer/guide) or renders as a chip (cortex/agenda/…).
+  const visible = isRoot || origin.type === "user" || MessageV2.originRenders(origin)
+
   const info: MessageV2.Info = {
-    id: input.messageID ?? Identifier.ascending("message"),
+    id: messageID,
     role: "user",
     sessionID: input.sessionID,
     time: {
@@ -192,8 +193,12 @@ export async function createUserMessage(input: InvokeInput) {
     system: input.system,
     variant: input.variant,
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
+    origin,
+    isRoot,
+    rootID,
+    visible,
+    // isRoot/visible/origin carry scheduling & rendering; no noReply/guided flags.
     metadata: {
-      ...(input.noReply === true ? { noReply: true } : {}),
       ...externalMetadata,
       ...planModeMetadata,
     },
@@ -213,7 +218,7 @@ export async function createUserMessage(input: InvokeInput) {
               messageID: info.id,
               sessionID: input.sessionID,
               type: "text",
-              synthetic: true,
+              origin: "system" as const,
               text: `Reading MCP resource: ${part.filename} (${uri})`,
             },
           ]
@@ -237,7 +242,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: content.text as string,
                 })
               } else if ("blob" in content && content.blob) {
@@ -248,7 +253,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `[Binary content: ${mimeType}]`,
                 })
               }
@@ -268,7 +273,7 @@ export async function createUserMessage(input: InvokeInput) {
               messageID: info.id,
               sessionID: input.sessionID,
               type: "text",
-              synthetic: true,
+              origin: "system" as const,
               text: `Failed to read MCP resource ${part.filename}: ${message}`,
             })
           }
@@ -294,7 +299,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
                 },
                 {
@@ -302,7 +307,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: Attachment.decodeDataUrl(part.url).buffer.toString(),
                 },
                 {
@@ -322,7 +327,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
                 },
                 {
@@ -330,7 +335,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text,
                 },
               ]
@@ -417,7 +422,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
                 },
               ]
@@ -442,14 +447,13 @@ export async function createUserMessage(input: InvokeInput) {
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
-                    synthetic: true,
+                    origin: "system" as const,
                     text: result.output,
                   })
                   if (result.attachments?.length) {
                     pieces.push(
                       ...result.attachments.map((attachment) => ({
                         ...attachment,
-                        synthetic: true,
                         filename: attachment.filename ?? part.filename,
                         messageID: info.id,
                         sessionID: input.sessionID,
@@ -479,7 +483,7 @@ export async function createUserMessage(input: InvokeInput) {
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
-                    synthetic: true,
+                    origin: "system" as const,
                     text: `Read tool failed to read ${filepath} with the following error: ${message}`,
                   })
                 })
@@ -507,7 +511,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the list tool with the following input: ${JSON.stringify(args)}`,
                 },
                 {
@@ -515,7 +519,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: result.output,
                 },
                 {
@@ -537,7 +541,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
                 },
                 {
@@ -545,7 +549,7 @@ export async function createUserMessage(input: InvokeInput) {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  synthetic: true,
+                  origin: "system" as const,
                   text,
                 },
               ]
@@ -573,7 +577,6 @@ export async function createUserMessage(input: InvokeInput) {
                 sessionID: input.sessionID,
                 type: "text",
                 text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
-                synthetic: true,
               },
               await Attachment.toPart({
                 filepath,
@@ -616,11 +619,14 @@ export async function createUserMessage(input: InvokeInput) {
     },
   )
 
-  if (parts.length > 0 && parts.every((p) => p.type === "text" && "synthetic" in p && p.synthetic === true)) {
-    info.metadata = { ...info.metadata, synthetic: true }
-  }
-
+  // System-injected text parts are written with origin: "system" above; any
+  // remaining text part is the user's own input. Rendering/visibility of the
+  // whole message is carried by info.visible/origin, so no metadata.synthetic
+  // flag is needed.
   for (const part of parts) {
+    if (part.type === "text" && !part.origin) {
+      ;(part as MessageV2.TextPart).origin = "user"
+    }
     await Session.updatePart(part)
   }
   await Session.updateMessage(info)

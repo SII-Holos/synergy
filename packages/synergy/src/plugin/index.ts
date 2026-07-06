@@ -32,6 +32,7 @@ export namespace Plugin {
   // Lifecycle
   export const trigger = lifecycle.trigger
   export const init = lifecycle.init
+  export const notifyConfigHooks = lifecycle.notifyConfigHooks
   export const reload = lifecycle.reload
   export const manifest = lifecycle.manifest
 

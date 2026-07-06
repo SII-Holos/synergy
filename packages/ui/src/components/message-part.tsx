@@ -532,6 +532,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Read",
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "view_image":
+      return {
+        icon: "image",
+        title: "View Image",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "view_file":
       return {
         icon: "scan-eye",
@@ -1501,6 +1507,49 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
 }
 
+const SEARCH_REFLECTION_MARKER = "[Search failure reflection]"
+const SEARCH_EARLY_STOP_MARKER = "[Search early stop]"
+
+type SearchReflectionNoticeData = {
+  id: string
+  kind: "reflection" | "early-stop"
+  title: string
+  text: string
+}
+
+function parseSearchReflectionNotice(part: TextPart): SearchReflectionNoticeData | undefined {
+  if (!part.synthetic) return undefined
+
+  const kind = part.text.includes(SEARCH_EARLY_STOP_MARKER)
+    ? "early-stop"
+    : part.text.includes(SEARCH_REFLECTION_MARKER)
+      ? "reflection"
+      : undefined
+  if (!kind) return undefined
+
+  const marker = kind === "early-stop" ? SEARCH_EARLY_STOP_MARKER : SEARCH_REFLECTION_MARKER
+  const text = part.text.replace(marker, "").trim()
+
+  return {
+    id: part.id,
+    kind,
+    title: kind === "early-stop" ? "Search early stop" : "Search reflection",
+    text,
+  }
+}
+
+function SearchReflectionNoticeView(props: { notice: SearchReflectionNoticeData }) {
+  return (
+    <div data-slot="user-message-search-reflection" data-kind={props.notice.kind}>
+      <div data-slot="user-message-search-reflection-header">
+        <Icon name="search" size="small" />
+        <span>{props.notice.title}</span>
+      </div>
+      <div data-slot="user-message-search-reflection-body">{props.notice.text}</div>
+    </div>
+  )
+}
+
 function formatMessageTimestamp(timestamp: number): string {
   const date = new Date(timestamp)
   const hours = date.getHours().toString().padStart(2, "0")
@@ -1521,6 +1570,14 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     return typeof created === "number" ? formatMessageTimestamp(created) : undefined
   })
 
+  const searchReflections = createMemo(
+    () =>
+      ((props.parts?.filter((p) => p.type === "text") as TextPart[] | undefined) ?? [])
+        .map(parseSearchReflectionNotice)
+        .filter((notice): notice is SearchReflectionNoticeData => !!notice),
+    [] as SearchReflectionNoticeData[],
+    { equals: same },
+  )
   const files = createMemo(() => (props.parts?.filter((p) => p.type === "attachment") as AttachmentPart[]) ?? [])
 
   const isNoteAttachment = (file: AttachmentPart) => file.metadata?.kind === "note"
@@ -1575,6 +1632,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
               </button>
             </div>
           </Show>
+          <For each={searchReflections()}>{(notice) => <SearchReflectionNoticeView notice={notice} />}</For>
           <Show when={canCollapse() && expanded()}>
             <button
               type="button"
@@ -1962,7 +2020,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={typedText()}>
       <div data-component="text-part">
-        <Markdown text={typedText()} cacheKey={part().id} />
+        <Markdown text={typedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
       </div>
     </Show>
   )
@@ -1993,7 +2051,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={typedText()}>
       <div data-component="reasoning-part">
-        <Markdown text={typedText()} cacheKey={part().id} />
+        <Markdown text={typedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
       </div>
     </Show>
   )

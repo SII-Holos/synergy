@@ -8,7 +8,7 @@ import type { Scope } from "../../src/scope"
 
 async function createSessionWithAssistantText(
   scope: Scope,
-  textParts: Array<{ text: string; synthetic?: boolean; ignored?: boolean }>,
+  textParts: Array<{ text: string; synthetic?: boolean }>,
   sessionID?: string,
 ) {
   const session = await Session.create({ scope, id: sessionID })
@@ -49,7 +49,6 @@ async function createSessionWithAssistantText(
       type: "text" as const,
       text: tp.text,
       synthetic: tp.synthetic ?? false,
-      ignored: tp.ignored ?? false,
     })
   }
 
@@ -91,19 +90,19 @@ describe("extractExternalTaskResult", () => {
     })
   })
 
-  test("filters out ignored text", async () => {
+  test("filters out system-injected text", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createSessionWithAssistantText(await tmp.scope(), [
           { text: "Real output" },
-          { text: "Ignored content", ignored: true },
+          { text: "System content", synthetic: true },
         ])
 
         const result = await Cortex.extractExternalTaskResult(session.id)
         expect(result).toBe("Real output")
-        expect(result).not.toContain("Ignored content")
+        expect(result).not.toContain("System content")
       },
     })
   })

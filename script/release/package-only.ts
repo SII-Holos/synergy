@@ -4,7 +4,7 @@ import { $ } from "bun"
 import { snapshotFiles, restoreFiles } from "./shared/files"
 import { VERSION_MANAGED_PACKAGE_PATHS, NPM_REGISTRY } from "./shared/packages"
 import { configureNpmAuth, npmTagMatches, npmVersionExists } from "./shared/runtime"
-import type { DependencyVersionMap } from "./shared/publish-generic"
+import type { DependencyVersionMap } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
@@ -46,6 +46,7 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     .filter(Boolean)
   const result: PackageAlias[] = []
   for (const alias of aliases) {
+    // Backward compat alias for existing CI pipelines — remove once CI configs are updated
     if (alias === "meta") {
       result.push("synergy-link-protocol")
       continue

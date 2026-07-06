@@ -127,6 +127,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "font-size-x-large",
     "font-weight-regular",
     "font-weight-medium",
+    "line-height-base",
     "line-height-large",
     "line-height-x-large",
     "line-height-2x-large",
@@ -281,7 +282,11 @@ describe("Visual Token Contract", () => {
   describe("1b. Modal material stays grounded", () => {
     test("dialog overlay uses a subtle blur rather than strong glass", async () => {
       const css = await readFileSafe("src/components/dialog.css")
-      expect(css).toContain("backdrop-filter: blur(4px);")
+      const blurValues = [...css.matchAll(/(?:-webkit-)?backdrop-filter:\s*blur\(([\d.]+)px\)/g)].map((match) =>
+        Number(match[1]),
+      )
+      expect(blurValues.length).toBeGreaterThan(0)
+      expect(Math.max(...blurValues)).toBeLessThanOrEqual(4)
       expect(css).not.toMatch(/backdrop-filter:\s*blur\((?:[5-9]|[1-9]\d)px\)/)
     })
 
@@ -343,8 +348,9 @@ describe("Visual Token Contract", () => {
         const content = await readFileSafe(fp)
         if (!content) return
         const refs = extractVarRefs(content)
+        const local = extractCustomProps(content)
         const unique = [...new Set(refs)]
-        const broken = unique.filter((r) => !valid.has(r))
+        const broken = unique.filter((r) => !valid.has(r) && !local.has(r))
         if (broken.length > 0) {
           throw new Error(
             `${fp} 引用了未定义的 token:\n` +

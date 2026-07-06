@@ -145,6 +145,9 @@ All local, npm, git, URL, directory, file, and tarball specs use the shared reso
 - Worker/process plugins register proxy tools in the host and execute through the plugin runner.
 - `Plugin.trigger()` proxies isolated hooks through the runtime supervisor.
 - Bridge requests are checked against manifest-derived approval capabilities.
+- Event hooks observe permitted bus events only. `permissions.hooks.eventNames` accepts exact names, `*`, and prefix wildcards such as `session.*`.
+- Config hooks require `permissions.hooks.config: true` and receive redacted snapshots with `source` set to `startup`, `plugin_reload`, or `reload`.
+- `experimental.chat.system.transform` requires `permissions.hooks.promptTransform: true` and runs twice: `phase: "budget"` before token budgeting and `phase: "final"` before the provider call. Check `input.phase` when adding instructions so final-only content is not injected during budgeting.
 
 ## Web UI Notes
 

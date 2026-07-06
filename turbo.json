@@ -6,8 +6,12 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
-    "synergy#test": {
+    "test": {
       "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "package:check": {
+      "dependsOn": ["build"],
       "outputs": []
     }
   }

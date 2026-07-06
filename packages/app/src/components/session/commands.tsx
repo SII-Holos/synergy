@@ -33,6 +33,7 @@ export function useSessionCommands(params: {
   setActiveMessage: (msg: UserMessage | undefined) => void
   navigateMessageByOffset: (offset: number) => void
   isWorking: () => boolean
+  onRewind?: (message: UserMessage) => void
 }) {
   const {
     command,
@@ -201,22 +202,10 @@ export function useSessionCommands(params: {
       slash: "undo",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
       onSelect: async () => {
-        const sessionID = routeParams.id
-        if (!sessionID) return
-        if (status()?.type !== "idle") {
-          await sdk.client.session.abort({ sessionID }).catch(() => {})
-        }
         const message = visibleUserMessages().at(-1)
         if (!message) return
-        await sdk.client.session.rollback({ sessionID, numTurns: 1 })
-        const parts = sync.data.part[message.id]
-        if (parts) {
-          const restored = extractPromptDraft({ message, parts, directory: sdk.directory })
-          prompt.set(restored.prompt, inlineLength(restored.prompt))
-          prompt.context.set(restored.context)
-        }
-        const priorMessage = userMessages().findLast((x) => x.id < message.id)
-        setActiveMessage(priorMessage)
+        // Route through rewind confirm dialog (spec §3.3: first undo always confirms)
+        params.onRewind?.(message)
       },
     },
     {
@@ -232,6 +221,19 @@ export function useSessionCommands(params: {
         await sdk.client.session.unrollback({ sessionID })
         prompt.resetDraft()
         setActiveMessage(userMessages().at(-1))
+      },
+    },
+    {
+      id: "session.rewind_to_here",
+      title: "Rewind to here",
+      description: "Rewind session to the active message",
+      category: "Session",
+      disabled: !routeParams.id || !activeMessage(),
+      onSelect: async () => {
+        const message = activeMessage()
+        if (!message) return
+        // Route through rewind confirm dialog (spec §3.2: always confirm)
+        params.onRewind?.(message)
       },
     },
     {

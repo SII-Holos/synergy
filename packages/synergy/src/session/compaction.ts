@@ -39,11 +39,30 @@ export namespace SessionCompaction {
   /** Detect whether a processor error was caused by exceeding the model's context window. */
   export function isContextExceeded(error: unknown): boolean {
     if (!error || typeof error !== "object") return false
-    const obj = error as { name?: string; data?: { message?: string; statusCode?: number; responseBody?: string } }
-    if (obj.name !== "APIError") return false
-    // Check the primary error message and the raw response body, since
-    // ProviderTransform.error() may rewrite the message and drop keywords.
-    const texts = [obj.data?.message ?? "", obj.data?.responseBody ?? ""].map((s) => s.toLowerCase())
+    const obj = error as {
+      name?: string
+      message?: string
+      cause?: unknown
+      data?: { message?: string; statusCode?: number; responseBody?: string; code?: string; error?: unknown }
+    }
+    // Gather text from every place the context-window signal might survive
+    // normalization: the top-level message (wrapped/plain errors), the APIError
+    // data fields, and — as a last resort — a bounded stringification of the
+    // whole error object so a nested `code: "context_length_exceeded"` still
+    // matches even when the shape was rewritten (issue #321).
+    let serialized = ""
+    try {
+      serialized = JSON.stringify(obj).slice(0, 4000)
+    } catch {
+      serialized = ""
+    }
+    const texts = [
+      obj.message ?? "",
+      obj.data?.message ?? "",
+      obj.data?.responseBody ?? "",
+      obj.data?.code ?? "",
+      serialized,
+    ].map((s) => String(s).toLowerCase())
     return texts.some(
       (msg) =>
         msg.includes("context_length_exceeded") ||
@@ -54,6 +73,28 @@ export namespace SessionCompaction {
         (msg.includes("too long") && msg.includes("context")) ||
         (msg.includes("request too large") && msg.includes("token")),
     )
+  }
+
+  /**
+   * Whether the task root R has an unfulfilled compaction request: more
+   * `compaction` parts than completed compaction summaries anchored on R. Used
+   * to gate both proactive injection and the compact loop signal so compaction
+   * can repeat across a long task (issue #321) — a completed compaction no
+   * longer permanently blocks the next one — without re-compacting endlessly.
+   */
+  export function hasPendingCompaction(
+    rootParts: readonly MessageV2.Part[],
+    messages: readonly MessageV2.WithParts[],
+    rootID: string,
+  ): boolean {
+    const requests = rootParts.reduce((n, p) => (p.type === "compaction" ? n + 1 : n), 0)
+    if (requests === 0) return false
+    const fulfilled = messages.reduce((n, m) => {
+      if (m.info.role !== "assistant") return n
+      const a = m.info as MessageV2.Assistant
+      return a.summary === true && !!a.finish && a.parentID === rootID ? n + 1 : n
+    }, 0)
+    return requests > fulfilled
   }
 
   const IMAGE_TOKEN_ESTIMATE = 500
@@ -132,9 +173,7 @@ export namespace SessionCompaction {
     const sections: string[] = []
 
     const recentUsers = messages
-      .filter(
-        (m) => m.info.role === "user" && !m.parts.some((p) => p.type === "text" && "synthetic" in p && p.synthetic),
-      )
+      .filter((m) => m.info.role === "user" && !m.parts.some((p) => MessageV2.isSystemPart(p) && p.type === "text"))
       .slice(-3)
       .map((m) => {
         const text = m.parts
@@ -203,6 +242,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "text",
       text: summary,
+      origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
     msg.error = undefined
@@ -284,7 +324,6 @@ export namespace SessionCompaction {
 
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
-  const ANCHOR_METADATA_KEY = "compactionAnchor"
 
   type Anchor = {
     text: string
@@ -292,7 +331,7 @@ export namespace SessionCompaction {
   }
 
   function realUserText(msg: MessageV2.WithParts): string | undefined {
-    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic && !p.ignored)
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
     if (textParts.length === 0) return undefined
     const text = textParts
       .map((p) => p.text)
@@ -305,47 +344,18 @@ export namespace SessionCompaction {
     return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
   }
 
-  function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
-    if (msg.info.role !== "user") return false
-    const metadata = msg.info.metadata
-    return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
-  }
-
-  function carriedAnchor(msg: MessageV2.WithParts): Anchor | undefined {
-    if (msg.info.role !== "user") return undefined
-    const value = msg.info.metadata?.[ANCHOR_METADATA_KEY]
-    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-    const text = typeof value.text === "string" ? value.text.trim() : undefined
-    if (!text) return undefined
-    const sourceMessageID = typeof value.sourceMessageID === "string" ? value.sourceMessageID : undefined
-    return { text, sourceMessageID }
-  }
-
   /**
-   * Preserve the active user request across compaction. Prefer the compaction
-   * parent when it is a real reply-requesting user message; synthetic, no-reply,
-   * and guided context messages fall back to the latest earlier real request.
+   * Preserve the active task's request across compaction (issue #281 §7).
+   * The compaction parent is the task root R, so this is an O(1) lookup by id:
+   * take R's user-authored text, falling back to its summary title. No backward
+   * scan, no carried-anchor metadata — the root is a persisted message reachable
+   * by rootID even after it leaves the context window.
    */
   export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
-    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
-    const parentText = parent ? realUserText(parent) : undefined
-    if (parent && parentText) return { text: parentText, sourceMessageID: parent.info.id }
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (!isAnchorEligibleUser(msg)) continue
-      if (msg.info.id === parentID) continue
-      const text = realUserText(msg)
-      if (!text) continue
-      return { text, sourceMessageID: msg.info.id }
-    }
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const anchor = carriedAnchor(messages[i])
-      if (anchor) return anchor
-    }
-
-    return undefined
+    const root = messages.find((m) => m.info.id === parentID && m.info.role === "user")
+    if (!root) return undefined
+    const text = realUserText(root) ?? (root.info as MessageV2.User).summary?.title?.trim()
+    return text ? { text, sourceMessageID: root.info.id } : undefined
   }
 
   export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
@@ -375,6 +385,8 @@ export namespace SessionCompaction {
       id: Identifier.ascending("message"),
       role: "assistant",
       parentID: input.parentID,
+      rootID: input.parentID,
+      visible: true,
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
@@ -504,14 +516,11 @@ export namespace SessionCompaction {
         },
         agent: userMessage.agent,
         model: userMessage.model,
+        origin: { type: "compaction", detail: "auto_continue" },
+        isRoot: false,
+        rootID: input.parentID,
+        visible: false,
         summary: { title: "Compaction complete", diffs: [] },
-        ...(anchor
-          ? {
-              metadata: {
-                [ANCHOR_METADATA_KEY]: anchor,
-              },
-            }
-          : {}),
       })
       const now = Date.now()
       await Session.updatePart({
@@ -520,6 +529,7 @@ export namespace SessionCompaction {
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
+        origin: "system",
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
@@ -530,6 +540,7 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
+          origin: "system",
           text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })

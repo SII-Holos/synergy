@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
+import { EventWire } from "./event-wire"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -151,7 +152,7 @@ export namespace Server {
   let _appMounted = false
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: Set<any> | undefined
+  let _globalEventClients: Map<any, "full" | "delta"> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -295,7 +296,17 @@ export namespace Server {
     return ScopeContext.provide({
       scope,
       async fn() {
-        return next()
+        // Snapshot watermark: capture the scope's event seq before the handler
+        // reads data, then advertise it as a response header. It is a
+        // conservative lower bound on the snapshot's freshness, so the client
+        // apply-gate never rejects a newer event as stale (frontend sync gate).
+        const stampSeq = c.req.method === "GET" ? Bus.currentSeq() : undefined
+        const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
+        await next()
+        if (stampSeq !== undefined && c.res) {
+          c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch) c.res.headers.set("x-synergy-epoch", stampEpoch)
+        }
       },
     })
   }
@@ -436,6 +447,9 @@ export namespace Server {
 
               return
             },
+            // Expose the snapshot sync watermark so the client apply-gate can
+            // read it cross-origin (frontend sync redesign).
+            exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
           }),
         )
         .use(provideRequestScope)
@@ -557,12 +571,28 @@ export namespace Server {
         .get(
           "/global/event/ws",
           (() => {
-            const globalEventClients: Set<any> = new Set()
+            // client -> wire mode. "delta" clients opt into the compact streaming
+            // protocol (message.part.delta frames + periodic checkpoints, #350 D1);
+            // "full" clients receive the legacy full-part-on-every-delta stream.
+            const globalEventClients = new Map<any, "full" | "delta">()
+            // One encoder shared by all delta clients on this route: they receive
+            // identical frames, so the checkpoint throttle is shared correctly.
+            const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              const data = JSON.stringify(event)
-              for (const client of globalEventClients) {
+              const fullData = JSON.stringify(event)
+              // Compute the delta-mode encoding at most once per event (shared
+              // across all delta clients) instead of per-client stringify.
+              let deltaData: string | undefined
+              const deltaEncoding = () => {
+                if (deltaData !== undefined) return deltaData
+                const dp = wire.deltaPayload(event.payload)
+                deltaData =
+                  dp === event.payload ? fullData : JSON.stringify({ directory: event.directory, payload: dp })
+                return deltaData
+              }
+              for (const [client, mode] of globalEventClients) {
                 try {
-                  client.send(data)
+                  client.send(mode === "delta" ? deltaEncoding() : fullData)
                 } catch {
                   globalEventClients.delete(client)
                 }
@@ -571,7 +601,7 @@ export namespace Server {
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
             const heartbeat = setInterval(() => {
-              for (const client of globalEventClients) {
+              for (const client of globalEventClients.keys()) {
                 try {
                   client.send(
                     JSON.stringify({
@@ -588,43 +618,46 @@ export namespace Server {
             }, 30000)
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
-            return upgradeWebSocket(() => ({
-              onOpen(_event, ws) {
-                log.info("global event ws connected")
-                globalEventClients.add(ws)
-                ws.send(
-                  JSON.stringify({
-                    payload: {
-                      type: "server.connected",
-                      properties: {},
-                    },
-                  }),
-                )
-              },
-              onClose(_event, ws) {
-                globalEventClients.delete(ws)
-                log.info("global event ws disconnected")
-              },
-              onError(_event, ws) {
-                globalEventClients.delete(ws)
-              },
-              onMessage(_event, ws) {
-                try {
-                  if (typeof _event.data !== "string") return
-                  const data = JSON.parse(_event.data)
-                  if (data?.payload?.type === "client.ping") {
-                    ws.send(
-                      JSON.stringify({
-                        payload: {
-                          type: "server.pong",
-                          properties: {},
-                        },
-                      }),
-                    )
-                  }
-                } catch {}
-              },
-            }))
+            return upgradeWebSocket((c) => {
+              const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
+              return {
+                onOpen(_event, ws) {
+                  log.info("global event ws connected", { mode })
+                  globalEventClients.set(ws, mode)
+                  ws.send(
+                    JSON.stringify({
+                      payload: {
+                        type: "server.connected",
+                        properties: {},
+                      },
+                    }),
+                  )
+                },
+                onClose(_event, ws) {
+                  globalEventClients.delete(ws)
+                  log.info("global event ws disconnected")
+                },
+                onError(_event, ws) {
+                  globalEventClients.delete(ws)
+                },
+                onMessage(_event, ws) {
+                  try {
+                    if (typeof _event.data !== "string") return
+                    const data = JSON.parse(_event.data)
+                    if (data?.payload?.type === "client.ping") {
+                      ws.send(
+                        JSON.stringify({
+                          payload: {
+                            type: "server.pong",
+                            properties: {},
+                          },
+                        }),
+                      )
+                    }
+                  } catch {}
+                },
+              }
+            })
           })(),
         )
         .post(
@@ -1224,6 +1257,40 @@ export namespace Server {
           },
         )
         .get(
+          "/event/replay",
+          describeRoute({
+            summary: "Replay missed events",
+            description:
+              "After a reconnect, return the state events published for this scope since `since`. " +
+              'Returns status "reset" when the client\'s epoch is stale or the required events have ' +
+              "aged out of the journal, in which case the client must resync from snapshots.",
+            operationId: "event.replay",
+            responses: {
+              200: { description: "Replay result" },
+              ...errors(400),
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              since: z.coerce.number().int().min(0),
+              epoch: z.string().optional(),
+              directory: z.string().optional(),
+              scopeID: z.string().optional(),
+            }),
+          ),
+          async (c) => {
+            const { since, epoch } = c.req.valid("query")
+            const currentEpoch = Bus.epoch()
+            // Epoch mismatch means the runtime restarted; the seq space is
+            // unrelated, so force a full resync.
+            if (epoch && epoch !== currentEpoch) {
+              return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
+            }
+            return c.json(Bus.replay(since))
+          },
+        )
+        .get(
           "/event",
           describeRoute({
             summary: "Subscribe to events",
@@ -1244,6 +1311,10 @@ export namespace Server {
             log.info("event connected")
             c.header("X-Accel-Buffering", "no")
             c.header("Cache-Control", "no-cache, no-transform")
+            // Opt-in compact streaming protocol (#350 D1). Each SSE connection
+            // owns its own encoder so its checkpoint throttle is independent.
+            const deltaMode = c.req.query("stream") === "delta"
+            const wire = deltaMode ? EventWire.createEncoder() : undefined
             return streamSSE(c, async (stream) => {
               const connectedAt = Date.now()
               ServerSseMetrics.open("events")
@@ -1254,9 +1325,10 @@ export namespace Server {
                 }),
               })
               const unsub = Bus.subscribeAll(async (event) => {
+                const outbound = wire ? wire.deltaPayload(event) : event
                 await stream
                   .writeSSE({
-                    data: JSON.stringify(event),
+                    data: JSON.stringify(outbound),
                   })
                   .catch(() => {
                     ServerSseMetrics.writeFailure("events")

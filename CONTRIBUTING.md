@@ -53,27 +53,36 @@ See the [Development section in README](README.md#development) for the full work
 
 ## Pull Request Process
 
-1. **Fork and branch.** Create your branch from `dev` — that's where active development happens. `main` is for releases only.
-
-2. **Keep changes focused.** One logical change per PR. If you find an unrelated issue while working, open a separate PR for it.
-
-3. **Test your changes.** Run the test suite from the synergy package directory:
+1. **Keep changes focused.** One logical change per PR. If you find an unrelated issue while working, open a separate PR for it.
+2. **Run the quality preflight.** Before opening your PR, run at minimum:
 
    ```bash
-   cd packages/synergy
-   bun test
+   bun run quality:quick
    ```
 
-   Also run type checking and formatting before submitting:
+   This checks formatting, linting, type-checking, monorepo dependency consistency, and package publishing validation. For a full check including all tests:
 
    ```bash
-   bun run typecheck
-   ./script/format.ts
+   bun run quality
    ```
 
-4. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
+   CI runs the full matrix — see [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model.
 
-5. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.
+3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
+
+4. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.
+
+### Pre-push vs CI layering
+
+The pre-push hook (`.husky/pre-push`) runs a fast subset: bun version check, formatting, lint, typecheck, and monorepo dependency validation. It does not run tests, secret scans, or workflow validation — those run in CI as separate parallel jobs. All CI jobs must pass for a PR to merge.
+
+### Commit guidelines
+
+Keep commits focused on a single logical change. Write commit messages that explain _what_ changed and _why_ — not just "fix bug" or "update code." If a commit relates to an issue, reference it in the message.
+
+There is no enforced commit message format. Clear and descriptive is all we ask.
+
+Do not commit secrets, local state files, placeholder credentials, or redundant wrapper scripts. If your change adds a feature or behavior that can be verified, include a test.
 
 ## Code Style
 
@@ -87,14 +96,6 @@ Match the patterns you find in the surrounding code. A few specifics worth knowi
 - **Bun APIs** for file operations (`Bun.file()`, `Bun.write()`), not Node.js equivalents.
 
 When in doubt, look at a nearby file doing something similar and follow its lead.
-
-## Commit Guidelines
-
-- Keep commits focused on a single logical change.
-- Write commit messages that explain _what_ changed and _why_ — not just "fix bug" or "update code."
-- If a commit relates to an issue, reference it in the message.
-
-There's no enforced commit message format. Clear and descriptive is all we ask.
 
 ## Monorepo Structure
 

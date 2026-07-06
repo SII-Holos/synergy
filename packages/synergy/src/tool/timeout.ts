@@ -42,6 +42,7 @@ export namespace ToolTimeout {
     questionMs: 3_600_000,
     lookAtMs: 120_000,
     bashHardCeilingMs: 86_400_000,
+    bashAutoBackgroundMs: 30_000,
   } as const
 
   export function create(input: { toolTimeoutMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
@@ -172,11 +173,18 @@ export namespace ToolTimeout {
       case "task_output":
         if (!args.block) return undefined
         return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.taskOutputWaitMs), source: "wait" }
-      case "bash":
-        if (typeof args.yieldSeconds === "number" && Number.isFinite(args.yieldSeconds) && args.yieldSeconds > 0) {
-          return { timeoutMs: args.yieldSeconds * 1_000, source: "auto_background" }
+      case "bash": {
+        const commandTimeoutMs = secondsToMsOrUndefined(args.timeoutSeconds)
+        const effectiveAutoBackgroundMs =
+          secondsToMsOrUndefined(args.backgroundAfterSeconds) ?? DEFAULTS.bashAutoBackgroundMs
+        if (effectiveAutoBackgroundMs && commandTimeoutMs && commandTimeoutMs < effectiveAutoBackgroundMs) {
+          return { timeoutMs: commandTimeoutMs, source: "wait" }
         }
-        return undefined
+        if (effectiveAutoBackgroundMs) {
+          return { timeoutMs: effectiveAutoBackgroundMs, source: "auto_background" }
+        }
+        return commandTimeoutMs ? { timeoutMs: commandTimeoutMs, source: "wait" } : undefined
+      }
       case "process":
         if (args.action !== "poll" || !args.block) return undefined
         return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.processPollWaitMs), source: "wait" }
@@ -201,6 +209,11 @@ export namespace ToolTimeout {
 
   function secondsToMs(value: unknown, fallbackMs: number): number {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallbackMs
+    return value * 1_000
+  }
+
+  function secondsToMsOrUndefined(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined
     return value * 1_000
   }
 

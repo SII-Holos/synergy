@@ -1,5 +1,5 @@
-import type { PluginDescriptor } from "./index"
-import { tool } from "./tool"
+import type { PluginDescriptor } from "./index.js"
+import { tool } from "./tool.js"
 
 const MAX_NOTE_TAGS = 8
 const AUTO_TAG = "reference-plugin"

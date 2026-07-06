@@ -19,7 +19,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test test/*.test.ts"
   },
   "dependencies": {
     "zod": "catalog:"

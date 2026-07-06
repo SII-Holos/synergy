@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import fs from "fs/promises"
+import path from "path"
 import { Auth } from "../../src/provider/api-key"
 import { GitHubProvider } from "../../src/provider/github"
 import { ScopeContext } from "../../src/scope/context"
@@ -44,7 +45,10 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
   const ghPath = `${tmp.path}/gh`
   await Bun.write(ghPath, "#!/bin/sh\nprintf '%s' \"$GH_TOKEN\"")
   await fs.chmod(ghPath, 0o755)
-  process.env.PATH = `${tmp.path}:${originalPath ?? ""}`
+  if (process.platform === "win32") {
+    await Bun.write(`${tmp.path}/gh.cmd`, "@printf '%GH_TOKEN%'")
+  }
+  process.env.PATH = `${tmp.path}${path.delimiter}${originalPath ?? ""}`
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {

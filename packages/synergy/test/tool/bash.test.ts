@@ -40,6 +40,17 @@ function bunEval(script: string) {
   return `"${executable}" -e ${JSON.stringify(evalScript)}`
 }
 
+function sleepCommand(ms: number) {
+  return bunEval(`setTimeout(() => console.log("done"), ${ms})`)
+}
+
+async function withProjectScope<T>(fn: () => Promise<T>) {
+  return ScopeContext.provide({
+    scope: (await Scope.fromDirectory(projectRoot)).scope,
+    fn,
+  })
+}
+
 describe("tool.bash", () => {
   test("basic", async () => {
     await ScopeContext.provide({
@@ -56,6 +67,78 @@ describe("tool.bash", () => {
         expect(result.metadata.exit).toBe(0)
         expect(result.metadata.output).toContain("test")
       },
+    })
+  })
+
+  test("accepts positive timing controls and rejects invalid timing values", async () => {
+    const bash = await BashTool.init()
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok" }).success).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        background: true,
+        yieldSeconds: 1,
+      }).success,
+    ).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        yieldSeconds: 0,
+      }).success,
+    ).toBe(false)
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", yieldSeconds: -1 }).success).toBe(
+      false,
+    )
+  })
+
+  test("auto-backgrounds long commands after yieldSeconds", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: sleepCommand(250),
+          description: "Sleep briefly",
+          yieldSeconds: 0.05,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBe(true)
+      expect(result.metadata.processId).toBeString()
+      expect(result.output).toContain("Command auto-backgrounded after 0.05s")
+      if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
+    })
+  })
+
+  test("commands that finish before auto-backgrounding return foreground results", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: "echo foreground",
+          description: "Echo foreground",
+          yieldSeconds: 1,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBeUndefined()
+      expect(result.metadata.exit).toBe(0)
+      expect(result.output).toContain("foreground")
+    })
+  })
+
+  test("parallel bash calls return independent inline outputs", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const [left, right] = await Promise.all([
+        bash.execute({ command: "echo left", description: "Echo left" }, ctx),
+        bash.execute({ command: "echo right", description: "Echo right" }, ctx),
+      ])
+      expect(left.metadata.exit).toBe(0)
+      expect(right.metadata.exit).toBe(0)
+      expect(left.output).toContain("left")
+      expect(right.output).toContain("right")
     })
   })
 
@@ -475,29 +558,42 @@ describe("tool.bash output cap", () => {
         const result = await bash.execute(
           {
             command: bunEval(`process.stdout.write("x".repeat(300000))`),
-            background: true,
-            description: "Generate 300KB output in background",
+            yieldSeconds: 0.05,
+            description: "Generate 300KB output with auto-background",
           },
           ctx,
         )
-        expect(result.metadata.background).toBe(true)
-        const processId = result.metadata.processId as string
-        expect(processId).toBeTruthy()
-
-        // Wait for process to finish
-        const proc = ProcessRegistry.get(processId)
-        if (proc) {
-          // Wait up to 10s for exit
+        // On a fast machine 300K of "x" may complete before auto-background
+        // fires, returning via the foreground path without processId. Verify the
+        // output cap through whichever path was taken.
+        const processId = result.metadata.processId as string | undefined
+        if (processId) {
+          let output: string | undefined
+          let tail: string | undefined
           for (let i = 0; i < 50; i++) {
-            if (proc.exited) break
+            const done = ProcessRegistry.getFinished(processId)
+            if (done) {
+              output = done.output
+              tail = done.tail
+              break
+            }
+            const running = ProcessRegistry.get(processId)
+            if (running?.exited) {
+              output = running.output
+              tail = running.tail
+              break
+            }
             await Bun.sleep(200)
           }
-          expect(proc.output.length).toBeLessThanOrEqual(200_000)
-          expect(proc.tail.length).toBeLessThanOrEqual(2_000)
+          expect(output).toBeDefined()
+          expect(output!.length).toBe(200_000)
+          expect(tail!.length).toBeLessThanOrEqual(2_000)
+          ProcessRegistry.remove(processId)
+        } else {
+          // Foreground path: the output field is already capped via appendOutput.
+          expect(result.metadata.output).toBeDefined()
+          expect(result.metadata.output!.length).toBeLessThanOrEqual(200_000)
         }
-
-        // Clean up
-        ProcessRegistry.remove(processId)
       },
     })
     ProcessRegistry.reset()

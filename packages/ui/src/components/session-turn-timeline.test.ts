@@ -54,7 +54,11 @@ const {
   timelineVisualKind,
 } = await import("./session-turn")
 
-function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
+function user(
+  id: string,
+  opts?: { isRoot?: boolean; rootID?: string; visible?: boolean; metadata?: UserMessage["metadata"] },
+): UserMessage {
+  const isRoot = opts?.isRoot ?? true
   return {
     id,
     sessionID: "session",
@@ -62,7 +66,10 @@ function user(id: string, metadata?: UserMessage["metadata"]): UserMessage {
     time: { created: 1 },
     agent: "synergy",
     model: { providerID: "provider", modelID: "model" },
-    metadata,
+    isRoot,
+    rootID: opts?.rootID ?? id,
+    visible: opts?.visible ?? true,
+    metadata: opts?.metadata,
   } as UserMessage
 }
 
@@ -76,6 +83,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     sessionID: "session",
     role: "assistant",
     parentID,
+    rootID: parentID,
     mode: "test",
     agent: "synergy",
     path: { cwd: "/tmp", root: "/tmp" },
@@ -112,6 +120,16 @@ function compactionRecoveryPart(id: string, messageID: string): PartType {
     summary: "## Current work\n- Keep the UI stable",
     mechanical: false,
     validated: true,
+  } as PartType
+}
+
+function compactionPart(id: string, messageID: string): PartType {
+  return {
+    id,
+    sessionID: "session",
+    messageID,
+    type: "compaction",
+    auto: false,
   } as PartType
 }
 
@@ -224,7 +242,7 @@ describe("session turn assistant collection", () => {
   test("keeps guided inbox context inside the active turn", () => {
     const firstUser = user("msg_001_user")
     const toolStep = assistantFor("msg_002_assistant_tool", firstUser.id)
-    const guided = user("msg_003_user_guided", { guided: true, noReply: true })
+    const guided = user("msg_003_user_guided", { isRoot: false, rootID: firstUser.id })
     const final = assistantFor("msg_004_assistant_final", firstUser.id)
 
     expect(isGuidedContextUserMessage(guided)).toBe(true)
@@ -240,11 +258,20 @@ describe("session turn assistant collection", () => {
     ).toEqual([toolStep.id, final.id])
   })
 
-  test("stops at the next normal user turn", () => {
+  test("omits invisible non-root context from turn display", () => {
+    const firstUser = user("msg_001_user")
+    const hidden = user("msg_002_hidden", { isRoot: false, rootID: firstUser.id, visible: false })
+    const final = assistantFor("msg_003_assistant_final", firstUser.id)
+
+    expect(collectMessagesForTurnDisplay([firstUser, hidden, final] as MessageType[], firstUser.id)).toEqual([final])
+  })
+
+  test("collects only assistants belonging to this task's root", () => {
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
     const nextUser = user("msg_003_user")
-    const nextAssistant = assistantFor("msg_004_assistant", firstUser.id)
+    // Belongs to the next task's root, so it is not part of the first turn.
+    const nextAssistant = assistantFor("msg_004_assistant", nextUser.id)
 
     expect(
       collectAssistantMessagesForTurn(
@@ -254,11 +281,31 @@ describe("session turn assistant collection", () => {
     ).toEqual([firstAssistant.id])
   })
 
+  test("collects interleaved replies from a task whose queued root pre-dates them", () => {
+    // A queued task root pre-allocates its id, so a still-running earlier task
+    // can emit an assistant after this root but before this task's own replies.
+    const earlierRoot = user("msg_001_user")
+    const queuedRoot = user("msg_002_queued_root")
+    const earlierLateReply = assistantFor("msg_003_earlier_reply", earlierRoot.id)
+    const queuedReply = assistantFor("msg_004_queued_reply", queuedRoot.id)
+
+    expect(
+      collectAssistantMessagesForTurn(
+        [earlierRoot, queuedRoot, earlierLateReply, queuedReply] as MessageType[],
+        queuedRoot.id,
+      ).map((message) => message.id),
+    ).toEqual([queuedReply.id])
+  })
+
   test("stops the previous turn at a synthetic compaction boundary", async () => {
     await import("./special-user-message")
     const firstUser = user("msg_001_user")
     const firstAssistant = assistantFor("msg_002_assistant", firstUser.id)
-    const boundary = user("msg_003_boundary", { synthetic: true, compactionBoundary: true })
+    const boundary = user("msg_003_boundary", {
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true },
+    })
     const compaction = compactionAssistant("msg_004_compaction", boundary.id)
 
     expect(
@@ -276,7 +323,7 @@ describe("session turn assistant collection", () => {
   })
 
   test("hides synthetic compaction chrome while keeping the recovery card", () => {
-    const compactionUser = user("msg_compaction", { synthetic: true })
+    const compactionUser = user("msg_compaction", { visible: false, metadata: { synthetic: true } })
     const recovery = compactionRecoveryPart("recovery", compactionUser.id)
     const parts = [
       { ...textPart("synthetic-continue", compactionUser.id, "Continue if you have next steps"), synthetic: true },
@@ -296,15 +343,42 @@ describe("session turn assistant collection", () => {
     ).toBe(false)
   })
 
+  test("manual compaction root: suppresses chrome and renders the card during the wait (#326)", () => {
+    // The /compact button creates a root user message marked as a compaction
+    // boundary; its "What did we do so far?" prompt must not render as user
+    // chrome, and the compaction card must appear even before the recovery part
+    // exists (the "Compressing context..." state).
+    const root = user("msg_manual_compact", { isRoot: true, metadata: { compactionBoundary: true } })
+    const parts = [
+      compactionPart("compaction-request", root.id),
+      textPart("prompt", root.id, "What did we do so far?"),
+    ] as PartType[]
+    const compaction = compactionAssistant("msg_compaction_assistant", root.id)
+
+    const rootItems = collectUserCompactionTimelineItems(root, parts)
+    expect(rootItems).toHaveLength(1)
+    expect(rootItems[0]).toMatchObject({ kind: "compaction", message: root, part: parts[0] })
+
+    // No compaction_recovery yet (LLM still running), part is undefined on the
+    // assistant card until the structured recovery part is written.
+    const items = collectSessionTurnTimelineItems([compaction], {}, true)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: "compaction", message: compaction })
+    expect((items[0] as { part?: unknown }).part).toBeUndefined()
+
+    // Chrome is suppressed because the root is a compaction boundary.
+    expect(shouldShowTurnUserChrome(root, parts, true)).toBe(false)
+  })
+
   test("hides diffs for the turn compacted by a boundary", () => {
     const parent = {
       ...user("msg_parent"),
       summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] },
     } as UserMessage
     const boundary = user("msg_boundary", {
-      synthetic: true,
-      compactionBoundary: true,
-      compactionParentID: parent.id,
+      isRoot: false,
+      visible: false,
+      metadata: { synthetic: true, compactionBoundary: true, compactionParentID: parent.id },
     })
     const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
 

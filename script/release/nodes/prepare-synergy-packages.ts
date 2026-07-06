@@ -4,6 +4,7 @@ import { createRequire } from "module"
 import { dirname, join } from "path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 import { currentGitRemoteUrl } from "../shared/git"
+import { createSynergyWrapperPackageJson } from "../shared/package-manifest"
 
 export async function prepareSynergyPackages(version: string, platformNames: string[]) {
   console.log("\n=== prepare synergy packages ===\n")
@@ -140,21 +141,12 @@ export async function prepareSynergyPackages(version: string, platformNames: str
   await Bun.write(
     join(SYNERGY_DIST_DIR, pkg.name, "package.json"),
     JSON.stringify(
-      {
-        name: "@ericsanchezok/synergy",
-        bin: {
-          [pkg.name]: `./bin/${pkg.name}`,
-        },
-        scripts: {
-          postinstall: "bun ./postinstall.mjs || node ./postinstall.mjs",
-        },
+      createSynergyWrapperPackageJson({
         version,
+        binName: pkg.name,
         optionalDependencies: scopedBinaries,
-        repository: {
-          type: "git",
-          url: repositoryUrl,
-        },
-      },
+        repositoryUrl,
+      }),
       null,
       2,
     ),

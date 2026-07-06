@@ -40,13 +40,13 @@ export const HOOKS: HookDescriptor[] = [
     name: "config",
     category: "core",
     mutatesOutput: false,
-    summary: "Observe the loaded runtime config",
+    summary: "Observe redacted runtime config snapshots at startup and config reload",
   },
   {
     name: "event",
     category: "core",
     mutatesOutput: false,
-    summary: "Observe runtime bus events",
+    summary: "Observe permitted runtime bus events by exact or wildcard event name",
   },
   {
     name: "chat.message",
@@ -172,7 +172,7 @@ export const HOOKS: HookDescriptor[] = [
     name: "experimental.chat.system.transform",
     category: "experimental",
     mutatesOutput: true,
-    summary: "Rewrite the assembled system prompt",
+    summary: "Rewrite the assembled system prompt during budget and final phases",
   },
   {
     name: "experimental.session.compacting",

@@ -111,7 +111,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     function connect() {
       if (disposed) return
-      const wsUrl = `${server.url}/global/event/ws`
+      // Opt into the compact streaming protocol (#350 D1): the server sends
+      // `message.part.delta` frames during streaming plus periodic full-part
+      // checkpoints, instead of the full accumulated part on every delta.
+      const wsUrl = `${server.url}/global/event/ws?stream=delta`
       const socket = new WebSocket(wsUrl)
       ws = socket
 

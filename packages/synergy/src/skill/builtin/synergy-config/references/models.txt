@@ -19,9 +19,9 @@ Synergy uses model roles for different internal tasks. Each falls back through a
 | `thinking_model` | Deep reasoning: complex architecture, planning | → `model` |
 | `long_context_model` | Extra-large context for very long inputs | → `model` |
 | `creative_model` | Creative/visual: UI design, writing, artistry | → `model` |
-| `vision_model` | Image analysis via `look_at` tool (screenshots, diagrams, charts) | (disabled if not set) |
+| `vision_model` | Separate image analysis via `look_at` when the active model lacks direct image input | (disabled if not set) |
 
-**Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`.
+**Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`. Direct image context uses `view_image` when the active model itself supports image input.
 
 ## Config example
 
@@ -94,7 +94,7 @@ Models can have variants (e.g., different reasoning effort levels). Variants are
 | `thinking_model` | Used by the advisor agent for deep architectural analysis and complex debugging. If unset, the advisor falls back to `model` — still functional, but may reason less thoroughly on hard problems. |
 | `long_context_model` | Engaged automatically when inputs exceed the default model's context window. Without it, very long inputs may be truncated or fail. |
 | `creative_model` | Used by the scribe agent and frontend-design skill for writing, UI design, and other creative tasks. A stronger model here produces more nuanced prose and better visual design suggestions. |
-| `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, image analysis is unavailable. Use the `read` tool for PDF/DOCX/XLSX/PPTX text extraction — no vision model needed. |
+| `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, separate vision-model image analysis is unavailable. Direct current-model image context uses `view_image` based on the active model capability. Use the `read` tool for PDF/DOCX/XLSX/PPTX text extraction — no vision model needed. |
 
 ## Common model configurations
 
@@ -144,7 +144,8 @@ Strongest model for every role (highest cost, highest quality):
 - Must be explicitly set — `vision_model` does not fall back to `model`
 - Not all models support image input; check the provider's model registry
 - Common choices: `openai/gpt-4o`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.5-pro`
-- The `look_at` tool is for images only (screenshots, diagrams, charts). Use `read` for PDF text extraction.
+- The `look_at` tool is for separate image analysis when the active model cannot inspect images directly. Use `view_image` for direct current-model visual context when it is available.
+- Use `read` for PDF text extraction.
 - If `look_at` calls fail or are unavailable, this field is the first thing to check
 
 ## Troubleshooting

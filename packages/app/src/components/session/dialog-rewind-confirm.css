@@ -1,0 +1,159 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(> [data-slot="dialog-content"].rewind-confirm-dialog) {
+  width: min(460px, calc(100vw - 32px));
+  height: auto;
+}
+
+[data-slot="dialog-content"].rewind-confirm-dialog {
+  --rewind-border: color-mix(in oklch, var(--border-base) 28%, transparent);
+  --rewind-border-strong: color-mix(in oklch, var(--border-base) 44%, transparent);
+  --rewind-row-bg: color-mix(in srgb, var(--dialog-control-bg) 62%, transparent);
+  --rewind-row-bg-hover: color-mix(in srgb, var(--dialog-control-bg-hover) 78%, transparent);
+  --rewind-focus-ring:
+    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
+
+  width: min(460px, calc(100vw - 32px));
+  max-width: min(460px, calc(100vw - 32px));
+  min-height: 0;
+}
+
+[data-slot="dialog-content"].rewind-confirm-dialog [data-slot="dialog-description"] {
+  margin-top: 0;
+  padding-bottom: 0;
+}
+
+[data-slot="dialog-content"].rewind-confirm-dialog [data-slot="dialog-body"] {
+  flex: 0 0 auto;
+  gap: 16px;
+  padding: 18px 24px 22px;
+}
+
+.rewind-confirm-impact {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--rewind-border);
+  border-radius: 12px;
+  background: var(--rewind-row-bg);
+}
+
+.rewind-confirm-impact-label {
+  color: var(--text-subtle);
+  font-size: var(--type-ui-caption-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-ui-caption-line-height);
+}
+
+.rewind-confirm-impact-value {
+  color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-ui-row-title-line-height);
+}
+
+.rewind-confirm-impact-note {
+  margin-top: 2px;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size);
+  line-height: var(--type-ui-body-line-height);
+}
+
+.rewind-confirm-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.rewind-confirm-section-label {
+  color: var(--text-subtle);
+  font-size: var(--type-ui-caption-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--type-ui-caption-line-height);
+}
+
+.rewind-confirm-file-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 11px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--rewind-border);
+  border-radius: 12px;
+  background: var(--rewind-row-bg);
+  color: var(--text-base);
+  cursor: pointer;
+  transition:
+    background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rewind-confirm-file-option:hover:not([data-disabled="true"]) {
+  border-color: var(--rewind-border-strong);
+  background: var(--rewind-row-bg-hover);
+}
+
+.rewind-confirm-file-option[data-selected="true"] {
+  border-color: color-mix(in oklch, var(--accent-base) 42%, var(--rewind-border));
+  background: color-mix(in oklch, var(--accent-base) 10%, var(--rewind-row-bg));
+}
+
+.rewind-confirm-file-option[data-disabled="true"] {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.rewind-confirm-file-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent-base);
+}
+
+.rewind-confirm-file-option:focus-within {
+  outline: none;
+  box-shadow: var(--rewind-focus-ring);
+}
+
+.rewind-confirm-file-option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rewind-confirm-file-option-title {
+  color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-ui-row-title-line-height);
+}
+
+.rewind-confirm-file-option-hint {
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size);
+  line-height: var(--type-ui-body-line-height);
+  text-wrap: pretty;
+}
+
+.rewind-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rewind-border);
+}
+
+.rewind-confirm-button {
+  gap: 6px;
+}
+
+.rewind-confirm-spinner {
+  width: 12px;
+  height: 12px;
+}

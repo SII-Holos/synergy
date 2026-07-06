@@ -1,0 +1,11 @@
+rules:
+  template-injection:
+    ignore:
+      # release workflow uses trusted maintainer-dispatched inputs to select existing release targets
+      - release.yml
+  excessive-permissions:
+    ignore:
+      # helper hash workflow must commit generated sandbox helper hashes back to the branch
+      - build-helpers.yml
+      # release workflow publishes GitHub/npm release artifacts and updates pull request metadata
+      - release.yml

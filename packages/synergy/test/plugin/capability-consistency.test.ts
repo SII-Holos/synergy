@@ -61,6 +61,23 @@ describe("plugin capability consistency", () => {
     expect(baseCapabilities(manifest)).toContain("config:read")
   })
 
+  test("grants config hook capability separately from config data access", () => {
+    const manifest = PluginManifest.parse({
+      name: "config-hook-plugin",
+      version: "1.0.0",
+      description: "Plugin that observes config snapshots",
+      permissions: {
+        hooks: {
+          config: true,
+        },
+      },
+    })
+
+    expect(baseCapabilities(manifest)).toContain("config_hook")
+    expect(baseCapabilities(manifest)).not.toContain("config:read")
+    expect(sharedBaseCapabilities(manifest)).toEqual(baseCapabilities(manifest))
+  })
+
   test("runtime and plugin-kit agree on delegated task permissions", () => {
     const manifest = PluginManifest.parse({
       name: "task-plugin",

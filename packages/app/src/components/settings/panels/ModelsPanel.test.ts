@@ -34,4 +34,11 @@ describe("Models panel UI contract", () => {
     expect(modelManager).toContain("setQuickSwitcher")
     expect(modelManager).toContain('Persist.global("model"')
   })
+
+  test("quick-switcher management rows are static rows with labeled switches", () => {
+    expect(modelsPanel).toContain("selectable={false}")
+    expect(modelManager).toContain("interactive={selectable()}")
+    expect(modelManager).toContain(": undefined")
+    expect(modelManager).toContain('<span class="model-manager-quick-label')
+  })
 })

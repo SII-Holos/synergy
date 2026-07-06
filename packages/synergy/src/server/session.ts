@@ -18,6 +18,7 @@ import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
 
@@ -440,6 +441,15 @@ export const SessionRoute = new Hono()
             archived: z.number().optional(),
           })
           .optional(),
+        // Per-session model preference set from the composer's model selector.
+        // Pass null to clear it and fall back to history/agent/provider default.
+        modelOverride: z
+          .object({
+            providerID: z.string(),
+            modelID: z.string(),
+          })
+          .nullable()
+          .optional(),
       }),
     ),
     async (c) => {
@@ -450,7 +460,8 @@ export const SessionRoute = new Hono()
         updates.title !== undefined ||
         updates.pinned !== undefined ||
         updates.controlProfile !== undefined ||
-        updates.time?.archived !== undefined
+        updates.time?.archived !== undefined ||
+        updates.modelOverride !== undefined
 
       if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
         return c.json(await Session.clearCompletionNotice(sessionID))
@@ -461,6 +472,7 @@ export const SessionRoute = new Hono()
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
         if (updates.completionNotice?.unread === false) session.completionNotice.unread = false
+        if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
       }
 
       const updatedSession =
@@ -733,8 +745,9 @@ export const SessionRoute = new Hono()
           break
         }
       }
+      const messageID = Identifier.ascending("message")
       const msg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
+        id: messageID,
         role: "user",
         model: {
           providerID: body.providerID,
@@ -742,6 +755,15 @@ export const SessionRoute = new Hono()
         },
         sessionID,
         agent: currentAgent,
+        isRoot: true,
+        rootID: messageID,
+        visible: true,
+        // Mark this as a compaction boundary so the frontend suppresses the
+        // user chrome (the "What did we do so far?" prompt is internal) and
+        // renders only the compaction card for the turn (issue #326).
+        metadata: {
+          compactionBoundary: true,
+        },
         time: {
           created: Date.now(),
         },
@@ -1116,7 +1138,7 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
       const event = await Session.rollback({ sessionID, ...body })
       return c.json(event)
     },
@@ -1162,8 +1184,14 @@ export const SessionRoute = new Hono()
         const event = await Session.unrollback({ sessionID, ...parsed })
         return c.json(event)
       } catch (error) {
+        log.warn("session.unrollback failed", {
+          sessionID,
+          error: error instanceof Error ? error.message : String(error),
+        })
         if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
-        throw error
+        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
       }
     },
   )

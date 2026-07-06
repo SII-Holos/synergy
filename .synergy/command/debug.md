@@ -9,7 +9,7 @@ The user will describe a bug or unexpected behavior. Follow this process:
 5. **Identify the root cause** — not just the symptom, the underlying reason
 6. **Check git blame/log** — when was the bug introduced? was it intentional?
 7. **Propose a minimal fix** — prefer the smallest change that fixes the root cause
-8. **Consider side effects** — what else might break? run tests after fixing
+8. **Verify the fix** — run `bun run quality:quick` and narrow tests for the affected area (e.g. `cd packages/synergy && bun test test/<domain>/<file>.test.ts`)
 
 If given an error message or stack trace, start by searching for the error string in the codebase.
 

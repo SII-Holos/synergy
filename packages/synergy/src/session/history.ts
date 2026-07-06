@@ -7,7 +7,12 @@ import { ScopeContext } from "@/scope/context"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { fn } from "@/util/fn"
+import { Flag } from "@/flag/flag"
+import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionMessageCache } from "./message-cache"
+
+const log = Log.create({ service: "session.history" })
 import { SessionManager } from "./manager"
 import { Snapshot } from "./snapshot"
 import type { Info } from "./types"
@@ -26,6 +31,7 @@ export namespace SessionHistory {
       numTurns: z.number(),
       droppedMessageIDs: z.array(Identifier.schema("message")),
       droppedUserMessageIDs: z.array(Identifier.schema("message")),
+      cutMessageID: z.string().optional(),
       files: z.array(z.string()),
       patchPartIDs: z.array(Identifier.schema("part")),
     })
@@ -58,6 +64,7 @@ export namespace SessionHistory {
       messageID: Identifier.schema("message").optional(),
       droppedMessageIDs: z.array(Identifier.schema("message")),
       droppedUserMessageIDs: z.array(Identifier.schema("message")),
+      cutMessageID: z.string().optional(),
       files: z.array(z.string()),
       patchPartIDs: z.array(Identifier.schema("part")),
       canUnrollback: z.boolean(),
@@ -91,26 +98,53 @@ export namespace SessionHistory {
     }),
   )
 
+  function getCutMessageID(event: { cutMessageID?: string; droppedMessageIDs: string[] }): string | undefined {
+    return (
+      event.cutMessageID ??
+      (event.droppedMessageIDs.length ? event.droppedMessageIDs.reduce((a, b) => (a < b ? a : b)) : undefined)
+    )
+  }
+
   export const rollback = fn(
     z.object({
       sessionID: Identifier.schema("session"),
-      numTurns: z.number().int().min(1),
+      numTurns: z.number().int().min(1).optional(),
+      cutMessageID: z.string().optional(),
     }),
     async (input) => {
+      if ((input.numTurns == null) === (input.cutMessageID == null)) {
+        throw new Error("Provide exactly one of numTurns or cutMessageID")
+      }
       SessionManager.assertIdle(input.sessionID)
       const [raw, events] = await Promise.all([
         rawMessages({ sessionID: input.sessionID }),
         readEvents(input.sessionID),
       ])
       const effective = applyEvents(raw, events)
-      const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
 
-      if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
+      let cutMessageID: string | undefined
+      let dropped: MessageV2.WithParts[] = []
 
-      const selected = turnStarts.slice(-input.numTurns)
-      const cutoff = selected[0].index
-      const dropped = effective.slice(cutoff)
-      if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
+      if (input.cutMessageID) {
+        // cutMessageID mode: drop everything from cutMessageID onward
+        cutMessageID = input.cutMessageID
+        const cutIndex = effective.findIndex((msg) => msg.info.id >= cutMessageID!)
+        if (cutIndex >= 0) {
+          dropped = effective.slice(cutIndex)
+        }
+      } else {
+        // numTurns mode (must be defined due to .refine)
+        const numTurns = input.numTurns!
+        const turnStarts = effective.map((msg, index) => ({ msg, index })).filter(({ msg }) => isRollbackUser(msg))
+        if (turnStarts.length === 0) return latestInfo(input.sessionID, raw, events)
+        const selected = turnStarts.slice(-numTurns)
+        const cutoff = selected[0].index
+        dropped = effective.slice(cutoff)
+        if (dropped.length === 0) return latestInfo(input.sessionID, raw, events)
+        cutMessageID = selected[0].msg.info.id
+      }
+
+      const selectedTurns = dropped.filter(isRollbackUser).length
 
       const event: RollbackEvent = {
         id: Identifier.ascending("history"),
@@ -119,7 +153,8 @@ export namespace SessionHistory {
         time: {
           created: Date.now(),
         },
-        numTurns: selected.length,
+        numTurns: selectedTurns,
+        cutMessageID,
         droppedMessageIDs: dropped.map((msg) => msg.info.id),
         droppedUserMessageIDs: dropped.filter(isRollbackUser).map((msg) => msg.info.id),
         ...summarizePatches(dropped),
@@ -233,11 +268,41 @@ export namespace SessionHistory {
     },
   )
 
-  export async function rawMessages(input: { sessionID: string; limit?: number }) {
+  async function loadRawFromDisk(sessionID: string) {
     const result = [] as MessageV2.WithParts[]
-    for await (const msg of MessageV2.stream({ sessionID: input.sessionID })) result.push(msg)
+    for await (const msg of MessageV2.stream({ sessionID })) result.push(msg)
     result.reverse()
-    return input.limit ? result.slice(-input.limit) : result
+    return result
+  }
+
+  export async function rawMessages(input: { sessionID: string; limit?: number }) {
+    // Loop-scoped cache (issue #350 D2): during an active loop the assembled
+    // list is held in memory and maintained by the loop's own writes, avoiding a
+    // full history re-read per step. Outside the window `get` returns undefined
+    // and we read from disk. The cache holds the raw pre-deriveSemantics list, so
+    // the result is identical either way.
+    const useCache = !Flag.SYNERGY_DISABLE_MESSAGE_CACHE
+    let raw = useCache ? SessionMessageCache.get(input.sessionID) : undefined
+    if (raw && Flag.SYNERGY_VERIFY_MESSAGE_CACHE) {
+      const disk = await loadRawFromDisk(input.sessionID)
+      if (JSON.stringify(disk) !== JSON.stringify(raw)) {
+        log.error("session message cache diverged from disk; falling back", { sessionID: input.sessionID })
+        SessionMessageCache.invalidate(input.sessionID)
+        raw = undefined
+      }
+    }
+    if (!raw) {
+      raw = await loadRawFromDisk(input.sessionID)
+      if (useCache) SessionMessageCache.set(input.sessionID, raw)
+    }
+    // Canonicalize legacy messages once, at the read boundary, so every
+    // downstream consumer reads rootID / isRoot / visible / origin directly
+    // (issue #281 §12.2). Must run on the full ordered list before slicing.
+    // deriveSemantics returns a fresh top-level array, so callers that mutate it
+    // (e.g. the loop's msgs.push of materialized inbox items) never touch the
+    // cached list.
+    const derived = MessageV2.deriveSemantics(raw)
+    return input.limit ? derived.slice(-input.limit) : derived
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
@@ -257,9 +322,24 @@ export namespace SessionHistory {
   }
 
   export function applyEvents(messages: MessageV2.WithParts[], events: Event[]) {
-    const hidden = new Set(activeRollbacks(events).flatMap((event) => event.droppedMessageIDs))
-    if (hidden.size === 0) return messages
-    return messages.filter((msg) => !hidden.has(msg.info.id))
+    const rollbacks = activeRollbacks(events)
+    if (rollbacks.length === 0) return messages
+
+    const cuts: string[] = []
+    const hidden = new Set<string>()
+    for (const event of rollbacks) {
+      const cut = getCutMessageID(event)
+      if (cut && canUnrollback(messages, event)) {
+        cuts.push(cut)
+        continue
+      }
+      for (const id of event.droppedMessageIDs) hidden.add(id)
+    }
+
+    return messages.filter((msg) => {
+      if (cuts.some((cut) => msg.info.id >= cut)) return false
+      return !hidden.has(msg.info.id)
+    })
   }
 
   export function info(sessionID: string, raw: MessageV2.WithParts[], events: Event[]): Info["history"] | undefined {
@@ -282,6 +362,7 @@ export namespace SessionHistory {
         messageID: rollback.droppedUserMessageIDs[0],
         droppedMessageIDs: rollback.droppedMessageIDs,
         droppedUserMessageIDs: rollback.droppedUserMessageIDs,
+        cutMessageID: rollback.cutMessageID,
         files: rollback.files,
         patchPartIDs: rollback.patchPartIDs,
         canUnrollback: canUnrollbackInfo(messages, rollback),
@@ -315,8 +396,10 @@ export namespace SessionHistory {
     })
   }
 
+  // A rollback "turn start" is a root user message: /undo steps by whole tasks.
+  // Messages are canonicalized in rawMessages, so isRoot is always populated.
   function isRollbackUser(msg: MessageV2.WithParts) {
-    return msg.info.role === "user" && (msg.info as MessageV2.User).metadata?.synthetic !== true
+    return msg.info.role === "user" && (msg.info as MessageV2.User).isRoot === true
   }
 
   function activeRollbacks(events: Event[]) {
@@ -350,7 +433,15 @@ export namespace SessionHistory {
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {
-    return !messages.some((msg) => msg.time.created > event.time.created)
+    // Only invalidate when a new root user message was created after the rollback.
+    // Non-root user messages and assistant messages do not invalidate.
+    return !messages.some((msg) => {
+      if (msg.role !== "user") return false
+      // Only explicit non-root injections are exempt; a new root (or an
+      // un-derived legacy user message) invalidates redo.
+      if ((msg as MessageV2.User).isRoot === false) return false
+      return msg.time.created > event.time.created
+    })
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {

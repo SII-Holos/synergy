@@ -16,6 +16,8 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
+import { PartWriteBuffer } from "./part-write-buffer"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import type { ProfileId } from "@/control-profile/types"
@@ -24,6 +26,7 @@ import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "./interaction"
 import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
@@ -241,6 +244,9 @@ export namespace Session {
       archived: !!session.time.archived,
       parentID: session.parentID,
       endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+      chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
+      chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
+      chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
       completionNotice: {
         unread: session.completionNotice.unread,
       },
@@ -274,10 +280,31 @@ export namespace Session {
     return { ...result, working }
   }
 
+  // Dedup redundant session.updated publishes: a diff limited to time.updated
+  // (or a byte-identical payload) is throttled to a heartbeat, while any real
+  // field change publishes immediately (issue #319, defense in depth).
+  const lastPublish = new Map<string, { key: string; at: number }>()
+  const PUBLISH_DEDUP_THROTTLE_MS = 1000
+
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
-    Bus.publish(event, {
-      info: await withRuntimeInfo(session),
-    })
+    const info = await withRuntimeInfo(session)
+    const key = publishCompareKey(info)
+    const now = Date.now()
+    const prev = lastPublish.get(session.id)
+    if (
+      !decideSessionPublish({
+        prevKey: prev?.key,
+        prevAt: prev?.at,
+        nextKey: key,
+        now,
+        throttleMs: PUBLISH_DEDUP_THROTTLE_MS,
+      })
+    ) {
+      return
+    }
+    if (info.time.archived) lastPublish.delete(session.id)
+    else lastPublish.set(session.id, { key, at: now })
+    Bus.publish(event, { info })
   }
 
   export async function create(input?: {
@@ -776,6 +803,8 @@ export namespace Session {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
+      SessionManager.forgetSession(sessionID)
+      SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
@@ -824,6 +853,7 @@ export namespace Session {
       StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), asMessageID(canonical.id)),
       canonical,
     )
+    SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
@@ -848,6 +878,7 @@ export namespace Session {
           }
         },
       )
+      SessionMessageCache.upsertMessage(result.sessionID, result)
       Bus.publish(MessageV2.Event.Updated, {
         info: result,
       })
@@ -864,6 +895,8 @@ export namespace Session {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
       await Storage.remove(StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)))
+      // Structural change: drop the cache and let the next read repopulate.
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -889,6 +922,7 @@ export namespace Session {
           asPartID(input.partID),
         ),
       )
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -910,15 +944,48 @@ export namespace Session {
     }),
   ])
 
+  // Write-behind for streaming part persistence (perf hotspot S1). Text/reasoning
+  // deltas are coalesced to at most one disk write per interval; discrete updates
+  // (tool state, the final no-delta part write) persist immediately so nothing is
+  // lost at a meaningful boundary. The event is always broadcast on every delta.
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => Storage.write(path, value))
+
+  /**
+   * Flush all buffered streaming part writes to disk and await them. Called at
+   * turn finalization so the persisted parts reflect everything streamed — most
+   * importantly when a turn is interrupted mid-stream and the terminal part
+   * write that normally flushes never fired (issue #327).
+   */
+  export function flushPartWrites() {
+    return partWriteBuffer.flushAll()
+  }
+
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
-    const session = await SessionManager.requireSession(part.sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(
-      StoragePath.messagePart(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID), asPartID(part.id)),
-      part,
+    // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
+    // sessionID -> scopeID cache instead of loading full session info on every
+    // delta. A session's scope is immutable, so this is safe; on a cold cache it
+    // reads only the small session-index record.
+    const scopeID = asScopeID(await SessionManager.resolveScopeID(part.sessionID))
+    const path = StoragePath.messagePart(
+      scopeID,
+      asSessionID(part.sessionID),
+      asMessageID(part.messageID),
+      asPartID(part.id),
     )
+    if (delta !== undefined) {
+      partWriteBuffer.defer(part.id, path, part)
+    } else {
+      // Discrete/terminal update: cancel any pending streamed write and persist
+      // durably before returning (preserves the original write-through contract).
+      partWriteBuffer.cancel(part.id)
+      await Storage.write(path, part)
+      // Maintain the loop-scoped message cache on durable writes only (#350 D2);
+      // per-delta streamed updates are coalesced by the write-behind buffer and
+      // do not need to advance the cache — the terminal write for each part does.
+      SessionMessageCache.upsertPart(part.sessionID, part)
+    }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,
@@ -1015,6 +1082,22 @@ export namespace Session {
   ) {
     const existing = await SessionManager.getSession(endpoint)
     if (existing) {
+      const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
+      const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
+      const isPlatformID = (name: string | undefined): boolean => !!name && /^(ou_|on_|oc_|user_)/.test(name)
+      const chatNameChanged =
+        (newChatName != null && existingChatName !== newChatName) ||
+        (isPlatformID(existingChatName) && newChatName == null)
+      if (chatNameChanged) {
+        return update(existing.id, (draft) => {
+          if (draft.endpoint?.kind === "channel") {
+            draft.endpoint.channel.chatName = newChatName
+          }
+          if (interaction && draft.interaction?.mode !== interaction.mode) {
+            draft.interaction = interaction
+          }
+        })
+      }
       if (interaction && existing.interaction?.mode !== interaction.mode) {
         return update(existing.id, (draft) => {
           draft.interaction = interaction

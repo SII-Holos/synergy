@@ -12,7 +12,7 @@ import {
   PluginSignCommand,
   PluginTestCommand,
   PluginValidateCommand,
-} from "./commands"
+} from "./commands/index.js"
 
 function assertBunRuntime() {
   if (!process.versions.bun) {

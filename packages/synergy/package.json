@@ -12,13 +12,7 @@
     "test:profile": "bun -e \"await import('node:fs/promises').then((fs) => fs.mkdir('coverage', { recursive: true }))\" && bun test --timeout 30000 --reporter=junit --reporter-outfile=coverage/test-profile-junit.xml",
     "build": "bun run script/build.ts",
     "dev": "bun run --conditions=browser ./src/index.ts",
-    "random": "echo 'Random script updated at $(date)' && echo 'Change queued successfully' && echo 'Another change made' && echo 'Yet another change' && echo 'One more change' && echo 'Final change' && echo 'Another final change' && echo 'Yet another final change'",
-    "clean": "echo 'Cleaning up...' && rm -rf node_modules dist",
-    "lint": "echo 'Running lint checks...' && bun test --coverage",
-    "format": "echo 'Formatting code...' && bun run --prettier --write src/**/*.ts",
-    "docs": "echo 'Generating documentation...' && find src -name '*.ts' -exec echo 'Processing: {}' \\;",
-    "build-helper": "bun run scripts/build-helper.ts",
-    "deploy": "echo 'Deploying application...' && bun run build && echo 'Deployment completed successfully'"
+    "build-helper": "bun run scripts/build-helper.ts"
   },
   "bin": {
     "synergy": "./bin/synergy"

@@ -42,6 +42,55 @@ export namespace SessionProcessor {
         }
       }
     | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
+  export type ToolExecutionSlot = {
+    callID: string
+    promise: Promise<ToolOutcome>
+    resolve(outcome: ToolOutcome): void
+    complete(input: unknown, result: ToolOutcomeCompletedResult): void
+    fail(input: unknown, error: string, metadata?: Record<string, any>): void
+    readonly outcome: ToolOutcome | undefined
+    readonly status: "pending" | "resolved"
+  }
+
+  export type ToolOutcomeCompletedResult = Extract<ToolOutcome, { status: "completed" }>["result"]
+
+  type ToolExecutionSlotInternal = Omit<ToolExecutionSlot, "outcome" | "status"> & {
+    outcome: ToolOutcome | undefined
+    status: "pending" | "resolved"
+    registeredAt: number
+    resolvedAt?: number
+  }
+
+  export function createSlot(callID: string): ToolExecutionSlot {
+    let outcome: ToolOutcome | undefined
+    let resolved = false
+    let resolvePromise!: (value: ToolOutcome) => void
+    const promise = new Promise<ToolOutcome>((resolve) => {
+      resolvePromise = resolve
+    })
+    return {
+      callID,
+      promise,
+      resolve(value: ToolOutcome) {
+        if (resolved) return
+        resolved = true
+        outcome = value
+        resolvePromise(value)
+      },
+      complete(input: unknown, result: ToolOutcomeCompletedResult) {
+        this.resolve({ status: "completed", input, result })
+      },
+      fail(input: unknown, error: string, metadata?: Record<string, any>) {
+        this.resolve({ status: "error", input, error, metadata })
+      },
+      get outcome() {
+        return outcome
+      },
+      get status() {
+        return resolved ? "resolved" : "pending"
+      },
+    }
+  }
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
@@ -115,9 +164,9 @@ export namespace SessionProcessor {
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
-    const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
-    const executionOutcomes = new Map<string, ToolOutcome>()
+    const executions = new Map<string, ToolExecutionSlotInternal>()
     const settlementPromises = new Map<string, Promise<void>>()
+    const settledToolCalls = new Set<string>()
     const generatingAccum: Record<string, string> = {}
     let snapshot: string | undefined
     let blocked = false
@@ -228,19 +277,82 @@ export namespace SessionProcessor {
       })
     }
 
+    function toolSettlementSnapshot(callID?: string): Record<string, any> {
+      const ids = callID
+        ? [callID]
+        : [...new Set([...Object.keys(toolcalls), ...executions.keys(), ...settledToolCalls])]
+      return {
+        activeToolCallCount: Object.keys(toolcalls).length,
+        activeExecutionCount: executions.size,
+        settledToolCallCount: settledToolCalls.size,
+        settlementPromiseCount: settlementPromises.size,
+        calls: ids.map((id) => {
+          const part = toolcalls[id]
+          const slot = executions.get(id)
+          return {
+            callID: id,
+            tool: part?.tool,
+            partStatus: part?.state.status,
+            hasPart: Boolean(part),
+            hasSlot: Boolean(slot),
+            slotStatus: slot?.status,
+            hasOutcome: Boolean(slot?.outcome),
+            registeredAt: slot?.registeredAt,
+            resolvedAt: slot?.resolvedAt,
+            hasSettlementPromise: settlementPromises.has(id),
+            settled: settledToolCalls.has(id),
+          }
+        }),
+      }
+    }
+
     function settleTrackedExecution(toolCallId: string): Promise<void> | undefined {
       const existing = settlementPromises.get(toolCallId)
-      if (existing) return existing
+      if (existing) {
+        log.info("tool.execution.settle.reuse", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
+        return existing
+      }
 
-      const outcome = executionOutcomes.get(toolCallId)
+      const slot = executions.get(toolCallId)
+      const outcome = slot?.outcome
       const part = toolcalls[toolCallId]
-      if (!outcome || !part || part.state.status !== "running") return undefined
+      if (!slot || !outcome || !part || part.state.status !== "running") {
+        log.info("tool.execution.settle.skip", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          reason: !slot ? "missing_slot" : !outcome ? "missing_outcome" : !part ? "missing_part" : "part_not_running",
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
+        return undefined
+      }
+
+      log.info("tool.execution.settle.start", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: toolCallId,
+        tool: part.tool,
+        outcomeStatus: outcome.status,
+        snapshot: toolSettlementSnapshot(toolCallId),
+      })
 
       const settlement = (async () => {
         await settleToolPart(part, outcome)
-        pendingExecutions.delete(toolCallId)
-        executionOutcomes.delete(toolCallId)
+        settledToolCalls.add(toolCallId)
+        executions.delete(toolCallId)
         delete toolcalls[toolCallId]
+        log.info("tool.execution.settle.completed", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          tool: part.tool,
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
       })()
       settlementPromises.set(toolCallId, settlement)
       void settlement
@@ -251,6 +363,7 @@ export namespace SessionProcessor {
             callID: toolCallId,
             tool: part.tool,
             error,
+            snapshot: toolSettlementSnapshot(toolCallId),
           }),
         )
         .finally(() => settlementPromises.delete(toolCallId))
@@ -259,6 +372,11 @@ export namespace SessionProcessor {
 
     async function waitForTrackedSettlements() {
       if (settlementPromises.size === 0) return
+      log.info("tool.execution.settlement.wait", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        snapshot: toolSettlementSnapshot(),
+      })
       await Promise.allSettled([...settlementPromises.values()])
     }
 
@@ -282,74 +400,230 @@ export namespace SessionProcessor {
       return Math.max(TOOL_SETTLE_TIMEOUT, remaining + TOOL_SETTLE_TIMEOUT)
     }
 
-    async function waitForPendingExecution(part: MessageV2.ToolPart): Promise<ToolOutcome | undefined> {
-      const registered = await waitForRegisteredExecution(part.callID)
-      if (!registered) return undefined
-
-      const waitMs = await pendingExecutionWaitMs(part)
+    async function raceWithTimeout(promise: Promise<unknown>, ms: number) {
       let timer: ReturnType<typeof setTimeout> | undefined
       const timeout = new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), waitMs)
+        timer = setTimeout(() => resolve(undefined), ms)
         if (typeof timer === "object" && "unref" in timer) timer.unref()
       })
-
       try {
-        return await Promise.race([registered, timeout])
+        return await Promise.race([promise, timeout])
       } finally {
         if (timer) clearTimeout(timer)
       }
     }
 
-    async function waitForRegisteredExecution(callID: string): Promise<Promise<ToolOutcome> | undefined> {
-      const existing = pendingExecutions.get(callID)
-      if (existing) return existing
-
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        return await new Promise<Promise<ToolOutcome> | undefined>((resolve) => {
-          const deadline = Date.now() + TOOL_SETTLE_TIMEOUT
-          const check = () => {
-            const registered = pendingExecutions.get(callID)
-            if (registered) {
-              resolve(registered)
-              return
-            }
-            if (Date.now() >= deadline) {
-              resolve(undefined)
-              return
-            }
-            timer = setTimeout(check, 10)
-            if (typeof timer === "object" && "unref" in timer) timer.unref()
-          }
-          check()
+    async function waitForPendingExecution(part: MessageV2.ToolPart): Promise<ToolOutcome | undefined> {
+      const slot = executions.get(part.callID)
+      if (!slot) {
+        log.warn("tool.execution.wait.missing_slot", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          snapshot: toolSettlementSnapshot(part.callID),
         })
-      } finally {
-        if (timer) clearTimeout(timer)
+        return undefined
       }
+      if (slot.outcome) {
+        log.info("tool.execution.wait.outcome_ready", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          slotStatus: slot.status,
+          outcomeStatus: slot.outcome.status,
+        })
+        return slot.outcome
+      }
+
+      const waitMs = await pendingExecutionWaitMs(part)
+      log.info("tool.execution.wait.pending", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        waitMs,
+        snapshot: toolSettlementSnapshot(part.callID),
+      })
+      const outcome = (await raceWithTimeout(slot.promise, waitMs)) as ToolOutcome | undefined
+      log[outcome ? "info" : "warn"]("tool.execution.wait.finished", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        waitMs,
+        outcomeStatus: outcome?.status,
+        snapshot: toolSettlementSnapshot(part.callID),
+      })
+      return outcome
     }
 
-    function metadataToolOutcome(part: MessageV2.ToolPart): ToolOutcome | undefined {
-      if (part.state.status !== "running") return undefined
-      if (part.tool !== "bash") return undefined
-      const metadata = part.state.metadata as Record<string, any> | undefined
-      if (!metadata || typeof metadata.output !== "string") return undefined
-      if (metadata.exit === undefined) return undefined
-
+    function missingExecutionSlotMetadata(part: MessageV2.ToolPart): Record<string, any> {
       return {
-        status: "completed",
-        input: part.state.input,
-        result: {
-          output: metadata.output,
-          title: part.state.title ?? String(metadata.description ?? ""),
-          metadata,
-        },
+        reason: "missing_execution_slot",
+        tool: part.tool,
+        callID: part.callID,
+        messageID: part.messageID,
+        sessionID: part.sessionID,
+        partStatus: part.state.status,
+        streamMetadata: streamingToolMetadata(part),
+      }
+    }
+    function pendingExecutionSlotMetadata(
+      part: MessageV2.ToolPart,
+      slot: ToolExecutionSlotInternal,
+    ): Record<string, any> {
+      return {
+        reason: "pending_execution_slot_timeout",
+        tool: part.tool,
+        callID: part.callID,
+        messageID: part.messageID,
+        sessionID: part.sessionID,
+        partStatus: part.state.status,
+        slotStatus: slot.status,
+        registeredAt: slot.registeredAt,
+        resolvedAt: slot.resolvedAt,
+        streamMetadata: streamingToolMetadata(part),
       }
     }
 
     function forgetToolCall(callID: string) {
-      pendingExecutions.delete(callID)
-      executionOutcomes.delete(callID)
+      executions.delete(callID)
       delete toolcalls[callID]
+    }
+
+    async function waitForOutcomesAndSettle(parts: MessageV2.Part[]) {
+      await Promise.allSettled(
+        parts.map(async (part) => {
+          if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") return
+          if (part.type === "tool" && settledToolCalls.has(part.callID)) return
+          const outcome = await waitForPendingExecution(part)
+          if (!outcome) return
+          await settleTrackedExecution(part.callID)
+        }),
+      )
+    }
+
+    async function resolveUnsettledParts(parts: MessageV2.Part[], fastAbort: boolean) {
+      log.info("tool.execution.unsettled.scan", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        fastAbort,
+        partCount: parts.length,
+        snapshot: toolSettlementSnapshot(),
+      })
+      for (const part of parts) {
+        if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") continue
+        if (settledToolCalls.has(part.callID)) continue
+        const slot = executions.get(part.callID)
+        if (slot?.outcome) {
+          log.info("tool.execution.unsettled.settle_ready", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: part.callID,
+            tool: part.tool,
+            outcomeStatus: slot.outcome.status,
+            snapshot: toolSettlementSnapshot(part.callID),
+          })
+          await settleToolPart(part, slot.outcome)
+          forgetToolCall(part.callID)
+        } else {
+          const reason = slot ? "pending_execution_slot_timeout" : "missing_execution_slot"
+          log.warn("tool.execution.unsettled.erroring_part", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: part.callID,
+            tool: part.tool,
+            reason,
+            fastAbort,
+            snapshot: toolSettlementSnapshot(part.callID),
+          })
+          const startTime = toolStartTime(part)
+          await Session.updatePart({
+            ...part,
+            state: {
+              ...part.state,
+              status: "error",
+              error: unresolvedToolError(fastAbort),
+              metadata: fastAbort
+                ? streamingToolMetadata(part)
+                : ToolTimeout.mergeMetadata(
+                    streamingToolMetadata(part),
+                    slot ? pendingExecutionSlotMetadata(part, slot) : missingExecutionSlotMetadata(part),
+                  ),
+              time: {
+                start: startTime,
+                end: Date.now(),
+              },
+            },
+          })
+          forgetToolCall(part.callID)
+        }
+      }
+    }
+
+    function beginExecution(callID: string): ToolExecutionSlot {
+      const existing = executions.get(callID)
+      if (existing) {
+        log.info("tool.execution.slot.reuse", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        return existing
+      }
+
+      const base = createSlot(callID)
+      const underlyingResolve = base.resolve
+      base.resolve = (outcome: ToolOutcome) => {
+        if (base.status === "resolved") {
+          log.warn("ignoring duplicate tool execution outcome", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID,
+            status: outcome.status,
+            existingStatus: base.outcome?.status,
+            snapshot: toolSettlementSnapshot(callID),
+          })
+          return
+        }
+        log.info("tool.execution.slot.resolve", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          outcomeStatus: outcome.status,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        underlyingResolve.call(base, outcome)
+        const internal = executions.get(callID)
+        if (internal) internal.resolvedAt = Date.now()
+        void settleTrackedExecution(callID)
+      }
+      const slot: ToolExecutionSlotInternal = {
+        callID: base.callID,
+        promise: base.promise,
+        resolve: base.resolve,
+        complete: base.complete,
+        fail: base.fail,
+        get outcome() {
+          return base.outcome
+        },
+        get status() {
+          return base.status
+        },
+        registeredAt: Date.now(),
+      }
+      executions.set(callID, slot)
+      log.info("tool.execution.slot.created", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID,
+        snapshot: toolSettlementSnapshot(callID),
+      })
+      void settleTrackedExecution(callID)
+      return slot
     }
 
     const result = {
@@ -359,14 +633,7 @@ export namespace SessionProcessor {
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
-      trackExecution(toolCallId: string, promise: Promise<ToolOutcome>) {
-        const tracked = promise.then((outcome) => {
-          executionOutcomes.set(toolCallId, outcome)
-          void settleTrackedExecution(toolCallId)
-          return outcome
-        })
-        pendingExecutions.set(toolCallId, tracked)
-      },
+      beginExecution,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
         const turnTraceId = Observability.traceId("turn")
@@ -547,8 +814,16 @@ export namespace SessionProcessor {
                   }
 
                   case "tool-call": {
+                    log.info("tool.stream.tool_call.received", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      callID: value.toolCallId,
+                      tool: value.toolName,
+                      hadPart: Boolean(toolcalls[value.toolCallId]),
+                      hadSlot: executions.has(value.toolCallId),
+                      snapshot: toolSettlementSnapshot(value.toolCallId),
+                    })
                     const match = toolcalls[value.toolCallId]
-                    const display = input.toolDisplay?.(value.toolName)
                     const toolInput = SessionToolInput.normalize(value.input)
                     const part = await Session.updatePart({
                       ...(match ?? {
@@ -571,6 +846,14 @@ export namespace SessionProcessor {
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
                     delete generatingAccum[value.toolCallId]
+                    log.info("tool.stream.tool_call.part_running", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      callID: value.toolCallId,
+                      tool: value.toolName,
+                      hasSlot: executions.has(value.toolCallId),
+                      snapshot: toolSettlementSnapshot(value.toolCallId),
+                    })
 
                     if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
                       const agent = await Agent.get(input.assistantMessage.agent)
@@ -591,25 +874,39 @@ export namespace SessionProcessor {
                     break
                   }
                   case "tool-result": {
-                    const pending = pendingExecutions.get(value.toolCallId)
-                    if (pending && !executionOutcomes.has(value.toolCallId)) {
-                      executionOutcomes.set(value.toolCallId, await pending)
-                    }
+                    const slot = executions.get(value.toolCallId)
+                    log.info("tool.stream.tool_result.received", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      callID: value.toolCallId,
+                      hadSlot: Boolean(slot),
+                      slotStatus: slot?.status,
+                      hasOutcome: Boolean(slot?.outcome),
+                      snapshot: toolSettlementSnapshot(value.toolCallId),
+                    })
+                    if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
                     await settleTrackedExecution(value.toolCallId)
                     break
                   }
 
                   case "tool-error": {
+                    log.warn("tool.stream.tool_error.received", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      callID: value.toolCallId,
+                      hadPart: Boolean(toolcalls[value.toolCallId]),
+                      hadSlot: executions.has(value.toolCallId),
+                      error: value.error instanceof Error ? value.error.message : String(value.error),
+                      snapshot: toolSettlementSnapshot(value.toolCallId),
+                    })
                     const match = toolcalls[value.toolCallId]
                     if (match && match.state.status === "running") {
-                      const pending = pendingExecutions.get(value.toolCallId)
-                      if (pending && !executionOutcomes.has(value.toolCallId)) {
-                        executionOutcomes.set(value.toolCallId, await pending)
-                      }
+                      const slot = executions.get(value.toolCallId)
+                      if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
                       const settlement = settleTrackedExecution(value.toolCallId)
                       if (settlement) {
                         await settlement
-                      } else {
+                      } else if (!slot) {
                         await settleToolPart(match, streamToolErrorOutcome(match, value.error))
                         delete toolcalls[value.toolCallId]
                       }
@@ -883,57 +1180,25 @@ export namespace SessionProcessor {
             snapshot = undefined
           }
           await waitForTrackedSettlements()
-          const outcomes = new Map<string, ToolOutcome>(executionOutcomes)
-          let p = await MessageV2.parts({
+          // Flush buffered streaming part writes before reading parts to
+          // finalize the message. A turn interrupted mid-stream (idle timeout,
+          // provider error, abort) never fires the terminal part write that
+          // normally flushes, so without this the persisted/finalized parts
+          // would be missing the last streamed content (issue #327).
+          await Session.flushPartWrites()
+          let parts = await MessageV2.parts({
             sessionID: input.sessionID,
             messageID: input.assistantMessage.id,
           })
           if (!fastAbort) {
-            await Promise.allSettled(
-              p.map(async (part) => {
-                if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") return
-                if (outcomes.has(part.callID)) return
-                const metadataOutcome = metadataToolOutcome(part)
-                if (metadataOutcome) {
-                  outcomes.set(part.callID, metadataOutcome)
-                  return
-                }
-                const outcome = await waitForPendingExecution(part)
-                if (!outcome) return
-                executionOutcomes.set(part.callID, outcome)
-                outcomes.set(part.callID, outcome)
-              }),
-            )
+            await waitForOutcomesAndSettle(parts)
             await waitForTrackedSettlements()
-            p = await MessageV2.parts({
+            parts = await MessageV2.parts({
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
             })
           }
-          for (const part of p) {
-            if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const outcome = outcomes.get(part.callID) ?? metadataToolOutcome(part)
-              if (outcome) {
-                await settleToolPart(part, outcome)
-                forgetToolCall(part.callID)
-              } else {
-                const startTime = toolStartTime(part)
-                await Session.updatePart({
-                  ...part,
-                  state: {
-                    ...part.state,
-                    status: "error",
-                    error: unresolvedToolError(fastAbort),
-                    time: {
-                      start: startTime,
-                      end: Date.now(),
-                    },
-                  },
-                })
-                forgetToolCall(part.callID)
-              }
-            }
-          }
+          await resolveUnsettledParts(parts, fastAbort)
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
           Session.updateLastExchange(input.sessionID).catch((e) =>
@@ -962,7 +1227,7 @@ export namespace SessionProcessor {
               blocked,
               error: input.assistantMessage.error,
               durationMs: Date.now() - turnStartedAt,
-              pendingTools: pendingExecutions.size,
+              pendingTools: executions.size,
             },
           })
           if (blocked) return "stop"

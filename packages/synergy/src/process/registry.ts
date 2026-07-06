@@ -150,24 +150,24 @@ export namespace ProcessRegistry {
     const status: Status =
       exitSignal === "SIGKILL" || exitSignal === "SIGTERM" ? "killed" : exitCode === 0 ? "completed" : "failed"
 
+    // A fast-exiting process may finish before the auto-background timer fires.
+    // Always persist the completed process in the finished registry so callers
+    // scanning both registries can find it even without the backgrounded flag.
     running.delete(proc.id)
-
-    if (proc.backgrounded) {
-      finished.set(proc.id, {
-        id: proc.id,
-        command: proc.command,
-        description: proc.description,
-        cwd: proc.cwd,
-        status,
-        startedAt: proc.startedAt,
-        endedAt: Date.now(),
-        exitCode,
-        exitSignal,
-        output: proc.output,
-        tail: proc.tail,
-        truncated: proc.truncated,
-      })
-    }
+    finished.set(proc.id, {
+      id: proc.id,
+      command: proc.command,
+      description: proc.description,
+      cwd: proc.cwd,
+      status,
+      startedAt: proc.startedAt,
+      endedAt: Date.now(),
+      exitCode,
+      exitSignal,
+      output: proc.output,
+      tail: proc.tail,
+      truncated: proc.truncated,
+    })
 
     PerformanceMetrics.record({
       name: "process.duration",

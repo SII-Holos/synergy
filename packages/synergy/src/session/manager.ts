@@ -55,11 +55,48 @@ export namespace SessionManager {
       onComplete(result: MessageV2.WithParts): void
       onCancel(): void
     }[]
-    mailbox: SessionMail[]
     lastActiveAt: number
   }
 
   const runtimes = new Map<string, SessionRuntime>()
+
+  // A session's scope is immutable for its lifetime, so the sessionID -> scopeID
+  // mapping can be cached permanently. This removes the two per-delta disk reads
+  // that `requireSession` performs on the streaming hot path (issue #350 H1):
+  // `updatePart` only needs the scopeID to build the storage path, not the full
+  // session info. Entries are tiny (ULID -> scopeID strings) and dropped when a
+  // session is deleted (`forgetSession`).
+  const scopeIDCache = new Map<string, string>()
+
+  function rememberScopeID(sessionID: string, scopeID: string) {
+    scopeIDCache.set(sessionID, scopeID)
+  }
+
+  export function forgetSession(sessionID: string) {
+    scopeIDCache.delete(sessionID)
+  }
+
+  /** Cached scopeID lookup, warm during an active loop. */
+  export function cachedScopeID(sessionID: string): string | undefined {
+    return scopeIDCache.get(sessionID)
+  }
+
+  /**
+   * Resolve a session's scopeID with a permanent cache. On a cache miss this
+   * reads only the small session-index record (`{ scopeID }`), not the full
+   * session info, and memoizes the result. Used by the streaming part-write
+   * path so per-delta persistence never re-reads session state.
+   */
+  export async function resolveScopeID(sessionID: string): Promise<string> {
+    const cached = scopeIDCache.get(sessionID)
+    if (cached) return cached
+    const indexed = await Storage.read<{ scopeID: string }>(
+      StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
+    ).catch(() => undefined)
+    if (!indexed) throw new Storage.NotFoundError({ message: `Session ${sessionID} not found` })
+    rememberScopeID(sessionID, indexed.scopeID)
+    return indexed.scopeID
+  }
 
   const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
   const IDLE_TTL_MS = 30 * 60 * 1000
@@ -74,7 +111,6 @@ export namespace SessionManager {
           continue
         }
       }
-      if (runtime.mailbox.length > 0) continue
       if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
       runtimes.delete(sessionID)
       log.info("swept idle runtime", { sessionID })
@@ -112,6 +148,7 @@ export namespace SessionManager {
       StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
     ).catch(() => undefined)
     if (!indexed) return undefined
+    rememberScopeID(sessionID, indexed.scopeID)
     return Storage.read<Info>(
       StoragePath.sessionInfo(Identifier.asScopeID(indexed.scopeID), Identifier.asSessionID(sessionID)),
     ).catch(() => undefined)
@@ -159,7 +196,6 @@ export namespace SessionManager {
       sessionID,
       status: { type: "idle" },
       waiters: [],
-      mailbox: [],
       lastActiveAt: Date.now(),
     }
     runtimes.set(sessionID, runtime)
@@ -207,7 +243,7 @@ export namespace SessionManager {
       })
     } finally {
       const runtime = getRuntime(session.id)
-      if (runtime && !runtime.abort && runtime.mailbox.length === 0) {
+      if (runtime && !runtime.abort) {
         unregisterRuntime(session.id)
       }
     }
@@ -262,14 +298,9 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID, error })
     })
 
-    if (runtime.mailbox.length > 0 && mailboxHandler) {
-      await run(sessionID, () => mailboxHandler!(sessionID))
-      return
-    }
-
-    const inboxItems = await SessionInbox.peekReady(sessionID)
-    if (inboxItems.length > 0 && mailboxHandler) {
-      await run(sessionID, () => mailboxHandler!(sessionID))
+    if (await SessionInbox.hasRunnableItem(sessionID)) {
+      const { SessionInvoke } = await import("./invoke")
+      await SessionInvoke.loop(sessionID)
     }
   }
 
@@ -307,19 +338,14 @@ export namespace SessionManager {
     return result
   }
 
-  // --- Mailbox ---
+  // --- Inbox delivery ---
 
-  type MailboxHandler = (sessionID: string) => Promise<void>
-  let mailboxHandler: MailboxHandler | undefined
-
-  export function onMailboxReady(handler: MailboxHandler) {
-    const previous = mailboxHandler
-    mailboxHandler = handler
-    return () => {
-      if (mailboxHandler === handler) mailboxHandler = previous
-    }
-  }
-
+  /**
+   * Deliver a SessionMail into the persistent inbox and wake the target session
+   * when appropriate. Thin adapter over SessionInbox: it converts the mail DTO
+   * to a mode-based inbox item (with source labels) and owns the idle-wake logic
+   * that SessionInbox cannot (runtime management lives here).
+   */
   export async function deliver(input: {
     target: string | SessionEndpoint.Info
     mail: SessionMail
@@ -335,58 +361,60 @@ export namespace SessionManager {
 
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
-    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
-    runtime.mailbox.push({ ...input.mail, inboxItemID: item.id })
+    const releaseIfIdle = () => {
+      if (!runtime.abort) unregisterRuntime(session.id)
+    }
 
-    if (isRunning(session.id)) {
-      log.info("mail queued (session running)", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
+    if (input.mail.type === "assistant") {
+      await SessionInbox.deliver({
+        sessionID: session.id,
+        mode: "context",
+        message: {
+          role: "assistant",
+          parts: input.mail.parts as any,
+          agent: input.mail.agentID,
+          model: input.mail.model,
+          metadata: input.mail.metadata,
+        },
+      })
+      releaseIfIdle()
       return
     }
 
-    if (mailboxHandler) {
-      if (input.waitForProcessing === false) {
-        log.info("mail queued (session idle), processing asynchronously", {
-          sessionID: session.id,
-          mailboxSize: runtime.mailbox.length,
-        })
-        void run(session.id, () => mailboxHandler!(session.id)).catch((error) => {
-          log.error("async mailbox processing failed", { sessionID: session.id, error })
-        })
-        return
-      }
-      log.info("mail queued (session idle), processing", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
-      await run(session.id, () => mailboxHandler!(session.id))
+    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
+
+    if (isRunning(session.id)) {
+      log.info("mail queued (session running)", { sessionID: session.id })
+      return
     }
-  }
 
-  export function drainMails(sessionID: string, type: "user"): SessionMail.User[]
-  export function drainMails(sessionID: string, type: "assistant"): SessionMail.Assistant[]
-  export function drainMails(sessionID: string, type: "user" | "assistant"): SessionMail[] {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return []
-    const matching: SessionMail[] = []
-    const remaining: SessionMail[] = []
-    for (const mail of runtime.mailbox) {
-      if (mail.type === type) matching.push(mail)
-      else remaining.push(mail)
+    if (item.mode === "context") {
+      log.info("context mail queued without waking session", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
+      return
     }
-    runtime.mailbox.length = 0
-    runtime.mailbox.push(...remaining)
-    return matching
-  }
 
-  export function drainAllMails(sessionID: string): SessionMail[] {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return []
-    return runtime.mailbox.splice(0)
-  }
+    if (item.mode === "steer" && !(await SessionInbox.latestRootID(session.id))) {
+      log.info("steer mail queued without root to resume", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
+      return
+    }
 
-  export function discardMails(sessionID: string, inboxItemIDs: Iterable<string>): void {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return
-    const discard = new Set(inboxItemIDs)
-    if (discard.size === 0) return
-    runtime.mailbox = runtime.mailbox.filter((mail) => !mail.inboxItemID || !discard.has(mail.inboxItemID))
+    const process = async () => {
+      const { SessionInvoke } = await import("./invoke")
+      await SessionInvoke.loop(session.id)
+    }
+
+    if (input.waitForProcessing === false) {
+      log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
+      void process().catch((error) => {
+        log.error("async inbox processing failed", { sessionID: session.id, error })
+      })
+      return
+    }
+
+    log.info("mail queued (session idle), processing", { sessionID: session.id })
+    await process()
   }
 
   // --- Pending Reply ---

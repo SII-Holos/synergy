@@ -84,6 +84,24 @@ Key practical consequence:
 
 Docs and code comments should describe the client-server runtime model.
 
+### Message and sync model
+
+The session/message core follows two orthogonal-field designs. Read the design docs before touching message assembly, the loop, inbox, undo/rewind, or frontend data loading — the old tangled booleans they replaced (`metadata.synthetic`, `part.synthetic`, `metadata.noReply`, `metadata.guided`, `part.ignored`, `metadata.promptVisible`, the `metadata.source` family) must not come back.
+
+Backend message semantics (`docs/architecture/session-message-core.md`, implemented across `packages/synergy/src/session/*`):
+
+- A message is described by orthogonal canonical fields, not overloaded booleans: `rootID`/`isRoot` (scheduling/task grouping), `visible` (frontend rendering), `includeInContext` (model context), and `origin` (provenance, closed enum). Parts carry `origin: "user" | "system"`.
+- `MessageV2.deriveSemantics(messages)` is the single read-time derivation (in `history.ts` and storage migration); `MessageV2.isSystemPart(part)` is the canonical system-part test. Do not re-derive these ad hoc.
+- The loop binds one root user message `R`; every assistant message in that task has `rootID = R.id` and `parentID = R.id` (no parent drift). Compaction resolves its anchor in O(1) from `parentID`.
+- Inbox items use a single `mode` axis (`task` / `steer` / `context`); there is no separate in-memory mailbox.
+
+Frontend data sync (`docs/architecture/frontend-data-sync.md`, implemented across `packages/app/src/context/*` and the bus/server sequence plumbing):
+
+- Store writes always `reconcile` (never whole-object replace), so an event that changes one field does not invalidate the whole reactive chain.
+- State events carry a scope-monotonic `seq` + per-runtime `epoch` (`bus/sequencer.ts`); streaming part-delta events are unsequenced. Scoped GET responses advertise a snapshot watermark via `x-synergy-seq`/`x-synergy-epoch` headers. On reconnect the client replays missed events via `/event/replay` (fail-open to a full resync).
+- Composer model/agent resolve through strict layers — user draft → session default (server `modelOverride`, else last root message) → fallback — and lower layers never write back up (the #318 fix). An explicit selector pick persists as `modelOverride`.
+- Streaming part disk writes are coalesced (write-behind) while discrete/terminal writes stay immediate; loaded message/part buckets are LRU-evicted with the active session protected.
+
 ## Development Commands
 
 ### Primary development flow
@@ -119,12 +137,24 @@ bun dev build desktop
 
 `packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server. Use `bun dev desktop --managed` when validating the production-style managed server path; it rebuilds the Web app dist before launching Electron so stale frontend assets do not mix with current desktop/server code.
 
-### Type checking and formatting
+### Quality commands
 
 ```bash
-bun run typecheck
-./script/format.ts
+bun run format:check       # check formatting with prettier
+./script/format.ts          # auto-format all files
+bun run lint                # lint with oxlint (errors + warnings)
+bun run lint:fix            # lint with auto-fix
+bun run typecheck           # type-check all packages via turbo
+bun run deadcode            # check dead code and dependency hygiene (knip)
+bun run monorepo:check      # validate monorepo dependency consistency (sherif)
+bun run workflow:check      # validate CI workflow files (actionlint)
+bun run secrets:check       # scan for secrets (gitleaks)
+bun run package:check       # validate publishable packages (publint + attw)
+bun run quality:quick       # format:check + lint + typecheck + monorepo:check + package:check
+bun run quality             # quality:quick + all tests (turbo test)
 ```
+
+`bun run quality:quick` is the default local PR preflight. The pre-push hook runs the fast subset: Bun version, format, lint, typecheck, and monorepo checks. CI runs the full matrix: quality, typecheck, test, package-validation, workflow-validation, secret-scan, desktop, and smoke jobs. See [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model.
 
 ### Tests
 
@@ -138,6 +168,8 @@ bun run test:changed
 bun run test:coverage
 bun test --watch
 ```
+
+Tests seed the model catalog from the pinned fixture `packages/synergy/test/tool/fixtures/models-api.json`, not from live `models.dev` (`test/preload.ts`). This keeps provider/model tests deterministic and drift-proof: a live catalog that renames or removes a referenced model must never turn CI red. When a test needs a model the fixture lacks, update the fixture deliberately rather than reintroducing a live fetch.
 
 ### Build and SDK generation
 
@@ -309,6 +341,14 @@ Monolithic config files are handled only by migrations. Do not add runtime load 
 
 Provider auth paths are distinct. The built-in `openai-codex` provider uses ChatGPT/Codex OAuth device-code credentials and the Codex backend; the normal `openai` provider remains the OpenAI Platform API-key path. Do not merge their config, auth storage semantics, or billing language.
 
+### Control profile semantics
+
+`full_access` is the author-at-own-risk profile: the permission system must silently allow every capability, including protected paths, secrets, destructive or hardline shell commands, external writes, identity/channel actions, and plugin/platform operations. It does not suppress non-permission failures such as validation errors, missing files, OS permission errors, failed tests, hooks, or network failures.
+
+`autonomous` is the unattended profile: it must never ask the user. Operations that cannot be automatically allowed must be automatically denied with a clear policy diagnostic. SmartAllow may auto-allow eligible false positives at high confidence, but failed SmartAllow checks deny instead of prompting.
+
+`smartAllow` reduces noise and false positives. In `guarded`, it can auto-allow safe asks before prompting. In `autonomous`, it can auto-allow eligible soft denies at a stricter threshold. It must use metadata or redacted evidence for secret-like files and must never send raw secret values to a model.
+
 ### Config-aware work
 
 If you change:
@@ -386,7 +426,8 @@ Skipping any of these causes the tool to fall back to a generic icon and label, 
 - do not silently ignore failing relevant tests
 - If a pre-push or prepush check fails, agents may make the narrow fixes required by that hook, verify them, commit the fix directly, and retry the push. Do not bypass the hook or leave required fixes uncommitted.
 
-Do not run root-level `test` scripts expecting the main suite; the root intentionally blocks that path.
+- Verify quality commands against the actual root scripts (`package.json`) before referencing them. `bun run quality:quick` is the default local PR preflight; the pre-push hook runs a fast subset; `bun run quality` runs the full suite with tests.
+- When changes add or modify quality scripts, CI jobs, or pre-push hooks, update `docs/open-source-quality.md` and the affected agent guides.
 
 ## Documentation Sync Rules
 
@@ -457,8 +498,10 @@ Key documents in the repo that agents should be aware of:
 - `CODE_OF_CONDUCT.md` — community code of conduct
 - `.github/SECURITY.md` — security vulnerability reporting process (never open public issues for security bugs)
 - `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
-- `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
+- `docs/open-source-quality.md` — quality model, CI jobs, pre-push hook, package validation, contributor scenarios
 - `docs/desktop-release.md` — desktop packaging, signing, update, and release runbook
+- `docs/architecture/session-message-core.md` (+ `docs/architecture/session-message-core/`) — backend message/session semantics: orthogonal `rootID`/`visible`/`includeInContext`/`origin` fields, the serial-task loop, compaction anchor, and inbox `mode`
+- `docs/architecture/frontend-data-sync.md` — frontend data sync: reconcile writes, the `seq`/`epoch` sequence protocol + replay, snapshot watermark headers, composer intent layering, part write-behind, and bucket eviction
 - `packages/app/PRODUCT.md` — Web product principles, interaction model, and visual design contract
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
 - `packages/app/AGENTS.md` — agent guidelines specific to the web app package

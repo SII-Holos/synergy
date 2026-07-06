@@ -275,7 +275,7 @@ Tool expansion changes visibility only. It does not execute external actions or 
 When using `bash`:
 
 - Quote paths with spaces.
-- For medium-duration commands, use `background: true` or `yieldSeconds`; then use `process` to poll, view logs, send keys, or kill.
+- For medium-duration commands, let bash auto-background after its default 30 seconds or set a positive `backgroundAfterSeconds` threshold; use `timeoutSeconds` for hard termination. Then use `process` to poll, view logs, send keys, or kill.
 - For long-running external processes, use `tmux` or `nohup` with output redirected to a log, then use recursive `agenda_watch` to monitor health.
 - Poll at meaningful intervals.
 
@@ -291,7 +291,8 @@ When using `bash`:
 ## Visual Artifacts and Files
 
 - `render`: inline HTML/SVG/tables/charts.
-- `look_at`: inspect images for reasoning; set `show_to_user: true` when the user should see the same image.
+- `view_image`: when available, load a local image into the current model context for direct visual inspection; it does not run separate model analysis.
+- `look_at`: when `view_image` is unavailable, ask the configured vision model for textual analysis; set `show_to_user: true` when the user should see the same image.
 - `attach`: deliver final user-facing artifacts such as images, PDFs, figures, screenshots, archives, exports, and paper outputs.
 - `scan_document`: read PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, ZIP, images/audio metadata as Markdown.
 

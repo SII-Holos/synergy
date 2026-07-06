@@ -1,4 +1,4 @@
-import { baseCapabilities, pluginRisk, type SynergyCapabilityManifest } from "./capability"
+import { baseCapabilities, pluginRisk, type SynergyCapabilityManifest } from "./capability.js"
 
 export type PluginSource = "local" | "official" | "npm" | "git" | "url" | "builtin"
 export type RuntimeMode = "in-process" | "worker" | "process"

@@ -85,4 +85,64 @@ export class SenderNameCache {
   }
 }
 
+export class ChatNameCache {
+  private cache = new Map<string, { name: string; expiresAt: number }>()
+  private negativeCache = new Map<string, number>()
+  private ttlMs: number
+
+  constructor(opts?: { ttlMs?: number }) {
+    this.ttlMs = opts?.ttlMs ?? DEFAULT_TTL_MS
+  }
+
+  async resolve(ctx: FeishuApiContext, chatId: string, fallbackName?: string): Promise<string | undefined> {
+    const normalized = chatId.trim()
+    if (!normalized) return undefined
+
+    const now = Date.now()
+    const cached = this.cache.get(normalized)
+    if (cached && cached.expiresAt > now) return cached.name
+
+    const negativeCachedAt = this.negativeCache.get(normalized)
+    if (negativeCachedAt !== undefined && now - negativeCachedAt < NEGATIVE_CACHE_TTL_MS) {
+      return fallbackName
+    }
+
+    try {
+      const token = await ctx.getAccessToken()
+      const response = await fetch(`${ctx.apiBase}/im/v1/chats/${normalized}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS),
+      })
+
+      const result = (await response.json()) as {
+        code?: number
+        msg?: string
+        data?: { name?: string; chat_id?: string; description?: string }
+      }
+
+      if (result.code === 0 && result.data?.name) {
+        const name = result.data.name
+        this.cache.set(normalized, { name, expiresAt: now + this.ttlMs })
+        this.negativeCache.delete(normalized)
+        return name
+      }
+
+      this.negativeCache.set(normalized, now)
+      log.warn("failed to resolve chat name", { chatId: normalized, code: result.code, msg: result.msg })
+      if (fallbackName) {
+        this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })
+      }
+      return fallbackName
+    } catch (err) {
+      this.negativeCache.set(normalized, now)
+      log.warn("failed to resolve chat name", { chatId: normalized, error: String(err) })
+      if (fallbackName) {
+        this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })
+      }
+      return fallbackName
+    }
+  }
+}
+
 export const senderNameCache = new SenderNameCache()
+export const chatNameCache = new ChatNameCache()

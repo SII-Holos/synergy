@@ -15,6 +15,7 @@ import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
+import { Asset } from "@/asset/asset"
 import { Log } from "@/util/log"
 import { SessionBounds } from "./bounds"
 
@@ -135,8 +136,9 @@ export namespace MessageV2 {
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
+    /** @deprecated Superseded by `origin`; read only as a fallback by isSystemPart. No writes. */
     synthetic: z.boolean().optional(),
-    ignored: z.boolean().optional(),
+    origin: z.enum(["user", "system"]).optional(),
     time: z
       .object({
         start: z.number(),
@@ -415,6 +417,46 @@ export namespace MessageV2 {
   })
   export type ToolPart = z.infer<typeof ToolPart>
 
+  /**
+   * Closed set of message origin types (issue #281 §4.2). Second-level
+   * variation (e.g. blueprint loop_start vs loop_restart) goes in `detail`,
+   * never as a new top-level type. Unknown/legacy values decode to "system"
+   * via `.catch` so stored data from older schemas still parses.
+   */
+  export const ORIGIN_TYPES = [
+    "user", // direct user input (TUI / desktop / HTTP)
+    "cortex", // background task / subagent completion
+    "agenda", // scheduled or event-driven wake-up
+    "blueprint", // BlueprintLoop control message
+    "channel", // external channel (Feishu, etc.)
+    "compaction", // compaction-injected continuation
+    "agent", // cross-session delivery (session_send)
+    "plugin", // plugin-delivered
+    "system", // other internal mechanisms / fallback
+  ] as const
+  export type OriginType = (typeof ORIGIN_TYPES)[number]
+
+  /** Origin types that render as a visible chip inside a turn. */
+  export const RENDERED_ORIGIN_TYPES = new Set<OriginType>([
+    "cortex",
+    "agenda",
+    "blueprint",
+    "channel",
+    "agent",
+    "plugin",
+  ])
+
+  export const OriginUser = z
+    .object({
+      type: z.enum(ORIGIN_TYPES).catch("system"),
+      sessionID: z.string().optional(),
+      pluginID: z.string().optional(),
+      label: z.string().optional(),
+      detail: z.string().optional(),
+    })
+    .meta({ ref: "OriginUser" })
+  export type OriginUser = z.infer<typeof OriginUser>
+
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
@@ -444,6 +486,7 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    origin: OriginUser.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
     ref: "UserMessage",
@@ -608,6 +651,7 @@ export namespace MessageV2 {
         part: Part,
         delta: z.string().optional(),
       }),
+      { streaming: true },
     ),
     PartRemoved: BusEvent.define(
       "message.part.removed",
@@ -625,15 +669,11 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
-  export function extractText(
-    parts: Part[],
-    options?: { includeSynthetic?: boolean; includeIgnored?: boolean; maxLength?: number },
-  ): string {
+  export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
     for (const part of parts) {
       if (part.type !== "text") continue
-      if (!options?.includeIgnored && part.ignored) continue
-      if (!options?.includeSynthetic && part.synthetic) continue
+      if (!options?.includeSynthetic && isSystemPart(part)) continue
       texts.push(part.text)
     }
     const joined = texts.join("\n").trim()
@@ -641,12 +681,131 @@ export namespace MessageV2 {
   }
 
   export function isPromptVisible(msg: WithParts) {
-    const metadata = msg.info.metadata
+    if (msg.info.includeInContext !== undefined) return msg.info.includeInContext
+    return includeInContextFromMetadata(msg.info.metadata)
+  }
+
+  function includeInContextFromMetadata(metadata: Record<string, any> | undefined): boolean {
     if (metadata?.promptVisible === false) return false
     const command = metadata?.command
     if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
       return false
     return true
+  }
+
+  // ── Read-time semantics derivation (issue #281 §12.2) ───────────────────
+  //
+  // The single place legacy metadata (synthetic / noReply / guided / source)
+  // is interpreted. Applied once over the ordered message list at the read
+  // boundary so every consumer — loop, compaction, frontend — reads only the
+  // canonical fields (rootID / isRoot / visible / includeInContext / origin
+  // and part.origin) and never the legacy heuristics.
+
+  /**
+   * Whether a part is system-injected rather than user-authored. Prefers the
+   * canonical part.origin, falling back to the legacy `synthetic` flag for parts
+   * that predate it. The single predicate all consumers should use instead of
+   * reading `part.synthetic` directly.
+   */
+  export function isSystemPart(part: Part): boolean {
+    if (part.type === "compaction") return true
+    if (part.type !== "text") return false
+    if (part.origin !== undefined) return part.origin === "system"
+    return part.synthetic === true
+  }
+
+  function partIsSystem(part: Part): boolean {
+    return isSystemPart(part)
+  }
+
+  function allPartsSystem(parts: Part[]): boolean {
+    if (parts.length === 0) return true
+    return parts.every(partIsSystem)
+  }
+
+  /**
+   * Map legacy delivery metadata (source / sourceSessionID / channelPush …) to a
+   * canonical origin. Shared by write-time (createUserMessage) and read-time
+   * derivation so there is a single source of truth for the mapping (§4.2).
+   */
+  export function originFromMetadata(metadata: Record<string, any> | undefined): OriginUser {
+    if (!metadata) return { type: "user" }
+    const source = metadata.source
+    const sessionID = typeof metadata.sourceSessionID === "string" ? metadata.sourceSessionID : undefined
+    if (source === "cortex") return { type: "cortex", sessionID }
+    if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID }
+    if (typeof source === "string" && source.startsWith("blueprint_loop_"))
+      return { type: "blueprint", detail: source.replace(/^blueprint_loop_/, "") }
+    if (metadata.channelPush || metadata.mailbox) return { type: "channel" }
+    if (sessionID?.trim()) return { type: "agent", sessionID }
+    return { type: "user" }
+  }
+
+  /** Whether an origin renders as a visible chip when its message is non-root. */
+  export function originRenders(origin: OriginUser): boolean {
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  // Origins that never own a loop: their messages are always injected into an
+  // existing task, never a task root.
+  const NON_ROOT_ORIGIN_TYPES = new Set<OriginType>(["cortex", "compaction", "system"])
+
+  function deriveIsRoot(user: User, origin: OriginUser, parts: Part[]): boolean {
+    const metadata = user.metadata
+    if (metadata?.noReply === true) return false
+    if (metadata?.guided === true) return false
+    if (NON_ROOT_ORIGIN_TYPES.has(origin.type)) return false
+    if (!includeInContextFromMetadata(metadata)) return false
+    return !allPartsSystem(parts)
+  }
+
+  function deriveVisible(user: User, origin: OriginUser, parts: Part[]): boolean {
+    const synthetic = user.metadata?.synthetic === true || allPartsSystem(parts)
+    if (!synthetic) return true
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  function deriveParts(parts: Part[]): Part[] {
+    let changed = false
+    const next = parts.map((part) => {
+      if (part.type !== "text" || part.origin !== undefined) return part
+      changed = true
+      return { ...part, origin: part.synthetic ? ("system" as const) : ("user" as const) }
+    })
+    return changed ? next : parts
+  }
+
+  /**
+   * Populate canonical semantic fields for any message that predates them.
+   * Idempotent: messages already carrying the fields pass through untouched
+   * (only their running rootID is tracked so later assistants inherit it).
+   */
+  export function deriveSemantics(messages: WithParts[]): WithParts[] {
+    let rootID: string | undefined
+    return messages.map((msg) => {
+      const parts = deriveParts(msg.parts)
+      if (msg.info.role === "user") {
+        const user = msg.info as User
+        const origin = user.origin ?? originFromMetadata(user.metadata)
+        const isRoot = user.isRoot ?? deriveIsRoot(user, origin, parts)
+        const resolvedRoot = user.rootID ?? (isRoot ? user.id : (rootID ?? user.id))
+        if (isRoot) rootID = resolvedRoot
+        else if (rootID === undefined) rootID = resolvedRoot
+        const info: User = {
+          ...user,
+          isRoot,
+          rootID: resolvedRoot,
+          origin,
+          visible: user.visible ?? deriveVisible(user, origin, parts),
+          includeInContext: user.includeInContext ?? includeInContextFromMetadata(user.metadata),
+        }
+        return parts === msg.parts && info === msg.info ? msg : { info, parts }
+      }
+      const assistant = msg.info as Assistant
+      const resolvedRoot = assistant.rootID ?? rootID ?? assistant.parentID
+      const info: Assistant = { ...assistant, rootID: resolvedRoot }
+      return { info, parts }
+    })
   }
 
   function attachmentName(part: AttachmentPart): string {
@@ -672,6 +831,64 @@ export namespace MessageV2 {
     if (attachmentModelMode(part) !== "provider-file") return false
     if (part.url.startsWith("asset://")) return false
     return part.mime !== "application/x-directory"
+  }
+
+  function shouldExternalizeAttachment(part: AttachmentPart): boolean {
+    if (!part.url.startsWith("data:")) return false
+    if (attachmentModelMode(part) === "provider-file") return false
+    return true
+  }
+
+  async function externalizeAttachment(part: AttachmentPart): Promise<AttachmentPart> {
+    if (!shouldExternalizeAttachment(part)) return part
+    const decoded = Attachment.decodeDataUrl(part.url)
+    const assetID = await Asset.write(decoded.buffer, part.mime, part.filename)
+    const attachmentMetadata =
+      part.metadata?.attachment &&
+      typeof part.metadata.attachment === "object" &&
+      !Array.isArray(part.metadata.attachment)
+        ? part.metadata.attachment
+        : {}
+    return {
+      ...part,
+      url: `asset://${assetID}`,
+      metadata: {
+        ...part.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: decoded.buffer.length,
+        },
+      },
+    }
+  }
+
+  async function externalizePart(part: Part): Promise<{ part: Part; changed: boolean }> {
+    if (part.type === "attachment") {
+      const next = await externalizeAttachment(part)
+      return { part: next, changed: next !== part }
+    }
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.attachments?.length) {
+      return { part, changed: false }
+    }
+    let changed = false
+    const attachments = await Promise.all(
+      part.state.attachments.map(async (attachment) => {
+        const next = await externalizeAttachment(attachment)
+        if (next !== attachment) changed = true
+        return next
+      }),
+    )
+    if (!changed) return { part, changed: false }
+    return {
+      part: {
+        ...part,
+        state: {
+          ...part.state,
+          attachments,
+        },
+      },
+      changed: true,
+    }
   }
 
   function attachmentHash(part: AttachmentPart): string {
@@ -774,7 +991,9 @@ export namespace MessageV2 {
         }
         result.push(userMessage)
         for (const part of msg.parts) {
-          if (part.type === "text" && !part.ignored)
+          // part.origin has no effect on model visibility (spec §4.4):
+          // system-injected text is meant for the model too.
+          if (part.type === "text")
             userMessage.parts.push({
               type: "text",
               text: part.text,
@@ -905,14 +1124,33 @@ export namespace MessageV2 {
       const partIDs = await Storage.scan(StoragePath.messageParts(scopeID, sessionID, messageID))
       const keys = partIDs.map((id) => StoragePath.messagePart(scopeID, sessionID, messageID, id as Identifier.PartID))
       const results = await Storage.readMany<MessageV2.Part>(keys)
-      const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
+      const parts = await Promise.all(
+        results
+          .filter((p): p is MessageV2.Part => p !== undefined)
+          .map(async (part) => {
+            const externalized = await externalizePart(part)
+            if (externalized.changed) {
+              await Storage.write(
+                StoragePath.messagePart(scopeID, sessionID, messageID, externalized.part.id as Identifier.PartID),
+                externalized.part,
+              )
+            }
+            return externalized.part
+          }),
+      )
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
-      for (const part of parts) {
+      return parts.map((part) => {
         if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
-          part.state.output = ""
+          return {
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+            },
+          }
         }
-      }
-      return parts
+        return part
+      })
     },
   )
 
@@ -936,19 +1174,44 @@ export namespace MessageV2 {
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
     const result = [] as MessageV2.WithParts[]
-    const completed = new Set<string>()
+    const skipped = [] as MessageV2.WithParts[]
+    let boundaryUserID: string | undefined
+    let foundBoundary = false
     for await (const msg of stream) {
-      result.push(msg)
+      if (!boundaryUserID) {
+        result.push(msg)
+        if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) boundaryUserID = msg.info.parentID
+        continue
+      }
+
       if (
-        msg.info.role === "user" &&
-        completed.has(msg.info.id) &&
-        msg.parts.some((part) => part.type === "compaction")
+        msg.info.role !== "user" ||
+        msg.info.id !== boundaryUserID ||
+        !msg.parts.some((part) => part.type === "compaction")
+      ) {
+        skipped.push(msg)
+        continue
+      }
+
+      const boundaryID = boundaryUserID
+      result.push(
+        ...skipped
+          .filter((item) => isFulfilledCompactionSummary(item, boundaryID))
+          .map((item) => ({ ...item, info: { ...item.info, includeInContext: false } })),
       )
-        break
-      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
+      result.push(msg)
+      foundBoundary = true
+      break
     }
+    if (boundaryUserID && !foundBoundary) result.push(...skipped)
     result.reverse()
     return result
+  }
+
+  function isFulfilledCompactionSummary(msg: MessageV2.WithParts, parentID: string): boolean {
+    if (msg.info.role !== "assistant") return false
+    const assistant = msg.info as MessageV2.Assistant
+    return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {

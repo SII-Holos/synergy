@@ -61,3 +61,9 @@ Report these items back to the user:
 - Missing user-priority topics such as memory optimization or recovery bugs
 - Publishing the child doc but forgetting to insert the index entry
 - Updating the index with an unstable doc-reference block that later fails to render
+
+## Quality check
+
+- Run `bun run quality:quick` before any release work
+- Verify the release tag is clean with `git tag --verify <tag>`
+- Verify previous comparison point is accurate

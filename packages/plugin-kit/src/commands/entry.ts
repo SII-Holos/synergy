@@ -1,8 +1,8 @@
 import path from "path"
 import type { Argv } from "yargs"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../lib/market-entry"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../lib/market-entry.js"
 
 export const PluginEntryCommand = cmd({
   command: "entry <tarball>",

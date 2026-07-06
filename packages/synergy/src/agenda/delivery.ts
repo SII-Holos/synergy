@@ -1,5 +1,4 @@
-import { SessionManager } from "../session/manager"
-import { Identifier } from "../id/id"
+import { SessionInbox } from "../session/inbox"
 import { Log } from "../util/log"
 import { AgendaTypes } from "./types"
 
@@ -23,9 +22,9 @@ export namespace AgendaDelivery {
       })
       return
     }
-    const type = input.item.wake !== false ? "user" : "assistant"
 
     try {
+      const { SessionManager } = await import("../session/manager")
       const session = await SessionManager.getSession(target)
       if (!session) {
         log.warn("delivery target session not found", {
@@ -35,25 +34,14 @@ export namespace AgendaDelivery {
         return
       }
 
-      await SessionManager.deliver({
-        target: session.id,
-        mail: {
-          type,
-          parts: [
-            {
-              id: Identifier.ascending("part"),
-              sessionID: session.id,
-              messageID: "",
-              type: "text",
-              text,
-            },
-          ],
-          metadata: {
-            mailbox: true,
-            source: "mailbox",
-            sourceSessionID: input.sessionID,
-            sourceName: input.item.title,
-          },
+      await SessionInbox.deliver({
+        sessionID: session.id,
+        mode: "task",
+        message: {
+          role: "user",
+          visible: true,
+          parts: [{ type: "text", text }],
+          origin: { type: "agenda", sessionID: input.sessionID },
         },
       })
     } catch (err) {

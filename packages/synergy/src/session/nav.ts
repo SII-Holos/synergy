@@ -19,6 +19,9 @@ export const SessionNavEntry = z
     archived: z.boolean(),
     parentID: z.string().optional(),
     endpointKind: z.literal("channel").optional(),
+    chatId: z.string().optional(),
+    chatName: z.string().optional(),
+    chatType: z.enum(["dm", "group"]).optional(),
     completionNotice: z.object({
       unread: z.boolean(),
     }),
@@ -87,6 +90,9 @@ export interface SessionNavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
   }
@@ -168,6 +174,7 @@ export namespace SessionNav {
             category,
           })
         }
+        const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
         entries.push({
           id: session.id,
           scopeID,
@@ -178,7 +185,10 @@ export namespace SessionNav {
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           parentID: session.parentID,
-          endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+          endpointKind: channelEndpoint ? "channel" : undefined,
+          chatId: channelEndpoint?.chatId,
+          chatName: channelEndpoint?.chatName,
+          chatType: channelEndpoint?.chatType,
           completionNotice: {
             unread: session.completionNotice.unread,
           },

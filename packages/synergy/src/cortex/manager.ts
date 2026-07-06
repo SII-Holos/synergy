@@ -9,6 +9,7 @@ import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
+import { SessionInbox } from "../session/inbox"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { CortexTypes } from "./types"
@@ -54,7 +55,7 @@ export namespace Cortex {
       if (message.info.role !== "assistant") continue
 
       for (const part of message.parts) {
-        if (part.type !== "text" || part.synthetic || part.ignored) continue
+        if (part.type !== "text" || MessageV2.isSystemPart(part)) continue
         const text = part.text.trim()
         if (text) chunks.push(text)
       }
@@ -301,7 +302,7 @@ export namespace Cortex {
           return
         }
 
-        if (part.type === "text" && !part.synthetic && !part.ignored) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part)) {
           const text = part.text.trim()
           current.progress = {
             ...progress,
@@ -504,26 +505,14 @@ export namespace Cortex {
       .filter(Boolean)
       .join("\n")
 
-    void SessionManager.deliver({
-      target: task.parentSessionID,
-      mail: {
-        type: "user",
-        noReply: false,
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            messageID: "",
-            sessionID: task.parentSessionID,
-            type: "text",
-            text: notification,
-            synthetic: true,
-          },
-        ],
-        metadata: {
-          channelPush: true,
-          source: "cortex",
-          sourceSessionID: task.sessionID,
-        },
+    void SessionInbox.deliver({
+      sessionID: task.parentSessionID,
+      mode: "steer",
+      message: {
+        role: "user",
+        visible: true,
+        parts: [{ type: "text", text: notification }],
+        origin: { type: "cortex", sessionID: task.sessionID },
       },
     }).catch((error) => {
       log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })
@@ -719,7 +708,7 @@ export namespace Cortex {
     for (const message of recent) {
       const parts: string[] = []
       for (const part of message.parts) {
-        if (part.type === "text" && !part.synthetic && !part.ignored) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part)) {
           const text = part.text.trim().replace(/\s+/g, " ")
           if (text) parts.push(`text: ${text.length > 260 ? `${text.slice(0, 257)}...` : text}`)
         }

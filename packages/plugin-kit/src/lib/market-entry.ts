@@ -19,10 +19,10 @@ import {
   registryPermissionSummary,
 } from "@ericsanchezok/synergy-plugin/permissions"
 import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
-import { computeManifestHash, computePermissionsHash } from "./hash"
-import { readSignatureFile } from "./signature"
-import { sha256File } from "./crypto"
-import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
+import { computeManifestHash, computePermissionsHash } from "./hash.js"
+import { readSignatureFile } from "./signature.js"
+import { sha256File } from "./crypto.js"
+import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets.js"
 
 export type RegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
 export type MarketplaceReleaseBackend = "github" | "manual"

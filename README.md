@@ -87,7 +87,7 @@ Web clients update frontend assets by refreshing the browser page when the loade
 
 ### Session History, File Restore, And Forking
 
-Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, engram recall, and session forks; it does not restore, delete, or otherwise modify local files.
+Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, library recall, and session forks; it does not restore, delete, or otherwise modify local files.
 
 File restoration is an explicit follow-up action. When a rolled-back turn contains patch data, Synergy can restore selected files through the file restore endpoint or Web command. This is the only user-facing flow that applies snapshot patch data back to the workspace.
 
@@ -320,7 +320,7 @@ Synergy also supports project-scoped extension directories under:
 .synergy/
 ```
 
-That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
+That scoped directory is where project-specific agents, commands, plugins, skills, generated outputs, and related assets may live. Project `.synergy/**` and non-secret global `~/.synergy/**` areas are normal Synergy-managed configuration/output space; auth roots such as `~/.synergy/data/auth/**` remain protected.
 
 ### Provider authentication
 
@@ -427,7 +427,7 @@ What they do:
 
 After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
 
-Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
+Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the active profile explicitly allows the operation; `full_access` is the author-at-own-risk profile that allows all permission-system capabilities without prompts.
 
 Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
@@ -449,17 +449,17 @@ Explicit configuration is always honored. For example, a top-level `controlProfi
 
 Blueprint runs started from the Notes side panel use the current session's control profile when running in the current session. New-session and worktree Blueprint runs create an execution session with at least `autonomous`; a top-level `full_access` profile remains `full_access`.
 
-`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. Autonomous sessions deny failed Smart allow checks.
+`smartAllow` enables a hidden internal agent that can auto-allow high-confidence safe asks in `guarded` and eligible false-positive denies in `autonomous`. It receives only metadata or redacted file evidence for secret-like paths, never raw secret values. It does not run for `full_access`, and failed autonomous SmartAllow checks deny instead of prompting.
 
 Risk levels follow the operation's effect. Ordinary reads, including non-protected external reads, are low risk. Revertible local edits, non-destructive shell commands, and network calls are medium risk. Protected paths, external writes, secrets, destructive shell commands, identity-affecting actions, and outbound communication are high risk.
 
 Built-in profiles:
 
-| Config value  | UI label    | Behavior                                                                                                                                                                                           |
-| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Guarded     | Protected mode for manual sessions. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
-| `autonomous`  | Autonomous  | Automation-oriented profile. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
-| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing. Explicit `full_access` remains valid for channel and automation sessions.                                               |
+| Config value  | UI label    | Behavior                                                                                                                                                                                                                                                       |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Guarded     | Manual-supervision profile. Auto-allows ordinary reads, workspace-local edits, ordinary network lookups, and non-secret `.synergy/**` operations; asks before operations that need human judgment when SmartAllow cannot safely auto-allow them.               |
+| `autonomous`  | Autonomous  | Unattended automation profile. Never prompts the user: ordinary development work is allowed, eligible false-positive denies may be auto-allowed by SmartAllow at high confidence, and anything that cannot be allowed is denied with a policy diagnostic.      |
+| `full_access` | Full Access | Author-at-own-risk profile. The permission system silently allows every capability, including protected paths, secrets, destructive or hardline shell commands, identity/channel actions, and external writes; non-permission failures still surface normally. |
 
 ### Sandbox
 
@@ -624,7 +624,7 @@ The installer places the binary under `~/.synergy-link/bin/` and optionally adds
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) ≥ 1.3 (the repo pins `bun@1.3.11` via `packageManager`)
+- [Bun](https://bun.sh) ≥ 1.3 (the repo pins `bun@1.3.14` via `packageManager`)
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
@@ -685,12 +685,24 @@ bun run desktop:dist    # local installer/package for the current platform
 
 Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable with minimum plausibility checks: file size and executable permission.
 
-### Quality checks
+### Quality commands
 
 ```bash
-bun run typecheck       # type-check all packages via turbo
-./script/format.ts      # format with prettier
+bun run format:check       # check formatting with prettier
+./script/format.ts          # auto-format all files
+bun run lint                # lint with oxlint (errors + warnings)
+bun run lint:fix            # lint with auto-fix
+bun run typecheck           # type-check all packages via turbo
+bun run deadcode            # check dead code and dependency hygiene (knip)
+bun run monorepo:check      # validate monorepo dependency consistency (sherif)
+bun run workflow:check      # validate CI workflow files (actionlint)
+bun run secrets:check       # scan for secrets (gitleaks)
+bun run package:check       # validate publishable packages (publint + attw)
+bun run quality:quick       # format:check + lint + typecheck + monorepo:check + package:check
+bun run quality             # quality:quick + all tests (turbo test)
 ```
+
+`bun run quality:quick` is the default local PR preflight. The pre-push hook runs the fast subset: Bun version, format, lint, typecheck, and monorepo checks. CI runs the full matrix: quality, typecheck, test, package-validation, workflow-validation, secret-scan, desktop, and smoke jobs. See [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model, contributor scenarios, and CI/tool responsibility table.
 
 ### Tests
 

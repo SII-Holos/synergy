@@ -60,14 +60,9 @@ export function traversalLiterals(roots: string[]): string[] {
 //   - CBSE (Cross-Agent Sandbox Bypass Exploit): agent config cross-contamination
 // ------------------------------------------------------------------
 export const CREDENTIAL_PATHS = (homedir: string): string[] => [
-  // ── Synergy internal ───────────────────────────────────────────
-  // Protects against: CBSE config/prompt leak, credential exfiltration
-  joinPathLike(homedir, ".synergy", "config"),
+  // ── Synergy internal auth secrets ───────────────────────────────
   joinPathLike(homedir, ".synergy", "data", "auth"),
-  joinPathLike(homedir, ".synergy", "data", "library"),
-  joinPathLike(homedir, ".synergy", "data", "notes"),
   // ── Network & cloud credentials ─────────────────────────────────
-  // Protects against: SSH key theft, cloud credential exfiltration, GPG key compromise
   joinPathLike(homedir, ".netrc"),
   joinPathLike(homedir, ".ssh"),
   joinPathLike(homedir, ".gnupg"),
@@ -76,21 +71,18 @@ export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   joinPathLike(homedir, ".docker", "config.json"),
   joinPathLike(homedir, ".npmrc"),
   // ── Shell configs (prevent command injection) ────────────────────
-  // Protects against: shell injection via sandboxed process rewriting shell rc files
   joinPathLike(homedir, ".bashrc"),
   joinPathLike(homedir, ".zshrc"),
   joinPathLike(homedir, ".profile"),
   joinPathLike(homedir, ".bash_profile"),
   joinPathLike(homedir, ".zprofile"),
   // ── Other agent configs ─────────────────────────────────────────
-  // Protects against: CBSE — cross-agent sandbox bypass via reading/writing
-  // another agent's configuration, credentials, or prompt data
   joinPathLike(homedir, ".cursor"),
   joinPathLike(homedir, ".claude"),
   joinPathLike(homedir, ".codex"),
   joinPathLike(homedir, ".gemini"),
 ]
-export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex", ".synergy"]
+export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex"]
 
 /**
  * Check if a target path would be denied write access because it falls inside
@@ -122,7 +114,6 @@ export function isMetadataWriteDenied(
 
 export const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
   joinPathLike(workspace, ".git"),
-  joinPathLike(workspace, ".synergy"),
   ...CREDENTIAL_PATHS(homedir),
 ]
 /**

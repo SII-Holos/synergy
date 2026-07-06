@@ -17,10 +17,6 @@ export interface BashResult {
 
 export type BashContext = Tool.Context<BashMetadata>
 
-export interface BashBackend {
-  execute(params: BashParams, ctx: BashContext): Promise<BashResult>
-}
-
 export const MAX_METADATA_LENGTH = 30_000
 
 export function truncateMetadataOutput(output: string) {

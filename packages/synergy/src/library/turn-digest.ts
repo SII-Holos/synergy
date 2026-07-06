@@ -138,7 +138,7 @@ export namespace TurnDigest {
     const lines: string[] = []
     for (const msg of turn.assistants) {
       for (const part of msg.parts) {
-        if (part.type === "text" && !part.synthetic && part.text.trim()) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part) && part.text.trim()) {
           lines.push(part.text.trim())
         } else if (part.type === "tool" && part.state.status === "completed") {
           lines.push(`[Tool: ${part.tool}] ${part.state.title}`)
@@ -235,7 +235,7 @@ export namespace TurnDigest {
 
   function extractUserInput(msg: MessageV2.WithParts): string {
     return msg.parts
-      .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+      .filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
       .map((p) => p.text)
       .join("\n")
   }
@@ -259,7 +259,7 @@ export namespace TurnDigest {
   function partToSegment(part: MessageV2.Part, toolOutputBudget: number, modelID?: string): Segment | undefined {
     switch (part.type) {
       case "text":
-        if (part.synthetic) return undefined
+        if (MessageV2.isSystemPart(part)) return undefined
         if (!part.text.trim()) return undefined
         return { type: "text", text: part.text }
 

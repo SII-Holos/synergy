@@ -8,6 +8,15 @@
 
 - Always prefer `createStore` over multiple `createSignal` calls
 
+## Data sync
+
+Frontend data loading and event handling follow `docs/architecture/frontend-data-sync.md`. Read it before changing `src/context/{global-sync,sync,local,layout}.tsx` or `pages/session.tsx`.
+
+- Apply store updates with `reconcile` (or targeted `setStore(path, index, reconcile(value))`), never a whole-object replace — a whole-object replace gives the row a new identity and re-runs the entire reactive chain (the #319 flash).
+- Read entities by key (`sync.session.get(id)`), not by scanning an array with `find`/`Binary.search`, so a memo only subscribes to the entity it reads.
+- Composer model/agent come from `composer-intent.ts` layers (draft → sessionDefault → fallback); never write a derived or historical value back into the user's draft (the #318 overwrite).
+- State events carry `seq`/`epoch`; the per-scope watermark and reconnect replay live in `global-sync.tsx`. Don't add per-event REST refetches — the event stream is authoritative between snapshots.
+
 ## Settings
 
 - Use `packages/app/src/components/settings/catalog.ts` as the source of truth for built-in settings sections, groups, metadata, domains, search keywords, and save strategy.
@@ -25,3 +34,14 @@
 ## Tool Calling
 
 - ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
+
+## Quality Verification
+
+Before committing frontend changes:
+
+- Never restart the app or server process (see Debugging section above)
+- Verify the app builds: `bun run --cwd packages/app build`
+- Check for type errors: `bun run typecheck` (from repo root)
+- Run the full quality preflight from repo root: `bun run quality:quick`
+- Do not bypass pre-push hooks
+- Preserve "do not restart app/server" rule in all debugging and verification workflows

@@ -12,6 +12,23 @@
 - **Coverage**: `bun run test:coverage` (full suite with coverage, matching CI)
 - **Profile tests**: `bun run test:profile` (writes JUnit timing to `coverage/test-profile-junit.xml`)
 
+### Quality verification
+
+Before committing changes to core runtime code, run:
+
+```bash
+bun run typecheck         # type-check all packages via turbo
+bun run lint              # lint with oxlint (errors + warnings)
+cd packages/synergy
+bun test                  # full test suite without coverage
+bun run test:changed      # tests affected by changes against origin/dev
+./script/format.ts        # auto-format with prettier (from repo root)
+```
+
+The default local PR preflight (`bun run quality:quick` from repo root) verifies formatting, lint, typecheck, monorepo deps, and package publishing validation. The pre-push hook runs the faster subset documented in the root quality guide. See [docs/open-source-quality.md](../../docs/open-source-quality.md) for the complete quality model.
+
+Do not bypass pre-push hooks. If a hook check fails, fix the root cause rather than skipping it.
+
 ## Code Style
 
 - **Runtime**: Bun with TypeScript ESM modules
@@ -23,7 +40,7 @@
 
 ## Architecture
 
-- **Control profiles**: `src/control-profile/` owns user-facing access profiles; `src/enforcement/` owns capability classification and gate decisions; `src/sandbox/` owns OS sandbox backends. Keep these layers separate and avoid reintroducing tool-local boundary checks.
+- **Control profiles**: `src/control-profile/` owns user-facing access profile semantics; `src/enforcement/` owns capability classification and gate decisions; `src/permission/smart-allow.ts` owns high-confidence false-positive adjudication without raw secret disclosure; `src/sandbox/` owns OS enforcement only. Keep these layers separate and avoid reintroducing tool-local boundary checks. `full_access` must remain silent allow-all inside the permission system, while `autonomous` must never ask and must auto-deny anything it cannot safely allow.
 
 - **Tools**: Implement `Tool.Info` interface with `execute()` method
 - **Context**: Pass `sessionID` in tool context, use `App.provide()` for DI
@@ -31,6 +48,8 @@
 - **Logging**: Use `Log.create({ service: "name" })` pattern
 - **Storage**: Use `Storage` namespace for persistence
 - **Migrations**: Put versioned schema/data upgrades in the dedicated migration modules and runner. Fresh-install table creation can live with database initialization, but upgrades, backfills, and data rewrites must not be scattered through runtime or request code.
+- **Message semantics**: A message is described by orthogonal fields — `rootID`/`isRoot`, `visible`, `includeInContext`, `origin` — derived once by `MessageV2.deriveSemantics`; use `MessageV2.isSystemPart` for the system-part test. Do not reintroduce the old overloaded booleans (`synthetic`, `noReply`, `guided`, `ignored`, `promptVisible`, `metadata.source`). See `docs/architecture/session-message-core.md`.
+- **Event sequencing**: `Bus.publish` stamps state events with a scope-monotonic `seq` + per-runtime `epoch` and journals them for `/event/replay`; mark high-frequency coalescible events (part deltas) `streaming` in `BusEvent.define` so they stay unsequenced. Scoped GET responses advertise the snapshot watermark via `x-synergy-seq`/`x-synergy-epoch`. See `docs/architecture/frontend-data-sync.md`.
 - **API Client**: When modifying server endpoints in `packages/synergy/src/server/server.ts`, run `./script/generate.ts` to regenerate the SDK.
 - **Provider framework**: Provider existence comes from the profile/catalog resolver, not directly from `models.dev`. Keep remote catalogs data-only and signature-verified; complex auth, transport, and usage behavior belongs in built-in strategies or explicitly installed plugins.
 - **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the provider auth store at `~/.synergy/data/auth/provider-auth.json`; imported auth files are handled by migrations only.

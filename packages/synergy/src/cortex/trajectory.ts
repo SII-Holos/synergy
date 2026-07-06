@@ -1,4 +1,4 @@
-import type { MessageV2 } from "@/session/message-v2"
+import { MessageV2 } from "@/session/message-v2"
 import { ToolTaxonomy, type ToolKind } from "@/tool/taxonomy"
 
 export namespace Trajectory {
@@ -59,7 +59,7 @@ export namespace Trajectory {
       const texts: string[] = []
 
       for (const part of msg.parts) {
-        if (part.type === "text" && !part.synthetic && !part.ignored) {
+        if (part.type === "text" && !MessageV2.isSystemPart(part)) {
           textChars += part.text.length
           texts.push(part.text)
         } else if (part.type === "tool") {

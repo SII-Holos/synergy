@@ -1,8 +1,8 @@
 import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
 
 function findTestFiles(pluginDir: string): string[] {
   const testDir = path.join(pluginDir, "test")

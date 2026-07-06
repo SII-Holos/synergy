@@ -76,6 +76,7 @@ export namespace SynergyLinkIdentity {
     }
 
     const lowered = trimmed.toLowerCase()
+    // Backward compat: treat old env_ prefix as a placeholder until all persisted state migrates
     if (PLACEHOLDER_ALIASES.has(lowered) || lowered.startsWith("env_")) {
       return { kind: "invalid", input: trimmed, reason: "placeholder_alias" }
     }

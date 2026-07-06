@@ -19,11 +19,10 @@ Before executing the command, please follow these steps:
      - python /path/with spaces/script.py (incorrect - will fail)
    - After ensuring proper quoting, execute the command.
    - Capture the output of the command.
-
 3. User-visible artifacts:
    - If the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation.
    - Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files.
-   - If you need to inspect an image yourself before showing it, use `look_at`; if the user should see the same image, set `show_to_user: true` or follow with `attach`.
+   - If you need to inspect an image yourself before showing it, use `view_image` when it is available for direct current-model visual context; use `look_at` when `view_image` is unavailable. If the user should see the same image, use `look_at` with `show_to_user: true` or follow with `attach`.
 
 Usage notes:
   - The `command` parameter is required.
@@ -34,15 +33,13 @@ Usage notes:
   - When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote bash does not implicitly create sessions.
   - Remote linkIDs always start with `link_` (e.g. `"link_abc123"`). Any other value will be rejected.
 
-  - Use `yieldSeconds` for commands that may run longer than expected:
-    - Set `yieldSeconds` to auto-background if the command exceeds that duration. Default behavior: the tool waits for completion with no hard time limit.
-    - If the command completes before `yieldSeconds`, it returns normally.
-    - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
-  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this over `yieldSeconds` when you know the command will take a while.
-  - After launching a background or auto-backgrounded process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
+  - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
+  - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
+  - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
+  - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
-  - Do NOT use `background: true` or `yieldSeconds` for these.
+  - Do NOT rely on bash auto-backgrounding for these.
   - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
   - Example with tmux:
     ```bash

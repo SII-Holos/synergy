@@ -73,10 +73,14 @@ export namespace ToolResolver {
     id: string
     exposure?: ToolExposure.Info
     display?: ToolDisplay
+    source?: Tool.Source
+    diagnostic?: ToolDiagnosticInfo
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
   }
+
+  type RegistryTool = Awaited<ReturnType<typeof ToolRegistry.tools>>[number]
 
   export interface Availability {
     visible: Definition[]
@@ -135,7 +139,7 @@ export namespace ToolResolver {
   function externalPathFromArgs(toolName: string, args: Record<string, any>): string {
     if (toolName === "bash") return (args.workdir ?? args.command) as string
     //     if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
-    if (toolName === "look_at" || toolName === "attach") {
+    if (toolName === "look_at" || toolName === "view_image" || toolName === "attach") {
       const raw = args.file_path ?? args.filePath ?? ""
       return Array.isArray(raw) ? (raw[0] ?? "") : String(raw)
     }
@@ -538,6 +542,15 @@ export namespace ToolResolver {
     // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
 
+    if (profile.profileId === "full_access" && decision.action !== "allow") {
+      await setApprovalMetadata(
+        ctx,
+        ApprovalPolicy.metadata(approval, { ...decision, action: "allow" }, "auto_allowed"),
+      )
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
@@ -591,6 +604,7 @@ export namespace ToolResolver {
     if (smartAllowEligible) {
       const cfg = await Config.current()
       if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
+        const redactedEvidence = SmartAllow.buildRedactedEvidence(args, envelope.capabilities)
         const classification = await SmartAllow.classify({
           sessionID: ctx.sessionID,
           tool: toolName,
@@ -598,8 +612,9 @@ export namespace ToolResolver {
           capabilities: envelope.capabilities.map((c) => c.class),
           workspace: ScopeContext.current.directory,
           policyAction: decision.action,
+          redactedEvidence,
         })
-        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID)) {
+        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID, decision.action)) {
           await setApprovalMetadata(ctx, {
             ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
             source: "smart_allow",
@@ -620,6 +635,13 @@ export namespace ToolResolver {
       // should be visible both in the error message AND the frontend audit tooltip.
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
+    }
+
+    if (profile.profileId === "autonomous" && decision.action === "ask") {
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, { ...decision, action: "deny" }, "auto_denied")
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
@@ -752,6 +774,7 @@ export namespace ToolResolver {
         callID: options.toolCallId,
         extra: {
           model: input.model,
+          userMessageID: input.processor.message.parentID,
           toolTiming: {
             requestedAt: match?.state.status === "running" ? match.state.time.start : Date.now(),
             approvalWaitMs: 0,
@@ -779,6 +802,24 @@ export namespace ToolResolver {
               profile.summary?.profileId ?? "unknown",
             )
           }
+          if (profile.summary?.profileId === "full_access") {
+            await setApprovalMetadata(
+              ctx,
+              ApprovalPolicy.metadata(profile.approval, { ...decision, action: "allow" }, "auto_allowed"),
+            )
+            return
+          }
+
+          if (profile.summary?.profileId === "autonomous" && decision.action === "ask") {
+            const approval = ApprovalPolicy.metadata(profile.approval, { ...decision, action: "deny" }, "auto_denied")
+            await setApprovalMetadata(ctx, approval)
+            throw new EnforcementError.PolicyDenied(
+              decision.reason,
+              decision.capabilities,
+              profile.summary?.profileId ?? "unknown",
+            )
+          }
+
           if (decision.action === "allow") {
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
             return
@@ -856,11 +897,17 @@ export namespace ToolResolver {
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
 
+    const supportsImageInput = input.model.capabilities.input.image
+
     for (const def of defs) {
-      const isEphemeral = ephemeralToolIds.has(def.id)
-      if (!isEphemeral && def.id === "look_at" && input.model.capabilities.input.image) {
+      if (def.diagnostic) {
+        diagnostics.set(def.id, def.diagnostic)
         continue
       }
+
+      const isEphemeral = ephemeralToolIds.has(def.id)
+      if (!isEphemeral && def.id === "look_at" && supportsImageInput) continue
+      if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
 
       const modeDiagnostic = isEphemeral
         ? undefined
@@ -953,6 +1000,22 @@ export namespace ToolResolver {
       description: diagnostic.message,
       inputSchema: jsonSchema(schema),
       async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        log.info("tool.execute.callback.start", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+        })
+        const slot = input.processor.beginExecution(options.toolCallId)
+        log.info("tool.execute.callback.slot", {
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          kind: "diagnostic",
+          slotStatus: slot.status,
+        })
         const error = new ToolDiagnosticError({
           ...diagnostic,
           metadata: {
@@ -960,15 +1023,7 @@ export namespace ToolResolver {
             attemptedInput: args as Record<string, unknown>,
           },
         })
-        input.processor.trackExecution(
-          options.toolCallId,
-          Promise.resolve({
-            status: "error",
-            input: args,
-            error: error.message,
-            metadata: ToolDiagnostic.metadata(error.diagnostic),
-          }),
-        )
+        slot.fail(args, error.message, ToolDiagnostic.metadata(error.diagnostic))
         throw error
       },
       toModelOutput(result: { output: string }) {
@@ -978,6 +1033,39 @@ export namespace ToolResolver {
         }
       },
     } as any) as AITool
+  }
+
+  function toolSchemaDiagnostic(item: RegistryTool, error: unknown): ToolDiagnosticInfo {
+    const source = item.source
+    const message =
+      source?.type === "plugin"
+        ? `Plugin tool ${item.id} uses an incompatible input schema. Plugin tools must define args with zod >=4.`
+        : `Tool ${item.id} has an invalid input schema: ${errorMessage(error)}`
+    const metadata: Record<string, unknown> = {
+      source,
+      originalError: errorMessage(error),
+    }
+    if (source?.type === "plugin") {
+      metadata.pluginId = source.pluginId
+      metadata.pluginToolId = source.toolId
+      metadata.runtimeMode = source.runtimeMode
+    }
+    return {
+      code: "tool_unavailable",
+      toolName: item.id,
+      message,
+      metadata,
+    }
+  }
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message
+    if (typeof error === "string") return error
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return String(error)
+    }
   }
 
   async function collectDefinitions(input: Omit<Input, "processor">): Promise<Definition[]> {
@@ -1000,22 +1088,28 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema as any),
             async execute(args, options) {
-              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                resolveExecution = r
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
               })
-              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
-
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "ephemeral",
+                slotStatus: slot.status,
+              })
               try {
                 const result = await item.execute(args as Record<string, unknown>)
-                resolveExecution({
-                  status: "completed",
-                  input: args,
-                  result: {
-                    title: result.title,
-                    output: result.output,
-                    metadata: result.metadata ?? {},
-                  },
+                slot.complete(args, {
+                  title: result.title,
+                  output: result.output,
+                  metadata: result.metadata ?? {},
                 })
                 return {
                   title: result.title,
@@ -1024,11 +1118,7 @@ export namespace ToolResolver {
                 }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                resolveExecution({
-                  status: "error",
-                  input: args,
-                  error: message,
-                })
+                slot.fail(args, message)
                 throw error
               }
             },
@@ -1044,13 +1134,40 @@ export namespace ToolResolver {
     }
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
-      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
-        tool: item.id,
-      }) as JSONSchema7
+      let schema: JSONSchema7
+      try {
+        schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
+          tool: item.id,
+        }) as JSONSchema7
+      } catch (error) {
+        const diagnostic = toolSchemaDiagnostic(item, error)
+        log.warn("tool skipped due to schema failure", {
+          tool: item.id,
+          source: item.source,
+          sessionID: input.sessionID,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostic: diagnostic.message,
+        })
+        result.push({
+          id: item.id,
+          exposure: item.exposure,
+          display: item.display,
+          source: item.source,
+          diagnostic,
+          description: diagnostic.message,
+          inputSchema: {
+            type: "object",
+            additionalProperties: true,
+          },
+        })
+        continue
+      }
+
       result.push({
         id: item.id,
         exposure: item.exposure,
         display: item.display,
+        source: item.source,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
@@ -1060,13 +1177,24 @@ export namespace ToolResolver {
             description: item.description,
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
+              log.info("tool.execute.callback.start", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+              })
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
-              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                resolveExecution = r
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              log.info("tool.execute.callback.slot", {
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+                slotStatus: slot.status,
               })
-              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
 
               try {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
@@ -1088,6 +1216,7 @@ export namespace ToolResolver {
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
                   readRoots: [synergyRoot],
+                  synergyRoot,
                 })
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                   profileId,
@@ -1205,17 +1334,21 @@ export namespace ToolResolver {
                   result,
                 )
                 await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
-                resolveExecution({
-                  status: "completed",
-                  input: args,
-                  result: {
-                    output: result.output,
-                    title: result.title ?? "",
-                    metadata: approvalFromContext(ctx)
-                      ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
-                      : (result.metadata ?? {}),
-                    attachments: result.attachments,
-                  },
+                slot.complete(args, {
+                  output: result.output,
+                  title: result.title ?? "",
+                  metadata: approvalFromContext(ctx)
+                    ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
+                    : (result.metadata ?? {}),
+                  attachments: result.attachments,
+                })
+                log.info("tool.execute.callback.completed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
                 })
                 await toolTrace.end({
                   outputChars: result.output.length,
@@ -1236,11 +1369,14 @@ export namespace ToolResolver {
                   callID: options.toolCallId,
                   error,
                 })
-                resolveExecution({
-                  status: "error",
-                  input: args,
-                  error: formatErrorForModel(error),
-                  metadata: metadataForError(error, approvalFromContext(ctx)),
+                slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                log.warn("tool.execute.callback.failed", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: options.toolCallId,
+                  kind: "builtin",
+                  slotStatus: slot.status,
                 })
                 await toolTrace?.error(error)
                 throw error
@@ -1286,13 +1422,24 @@ export namespace ToolResolver {
             return {
               ...item,
               execute: async (args, opts) => {
+                log.info("tool.execute.callback.start", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                })
                 const ctx = context(args, opts)
                 let toolTrace: ToolTrace | undefined
-                let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-                const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-                  resolveExecution = r
+                const slot = runtimeInput.processor.beginExecution(opts.toolCallId)
+                log.info("tool.execute.callback.slot", {
+                  tool: key,
+                  sessionID: runtimeInput.sessionID,
+                  messageID: runtimeInput.processor.message.id,
+                  callID: opts.toolCallId,
+                  kind: "mcp",
+                  slotStatus: slot.status,
                 })
-                runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
 
                 try {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
@@ -1313,6 +1460,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    synergyRoot: Global.Path.root,
                   })
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                     profileId,
@@ -1413,17 +1561,21 @@ export namespace ToolResolver {
                   }
                   Tool.validateAttachmentResult(key, output)
 
-                  resolveExecution({
-                    status: "completed",
-                    input: args,
-                    result: {
-                      output: output.output,
-                      title: output.title,
-                      metadata: approvalFromContext(ctx)
-                        ? { approval: approvalFromContext(ctx), ...output.metadata }
-                        : output.metadata,
-                      attachments: output.attachments,
-                    },
+                  slot.complete(args, {
+                    output: output.output,
+                    title: output.title,
+                    metadata: approvalFromContext(ctx)
+                      ? { approval: approvalFromContext(ctx), ...output.metadata }
+                      : output.metadata,
+                    attachments: output.attachments,
+                  })
+                  log.info("tool.execute.callback.completed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
                   })
 
                   await toolTrace.end({
@@ -1446,11 +1598,14 @@ export namespace ToolResolver {
                     callID: opts.toolCallId,
                     error,
                   })
-                  resolveExecution({
-                    status: "error",
-                    input: args,
-                    error: formatErrorForModel(error),
-                    metadata: metadataForError(error, approvalFromContext(ctx)),
+                  slot.fail(args, formatErrorForModel(error), metadataForError(error, approvalFromContext(ctx)))
+                  log.warn("tool.execute.callback.failed", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: opts.toolCallId,
+                    kind: "mcp",
+                    slotStatus: slot.status,
                   })
                   await toolTrace?.error(error)
                   throw error
