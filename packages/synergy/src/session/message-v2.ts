@@ -15,6 +15,7 @@ import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
+import { Asset } from "@/asset/asset"
 import { Log } from "@/util/log"
 import { SessionBounds } from "./bounds"
 
@@ -832,6 +833,64 @@ export namespace MessageV2 {
     return part.mime !== "application/x-directory"
   }
 
+  function shouldExternalizeAttachment(part: AttachmentPart): boolean {
+    if (!part.url.startsWith("data:")) return false
+    if (attachmentModelMode(part) === "provider-file") return false
+    return true
+  }
+
+  async function externalizeAttachment(part: AttachmentPart): Promise<AttachmentPart> {
+    if (!shouldExternalizeAttachment(part)) return part
+    const decoded = Attachment.decodeDataUrl(part.url)
+    const assetID = await Asset.write(decoded.buffer, part.mime, part.filename)
+    const attachmentMetadata =
+      part.metadata?.attachment &&
+      typeof part.metadata.attachment === "object" &&
+      !Array.isArray(part.metadata.attachment)
+        ? part.metadata.attachment
+        : {}
+    return {
+      ...part,
+      url: `asset://${assetID}`,
+      metadata: {
+        ...part.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: decoded.buffer.length,
+        },
+      },
+    }
+  }
+
+  async function externalizePart(part: Part): Promise<{ part: Part; changed: boolean }> {
+    if (part.type === "attachment") {
+      const next = await externalizeAttachment(part)
+      return { part: next, changed: next !== part }
+    }
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.attachments?.length) {
+      return { part, changed: false }
+    }
+    let changed = false
+    const attachments = await Promise.all(
+      part.state.attachments.map(async (attachment) => {
+        const next = await externalizeAttachment(attachment)
+        if (next !== attachment) changed = true
+        return next
+      }),
+    )
+    if (!changed) return { part, changed: false }
+    return {
+      part: {
+        ...part,
+        state: {
+          ...part.state,
+          attachments,
+        },
+      },
+      changed: true,
+    }
+  }
+
   function attachmentHash(part: AttachmentPart): string {
     return new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
   }
@@ -1065,14 +1124,33 @@ export namespace MessageV2 {
       const partIDs = await Storage.scan(StoragePath.messageParts(scopeID, sessionID, messageID))
       const keys = partIDs.map((id) => StoragePath.messagePart(scopeID, sessionID, messageID, id as Identifier.PartID))
       const results = await Storage.readMany<MessageV2.Part>(keys)
-      const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
+      const parts = await Promise.all(
+        results
+          .filter((p): p is MessageV2.Part => p !== undefined)
+          .map(async (part) => {
+            const externalized = await externalizePart(part)
+            if (externalized.changed) {
+              await Storage.write(
+                StoragePath.messagePart(scopeID, sessionID, messageID, externalized.part.id as Identifier.PartID),
+                externalized.part,
+              )
+            }
+            return externalized.part
+          }),
+      )
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
-      for (const part of parts) {
+      return parts.map((part) => {
         if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
-          part.state.output = ""
+          return {
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+            },
+          }
         }
-      }
-      return parts
+        return part
+      })
     },
   )
 

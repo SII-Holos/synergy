@@ -6,6 +6,7 @@ import { Identifier } from "@/id/id"
 import { Global } from "@/global"
 import type { MessageV2 } from "@/session/message-v2"
 import { Document } from "@/util/document"
+import { Asset } from "@/asset/asset"
 
 const LOCAL_MEDIA_MIME_PREFIXES = ["image/", "audio/", "video/"]
 
@@ -171,19 +172,37 @@ export namespace Attachment {
   export async function toPart(input: PartInput): Promise<MessageV2.AttachmentPart> {
     const file = Bun.file(input.filepath)
     const fallbackPolicy = policy({ filepath: input.filepath, filename: input.filename, mime: input.mime })
+    const bytes = await file.bytes()
+    const model = input.model ?? fallbackPolicy.model
+    const attachmentMetadata =
+      input.metadata?.attachment &&
+      typeof input.metadata.attachment === "object" &&
+      !Array.isArray(input.metadata.attachment)
+        ? input.metadata.attachment
+        : {}
+    const url =
+      model.mode === "provider-file"
+        ? dataUrl(input.mime, bytes)
+        : `asset://${await Asset.write(Buffer.from(bytes), input.mime, input.filename)}`
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
       messageID: input.messageID,
       type: "attachment",
-      url: dataUrl(input.mime, await file.bytes()),
+      url,
       mime: input.mime,
       filename: input.filename,
       localPath: input.localPath,
       source: input.source,
       presentation: input.presentation ?? fallbackPolicy.presentation,
-      model: input.model ?? fallbackPolicy.model,
-      metadata: input.metadata,
+      model,
+      metadata: {
+        ...input.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: bytes.byteLength,
+        },
+      },
     }
   }
 
