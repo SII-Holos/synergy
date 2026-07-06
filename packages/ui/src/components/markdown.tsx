@@ -2,6 +2,8 @@ import { useMarked } from "../context/marked"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
+import { sanitizeHtml } from "./markdown-sanitize"
+import * as smd from "streaming-markdown"
 
 type Entry = {
   hash: string
@@ -163,6 +165,14 @@ function enhanceMarkdown(root: HTMLDivElement) {
 export function Markdown(
   props: ComponentProps<"div"> & {
     text: string
+    /**
+     * When true, render incrementally with a streaming Markdown parser that
+     * appends DOM nodes per chunk (#350 D5), instead of re-parsing the full text
+     * through marked + shiki + katex on every delta (O(N²) main-thread cost).
+     * The high-fidelity render (syntax highlight, math, sanitize + enhance) runs
+     * once when this flips back to false at the end of the stream.
+     */
+    streaming?: boolean
     cacheKey?: string
     class?: string
     classList?: Record<string, boolean>
@@ -170,11 +180,15 @@ export function Markdown(
 ) {
   let container!: HTMLDivElement
 
-  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList"])
+  const [local, others] = splitProps(props, ["text", "streaming", "cacheKey", "class", "classList"])
   const marked = useMarked()
+
+  // Terminal (full-fidelity) HTML. Only computed when not streaming; a null
+  // source short-circuits the resource so no marked work happens mid-stream.
   const [html] = createResource(
-    () => local.text,
+    () => (local.streaming ? null : local.text),
     async (markdown) => {
+      if (markdown == null) return null
       const hash = checksum(markdown)
       const key = local.cacheKey ?? hash
 
@@ -186,18 +200,56 @@ export function Markdown(
         }
       }
 
-      const next = await marked.parse(markdown)
+      const next = sanitizeHtml(await marked.parse(markdown))
       if (key && hash) touch(key, { hash, html: next })
       return next
     },
-    { initialValue: "" },
+    { initialValue: null },
   )
 
+  // Streaming path: feed increments to the streaming-markdown parser, which
+  // appends DOM into the container. Text from the typewriter is append-only in
+  // the common case; if it is rewritten (not a prefix), reset the parser.
+  let stream: { parser: smd.Parser; written: string } | undefined
+  const resetStream = () => {
+    container.innerHTML = ""
+    stream = { parser: smd.parser(smd.default_renderer(container)), written: "" }
+  }
+  const endStream = () => {
+    if (!stream) return
+    try {
+      smd.parser_end(stream.parser)
+    } catch {
+      /* ignore */
+    }
+    stream = undefined
+  }
+
   createEffect(() => {
-    html.latest
+    if (!local.streaming) return
+    const text = local.text
+    if (!stream || !text.startsWith(stream.written)) resetStream()
+    const suffix = text.slice(stream!.written.length)
+    if (suffix) {
+      smd.parser_write(stream!.parser, suffix)
+      stream!.written = text
+    }
+  })
+
+  // Terminal render: once the full-fidelity HTML resolves (and we are no longer
+  // streaming), finish any live parser and replace the streamed DOM in one shot,
+  // then run the one-time DOM enhancement (copy buttons, table wrap, katex copy).
+  createEffect(() => {
+    if (local.streaming) return
+    const rendered = html.latest
+    if (rendered == null) return
+    endStream()
+    container.innerHTML = rendered
     const cleanup = enhanceMarkdown(container)
     onCleanup(cleanup)
   })
+
+  onCleanup(endStream)
 
   return (
     <div
@@ -207,7 +259,6 @@ export function Markdown(
         ...(local.classList ?? {}),
         [local.class ?? ""]: !!local.class,
       }}
-      innerHTML={html.latest}
       {...others}
     />
   )
