@@ -81,7 +81,7 @@ function canInjectGitHubCliToken(patterns: Set<string>) {
 }
 
 export const LocalBashBackend = {
-  async execute(params: BashParams, ctx: BashContext) {
+  async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
     const shell = Shell.acceptable()
     log.info("bash tool using shell", { shell })
 
