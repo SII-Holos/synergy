@@ -24,6 +24,7 @@ import {
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
+import { planBucketEviction } from "./message-eviction"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -686,6 +687,54 @@ function createGlobalSync() {
   const watermarks = new Map<string, Watermark>()
   const replayInFlight = new Set<string>()
 
+  // LRU eviction of loaded message/part buckets to bound memory as the user
+  // switches between sessions (C7). The actively-viewed session is protected, so
+  // eviction can never blank the current timeline; evicted sessions reload on
+  // next view.
+  const MESSAGE_BUCKET_CAP = 15
+  const messageLru: string[] = []
+  let activeBucketKey: string | undefined
+  const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
+
+  function evictMessageBuckets() {
+    const protectedIds = new Set<string>()
+    if (activeBucketKey) protectedIds.add(activeBucketKey)
+    const toEvict = planBucketEviction(messageLru, MESSAGE_BUCKET_CAP, protectedIds)
+    if (toEvict.length === 0) return
+    const evictSet = new Set(toEvict)
+    for (const key of toEvict) {
+      const sep = key.indexOf("\n")
+      const scopeKey = key.slice(0, sep)
+      const sessionID = key.slice(sep + 1)
+      const state = children[scopeKey]
+      if (!state) continue
+      const [store, setStore] = state
+      const msgs = store.message[sessionID]
+      setStore(
+        produce((draft) => {
+          if (msgs) for (const m of msgs) delete draft.part[m.id]
+          delete draft.message[sessionID]
+        }),
+      )
+    }
+    for (let i = messageLru.length - 1; i >= 0; i--) {
+      if (evictSet.has(messageLru[i])) messageLru.splice(i, 1)
+    }
+  }
+
+  function touchMessageBucket(scopeKey: string, sessionID: string) {
+    const key = bucketKey(scopeKey, sessionID)
+    const idx = messageLru.indexOf(key)
+    if (idx !== -1) messageLru.splice(idx, 1)
+    messageLru.push(key)
+    evictMessageBuckets()
+  }
+
+  function markActiveSession(scopeKey: string, sessionID: string | undefined) {
+    activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
+    if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
+  }
+
   function applyEvent(scopeKey: string, event: any) {
     if (event?.type === "global.disposed") {
       bootstrap()
@@ -855,6 +904,7 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
+        touchMessageBucket(scopeKey, event.properties.info.sessionID)
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
           setStore("message", event.properties.info.sessionID, [event.properties.info])
@@ -1266,6 +1316,8 @@ function createGlobalSync() {
     peekScopeState,
     ensureScopeState,
     releaseScopeState,
+    markActiveSession,
+    touchMessageBucket,
     bootstrap,
     noteVersion,
     noteUpdate,

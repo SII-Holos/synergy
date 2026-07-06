@@ -110,6 +110,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             setMeta("limit", sessionID, limit)
             setMeta("complete", sessionID, all.length < limit)
           })
+          // Track this bucket for LRU eviction now that it is loaded.
+          globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
         })
         .finally(() => {
           setMeta("loading", sessionID, false)
@@ -192,6 +194,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     return {
       data: store,
       set: setStore,
+      // Protect a session's message/part buckets from LRU eviction while it is
+      // the actively-viewed session (pass undefined to clear).
+      markActiveSession(sessionID: string | undefined) {
+        globalSync.markActiveSession(sdk.scopeKey, sessionID)
+      },
       get status() {
         return store.status
       },

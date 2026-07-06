@@ -468,6 +468,8 @@ function SessionPageContent() {
           hydratedSessions.delete(prevId)
           initializedSessions.delete(prevId)
         }
+        // Protect the viewed session's buckets from LRU eviction.
+        sync.markActiveSession(id)
         if (connected && id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
