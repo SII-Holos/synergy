@@ -1097,6 +1097,12 @@
   justify-content: flex-end;
 }
 
+.settings-connected-model-list .model-manager-actions [data-component="switch"] {
+  min-height: 28px;
+  gap: 10px;
+  cursor: pointer;
+}
+
 /* ===== Library settings ===== */
 
 .ds-content-inner:has(> .settings-library-shell) {

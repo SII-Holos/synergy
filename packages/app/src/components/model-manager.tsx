@@ -288,6 +288,7 @@ export const ConnectedModelManager: Component<{
   const local = optionalLocal()
   const standalone = local ? undefined : createStandaloneModelPreferences(models, providers.default)
   const modelState = () => local?.model ?? standalone
+  const selectable = () => props.selectable !== false
   const currentModel = () => (props.selectable === false ? undefined : modelState()?.current())
   const selectModel = (model: ModelKey) => {
     if (local) {
@@ -305,27 +306,32 @@ export const ConnectedModelManager: Component<{
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
       current={currentModel()}
+      interactive={selectable()}
       filterKeys={["provider.name", "name", "id"]}
       groupBy={(x) => x.provider.name}
       sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
-      onSelect={(x) => {
-        if (!x) return
-        if (props.selectable === false) return
-        selectModel({ modelID: x.id, providerID: x.provider.id })
-        props.onSelect?.()
-      }}
+      onSelect={
+        selectable()
+          ? (x) => {
+              if (!x) return
+              selectModel({ modelID: x.id, providerID: x.provider.id })
+              props.onSelect?.()
+            }
+          : undefined
+      }
     >
       {(model) => (
         <div class="model-manager-row w-full min-w-0 flex items-center justify-between gap-x-3">
           <ModelManagerRow model={model} />
           <div class="model-manager-actions flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <span class="model-manager-quick-label text-12-regular text-text-weak">Quick</span>
             <Switch
               checked={modelState()?.inQuickSwitcher({ modelID: model.id, providerID: model.provider.id }) ?? false}
               onChange={(checked) => {
                 modelState()?.setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
               }}
-            />
+            >
+              <span class="model-manager-quick-label text-12-regular text-text-weak">Quick</span>
+            </Switch>
           </div>
         </div>
       )}
