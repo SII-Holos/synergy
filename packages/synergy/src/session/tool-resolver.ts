@@ -770,6 +770,7 @@ export namespace ToolResolver {
         callID: options.toolCallId,
         extra: {
           model: input.model,
+          userMessageID: input.processor.message.parentID,
           toolTiming: {
             requestedAt: match?.state.status === "running" ? match.state.time.start : Date.now(),
             approvalWaitMs: 0,
