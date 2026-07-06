@@ -1,4 +1,4 @@
-import { Show, createSignal, onMount, onCleanup } from "solid-js"
+import { Show } from "solid-js"
 import type { Accessor } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -48,26 +48,6 @@ export function PromptDock(props: {
   rollbackActive?: boolean
 }) {
   const nav = useNavigate()
-  const [keyboardOffset, setKeyboardOffset] = createSignal(0)
-
-  // Virtual keyboard handling on mobile
-  onMount(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-
-    const handleResize = () => {
-      const isMobile = window.innerWidth < 768
-      if (!isMobile) {
-        setKeyboardOffset(0)
-        return
-      }
-      const offset = window.innerHeight - vv.height
-      setKeyboardOffset(Math.max(0, offset))
-    }
-
-    vv.addEventListener("resize", handleResize)
-    onCleanup(() => vv.removeEventListener("resize", handleResize))
-  })
 
   return (
     <div
@@ -78,8 +58,7 @@ export function PromptDock(props: {
       }}
       style={{
         transform: props.isNewSession() ? "translateY(-35vh)" : "translateY(0)",
-        "padding-bottom": keyboardOffset() ? `${keyboardOffset()}px` : undefined,
-        transition: "transform 400ms ease-out, padding-bottom 200ms ease-out",
+        transition: "transform 400ms ease-out",
       }}
     >
       <div

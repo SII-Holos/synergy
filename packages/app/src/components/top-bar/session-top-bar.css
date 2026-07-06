@@ -9,7 +9,8 @@
   justify-content: space-between;
   height: 58px;
   padding: 0 22px;
-  background: transparent;
+  background: var(--background-base);
+  border-bottom: 1px solid var(--border-weaker-base);
   gap: 16px;
   pointer-events: none;
 }
