@@ -42,6 +42,7 @@ import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
@@ -925,7 +926,7 @@ function SessionPageContent() {
       <WorkspaceNotesTool />
       <WorkspaceTerminalTool />
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
-      <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
+        <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
           {/* Mobile tab bar */}
           <Show when={!isDesktop() && hasReview()}>
             <Tabs class="h-auto">
@@ -1175,17 +1176,7 @@ function SessionPageContent() {
           {/* Mobile side workspace overlay */}
           <Show when={!isDesktop() && sideOpen()}>
             <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
-              <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
-                <span class="text-14-medium text-text-strong">Workspace</span>
-                <button
-                  type="button"
-                  class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                  aria-label="Close workspace"
-                  onClick={() => sideSurface().close()}
-                >
-                  <Icon name="x" size="normal" />
-                </button>
-              </div>
+              <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
               <div class="mobile-workbench-overlay relative flex-1 min-h-0">
                 <WorkbenchSurface surface="side" />
               </div>

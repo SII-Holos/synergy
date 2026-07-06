@@ -475,21 +475,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const agentSection: PromptAddMenuSection = {
       id: "agent",
       label: "Agent",
-      items: local.agent.list().filter((a) => !a.hidden).map((agent) => {
-        const visual = getAgentVisual(agent)
-        const disabled = sessionHasMessages() && !!agent.external
-        return {
-          id: `agent-${agent.name}`,
-          label: visual.label,
-          icon: getSemanticIcon("settings.agents"),
-          selected: local.agent.current() === agent.name,
-          disabled,
-          tooltip: disabled ? "Create a new session to use this external agent" : undefined,
-          onSelect: () => {
-            if (!disabled) local.agent.set(agent.name)
-          },
-        }
-      }),
+      items: local.agent
+        .list()
+        .filter((a) => !a.hidden)
+        .map((agent) => {
+          const visual = getAgentVisual(agent)
+          const disabled = sessionHasMessages() && !!agent.external
+          return {
+            id: `agent-${agent.name}`,
+            label: visual.label,
+            icon: getSemanticIcon("settings.agents"),
+            selected: local.agent.current()?.name === agent.name,
+            disabled,
+            tooltip: disabled ? "Create a new session to use this external agent" : undefined,
+            onSelect: () => {
+              if (!disabled) local.agent.set(agent.name)
+            },
+          }
+        }),
     }
     return [
       {
@@ -1289,63 +1292,69 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
                   <div class="hidden md:block">
-                  <ToolbarSelectorPopover
-                    trigger={
-                      <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
-                        <span class="text-12-medium text-text-base whitespace-nowrap">
-                          {getAgentVisual(local.agent.current()).label}
-                        </span>
-                        <Icon
-                          name={getSemanticIcon("navigation.collapse")}
-                          size="small"
-                          class="text-icon-weak shrink-0"
-                        />
-                      </button>
-                    }
-                    title="Select agent"
-                    contentClass="w-52 max-h-80"
-                    placement="top-start"
-                  >
-                    {(close) => (
-                      <List
-                        class="p-1"
-                        items={local.agent.list().filter((a) => !a.hidden)}
-                        key={(x) => x.name}
-                        filterKeys={["name"]}
-                        onSelect={(x) => {
-                          if (!x) return
-                          if (sessionHasMessages() && x.external) return
-                          local.agent.set(x.name)
-                          close()
-                        }}
-                      >
-                        {(agent) => {
-                          const visual = getAgentVisual(agent)
-                          return (
-                            <Tooltip
-                              placement="right"
-                              value={
-                                sessionHasMessages() && agent.external
-                                  ? "Create a new session to use this external agent"
-                                  : undefined
-                              }
-                            >
-                              <div
-                                classList={{
-                                  "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                                  "opacity-45": sessionHasMessages() && !!agent.external,
-                                }}
+                    <ToolbarSelectorPopover
+                      trigger={
+                        <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
+                          <span class="text-12-medium text-text-base whitespace-nowrap">
+                            {getAgentVisual(local.agent.current()).label}
+                          </span>
+                          <Icon
+                            name={getSemanticIcon("navigation.collapse")}
+                            size="small"
+                            class="text-icon-weak shrink-0"
+                          />
+                        </button>
+                      }
+                      title="Select agent"
+                      contentClass="w-52 max-h-80"
+                      placement="top-start"
+                    >
+                      {(close) => (
+                        <List
+                          class="p-1"
+                          items={local.agent.list().filter((a) => !a.hidden)}
+                          key={(x) => x.name}
+                          filterKeys={["name"]}
+                          onSelect={(x) => {
+                            if (!x) return
+                            if (sessionHasMessages() && x.external) return
+                            local.agent.set(x.name)
+                            close()
+                          }}
+                        >
+                          {(agent) => {
+                            const visual = getAgentVisual(agent)
+                            return (
+                              <Tooltip
+                                placement="right"
+                                value={
+                                  sessionHasMessages() && agent.external
+                                    ? "Create a new session to use this external agent"
+                                    : undefined
+                                }
                               >
-                                <div class="min-w-0">
-                                  <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                              >
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                                >
+                                  <div class="min-w-0">
+                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                  </div>
                                 </div>
-                              </div>
-                            </Tooltip>
-                          )
-                        }}
-                      </List>
-                    )}
-                  </ToolbarSelectorPopover>
+                              </Tooltip>
+                            )
+                          }}
+                        </List>
+                      )}
+                    </ToolbarSelectorPopover>
                   </div>
                 </Show>
                 <PermissionModeSelector
