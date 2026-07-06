@@ -87,6 +87,7 @@ export class SenderNameCache {
 
 export class ChatNameCache {
   private cache = new Map<string, { name: string; expiresAt: number }>()
+  private negativeCache = new Map<string, number>()
   private ttlMs: number
 
   constructor(opts?: { ttlMs?: number }) {
@@ -100,6 +101,11 @@ export class ChatNameCache {
     const now = Date.now()
     const cached = this.cache.get(normalized)
     if (cached && cached.expiresAt > now) return cached.name
+
+    const negativeCachedAt = this.negativeCache.get(normalized)
+    if (negativeCachedAt !== undefined && now - negativeCachedAt < NEGATIVE_CACHE_TTL_MS) {
+      return fallbackName
+    }
 
     try {
       const token = await ctx.getAccessToken()
@@ -117,15 +123,18 @@ export class ChatNameCache {
       if (result.code === 0 && result.data?.chat?.name) {
         const name = result.data.chat.name
         this.cache.set(normalized, { name, expiresAt: now + this.ttlMs })
+        this.negativeCache.delete(normalized)
         return name
       }
 
+      this.negativeCache.set(normalized, now)
       log.warn("failed to resolve chat name", { chatId: normalized, code: result.code, msg: result.msg })
       if (fallbackName) {
         this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })
       }
       return fallbackName
     } catch (err) {
+      this.negativeCache.set(normalized, now)
       log.warn("failed to resolve chat name", { chatId: normalized, error: String(err) })
       if (fallbackName) {
         this.cache.set(normalized, { name: fallbackName, expiresAt: now + this.ttlMs })

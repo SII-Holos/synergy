@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
@@ -31,6 +31,8 @@ import {
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
 import "./sidebar.css"
+
+const ORPHAN_CHAT_GROUP_ID = "__orphan__"
 
 interface SidebarProps {
   onSearchOpen: () => void
@@ -229,7 +231,7 @@ export function Sidebar(props: SidebarProps) {
 
     if (orphanSessions.length > 0) {
       result.push({
-        chatId: "__orphan__",
+        chatId: ORPHAN_CHAT_GROUP_ID,
         name: "Other",
         sessions: orphanSessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
       })

@@ -21,7 +21,7 @@ export const SessionNavEntry = z
     endpointKind: z.literal("channel").optional(),
     chatId: z.string().optional(),
     chatName: z.string().optional(),
-    chatType: z.string().optional(),
+    chatType: z.enum(["dm", "group"]).optional(),
     completionNotice: z.object({
       unread: z.boolean(),
     }),
@@ -92,7 +92,7 @@ export interface SessionNavEntry {
   endpointKind?: "channel"
   chatId?: string
   chatName?: string
-  chatType?: string
+  chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
   }
