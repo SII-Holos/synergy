@@ -84,6 +84,24 @@ Key practical consequence:
 
 Docs and code comments should describe the client-server runtime model.
 
+### Message and sync model
+
+The session/message core follows two orthogonal-field designs. Read the design docs before touching message assembly, the loop, inbox, undo/rewind, or frontend data loading — the old tangled booleans they replaced (`metadata.synthetic`, `part.synthetic`, `metadata.noReply`, `metadata.guided`, `part.ignored`, `metadata.promptVisible`, the `metadata.source` family) must not come back.
+
+Backend message semantics (`docs/architecture/session-message-core.md`, implemented across `packages/synergy/src/session/*`):
+
+- A message is described by orthogonal canonical fields, not overloaded booleans: `rootID`/`isRoot` (scheduling/task grouping), `visible` (frontend rendering), `includeInContext` (model context), and `origin` (provenance, closed enum). Parts carry `origin: "user" | "system"`.
+- `MessageV2.deriveSemantics(messages)` is the single read-time derivation (in `history.ts` and storage migration); `MessageV2.isSystemPart(part)` is the canonical system-part test. Do not re-derive these ad hoc.
+- The loop binds one root user message `R`; every assistant message in that task has `rootID = R.id` and `parentID = R.id` (no parent drift). Compaction resolves its anchor in O(1) from `parentID`.
+- Inbox items use a single `mode` axis (`task` / `steer` / `context`); there is no separate in-memory mailbox.
+
+Frontend data sync (`docs/architecture/frontend-data-sync.md`, implemented across `packages/app/src/context/*` and the bus/server sequence plumbing):
+
+- Store writes always `reconcile` (never whole-object replace), so an event that changes one field does not invalidate the whole reactive chain.
+- State events carry a scope-monotonic `seq` + per-runtime `epoch` (`bus/sequencer.ts`); streaming part-delta events are unsequenced. Scoped GET responses advertise a snapshot watermark via `x-synergy-seq`/`x-synergy-epoch` headers. On reconnect the client replays missed events via `/event/replay` (fail-open to a full resync).
+- Composer model/agent resolve through strict layers — user draft → session default (server `modelOverride`, else last root message) → fallback — and lower layers never write back up (the #318 fix). An explicit selector pick persists as `modelOverride`.
+- Streaming part disk writes are coalesced (write-behind) while discrete/terminal writes stay immediate; loaded message/part buckets are LRU-evicted with the active session protected.
+
 ## Development Commands
 
 ### Primary development flow
@@ -138,6 +156,8 @@ bun run test:changed
 bun run test:coverage
 bun test --watch
 ```
+
+Tests seed the model catalog from the pinned fixture `packages/synergy/test/tool/fixtures/models-api.json`, not from live `models.dev` (`test/preload.ts`). This keeps provider/model tests deterministic and drift-proof: a live catalog that renames or removes a referenced model must never turn CI red. When a test needs a model the fixture lacks, update the fixture deliberately rather than reintroducing a live fetch.
 
 ### Build and SDK generation
 
@@ -467,6 +487,8 @@ Key documents in the repo that agents should be aware of:
 - `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
 - `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
 - `docs/desktop-release.md` — desktop packaging, signing, update, and release runbook
+- `docs/architecture/session-message-core.md` (+ `docs/architecture/session-message-core/`) — backend message/session semantics: orthogonal `rootID`/`visible`/`includeInContext`/`origin` fields, the serial-task loop, compaction anchor, and inbox `mode`
+- `docs/architecture/frontend-data-sync.md` — frontend data sync: reconcile writes, the `seq`/`epoch` sequence protocol + replay, snapshot watermark headers, composer intent layering, part write-behind, and bucket eviction
 - `packages/app/PRODUCT.md` — Web product principles, interaction model, and visual design contract
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
 - `packages/app/AGENTS.md` — agent guidelines specific to the web app package

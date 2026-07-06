@@ -35,9 +35,12 @@ const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
 
-// Seed models.dev data from a repository fixture so provider tests are deterministic.
-// Live models.dev can remove or rename model IDs that older provider compatibility
-// tests intentionally exercise.
+// Always seed the model catalog from the checked-in fixture rather than fetching
+// models.dev live. The live catalog drifts (models get renamed/removed), which
+// makes tests that reference specific models non-deterministic — a network-
+// reachable-but-drifted catalog turns CI red with no code change (e.g.
+// claude-sonnet-4-20250514 was removed upstream). The fixture is the pinned
+// source of truth; update it deliberately when a test needs a new model.
 const cacheDir = path.join(testHome, ".synergy", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "15")

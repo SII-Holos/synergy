@@ -1180,6 +1180,12 @@ export namespace SessionProcessor {
             snapshot = undefined
           }
           await waitForTrackedSettlements()
+          // Flush buffered streaming part writes before reading parts to
+          // finalize the message. A turn interrupted mid-stream (idle timeout,
+          // provider error, abort) never fires the terminal part write that
+          // normally flushes, so without this the persisted/finalized parts
+          // would be missing the last streamed content (issue #327).
+          await Session.flushPartWrites()
           let parts = await MessageV2.parts({
             sessionID: input.sessionID,
             messageID: input.assistantMessage.id,

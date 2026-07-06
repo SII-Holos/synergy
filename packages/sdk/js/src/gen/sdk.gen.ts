@@ -137,6 +137,8 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
+  EventReplayErrors,
+  EventReplayResponses,
   EventSubscribeResponses,
   ExperienceListFilter,
   ExperienceListSort,
@@ -1699,6 +1701,10 @@ export class Session extends HeyApiClient {
       time?: {
         archived?: number
       }
+      modelOverride?: {
+        providerID: string
+        modelID: string
+      } | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1715,6 +1721,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "controlProfile" },
             { in: "body", key: "completionNotice" },
             { in: "body", key: "time" },
+            { in: "body", key: "modelOverride" },
           ],
         },
       ],
@@ -9380,6 +9387,40 @@ export class Formatter extends HeyApiClient {
 }
 
 export class Event extends HeyApiClient {
+  /**
+   * Replay missed events
+   *
+   * After a reconnect, return the state events published for this scope since `since`. Returns status "reset" when the client's epoch is stale or the required events have aged out of the journal, in which case the client must resync from snapshots.
+   */
+  public replay<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      since: number
+      epoch?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "since" },
+            { in: "query", key: "epoch" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EventReplayResponses, EventReplayErrors, ThrowOnError>({
+      url: "/event/replay",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Subscribe to events
    *

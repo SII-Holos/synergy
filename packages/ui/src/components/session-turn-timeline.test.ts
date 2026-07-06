@@ -123,6 +123,16 @@ function compactionRecoveryPart(id: string, messageID: string): PartType {
   } as PartType
 }
 
+function compactionPart(id: string, messageID: string): PartType {
+  return {
+    id,
+    sessionID: "session",
+    messageID,
+    type: "compaction",
+    auto: false,
+  } as PartType
+}
+
 function textPart(id: string, messageID: string, text = "Hello"): PartType {
   return {
     id,
@@ -331,6 +341,33 @@ describe("session turn assistant collection", () => {
         { hasCompactionEvent: true },
       ),
     ).toBe(false)
+  })
+
+  test("manual compaction root: suppresses chrome and renders the card during the wait (#326)", () => {
+    // The /compact button creates a root user message marked as a compaction
+    // boundary; its "What did we do so far?" prompt must not render as user
+    // chrome, and the compaction card must appear even before the recovery part
+    // exists (the "Compressing context..." state).
+    const root = user("msg_manual_compact", { isRoot: true, metadata: { compactionBoundary: true } })
+    const parts = [
+      compactionPart("compaction-request", root.id),
+      textPart("prompt", root.id, "What did we do so far?"),
+    ] as PartType[]
+    const compaction = compactionAssistant("msg_compaction_assistant", root.id)
+
+    const rootItems = collectUserCompactionTimelineItems(root, parts)
+    expect(rootItems).toHaveLength(1)
+    expect(rootItems[0]).toMatchObject({ kind: "compaction", message: root, part: parts[0] })
+
+    // No compaction_recovery yet (LLM still running), part is undefined on the
+    // assistant card until the structured recovery part is written.
+    const items = collectSessionTurnTimelineItems([compaction], {}, true)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: "compaction", message: compaction })
+    expect((items[0] as { part?: unknown }).part).toBeUndefined()
+
+    // Chrome is suppressed because the root is a compaction boundary.
+    expect(shouldShowTurnUserChrome(root, parts, true)).toBe(false)
   })
 
   test("hides diffs for the turn compacted by a boundary", () => {

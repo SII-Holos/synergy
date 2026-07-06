@@ -32,6 +32,7 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -91,6 +92,7 @@ function sanitizePromptHistory(value: unknown) {
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
+  const globalSync = useGlobalSync()
   const sync = useSync()
   const input = useInput()
   const local = useLocal()
@@ -143,7 +145,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const sessionLoopSource = createMemo(() => {
     const loopID = params.id ? info()?.blueprint?.loopID : undefined
     if (!loopID) return null
-    return { loopID, directory: sessionScopeDirectory() }
+    // Track reconnectVersion so the loop refetches after a backend restart,
+    // whose in-memory state the server cannot replay via events (issue #331).
+    return { loopID, directory: sessionScopeDirectory(), reconnect: globalSync.reconnectVersion() }
   })
 
   const [sessionLoop, { mutate: mutateSessionLoop }] = createResource(

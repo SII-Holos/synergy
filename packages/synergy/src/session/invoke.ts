@@ -287,7 +287,13 @@ export namespace SessionInvoke {
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
           if (result === "stop") break
-          if (result === "continue") continue
+          if (result === "continue") {
+            // A processed compaction re-arms the emergency-compaction fallback so
+            // that a later overflow — from history accumulated after this
+            // compaction — can trigger it again on the same root (issue #321).
+            if (firedSignals.includes("compact")) emergencyCompactionTriggered = false
+            continue
+          }
         }
 
         // Mode-based drain ②: context items piggyback on confirmed model call.
@@ -661,7 +667,7 @@ export namespace SessionInvoke {
 
         if (
           !jobCtx.compactionAutoDisabled &&
-          !jobCtx.lastUserParts.some((part) => part.type === "compaction") &&
+          !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
           promptDecision.shouldCompact
         ) {
           log.info("prompt budget exceeded, injecting compaction", {

@@ -22,6 +22,9 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
+import { planCompactionReplace } from "./session-compaction"
+import { observeWatermark, type Watermark } from "./sync-watermark"
+import { planBucketEviction } from "./message-eviction"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -148,6 +151,10 @@ function createGlobalSync() {
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
   const [noteVersion, setNoteVersion] = createSignal(0)
+  // Bumped on every (re)connect resync so component-level resources that are not
+  // in the normalized store — e.g. blueprint loop state, which the server cannot
+  // replay after a restart — refetch their state (issue #331).
+  const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
   function bumpNoteVersion() {
     setNoteVersion((v) => v + 1)
@@ -560,17 +567,6 @@ function createGlobalSync() {
     )
   }
 
-  function refreshVolatileStateAfterMessage(scopeKey: string, store: State, sessionID: string) {
-    if (store.inbox[sessionID]?.length) refreshInbox(scopeKey, sessionID)
-    if (
-      store.cortex.some(
-        (task) => task.sessionID === sessionID && (task.status === "running" || task.status === "queued"),
-      )
-    ) {
-      refreshCortex(scopeKey)
-    }
-  }
-
   async function refreshRetainedVolatileState(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
     const sessionIDs = Array.from(
       new Set([...Object.keys(store.inbox), ...Object.keys(store.todo), ...Object.keys(store.dag)]),
@@ -690,10 +686,60 @@ function createGlobalSync() {
       .catch((e) => setGlobalStore("error", e))
   }
 
-  const unsub = globalSDK.event.listen((e) => {
-    const scopeKey = e.name
-    const event = e.details
+  // Per-scope event watermark (highest applied state-event seq + epoch), used
+  // for reconnect replay and gap detection (frontend sync redesign, phase 1).
+  const watermarks = new Map<string, Watermark>()
+  const replayInFlight = new Set<string>()
 
+  // LRU eviction of loaded message/part buckets to bound memory as the user
+  // switches between sessions (C7). The actively-viewed session is protected, so
+  // eviction can never blank the current timeline; evicted sessions reload on
+  // next view.
+  const MESSAGE_BUCKET_CAP = 15
+  const messageLru: string[] = []
+  let activeBucketKey: string | undefined
+  const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
+
+  function evictMessageBuckets() {
+    const protectedIds = new Set<string>()
+    if (activeBucketKey) protectedIds.add(activeBucketKey)
+    const toEvict = planBucketEviction(messageLru, MESSAGE_BUCKET_CAP, protectedIds)
+    if (toEvict.length === 0) return
+    const evictSet = new Set(toEvict)
+    for (const key of toEvict) {
+      const sep = key.indexOf("\n")
+      const scopeKey = key.slice(0, sep)
+      const sessionID = key.slice(sep + 1)
+      const state = children[scopeKey]
+      if (!state) continue
+      const [store, setStore] = state
+      const msgs = store.message[sessionID]
+      setStore(
+        produce((draft) => {
+          if (msgs) for (const m of msgs) delete draft.part[m.id]
+          delete draft.message[sessionID]
+        }),
+      )
+    }
+    for (let i = messageLru.length - 1; i >= 0; i--) {
+      if (evictSet.has(messageLru[i])) messageLru.splice(i, 1)
+    }
+  }
+
+  function touchMessageBucket(scopeKey: string, sessionID: string) {
+    const key = bucketKey(scopeKey, sessionID)
+    const idx = messageLru.indexOf(key)
+    if (idx !== -1) messageLru.splice(idx, 1)
+    messageLru.push(key)
+    evictMessageBuckets()
+  }
+
+  function markActiveSession(scopeKey: string, sessionID: string | undefined) {
+    activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
+    if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
+  }
+
+  function applyEvent(scopeKey: string, event: any) {
     if (event?.type === "global.disposed") {
       bootstrap()
       return
@@ -791,7 +837,7 @@ function createGlobalSync() {
       }
       return
     }
-    if (e.name === "global") return
+    if (scopeKey === "global") return
 
     const [store, setStore] = ensureScopeState(scopeKey)
     switch (event.type) {
@@ -816,12 +862,10 @@ function createGlobalSync() {
           break
         }
         if (result.found) {
-          setStore(
-            "session",
-            produce((draft) => {
-              draft[result.index] = info
-            }),
-          )
+          // reconcile (not whole-object replace) so unchanged fields keep their
+          // identity; a session.updated that only bumps time.updated must not
+          // invalidate memos reading title/status/etc. (issue #319).
+          setStore("session", result.index, reconcile(info))
           break
         }
         setStore(
@@ -864,17 +908,15 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
-        const sessionID = event.properties.info.sessionID
+        touchMessageBucket(scopeKey, event.properties.info.sessionID)
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
           setStore("message", event.properties.info.sessionID, [event.properties.info])
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
         if (result.found) {
           setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         setStore(
@@ -884,7 +926,6 @@ function createGlobalSync() {
             draft.splice(result.index, 0, event.properties.info)
           }),
         )
-        refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
         break
       }
       case "message.removed": {
@@ -910,7 +951,9 @@ function createGlobalSync() {
         } else {
           const result = Binary.search(parts, part.id, (p) => p.id)
           if (result.found) {
-            setStore("part", part.messageID, result.index, part)
+            // reconcile so a streaming text/tool part only touches changed
+            // leaves instead of re-rendering the whole part on every delta.
+            setStore("part", part.messageID, result.index, reconcile(part))
           } else {
             setStore(
               "part",
@@ -1104,46 +1147,25 @@ function createGlobalSync() {
       }
       case "session.compacted": {
         const sessionID = event.properties.sessionID as string
-        const messages = store.message[sessionID]
-        if (!messages) break
-        batch(() => {
-          setStore(
-            produce((draft) => {
-              for (const msg of messages) {
-                delete draft.part[msg.id]
-              }
-              delete draft.message[sessionID]
-              delete draft.session_diff[sessionID]
-              delete draft.inbox[sessionID]
-            }),
-          )
-        })
+        if (!store.message[sessionID]) break
+        // Fetch first, then swap atomically. Deleting the messages up front left
+        // the timeline empty until the refetch returned — a visible flash (#319).
         const sdk = createScopedClient(scopeKey)
         retry(() => sdk.session.messages({ sessionID, limit: 200 }))
           .then((result) => {
-            const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-            const all = items
-              .map((x) => x.info)
-              .filter((m) => !!m?.id)
-              .slice()
-              .sort((a, b) => a.id.localeCompare(b.id))
-            const keep = all.length > 500 ? all.slice(-500) : all
+            const currentIds = (store.message[sessionID] ?? []).map((m) => m.id)
+            const plan = planCompactionReplace(currentIds, result.data ?? [])
             batch(() => {
-              setStore("message", sessionID, reconcile(keep, { key: "id" }))
-              const keepIds = new Set(keep.map((m) => m.id))
-              for (const item of items) {
-                if (!keepIds.has(item.info.id)) continue
-                setStore(
-                  "part",
-                  item.info.id,
-                  reconcile(
-                    item.parts
-                      .filter((p) => !!p?.id)
-                      .slice()
-                      .sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
+              setStore(
+                produce((draft) => {
+                  for (const messageID of plan.dropPartMessageIds) delete draft.part[messageID]
+                  delete draft.session_diff[sessionID]
+                  delete draft.inbox[sessionID]
+                }),
+              )
+              setStore("message", sessionID, reconcile(plan.keep, { key: "id" }))
+              for (const [messageID, parts] of Object.entries(plan.parts)) {
+                setStore("part", messageID, reconcile(parts, { key: "id" }))
               }
             })
           })
@@ -1151,6 +1173,18 @@ function createGlobalSync() {
         break
       }
     }
+  }
+
+  const unsub = globalSDK.event.listen((e) => {
+    // Track the scope's event watermark before applying, and trigger a replay
+    // if a gap or epoch change is detected. Streaming events carry no seq and
+    // leave the watermark untouched.
+    // seq/epoch are additive envelope fields not present in the generated Event
+    // type; read them structurally.
+    const observed = observeWatermark(watermarks.get(e.name), e.details as unknown as { epoch?: string; seq?: number })
+    if (observed.next) watermarks.set(e.name, observed.next)
+    if (observed.epochChanged || observed.gap) void replayOrResync(e.name)
+    applyEvent(e.name, e.details)
   })
   onCleanup(() => {
     unsub()
@@ -1160,11 +1194,47 @@ function createGlobalSync() {
     cortexRefreshTimers.clear()
   })
 
+  // Reconnect recovery: try to replay only the events missed since our
+  // watermark instead of refetching everything. Falls back to a full resync on
+  // reset (stale epoch / pruned journal) or any error — so it can never lose
+  // updates, only do more work.
+  async function replayOrResync(scopeKey: string) {
+    if (scopeKey === "global" || !children[scopeKey]) return
+    if (replayInFlight.has(scopeKey)) return
+    const wm = watermarks.get(scopeKey)
+    if (!wm) {
+      await resyncInstance(scopeKey).catch(() => undefined)
+      return
+    }
+    replayInFlight.add(scopeKey)
+    try {
+      const sdk = createScopedClient(scopeKey)
+      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
+      const data = res.data as
+        | { status: "ok"; epoch: string; seq: number; events: any[] }
+        | { status: "reset"; epoch: string; seq: number }
+        | undefined
+      if (!data || data.status === "reset") {
+        watermarks.delete(scopeKey)
+        await resyncInstance(scopeKey).catch(() => undefined)
+        return
+      }
+      for (const ev of data.events) applyEvent(scopeKey, ev)
+      watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
+    } catch {
+      await resyncInstance(scopeKey).catch(() => undefined)
+    } finally {
+      replayInFlight.delete(scopeKey)
+    }
+  }
+
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
+    // Signal reconnect so store-external resources (blueprint loops) refetch.
+    setReconnectVersion((v) => v + 1)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
-      resyncInstance(directory).catch(() => undefined),
+      replayOrResync(directory).catch(() => undefined),
     ).finally(() => {
       resyncInstancesPromise = undefined
     })
@@ -1252,8 +1322,11 @@ function createGlobalSync() {
     peekScopeState,
     ensureScopeState,
     releaseScopeState,
+    markActiveSession,
+    touchMessageBucket,
     bootstrap,
     noteVersion,
+    reconnectVersion,
     noteUpdate,
     get agenda() {
       return globalStore.agenda

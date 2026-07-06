@@ -16,7 +16,7 @@ import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registri
 import type { WorkbenchSurfaceState } from "./workbench-panels-model"
 import { migrateWorkbenchLayout } from "./workbench-layout-migration"
 import { reconcile } from "solid-js/store"
-import { mergeNavListByID, orderNavEntries } from "./layout-nav"
+import { applySessionToNavList, mergeNavListByID, navUpdateFromSession, orderNavEntries } from "./layout-nav"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -72,6 +72,9 @@ export interface NavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: string
   completionNotice: {
     unread: boolean
   }
@@ -330,6 +333,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           scopeID: "home",
           category,
           parentOnly: "true",
+          includeArchived: category === "channel" ? "true" : undefined,
           limit: ROOT_NAV_SECTION_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
         })
@@ -439,6 +443,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           scopeID: "home",
           category,
           parentOnly: "true",
+          includeArchived: category === "channel" ? "true" : undefined,
           limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
         })
         if (!res.data) return
@@ -504,6 +509,27 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           ?.properties?.info
         const scope = info?.scope
         if (!scope) return
+
+        // Instant in-place projection: update any already-loaded nav entry for
+        // this session immediately (title/pin/activity/archive), so the sidebar
+        // doesn't lag the debounced refetch. The refetch below still runs as the
+        // authority for ordering, new entries, and project aggregates.
+        const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0])
+        {
+          const recentResult = applySessionToNavList(recentEntries, navUpdate)
+          if (recentResult.applied) setRecentEntries(recentResult.list)
+          const dir = scope.directory
+          if (dir && navEntries[dir]) {
+            const scopeResult = applySessionToNavList(navEntries[dir], navUpdate)
+            if (scopeResult.applied) setNavEntries(dir, scopeResult.list)
+          }
+          for (const category of ROOT_NAV_SECTION_KEYS) {
+            if (!rootNavStore[category]) continue
+            const rootResult = applySessionToNavList(rootNavStore[category], navUpdate)
+            if (rootResult.applied) setRootNavStore(category, rootResult.list)
+          }
+        }
+
         const recentPending = navRefreshTimers.get("__recent__")
         if (recentPending) clearTimeout(recentPending)
         navRefreshTimers.set(
