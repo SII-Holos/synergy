@@ -47,14 +47,24 @@ export namespace SessionSummary {
   )
 
   async function runSummaries(input: { sessionID: string; messageID: string }) {
-    let current: { sessionID: string; messageID: string } | undefined = input
-    while (current) {
-      await summarizeNow(current)
-      const state = active.get(input.sessionID)
-      current = state?.next
-      if (state) state.next = undefined
+    try {
+      let current: { sessionID: string; messageID: string } | undefined = input
+      while (current) {
+        // Isolate per-iteration failures: a throw here (e.g. the session was
+        // removed mid-run, a storage hiccup) must not abandon the coalescing
+        // loop. If it did, `active` would keep a rejected entry that later
+        // summarize() calls attach `next` to but nothing ever drains —
+        // permanently wedging summarization for the session.
+        await summarizeNow(current).catch((error) =>
+          log.error("summarize failed", { sessionID: input.sessionID, error }),
+        )
+        const state = active.get(input.sessionID)
+        current = state?.next
+        if (state) state.next = undefined
+      }
+    } finally {
+      active.delete(input.sessionID)
     }
-    active.delete(input.sessionID)
   }
 
   async function summarizeNow(input: { sessionID: string; messageID: string }) {

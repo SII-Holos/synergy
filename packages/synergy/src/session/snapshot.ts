@@ -16,6 +16,7 @@ export namespace Snapshot {
   // never settles, so the whole collection is raced against this deadline.
   const SNAPSHOT_HARD_TIMEOUT_MS = SNAPSHOT_TIMEOUT_MS + 5_000
   const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
+  const CANDIDATE_STATE_CONCURRENCY = 32
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -197,7 +198,8 @@ export namespace Snapshot {
       )
       log.info("initialized")
     }
-    await ensureExclude(git)
+    // ensureExclude runs inside refreshIndex (which every snapshot path funnels
+    // through), so it need not be repeated here.
     const addResult = await refreshIndex(sessionID, signal)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
@@ -512,17 +514,15 @@ export namespace Snapshot {
 
     const addable: string[] = []
     const removable: string[] = []
-    for (const rel of changed) {
-      const state = await candidateState(cwd, rel)
-      if (state === "missing") {
-        addable.push(rel)
-        continue
-      }
-      if (state === "add") {
-        addable.push(rel)
-        continue
-      }
-      removable.push(rel)
+    // Classify candidates with bounded-concurrency lstat rather than a serial
+    // await-per-file loop, so the (one-time) first-track scan over a large repo
+    // doesn't stall the event loop or exhaust file descriptors.
+    const states = await mapWithConcurrency(changed, CANDIDATE_STATE_CONCURRENCY, (rel) => candidateState(cwd, rel))
+    for (let i = 0; i < changed.length; i++) {
+      // "missing" (deleted from the work tree) is staged for removal via the
+      // `git add --all` below, so it belongs with the addable pathspec.
+      if (states[i] === "remove") removable.push(changed[i])
+      else addable.push(changed[i])
     }
 
     if (removable.length > 0) {
@@ -582,41 +582,41 @@ export namespace Snapshot {
     }
   }
 
+  // Only the files that actually changed since the shadow index was last
+  // refreshed. This must not depend on HEAD: the shadow repo only ever
+  // `write-tree`s and never commits, so its HEAD is unborn and `git status`
+  // would report every indexed file as a staged addition — forcing a full
+  // rescan every step. `diff-files` (work tree vs. index) plus
+  // `ls-files --others` (new untracked) give the true delta independent of
+  // HEAD. A worktree rename surfaces as a delete of the old path (diff-files)
+  // plus a new untracked path (ls-files), which is exactly what the index
+  // update needs, so no explicit rename handling is required. With `-z`,
+  // paths are emitted verbatim (no quoting), so core.quotepath is irrelevant.
   async function changedFiles(git: string, cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
-    const status = await gitSpawn(
-      [
-        "git",
-        "-c",
-        "core.quotepath=false",
-        "--git-dir",
-        git,
-        "--work-tree",
-        cwd,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-      ],
+    const modified = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", cwd, "diff-files", "--name-only", "-z"],
       cwd,
       undefined,
       signal,
     )
-    if (status.exitCode !== 0) {
-      log.warn("status failed", { cwd, exitCode: status.exitCode, stderr: status.stderr })
+    if (modified.exitCode !== 0) {
+      log.warn("diff-files failed", { cwd, exitCode: modified.exitCode, stderr: modified.stderr })
+      return undefined
+    }
+    const untracked = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", cwd, "ls-files", "--others", "--exclude-standard", "-z"],
+      cwd,
+      undefined,
+      signal,
+    )
+    if (untracked.exitCode !== 0) {
+      log.warn("ls-files failed", { cwd, exitCode: untracked.exitCode, stderr: untracked.stderr })
       return undefined
     }
     const files = new Set<string>()
-    const items = status.text.split("\0")
-    for (let index = 0; index < items.length; index++) {
-      const raw = items[index]
-      if (!raw) continue
-      const code = raw.slice(0, 2)
-      const rel = raw.slice(3).trim()
+    for (const raw of [...modified.text.split("\0"), ...untracked.text.split("\0")]) {
+      const rel = raw.trim()
       if (rel) files.add(rel.replaceAll("\\", "/"))
-      if (code.includes("R") || code.includes("C")) {
-        const previous = items[++index]?.trim()
-        if (previous) files.add(previous.replaceAll("\\", "/"))
-      }
     }
     return [...files]
   }
@@ -629,6 +629,19 @@ export namespace Snapshot {
     if (!stat.isFile() && !stat.isSymbolicLink()) return "remove"
     if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) return "remove"
     return "add"
+  }
+
+  async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const result: R[] = new Array(items.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next++
+        result[index] = await fn(items[index])
+      }
+    })
+    await Promise.all(workers)
+    return result
   }
 
   function excludePath(rel: string): boolean {

@@ -1001,8 +1001,9 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, updatePartInternal)
 
   export function updatePartDelta(part: MessageV2.TextPart | MessageV2.ReasoningPart, delta: string) {
-    if (part.type === "text") return updatePartInternal({ part, delta })
-    return updatePartInternal({ part, delta })
+    // The union member is selected by the concrete part type at the call site;
+    // both text and reasoning parts take the identical internal delta path.
+    return updatePartInternal({ part, delta } as UpdatePartInternalInput)
   }
 
   export const getUsage = fn(

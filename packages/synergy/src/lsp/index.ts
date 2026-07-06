@@ -81,6 +81,9 @@ export namespace LSP {
     1,
     Number.parseInt(process.env.SYNERGY_LSP_MAX_CLIENTS_PER_SERVER ?? "2", 10) || 2,
   )
+  // A capacity eviction only targets clients idle at least this long, so a
+  // client actively serving a concurrent session is never shut down mid-request.
+  const LSP_CAPACITY_REAP_MIN_IDLE_MS = 30 * 1000
   function touchClient(client: LSPClient.Info) {
     lastUsedAt.set(client, Date.now())
   }
@@ -323,8 +326,16 @@ export namespace LSP {
   async function reapForCapacity(clients: LSPClient.Info[], serverID: string) {
     const matches = clients.filter((client) => client.serverID === serverID)
     if (matches.length < LSP_MAX_CLIENTS_PER_SERVER) return
+    const now = Date.now()
     const oldest = matches.toSorted((a, b) => (lastUsedAt.get(a) ?? 0) - (lastUsedAt.get(b) ?? 0))[0]
-    if (oldest) await reapClient(clients, oldest, "capacity")
+    // Only evict a client that has been idle past the grace window. touchClient
+    // stamps a client on every getClients/run, so a recently-stamped client is
+    // likely serving an in-flight request on another concurrent session —
+    // shutting it down mid-request would fail that request. When every client is
+    // hot, tolerate briefly exceeding the cap instead; the idle sweeper reclaims
+    // them once they cool down.
+    if (!oldest || now - (lastUsedAt.get(oldest) ?? 0) < LSP_CAPACITY_REAP_MIN_IDLE_MS) return
+    await reapClient(clients, oldest, "capacity")
   }
 
   async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
