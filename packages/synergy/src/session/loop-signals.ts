@@ -1,7 +1,6 @@
 import { GitHealth } from "../project/git-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
-import { SessionInbox } from "./inbox"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { SessionCompaction } from "./compaction"
@@ -275,21 +274,23 @@ LoopJob.register({
     const { analyzer, pattern } = result
     const text = analyzer.buildIntervention(pattern)
 
-    // Inject as a steer message via the inbox so it has a proper origin
-    // (issue #281 steer injection model).
-    await SessionInbox.deliver({
+    // Inject as a synthetic part on the current user message.
+    // Uses the same mechanism as error_loop_breaker and repeat_loop_injector
+    // (Session.updatePart) so the marker is immediately visible to both
+    // hasInjectedMarker on the next detect cycle and the frontend renderer.
+    const part = (await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: ctx.lastUser.id,
       sessionID: ctx.sessionID,
-      mode: "steer",
-      message: {
-        role: "user",
-        parts: [{ type: "text", text }],
-        origin: {
-          type: "system",
-          detail: pattern.type === "early_stop" ? "search_early_stop" : "search_failure_reflection",
-        },
-        visible: true,
-      },
-    })
+      type: "text",
+      text,
+      synthetic: true,
+      time: { start: Date.now(), end: Date.now() },
+    })) as MessageV2.Part
+
+    ctx.lastUserParts.push(part)
+    const userMessage = ctx.messages.find((msg) => msg.info.id === ctx.lastUser.id)
+    if (userMessage && userMessage.parts !== ctx.lastUserParts) userMessage.parts.push(part)
 
     return "pass"
   },

@@ -3,6 +3,7 @@ import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import DESCRIPTION from "./websearch.txt"
 import { ToolTimeout } from "./timeout"
+import { SearchGuard } from "./search-guard"
 
 interface SearXNGResult {
   title: string
@@ -39,6 +40,21 @@ export const WebSearchTool = Tool.define("websearch", {
     timeRange: z.enum(["day", "month", "year"]).optional().describe("Filter results by time range"),
   }),
   async execute(params, ctx) {
+    const searchScope = String((ctx.extra as any)?.userMessageID ?? ctx.sessionID)
+    const duplicate = SearchGuard.checkDuplicate(searchScope, "websearch", params)
+    if (duplicate) {
+      return {
+        output: duplicate.output,
+        title: `Web search skipped: ${params.query}`,
+        metadata: {
+          totalResults: 0,
+          returnedResults: 0,
+          searchFailureType: "duplicate_query" as const,
+          query: duplicate.query,
+        } as any,
+      }
+    }
+
     await ctx.ask({
       permission: "websearch",
       patterns: [params.query],
@@ -50,6 +66,7 @@ export const WebSearchTool = Tool.define("websearch", {
         language: params.language,
       },
     })
+    SearchGuard.recordAttempt(searchScope, "websearch", params)
 
     const searchParams = new URLSearchParams({
       q: params.query,
@@ -80,8 +97,8 @@ export const WebSearchTool = Tool.define("websearch", {
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Search error (${response.status}): ${errorText}`)
+      const failureType = SearchGuard.classifyHttpStatus(response.status) ?? "blocked_or_unavailable"
+      throw new Error(`Search error (${response.status}): ${failureType}`)
     }
 
     const data: SearXNGResponse = await response.json()
@@ -91,12 +108,18 @@ export const WebSearchTool = Tool.define("websearch", {
 
     if (results.length === 0) {
       return {
-        output: "No search results found. Please try a different query.",
+        output: [
+          "No search results found. Please try a different query.",
+          "",
+          `[Search failure: no_results] ${SearchGuard.advice("no_results")}`,
+        ].join("\n"),
         title: `Web search: ${params.query}`,
         metadata: {
           totalResults: 0,
           returnedResults: 0,
-        },
+          searchFailureType: "no_results" as const,
+          query: params.query,
+        } as any,
       }
     }
 
