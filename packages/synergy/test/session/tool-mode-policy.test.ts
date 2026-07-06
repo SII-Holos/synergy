@@ -39,6 +39,8 @@ describe("SessionModePolicy Plan Mode bash calls", () => {
       bashDiagnostic("ls -la && cat package.json && git diff -- packages/synergy/src/session/tool-resolver.ts"),
     ).resolves.toBeUndefined()
     await expect(bashDiagnostic("git status --short")).resolves.toBeUndefined()
+    await expect(bashDiagnostic("npm view @ericsanchezok/synergy-plugin versions --json")).resolves.toBeUndefined()
+    await expect(bashDiagnostic("bun pm view @ericsanchezok/synergy-plugin version")).resolves.toBeUndefined()
   })
 
   test("blocks shell commands that can mutate state", async () => {

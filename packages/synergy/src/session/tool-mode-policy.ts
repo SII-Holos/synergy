@@ -60,8 +60,6 @@ export namespace SessionModePolicy {
     "communication.question",
   ])
 
-  const PLAN_MODE_ALLOWED_BASH_CAPABILITIES = new Set(["shell_read", "file_read", "file_external_read"])
-
   export function isPlanMode(session?: Pick<SessionInfo, "blueprint">) {
     return session?.blueprint?.planMode === true
   }
@@ -96,19 +94,7 @@ export namespace SessionModePolicy {
 
     const staticDiagnostic = visibility({ toolName: input.toolName, session: input.session })
     if (staticDiagnostic) return staticDiagnostic
-
-    if (input.toolName !== "bash") return undefined
-
-    const classes = [...new Set(input.capabilities.map((cap) => cap.class))]
-    const blocked = classes.filter((className) => !PLAN_MODE_ALLOWED_BASH_CAPABILITIES.has(className))
-    if (blocked.length === 0) return undefined
-
-    return planModeBlocked(input.toolName, {
-      reason: "bash command is not read-only under Plan Mode",
-      command: String(input.args.command ?? ""),
-      capabilities: classes,
-      blockedCapabilities: blocked,
-    })
+    return undefined
   }
 
   export function unavailable(input: {
