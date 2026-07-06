@@ -2577,7 +2577,7 @@ export type Config = {
    */
   creative_model?: string
   /**
-   * Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
    */
   vision_model?: string
   /**
