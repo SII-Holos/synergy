@@ -7,6 +7,7 @@ import os from "os"
 import path from "path"
 import {
   SYNERGY_LINK_PROTOCOL_DIR,
+  PLUGIN_DIR,
   PLUGIN_KIT_DIR,
   SDK_DIR,
   SYNERGY_DIST_DIR,

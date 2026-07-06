@@ -7,12 +7,13 @@ import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
 import { ScopeContext } from "@/scope/context"
 import { ProcessRegistry } from "@/process/registry"
-import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
 import { ShellSafety } from "@/enforcement/shell-safety"
 import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@/session/message-v2"
+import type { BashParams } from "./shared"
+import type { BashContext } from "./shared"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
 import { ToolTimeout } from "../timeout"
@@ -79,8 +80,8 @@ function canInjectGitHubCliToken(patterns: Set<string>) {
   return Array.from(patterns).every(isGitHubCliCommand)
 }
 
-export const LocalBashBackend: BashBackend = {
-  async execute(params, ctx) {
+export const LocalBashBackend = {
+  async execute(params: BashParams, ctx: BashContext) {
     const shell = Shell.acceptable()
     log.info("bash tool using shell", { shell })
 

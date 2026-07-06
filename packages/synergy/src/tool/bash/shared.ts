@@ -4,6 +4,9 @@ import type { MessageV2 } from "@/session/message-v2"
 
 export type BashParams = SynergyLinkBash.ExecutePayload & {
   linkID?: string
+  envID?: string
+  backgroundAfterSeconds?: number
+  timeoutSeconds?: number
 }
 
 export type BashMetadata = SynergyLinkBash.ResultMetadata
