@@ -95,8 +95,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
   private stderrBuffer = ""
   private gotStdoutEvents = false
 
-  async discover(): Promise<{ available: boolean; path?: string; version?: string }> {
-    const binPath = Bun.which("codex")
+  async discover(config?: Record<string, unknown>): Promise<{ available: boolean; path?: string; version?: string }> {
+    const binPath = resolveCodexCommandPath(config)
     if (!binPath) return { available: false }
 
     try {
@@ -135,6 +135,9 @@ class CodexAdapter implements ExternalAgent.Adapter {
     // are forwarded to avoid leaking the Synergy process environment to Codex.
     const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
     const currentEnv = buildCodexProcessEnv(process.env, this.env, configEnv)
+    if (this.adapterConfig.nativeAuth === true) {
+      delete currentEnv.SYNERGY_CODEX_API_KEY
+    }
     const prompt = composeTurnInput(context)
 
     const command = this.commandPath()
@@ -223,7 +226,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
     const baseURL = this.adapterConfig.baseURL as string | undefined
     const providerID = this.adapterConfig.providerID as string | undefined
-    if (baseURL) {
+    const nativeAuth = this.adapterConfig.nativeAuth === true
+    if (!nativeAuth && baseURL) {
       const alias = providerID ?? "synergy"
       args.push("-c", `model_provider="${alias}"`)
       args.push("-c", `model_providers.${alias}.name="${alias}"`)
@@ -257,9 +261,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   }
 
   private commandPath(): string {
-    const configured = this.adapterConfig.path
-    if (typeof configured === "string" && configured.trim()) return configured
-    return "codex"
+    return resolveCodexCommandPath(this.adapterConfig) ?? "codex"
   }
 
   private readStdout(proc: import("bun").Subprocess<"pipe", "pipe", "pipe">): void {
@@ -472,3 +474,9 @@ function extractItemText(item: Record<string, unknown>): string {
 }
 
 ExternalAgent.register("codex", () => new CodexAdapter())
+
+export function resolveCodexCommandPath(config?: Record<string, unknown>): string | undefined {
+  const configured = config?.path
+  if (typeof configured === "string" && configured.trim()) return configured
+  return Bun.which("codex") ?? undefined
+}

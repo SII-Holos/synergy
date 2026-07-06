@@ -22,6 +22,7 @@ import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
 import { MODEL_ROLE_IDS } from "../provider/model-role"
+import { CodexProvider } from "@/provider/codex"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -343,7 +344,7 @@ export namespace Agent {
     } catch (e) {
       log.warn("failed to import external agent adapters", { error: String(e) })
     }
-    const discovered = await ExternalAgentDiscovery.discover()
+    const discovered = await ExternalAgentDiscovery.discover(externalConfig)
     log.info("external agent discovery results", {
       discovered: [...discovered.keys()],
     })
@@ -357,6 +358,13 @@ export namespace Agent {
         log.info("external agent auto_discover disabled", { name })
         continue
       }
+      if (name === "codex") {
+        const access = await CodexProvider.resolveToken({ allowMissing: true }).catch(() => undefined)
+        if (!access) {
+          log.info("codex external agent skipped until openai-codex provider is authenticated")
+          continue
+        }
+      }
       const { disabled: _, path, model, auto_discover: __, ...adapterConfig } = overrides ?? {}
       const externalField = {
         adapter: info.adapter,
@@ -364,6 +372,7 @@ export namespace Agent {
         version: info.version,
         config: {
           ...(model ? { model } : {}),
+          ...(name === "codex" ? { nativeAuth: true } : {}),
           ...adapterConfig,
         },
       }
