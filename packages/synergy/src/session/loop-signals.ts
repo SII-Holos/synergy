@@ -35,13 +35,9 @@ function recentToolRecords(ctx: LoopJob.Context, tools: Set<string>): SearchGuar
 }
 
 /** Check if the current context contains already-injected markers for an analyzer. */
-function hasInjectedMarker(ctx: LoopJob.Context, analyzer: ToolFailureAnalyzer): boolean {
-  return ctx.lastUserParts.some(
-    (part) =>
-      part.type === "text" &&
-      part.synthetic &&
-      (part.text.includes(analyzer.reflectionMarker) || part.text.includes(analyzer.earlyStopMarker)),
-  )
+/** Check if a specific marker text has already been injected into the current context. */
+function hasInjectedMarker(ctx: LoopJob.Context, marker: string): boolean {
+  return ctx.lastUserParts.some((part) => part.type === "text" && part.synthetic && part.text.includes(marker))
 }
 
 /** Find the first analyzer that matches the current agent context and has failures. */
@@ -55,16 +51,19 @@ function detectToolFailurePattern(
       if (!hasAssistantMatch) continue
     }
 
-    if (hasInjectedMarker(ctx, analyzer)) continue
-
     const records = recentToolRecords(ctx, analyzer.tools)
     const failures = SearchGuard.trailingFailures(records)
-    if (failures.length < analyzer.reflectionThreshold) continue
 
-    const pattern = analyzer.detect(failures)
-    if (!pattern) continue
-
-    return { analyzer, pattern }
+    // Check early stop first (higher threshold), then reflection.
+    // Each marker is checked independently so reflection → early stop escalation works.
+    if (failures.length >= analyzer.earlyStopThreshold && !hasInjectedMarker(ctx, analyzer.earlyStopMarker)) {
+      const pattern = analyzer.detect(failures)
+      if (pattern && pattern.type === "early_stop") return { analyzer, pattern }
+    }
+    if (failures.length >= analyzer.reflectionThreshold && !hasInjectedMarker(ctx, analyzer.reflectionMarker)) {
+      const pattern = analyzer.detect(failures)
+      if (pattern) return { analyzer, pattern }
+    }
   }
   return null
 }

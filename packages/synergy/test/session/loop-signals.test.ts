@@ -236,7 +236,7 @@ describe("loop-signals: compact signal", () => {
   })
 })
 
-describe("loop-signals: scholar search reflection", () => {
+describe("loop-signals: tool_failure_pattern (scholar search)", () => {
   test("fires after consecutive no-result scholar searches", async () => {
     const ctx = makeCtx(
       2,
@@ -266,7 +266,7 @@ describe("loop-signals: scholar search reflection", () => {
     )
 
     const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("search_failure_reflection")
+    expect(fired).toContain("tool_failure_pattern")
   })
 
   test("does not fire for non-scholar agents", async () => {
@@ -287,12 +287,14 @@ describe("loop-signals: scholar search reflection", () => {
     ])
 
     const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("search_failure_reflection")
+    expect(fired).not.toContain("tool_failure_pattern")
   })
 
   test("fires early stop after reflection and continued failures", async () => {
-    const marker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
-    marker.synthetic = true
+    // The early-stop check is independent: it only checks the earlyStopMarker,
+    // not the reflectionMarker. So having the reflection marker present won't block it.
+    const reflectionMarker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
+    reflectionMarker.synthetic = true
 
     const ctx = makeCtx(
       4,
@@ -333,11 +335,11 @@ describe("loop-signals: scholar search reflection", () => {
           "scholar",
         ),
       ],
-      [marker],
+      [reflectionMarker],
       "scholar",
     )
 
     const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("search_early_stop")
+    expect(fired).toContain("tool_failure_pattern")
   })
 })
