@@ -10,14 +10,15 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 | `provider` | All provider SDKs, model lists, API keys | → `agent` |
 | `agent` | Agent definitions (config + markdown files) | (none) |
 | `mcp` | MCP server connections | → `command` |
-| `skill` | Skill files (SKILL.md discovery) | (none) |
-| `plugin` | Plugin files (.ts/.js) | → `tool_registry` |
+| `skill` | Skill files (SKILL.md discovery) | → `command` |
+| `plugin` | Plugin files (.ts/.js) | → `tool_registry`, `agent`, `skill` |
 | `channel` | Channel integrations | (none) |
 | `command` | Custom commands (.md files) | (none) |
 | `tool_registry` | Tool registry (all registered tools) | (none) |
 | `lsp` | Language server connections | (none) |
 | `formatter` | Code formatter definitions | (none) |
 | `watcher` | File watcher configuration | (none) |
+| `holos` | Holos runtime connection | (none) |
 | `all` | Everything above | All cascades |
 
 ## Which target for each change
@@ -26,19 +27,25 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 |---|---|---|
 | API key in credential store | `provider` | Directly reloads provider SDKs with new key |
 | Provider config in JSONC | `config` | Detects `provider` field change → cascades to `provider` → `agent` |
-| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
+| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model`, `role_variant` |
 | `default_agent` | `config` | Live-applied |
+| `external_agent` | `config` | Cascades to `agent` |
+| `category` | `config` | Cascades to `provider` → `agent` |
+| `tools` | `config` | Cascades to `tool_registry` |
+| `instructions`, `project_doc_fallback_filenames`, `project_doc_max_bytes` | `config` | Cascades to `agent` |
 | MCP server config in JSONC | `config` or `mcp` | Config detects `mcp` field → cascades to `mcp` → `command` |
 | Agent config in JSONC | `config` | Detects `agent` field → cascades to `agent` |
 | Agent markdown file | `agent` | File watcher also detects `.md` changes in agent dirs |
-| Skill file (SKILL.md) | `skill` | File watcher also detects SKILL.md changes |
+| Skill file (SKILL.md) | `skill` | File watcher detects `SKILL.md` files specifically in skill directories |
 | Permission config | `config` | Detects `permission` field → cascades to `agent` |
 | Library config | `config` | Detects `library` field → cascades to `agent` |
 | Channel config | `config` or `channel` | Config detects `channel` field → cascades |
-| Plugin file (.ts/.js) | `plugin` | Cascades to `tool_registry` |
+| Plugin file (.ts/.js) | `plugin` | Cascades to `tool_registry`, `agent`, `skill` |
 | Custom command (.md) | `command` | |
 | Experimental config | `config` | Detects `experimental` field → cascades to `tool_registry` |
 | `enabled_providers` / `disabled_providers` | `config` | Cascades to `provider` → `agent` |
+| Holos config | `config` or `holos` | Config detects `holos` field → cascades |
+| `timeout` in runtime | `config` | Triggers `provider` cascade |
 | Multiple unrelated changes | `all` | Safe fallback |
 
 ## Auto-cascade rules (when target is `config`)
@@ -48,15 +55,21 @@ When you reload `config`, Synergy diffs the previous and reloaded config and cas
 | Changed field(s) | Cascaded targets |
 |---|---|
 | `provider`, `disabled_providers`, `enabled_providers` | `provider` → `agent` |
-| `agent`, `permission`, `library`, any model role field | `agent` |
+| `agent`, `permission`, `library`, `external_agent` | `agent` |
+| `default_agent`, `instructions`, `project_doc_fallback_filenames`, `project_doc_max_bytes` | `agent` |
+| `category` | `provider` → `agent` |
+| any model role field (`model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model`, `role_variant`) | `agent` |
+| `tools` | `tool_registry` |
 | `mcp` | `mcp` → `command` |
 | `plugin` | `plugin` → `tool_registry` |
 | `channel` | `channel` |
+| `holos` | `holos` |
 | `lsp` | `lsp` |
 | `formatter` | `formatter` |
 | `watcher` | `watcher` |
 | `command` | `command` |
 | `experimental` | `tool_registry` |
+| `timeout` | `provider` |
 
 Multiple cascades can trigger simultaneously if multiple fields changed.
 
@@ -70,11 +83,11 @@ Attempting to reload these shows them in the `restartRequired` response field.
 
 ## Fields that are client-side only
 
-Handled by TUI/Web clients, not the server runtime:
+Handled by Web/desktop clients, not the server runtime:
 - `theme`
 - `keybinds`
-- `tui`
 - `layout`
+- `toast`
 
 Reloading these triggers a warning that they are client-side.
 
