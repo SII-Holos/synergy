@@ -59,9 +59,9 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
         metadata: {
           total: 0,
           shown: 0,
-          searchFailureType: "duplicate_query",
+          searchFailureType: "duplicate_query" as const,
           query: duplicate.query,
-        },
+        } as any,
       }
     }
 
@@ -123,9 +123,9 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
         metadata: {
           total: 0,
           shown: 0,
-          searchFailureType: "no_results",
+          searchFailureType: "no_results" as const,
           query: SearchGuard.extractQuery("arxiv_search", params),
-        },
+        } as any,
       }
     }
 

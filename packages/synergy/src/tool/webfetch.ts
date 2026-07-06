@@ -32,9 +32,11 @@ export const WebFetchTool = Tool.define("webfetch", {
         output: duplicate.output,
         title: `Web fetch skipped: ${params.url}`,
         metadata: {
-          searchFailureType: "duplicate_query",
+          searchFailureType: "duplicate_query" as const,
           url: params.url,
-        },
+          contentType: "",
+          contentLength: 0,
+        } as any,
       }
     }
 
