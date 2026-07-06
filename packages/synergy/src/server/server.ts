@@ -1224,6 +1224,40 @@ export namespace Server {
           },
         )
         .get(
+          "/event/replay",
+          describeRoute({
+            summary: "Replay missed events",
+            description:
+              "After a reconnect, return the state events published for this scope since `since`. " +
+              'Returns status "reset" when the client\'s epoch is stale or the required events have ' +
+              "aged out of the journal, in which case the client must resync from snapshots.",
+            operationId: "event.replay",
+            responses: {
+              200: { description: "Replay result" },
+              ...errors(400),
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              since: z.coerce.number().int().min(0),
+              epoch: z.string().optional(),
+              directory: z.string().optional(),
+              scopeID: z.string().optional(),
+            }),
+          ),
+          async (c) => {
+            const { since, epoch } = c.req.valid("query")
+            const currentEpoch = Bus.epoch()
+            // Epoch mismatch means the runtime restarted; the seq space is
+            // unrelated, so force a full resync.
+            if (epoch && epoch !== currentEpoch) {
+              return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
+            }
+            return c.json(Bus.replay(since))
+          },
+        )
+        .get(
           "/event",
           describeRoute({
             summary: "Subscribe to events",
