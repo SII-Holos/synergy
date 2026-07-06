@@ -21,6 +21,7 @@ export namespace PerformanceStore {
   let flushTimer: ReturnType<typeof setTimeout> | undefined
   let retentionQueued = false
   const pending: Array<() => void> = []
+  const flushHooks = new Set<() => void>()
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
   export function dir() {
@@ -439,6 +440,7 @@ export namespace PerformanceStore {
   }
 
   export function flush() {
+    for (const hook of flushHooks) hook()
     if (flushTimer) clearTimeout(flushTimer)
     flushTimer = undefined
     if (!pending.length) return
@@ -455,6 +457,11 @@ export namespace PerformanceStore {
       retentionQueued = false
       retain()
     }
+  }
+
+  export function beforeFlush(hook: () => void) {
+    flushHooks.add(hook)
+    return () => flushHooks.delete(hook)
   }
 
   function enqueue(job: () => void) {

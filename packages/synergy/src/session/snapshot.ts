@@ -120,18 +120,25 @@ export namespace Snapshot {
     cwd: string,
     env?: Record<string, string>,
     signal?: AbortSignal,
+    stdin?: string,
   ): Promise<{ exitCode: number; text: string; stderr: string }> {
     if (signal?.aborted) return abortedGitResult()
     const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
-    let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined
+    let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
     try {
       proc = Bun.spawn(args, {
         cwd,
+        stdin: stdin === undefined ? "ignore" : "pipe",
         stdout: "pipe",
         stderr: "pipe",
         env: env ? { ...process.env, ...env } : process.env,
         signal: childSignal.signal,
       })
+      if (stdin !== undefined) {
+        if (!proc.stdin) throw new Error("git subprocess stdin pipe unavailable")
+        proc.stdin.write(stdin)
+        proc.stdin.end()
+      }
       const stdout = new Response(proc.stdout).text()
       const stderr = new Response(proc.stderr).text().catch(() => "")
       const [text, stderrText, exitCode] = await withTimeout(
@@ -182,8 +189,15 @@ export namespace Snapshot {
         undefined,
         signal,
       )
+      await gitSpawn(
+        ["git", "--git-dir", git, "config", "core.quotepath", "false"],
+        ScopeContext.current.directory,
+        undefined,
+        signal,
+      )
       log.info("initialized")
     }
+    await ensureExclude(git)
     const addResult = await refreshIndex(sessionID, signal)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
@@ -426,11 +440,13 @@ export namespace Snapshot {
   ): Promise<FileDiff[]> {
     const git = gitdir(sessionID)
     const result: FileDiff[] = []
-    const numstat = await gitSpawn(
+    const diff = await gitSpawn(
       [
         "git",
         "-c",
         "core.autocrlf=false",
+        "-c",
+        "core.quotepath=false",
         "--git-dir",
         git,
         "--work-tree",
@@ -439,6 +455,7 @@ export namespace Snapshot {
         "--no-ext-diff",
         "--no-renames",
         "--numstat",
+        "-p",
         from,
         to,
         "--",
@@ -448,41 +465,27 @@ export namespace Snapshot {
       undefined,
       signal,
     )
-    if (numstat.exitCode !== 0) {
-      log.warn("failed to get diff summary", { from, to, exitCode: numstat.exitCode, stderr: numstat.stderr })
+    if (diff.exitCode !== 0) {
+      log.warn("failed to get diff summary", { from, to, exitCode: diff.exitCode, stderr: diff.stderr })
       return result
     }
-    for (const line of numstat.text.split("\n")) {
-      if (!line) continue
-      const [additions, deletions, file] = line.split("\t")
+
+    const parsed = parseNumstatPatch(diff.text)
+    const sizes = await objectSizes(
+      git,
+      parsed.stats.flatMap((stat) => [
+        { tree: from, file: stat.file },
+        { tree: to, file: stat.file },
+      ]),
+      signal,
+    )
+    for (let index = 0; index < parsed.stats.length; index++) {
+      const stat = parsed.stats[index]
+      const { additions, deletions, file } = stat
       const isBinaryFile = additions === "-" && deletions === "-"
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
-      const patch = isBinaryFile
-        ? ""
-        : (
-            await gitSpawn(
-              [
-                "git",
-                "-c",
-                "core.autocrlf=false",
-                "--git-dir",
-                git,
-                "--work-tree",
-                ScopeContext.current.directory,
-                "diff",
-                "--no-ext-diff",
-                "--no-renames",
-                from,
-                to,
-                "--",
-                file,
-              ],
-              ScopeContext.current.directory,
-              undefined,
-              signal,
-            )
-          ).text
+      const patch = isBinaryFile ? "" : (parsed.patches[index] ?? "")
       result.push(
         SnapshotSchema.fromPatch({
           file,
@@ -490,8 +493,8 @@ export namespace Snapshot {
           deletions: Number.isFinite(deleted) ? deleted : 0,
           binary: isBinaryFile,
           patch,
-          beforeBytes: await objectSize(git, from, file, signal),
-          afterBytes: await objectSize(git, to, file, signal),
+          beforeBytes: sizes.get(objectSizeKey(from, file)),
+          afterBytes: sizes.get(objectSizeKey(to, file)),
         }),
       )
     }
@@ -501,23 +504,74 @@ export namespace Snapshot {
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
     const git = gitdir(sessionID)
     const cwd = ScopeContext.current.directory
-    const rm = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", cwd, "rm", "-r", "--cached", "--ignore-unmatch", "-f", "."],
-      cwd,
-      undefined,
-      signal,
-    )
-    if (rm.exitCode !== 0) return false
+    await ensureExclude(git)
 
-    const files = await includedFiles(cwd, signal)
-    if (files === undefined) return false
-    if (files.length === 0) return true
+    const changed = await changedFiles(git, cwd, signal)
+    if (changed === undefined) return false
+    if (changed.length === 0) return true
+
+    const addable: string[] = []
+    const removable: string[] = []
+    for (const rel of changed) {
+      const state = await candidateState(cwd, rel)
+      if (state === "missing") {
+        addable.push(rel)
+        continue
+      }
+      if (state === "add") {
+        addable.push(rel)
+        continue
+      }
+      removable.push(rel)
+    }
+
+    if (removable.length > 0) {
+      const pathspec = path.join(git, "synergy-remove-pathspec")
+      await fs.writeFile(pathspec, removable.join("\0") + "\0")
+      try {
+        const rm = await gitSpawn(
+          [
+            "git",
+            "--git-dir",
+            git,
+            "--work-tree",
+            cwd,
+            "rm",
+            "--cached",
+            "--ignore-unmatch",
+            "-r",
+            "--pathspec-from-file",
+            pathspec,
+            "--pathspec-file-nul",
+          ],
+          cwd,
+          undefined,
+          signal,
+        )
+        if (rm.exitCode !== 0) return false
+      } finally {
+        await fs.unlink(pathspec).catch(() => undefined)
+      }
+    }
+
+    if (addable.length === 0) return true
 
     const pathspec = path.join(git, "synergy-pathspec")
-    await fs.writeFile(pathspec, files.join("\0") + "\0")
+    await fs.writeFile(pathspec, addable.join("\0") + "\0")
     try {
       const add = await gitSpawn(
-        ["git", "--git-dir", git, "--work-tree", cwd, "add", "--pathspec-from-file", pathspec, "--pathspec-file-nul"],
+        [
+          "git",
+          "--git-dir",
+          git,
+          "--work-tree",
+          cwd,
+          "add",
+          "--all",
+          "--pathspec-from-file",
+          pathspec,
+          "--pathspec-file-nul",
+        ],
         cwd,
         undefined,
         signal,
@@ -528,23 +582,53 @@ export namespace Snapshot {
     }
   }
 
-  async function includedFiles(cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
-    const listing = await gitSpawn(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd, undefined, signal)
-    if (listing.exitCode !== 0) {
-      log.warn("ls-files failed", { cwd, exitCode: listing.exitCode, stderr: listing.stderr })
+  async function changedFiles(git: string, cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
+    const status = await gitSpawn(
+      [
+        "git",
+        "-c",
+        "core.quotepath=false",
+        "--git-dir",
+        git,
+        "--work-tree",
+        cwd,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+      ],
+      cwd,
+      undefined,
+      signal,
+    )
+    if (status.exitCode !== 0) {
+      log.warn("status failed", { cwd, exitCode: status.exitCode, stderr: status.stderr })
       return undefined
     }
-    const files: string[] = []
-    for (const raw of listing.text.split("\0")) {
-      const rel = raw.trim()
-      if (!rel || excludePath(rel)) continue
-      const absolute = path.join(cwd, rel)
-      const stat = await fs.lstat(absolute).catch(() => undefined)
-      if (!stat?.isFile() && !stat?.isSymbolicLink()) continue
-      if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) continue
-      files.push(rel.replaceAll("\\", "/"))
+    const files = new Set<string>()
+    const items = status.text.split("\0")
+    for (let index = 0; index < items.length; index++) {
+      const raw = items[index]
+      if (!raw) continue
+      const code = raw.slice(0, 2)
+      const rel = raw.slice(3).trim()
+      if (rel) files.add(rel.replaceAll("\\", "/"))
+      if (code.includes("R") || code.includes("C")) {
+        const previous = items[++index]?.trim()
+        if (previous) files.add(previous.replaceAll("\\", "/"))
+      }
     }
-    return files
+    return [...files]
+  }
+
+  async function candidateState(cwd: string, rel: string): Promise<"add" | "remove" | "missing"> {
+    if (excludePath(rel)) return "remove"
+    const absolute = path.join(cwd, rel)
+    const stat = await fs.lstat(absolute).catch(() => undefined)
+    if (!stat) return "missing"
+    if (!stat.isFile() && !stat.isSymbolicLink()) return "remove"
+    if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) return "remove"
+    return "add"
   }
 
   function excludePath(rel: string): boolean {
@@ -554,25 +638,81 @@ export namespace Snapshot {
     return EXCLUDED_EXTENSIONS.has(path.extname(normalized).toLowerCase())
   }
 
+  async function ensureExclude(git: string) {
+    const info = path.join(git, "info")
+    await fs.mkdir(info, { recursive: true })
+    const body = [
+      "# Synergy snapshot exclusions",
+      ...[...EXCLUDED_DIRS].sort().map((dir) => `${dir}/`),
+      ...[...EXCLUDED_EXTENSIONS].sort().map((extension) => `*${extension}`),
+      "",
+    ].join("\n")
+    const file = path.join(info, "exclude")
+    const current = await fs.readFile(file, "utf8").catch(() => undefined)
+    if (current !== body) await fs.writeFile(file, body)
+  }
+
   function absoluteWorktreePath(rel: string): string {
     return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
   }
 
-  async function objectSize(
+  function parseNumstatPatch(text: string): {
+    stats: Array<{ additions: string; deletions: string; file: string }>
+    patches: string[]
+  } {
+    const marker = "\n\ndiff --git "
+    const markerIndex = text.indexOf(marker)
+    const numstatText = markerIndex === -1 ? text : text.slice(0, markerIndex)
+    const patchText = markerIndex === -1 ? "" : text.slice(markerIndex + 2)
+    return {
+      stats: numstatText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [additions, deletions, file] = line.split("\t")
+          return { additions, deletions, file }
+        }),
+      patches: splitPatches(patchText),
+    }
+  }
+
+  function splitPatches(text: string) {
+    if (!text.trim()) return []
+    return text
+      .split(/^diff --git /m)
+      .filter(Boolean)
+      .map((patch) => `diff --git ${patch}`)
+  }
+
+  function objectSizeKey(tree: string, file: string) {
+    return `${tree}:${file}`
+  }
+
+  async function objectSizes(
     git: string,
-    tree: string,
-    file: string,
+    objects: Array<{ tree: string; file: string }>,
     signal?: AbortSignal,
-  ): Promise<number | undefined> {
-    const result = await gitSpawn(
-      ["git", "--git-dir", git, "cat-file", "-s", `${tree}:${file}`],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>()
+    if (objects.length === 0) return result
+    const input = objects.map((object) => objectSizeKey(object.tree, object.file)).join("\n") + "\n"
+    const batch = await gitSpawn(
+      ["git", "--git-dir", git, "cat-file", "--batch-check=%(objectsize)"],
       ScopeContext.current.directory,
       undefined,
       signal,
+      input,
     )
-    if (result.exitCode !== 0) return undefined
-    const parsed = Number.parseInt(result.text.trim(), 10)
-    return Number.isFinite(parsed) ? parsed : undefined
+    if (batch.exitCode !== 0) return result
+    const lines = batch.text.split("\n")
+    for (let index = 0; index < objects.length; index++) {
+      const line = lines[index]?.trim() ?? ""
+      if (!/^\d+$/.test(line)) continue
+      const parsed = Number.parseInt(line, 10)
+      if (Number.isFinite(parsed)) result.set(objectSizeKey(objects[index].tree, objects[index].file), parsed)
+    }
+    return result
   }
 
   function gitdir(sessionID: string) {

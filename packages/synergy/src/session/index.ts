@@ -960,8 +960,13 @@ export namespace Session {
     return partWriteBuffer.flushAll()
   }
 
-  export const updatePart = fn(UpdatePartInput, async (input) => {
-    const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
+  type UpdatePartInternalInput =
+    | MessageV2.Part
+    | { part: MessageV2.TextPart; delta: string }
+    | { part: MessageV2.ReasoningPart; delta: string }
+
+  async function updatePartInternal(input: UpdatePartInternalInput) {
+    const part = "delta" in input ? input.part : MessageV2.canonicalPart(input)
     const delta = "delta" in input ? input.delta : undefined
     // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
     // sessionID -> scopeID cache instead of loading full session info on every
@@ -991,7 +996,14 @@ export namespace Session {
       delta,
     })
     return part
-  })
+  }
+
+  export const updatePart = fn(UpdatePartInput, updatePartInternal)
+
+  export function updatePartDelta(part: MessageV2.TextPart | MessageV2.ReasoningPart, delta: string) {
+    if (part.type === "text") return updatePartInternal({ part, delta })
+    return updatePartInternal({ part, delta })
+  }
 
   export const getUsage = fn(
     z.object({

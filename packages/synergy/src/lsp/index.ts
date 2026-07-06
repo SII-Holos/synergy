@@ -73,10 +73,20 @@ export namespace LSP {
   // beyond the timeout. Reaping is transparent — getClients re-spawns on the
   // next request. Disabled with SYNERGY_DISABLE_LSP_REAP.
   const lastUsedAt = new WeakMap<LSPClient.Info, number>()
+  const worktreeClients = new WeakSet<LSPClient.Info>()
   const LSP_IDLE_MS = 30 * 60 * 1000
+  const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
   const LSP_SWEEP_MS = 5 * 60 * 1000
+  const LSP_MAX_CLIENTS_PER_SERVER = Math.max(
+    1,
+    Number.parseInt(process.env.SYNERGY_LSP_MAX_CLIENTS_PER_SERVER ?? "2", 10) || 2,
+  )
   function touchClient(client: LSPClient.Info) {
     lastUsedAt.set(client, Date.now())
+  }
+
+  function clientIdleMs(client: LSPClient.Info) {
+    return worktreeClients.has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
   }
 
   const state = ScopedState.create(
@@ -143,15 +153,8 @@ export namespace LSP {
         : setInterval(() => {
             const now = Date.now()
             for (const client of [...clients]) {
-              if (now - (lastUsedAt.get(client) ?? now) < LSP_IDLE_MS) continue
-              const idx = clients.indexOf(client)
-              if (idx !== -1) clients.splice(idx, 1)
-              const pid = client.pid
-              log.info("reaping idle LSP client", { serverID: client.serverID, root: client.root })
-              void client
-                .shutdown()
-                .then(() => (pid ? LSPPid.untrack(pid) : undefined))
-                .catch((error) => log.warn("failed to shut down idle LSP client", { error }))
+              if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
+              void reapClient(clients, client, "idle")
             }
           }, LSP_SWEEP_MS)
       sweeper?.unref()
@@ -257,6 +260,7 @@ export namespace LSP {
       }
 
       s.clients.push(client)
+      if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients.add(client)
       touchClient(client)
       if (handle.process.pid) {
         LSPPid.track(handle.process.pid)
@@ -295,6 +299,7 @@ export namespace LSP {
         continue
       }
 
+      await reapForCapacity(s.clients, server.id)
       const task = schedule(server, root, root + server.id)
       s.spawning.set(root + server.id, task)
 
@@ -313,6 +318,24 @@ export namespace LSP {
 
     for (const client of result) touchClient(client)
     return result
+  }
+
+  async function reapForCapacity(clients: LSPClient.Info[], serverID: string) {
+    const matches = clients.filter((client) => client.serverID === serverID)
+    if (matches.length < LSP_MAX_CLIENTS_PER_SERVER) return
+    const oldest = matches.toSorted((a, b) => (lastUsedAt.get(a) ?? 0) - (lastUsedAt.get(b) ?? 0))[0]
+    if (oldest) await reapClient(clients, oldest, "capacity")
+  }
+
+  async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
+    const idx = clients.indexOf(client)
+    if (idx !== -1) clients.splice(idx, 1)
+    const pid = client.pid
+    log.info("reaping LSP client", { serverID: client.serverID, root: client.root, reason })
+    await client
+      .shutdown()
+      .then(() => (pid ? LSPPid.untrack(pid) : undefined))
+      .catch((error) => log.warn("failed to shut down LSP client", { error, reason }))
   }
 
   export async function hasClients(file: string) {

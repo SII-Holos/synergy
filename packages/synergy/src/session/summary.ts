@@ -22,10 +22,12 @@ import { LLM } from "./llm"
 import { Agent } from "@/agent/agent"
 import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
+import { SessionProgress } from "./progress"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
+  const active = new Map<string, { promise: Promise<void>; next?: { sessionID: string; messageID: string } }>()
 
   export const summarize = fn(
     z.object({
@@ -33,15 +35,42 @@ export namespace SessionSummary {
       messageID: z.string(),
     }),
     async (input) => {
-      const all = await Session.messages({ sessionID: input.sessionID })
-      await Promise.all([
-        summarizeSession({ sessionID: input.sessionID, messages: all }),
-        summarizeMessage({ messageID: input.messageID, messages: all, sessionID: input.sessionID }),
-      ])
+      const pending = active.get(input.sessionID)
+      if (pending) {
+        pending.next = input
+        return pending.promise
+      }
+      const task = runSummaries(input)
+      active.set(input.sessionID, { promise: task })
+      return task
     },
   )
 
-  async function summarizeSession(input: { sessionID: string; messages: MessageV2.WithParts[] }) {
+  async function runSummaries(input: { sessionID: string; messageID: string }) {
+    let current: { sessionID: string; messageID: string } | undefined = input
+    while (current) {
+      await summarizeNow(current)
+      const state = active.get(input.sessionID)
+      current = state?.next
+      if (state) state.next = undefined
+    }
+    active.delete(input.sessionID)
+  }
+
+  async function summarizeNow(input: { sessionID: string; messageID: string }) {
+    const all = await Session.messages({ sessionID: input.sessionID })
+    const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
+    await Promise.all([
+      summarizeSession({ sessionID: input.sessionID, messages: all, diffCache }),
+      summarizeMessage({ messageID: input.messageID, messages: all, sessionID: input.sessionID, diffCache }),
+    ])
+  }
+
+  async function summarizeSession(input: {
+    sessionID: string
+    messages: MessageV2.WithParts[]
+    diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+  }) {
     const session = await SessionManager.requireSession(input.sessionID)
     const directory = (session.scope as Scope).directory
     const scopeID = asScopeID((session.scope as Scope).id)
@@ -52,7 +81,11 @@ export namespace SessionSummary {
         .flatMap((x) => x.files)
         .map((x) => path.relative(directory, x)),
     )
-    const diffs = await computeDiff({ messages: input.messages, sessionID: input.sessionID }).then((x) =>
+    const diffs = await computeDiff({
+      messages: input.messages,
+      sessionID: input.sessionID,
+      cache: input.diffCache,
+    }).then((x) =>
       x.filter((x) => {
         return files.has(x.file)
       }),
@@ -103,14 +136,19 @@ export namespace SessionSummary {
     })
   }
 
-  async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[]; sessionID: string }) {
+  async function summarizeMessage(input: {
+    messageID: string
+    messages: MessageV2.WithParts[]
+    sessionID: string
+    diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+  }) {
     const turn = Turn.collectOne(input.messages, input.messageID)
     if (!turn) return
     const messages = [turn.user, ...turn.assistants]
     const msgWithParts = turn.user
     const userMsg = msgWithParts.info as MessageV2.User
     if (!MessageV2.isPromptVisible(msgWithParts)) return
-    const diffs = await computeDiff({ messages, sessionID: input.sessionID })
+    const diffs = await computeDiff({ messages, sessionID: input.sessionID, cache: input.diffCache })
     const diffsChanged = !sameDiffs(userMsg.summary?.diffs, diffs)
     userMsg.summary = {
       ...userMsg.summary,
@@ -206,13 +244,8 @@ export namespace SessionSummary {
     if (title) userMsg.summary.title = title
     if (body) userMsg.summary.body = body
 
-    // Only persist when summary content changed. The processor path
-    // (finish-step) calls summarize() on every step; without this
-    // guard, saveSummary fires message.updated every time — even when
-    // title, body, and diffs are unchanged — causing the frontend
-    // Typewriter to restart and producing a visible flicker. Diffs are
-    // included because session-turn diff cards read them from the
-    // persisted user message summary.
+    // Only persist when summary content changed. Diffs are included because
+    // session-turn diff cards read them from the persisted user message summary.
     if (title || body || diffsChanged) {
       await saveSummary(userMsg)
     }
@@ -232,13 +265,29 @@ export namespace SessionSummary {
     },
   )
 
-  async function computeDiff(input: { messages: MessageV2.WithParts[]; sessionID: string }) {
+  async function computeDiff(input: {
+    messages: MessageV2.WithParts[]
+    sessionID: string
+    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+  }) {
+    const range = diffRange(input.messages)
+    if (!range) return []
+    const key = `${range.from}:${range.to}`
+    let cached = input.cache.get(key)
+    if (!cached) {
+      cached = Snapshot.diffSummary(range.from, range.to, input.sessionID)
+      input.cache.set(key, cached)
+    }
+    return cached
+  }
+
+  function diffRange(messages: MessageV2.WithParts[]) {
     let from: string | undefined
     let to: string | undefined
 
     // scan assistant messages to find earliest from and latest to
     // snapshot
-    for (const item of input.messages) {
+    for (const item of messages) {
       if (!from) {
         for (const part of item.parts) {
           if (part.type === "step-start" && part.snapshot) {
@@ -256,17 +305,17 @@ export namespace SessionSummary {
       }
     }
 
-    if (from && to) return Snapshot.diffSummary(from, to, input.sessionID)
-    return []
+    if (from && to) return { from, to }
+    return undefined
   }
 }
 
 LoopJob.register({
   type: "summarize",
-  phase: "pre",
+  phase: "post",
   blocking: false,
   collect(ctx) {
-    if (ctx.step !== 1) return []
+    if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
     return [{ type: "summarize" }]
   },
   async execute(ctx) {
