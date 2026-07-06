@@ -543,7 +543,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     })()
 
     const chatNamePromise =
-      account && msg.chat_id
+      account && filterResult.isGroup && msg.chat_id
         ? chatNameCache.resolve(apiCtx!, msg.chat_id!).catch(() => undefined)
         : Promise.resolve(undefined)
 
@@ -554,7 +554,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       chatNamePromise,
     ])
 
-    const chatName = resolvedChatName ?? senderName ?? sender?.sender_id?.user_id
+    const chatName = resolvedChatName ?? senderName ?? (senderId !== "unknown" ? senderId : undefined)
 
     if (MEDIA_MESSAGE_TYPES.has(messageType) || messageType === "post") {
       log.info("feishu media resolved", {
