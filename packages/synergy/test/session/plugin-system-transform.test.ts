@@ -242,6 +242,7 @@ describe("plugin system transform hooks", () => {
         } as any)
 
         const output = { system: ["base"] }
+        const systemRef = output.system
         await Plugin.trigger(
           "experimental.chat.system.transform",
           {
@@ -254,7 +255,8 @@ describe("plugin system transform hooks", () => {
           output,
         )
 
-        expect(output.system).toEqual(["base", "runtime-added"])
+        expect(output.system).toBe(systemRef)
+        expect(systemRef).toEqual(["base", "runtime-added"])
       },
     })
   })
