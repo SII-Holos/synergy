@@ -31,6 +31,11 @@ export namespace Flag {
   export const SYNERGY_EXPERIMENTAL_OXFMT = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_OXFMT")
   export const SYNERGY_EXPERIMENTAL_LSP_TY = truthy("SYNERGY_EXPERIMENTAL_LSP_TY")
   export const SYNERGY_EXPERIMENTAL_LSP_TOOL = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_LSP_TOOL")
+  // Escape hatch for the loop-scoped in-memory session message cache (#350 D2).
+  export const SYNERGY_DISABLE_MESSAGE_CACHE = truthy("SYNERGY_DISABLE_MESSAGE_CACHE")
+  // Cross-check the message cache against a fresh disk read on every read and
+  // fall back to disk on mismatch. For tests/soak; off by default.
+  export const SYNERGY_VERIFY_MESSAGE_CACHE = truthy("SYNERGY_VERIFY_MESSAGE_CACHE")
 
   function truthy(key: string) {
     const value = process.env[key]?.toLowerCase()

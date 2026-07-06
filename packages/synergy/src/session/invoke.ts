@@ -32,6 +32,7 @@ import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
 import { SessionInbox } from "./inbox"
 import { SessionHistory } from "./history"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -184,7 +185,12 @@ export namespace SessionInvoke {
       })
     }
 
+    // Open the loop-scoped message cache window (#350 D2): while this loop owns
+    // the session it is the sole writer (I1), so the assembled history can be
+    // held in memory and maintained by the loop's own writes. Dropped on exit.
+    SessionMessageCache.enable(sessionID)
     await using _ = defer(async () => {
+      SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
       await SessionManager.release(sessionID)
     })
@@ -286,6 +292,10 @@ export namespace SessionInvoke {
         const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
+          // Pre-jobs (compaction especially) can rewrite history in ways the
+          // incremental cache maintenance does not model; drop the cache so the
+          // next step re-reads authoritative state (#350 D2, R2).
+          SessionMessageCache.invalidate(sessionID)
           if (result === "stop") break
           if (result === "continue") {
             // A processed compaction re-arms the emergency-compaction fallback so
