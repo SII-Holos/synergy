@@ -230,7 +230,7 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
 
-const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
+const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
 
 const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
   browser_navigate: { icon: "globe", title: "Navigate" },
@@ -1647,7 +1647,9 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
       </Show>
       <Show when={isTurnBubble() && hasVisibleContent()}>
         <div data-slot="user-message-meta">
-          <Show when={timestamp()}>{(value) => <span data-slot="user-message-time">{value()}</span>}</Show>
+          <Show keyed when={timestamp()}>
+            {(value) => <span data-slot="user-message-time">{value}</span>}
+          </Show>
           <Show when={text()}>
             <Tooltip value={copy.tooltip()} placement="top" gutter={4} class="user-message-copy-trigger">
               <button

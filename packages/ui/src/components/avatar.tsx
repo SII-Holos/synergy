@@ -36,8 +36,8 @@ export function Avatar(props: AvatarProps) {
         ...(!src && split.foreground ? { "--avatar-fg": split.foreground } : {}),
       }}
     >
-      <Show when={src} fallback={split.fallback?.[0]}>
-        {(src) => <img src={src()} draggable={false} class="size-full object-cover" />}
+      <Show keyed when={src} fallback={split.fallback?.[0]}>
+        {(imageSrc) => <img src={imageSrc} draggable={false} class="size-full object-cover" />}
       </Show>
     </div>
   )

@@ -107,18 +107,25 @@ export function BasicTool(props: BasicToolProps) {
   })
 
   const triggerProps = createMemo(() => fromTrigger(props.trigger, props.icon, props.onSubtitleClick))
+  const rawTrigger = createMemo<JSX.Element | undefined>(() => {
+    if (triggerProps()) return undefined
+    const trigger = props.trigger
+    if (!trigger) return undefined
+    return typeof trigger === "function" ? (trigger as unknown as () => JSX.Element)() : (trigger as JSX.Element)
+  })
 
   return (
     <Collapsible open={open()} onOpenChange={setOpen} variant="tool" data-tool-status={props.status ?? "completed"}>
       <Collapsible.Trigger>
         <Show
+          keyed
           when={triggerProps()}
           fallback={
             // Raw JSX.Element fallback (anchored-tool-card, file-ops custom triggers)
-            <Show when={props.trigger as JSX.Element}>{(el) => el()}</Show>
+            rawTrigger()
           }
         >
-          {(tp) => <ToolTrigger {...tp()} />}
+          {(tp) => <ToolTrigger {...tp} />}
         </Show>
         <div data-slot="tool-trigger-status">
           <Switch>
@@ -126,8 +133,8 @@ export function BasicTool(props: BasicToolProps) {
               <Show when={charsLabel()}>
                 <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
-              <Show when={countdown()}>
-                {(value) => <Countdown seconds={value().seconds} startedAt={value().startedAt} active={active()} />}
+              <Show keyed when={countdown()}>
+                {(value) => <Countdown seconds={value.seconds} startedAt={value.startedAt} active={active()} />}
               </Show>
               <Spinner />
             </Match>
@@ -217,10 +224,10 @@ export function SmartTool(props: {
       }}
       hideDetails={props.hideDetails}
     >
-      <Show when={props.output}>
+      <Show keyed when={props.output}>
         {(output) => (
           <div data-component="tool-output" data-scrollable>
-            <ToolTextOutput text={output()} />
+            <ToolTextOutput text={output} />
           </div>
         )}
       </Show>
