@@ -432,13 +432,26 @@ export default function Layout(props: ParentProps) {
   })
 
   return (
-    <LayoutContent
-      searchOpen={searchOpen()}
-      onSearchClose={() => setSearchOpen(false)}
-      onSearchOpen={() => setSearchOpen(true)}
-    >
-      {props.children}
-    </LayoutContent>
+    <>
+      <Show when={!layout.isDesktop()}>
+        <button
+          type="button"
+          class="fixed left-3 top-3 z-[999] flex items-center justify-center w-11 h-11 rounded-xl bg-black text-white border border-white/10 shadow-lg active:scale-95 transition-transform"
+          style={{ top: "max(12px, env(safe-area-inset-top, 0px) + 12px)" }}
+          aria-label="Open navigation"
+          onClick={() => layout.mobileSidebar.toggle()}
+        >
+          <Icon name="panel-left-open" size="normal" />
+        </button>
+      </Show>
+      <LayoutContent
+        searchOpen={searchOpen()}
+        onSearchClose={() => setSearchOpen(false)}
+        onSearchOpen={() => setSearchOpen(true)}
+      >
+        {props.children}
+      </LayoutContent>
+    </>
   )
 }
 
@@ -458,15 +471,6 @@ function LayoutContent(
       }}
     >
       <MobileDrawer />
-      {/* Global mobile hamburger — visible on every page at <768px */}
-      <button
-        type="button"
-        class="md:hidden fixed left-2.5 top-2.5 z-[99] flex items-center justify-center size-10 rounded-xl bg-surface-raised-base/90 backdrop-blur-sm border border-border-weaker-base/60 text-icon-base shadow-md active:scale-95 transition-transform"
-        aria-label="Open navigation"
-        onClick={() => layout.mobileSidebar.toggle()}
-      >
-        <Icon name="panel-left-open" size="normal" />
-      </button>
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
       <ConnectionBanner />
