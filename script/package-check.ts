@@ -26,7 +26,7 @@ import { currentGitRemoteUrl } from "./release/shared/git"
 const publishablePackages: PublishablePackage[] = [
   { name: "@ericsanchezok/synergy-sdk", dir: SDK_DIR, build: true, attw: true },
   { name: "@ericsanchezok/synergy-util", dir: UTIL_DIR, build: true, attw: true },
-  { name: "@ericsanchezok/synergy-link-protocol", dir: SYNERGY_LINK_PROTOCOL_DIR, build: true, attw: true },
+  { name: "@ericsanchezok/synergy-link-protocol", dir: SYNERGY_LINK_PROTOCOL_DIR, build: true, attw: false },
   {
     name: "@ericsanchezok/synergy-plugin",
     dir: PLUGIN_DIR,

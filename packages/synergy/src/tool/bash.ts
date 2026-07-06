@@ -29,6 +29,7 @@ const parameters = z.object({
     ),
   yieldSeconds: z
     .number()
+    .positive()
     .optional()
     .describe(
       "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
@@ -65,7 +66,7 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
       return RemoteBashBackend.execute(params, target)
     }
 
-    const result = await LocalBashBackend.execute(params, ctx)
+    const result = await LocalBashBackend.execute({ ...params, backgroundAfterSeconds: params.yieldSeconds }, ctx)
     if (target.kind === "local_fallback") {
       return SynergyLinkExecution.withLocalFallbackWarning(result, target.warning)
     }
