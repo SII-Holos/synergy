@@ -184,9 +184,18 @@ export function SessionTopBar() {
   return (
     <div class="stb-root">
       <div class="stb-left">
+        {/* Mobile left sidebar trigger */}
+        <button
+          type="button"
+          class="stb-icon-btn md:hidden"
+          aria-label="Open navigation"
+          onClick={() => layout.mobileSidebar.toggle()}
+        >
+          <Icon name="panel-left-open" size="normal" />
+        </button>
         <Show when={!isGlobal()}>
-          <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
-          <span class="stb-slash">/</span>
+          <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder hidden md:block" />
+          <span class="stb-slash hidden md:block">/</span>
         </Show>
         {/* Model selector */}
         <Show when={sessionMeta().canSelectModel}>
@@ -235,10 +244,11 @@ export function SessionTopBar() {
             onArchive={archiveSession}
           />
         </Show>
+        {/* BottomSpace hidden on mobile */}
         <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
           <button
             type="button"
-            class="stb-icon-btn"
+            class="stb-icon-btn hidden md:flex"
             classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
             aria-label={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"}
             aria-pressed={bottomSurface().opened()}
@@ -247,10 +257,23 @@ export function SessionTopBar() {
             <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
           </button>
         </Tooltip>
+        {/* Side workspace: opens right tools drawer on mobile, toggles desktop panel on desktop */}
         <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
           <button
             type="button"
-            class="stb-icon-btn"
+            class="stb-icon-btn md:hidden"
+            classList={{ "stb-icon-btn--active": sideSurface().opened() }}
+            aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
+            aria-pressed={sideSurface().opened()}
+            onClick={() => layout.rightSidebar.show()}
+          >
+            <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+          </button>
+        </Tooltip>
+        <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
+          <button
+            type="button"
+            class="stb-icon-btn hidden md:flex"
             classList={{ "stb-icon-btn--active": sideSurface().opened() }}
             aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
             aria-pressed={sideSurface().opened()}

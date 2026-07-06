@@ -21,7 +21,7 @@ import { navStart } from "@/utils/perf"
 import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { MobileDrawer } from "@/components/mobile-drawer"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { MobileToolsDrawer } from "@/components/mobile-tools-drawer"
 import { ConnectionBanner } from "@/components/connection-banner"
 import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
 import { DesktopNativeTitlebar } from "@/components/desktop-native-titlebar"
@@ -432,26 +432,13 @@ export default function Layout(props: ParentProps) {
   })
 
   return (
-    <>
-      <Show when={!layout.isDesktop()}>
-        <button
-          type="button"
-          class="fixed left-3 top-3 z-[999] flex items-center justify-center w-11 h-11 rounded-xl bg-black text-white border border-white/10 shadow-lg active:scale-95 transition-transform"
-          style={{ top: "max(12px, env(safe-area-inset-top, 0px) + 12px)" }}
-          aria-label="Open navigation"
-          onClick={() => layout.mobileSidebar.toggle()}
-        >
-          <Icon name="panel-left-open" size="normal" />
-        </button>
-      </Show>
-      <LayoutContent
-        searchOpen={searchOpen()}
-        onSearchClose={() => setSearchOpen(false)}
-        onSearchOpen={() => setSearchOpen(true)}
-      >
-        {props.children}
-      </LayoutContent>
-    </>
+    <LayoutContent
+      searchOpen={searchOpen()}
+      onSearchClose={() => setSearchOpen(false)}
+      onSearchOpen={() => setSearchOpen(true)}
+    >
+      {props.children}
+    </LayoutContent>
   )
 }
 
@@ -471,6 +458,7 @@ function LayoutContent(
       }}
     >
       <MobileDrawer />
+      <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
       <ConnectionBanner />

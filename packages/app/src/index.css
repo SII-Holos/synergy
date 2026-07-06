@@ -827,6 +827,15 @@ a:active,
   }
 }
 
+@keyframes mobileDrawerSlideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 /* iOS safe area support (viewport-fit=cover) */
 
 @media (max-width: 767px) {
