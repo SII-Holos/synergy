@@ -38,6 +38,7 @@ export const SemanticIconToken = {
 
   // Orchestration
   "orchestration.blueprint": "clipboard-list",
+  "blueprint.main": "clipboard-list",
   "orchestration.dag": "route",
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
 
