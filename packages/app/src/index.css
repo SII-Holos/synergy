@@ -759,6 +759,19 @@ a:active,
   }
 }
 
+/* Mobile safe area utilities */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
 @media (max-width: 767px) {
   .synergy-workbench-canvas .prompt-input-shell {
     border-radius: 0;
@@ -815,6 +828,7 @@ a:active,
 }
 
 /* iOS safe area support (viewport-fit=cover) */
+
 @media (max-width: 767px) {
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);

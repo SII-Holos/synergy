@@ -51,11 +51,11 @@ export function MobileDrawer() {
         />
         {/* Drawer panel */}
         <div
-          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl"
+          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
           {/* Header */}
-          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
+          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img src={holosLogoPath(theme.mode())} alt="Holos" class="size-6 shrink-0" />
               <span class="text-14-medium text-text-strong">Synergy</span>
