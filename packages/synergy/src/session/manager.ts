@@ -60,6 +60,44 @@ export namespace SessionManager {
 
   const runtimes = new Map<string, SessionRuntime>()
 
+  // A session's scope is immutable for its lifetime, so the sessionID -> scopeID
+  // mapping can be cached permanently. This removes the two per-delta disk reads
+  // that `requireSession` performs on the streaming hot path (issue #350 H1):
+  // `updatePart` only needs the scopeID to build the storage path, not the full
+  // session info. Entries are tiny (ULID -> scopeID strings) and dropped when a
+  // session is deleted (`forgetSession`).
+  const scopeIDCache = new Map<string, string>()
+
+  function rememberScopeID(sessionID: string, scopeID: string) {
+    scopeIDCache.set(sessionID, scopeID)
+  }
+
+  export function forgetSession(sessionID: string) {
+    scopeIDCache.delete(sessionID)
+  }
+
+  /** Cached scopeID lookup, warm during an active loop. */
+  export function cachedScopeID(sessionID: string): string | undefined {
+    return scopeIDCache.get(sessionID)
+  }
+
+  /**
+   * Resolve a session's scopeID with a permanent cache. On a cache miss this
+   * reads only the small session-index record (`{ scopeID }`), not the full
+   * session info, and memoizes the result. Used by the streaming part-write
+   * path so per-delta persistence never re-reads session state.
+   */
+  export async function resolveScopeID(sessionID: string): Promise<string> {
+    const cached = scopeIDCache.get(sessionID)
+    if (cached) return cached
+    const indexed = await Storage.read<{ scopeID: string }>(
+      StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
+    ).catch(() => undefined)
+    if (!indexed) throw new Storage.NotFoundError({ message: `Session ${sessionID} not found` })
+    rememberScopeID(sessionID, indexed.scopeID)
+    return indexed.scopeID
+  }
+
   const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
   const IDLE_TTL_MS = 30 * 60 * 1000
 
@@ -110,6 +148,7 @@ export namespace SessionManager {
       StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
     ).catch(() => undefined)
     if (!indexed) return undefined
+    rememberScopeID(sessionID, indexed.scopeID)
     return Storage.read<Info>(
       StoragePath.sessionInfo(Identifier.asScopeID(indexed.scopeID), Identifier.asSessionID(sessionID)),
     ).catch(() => undefined)

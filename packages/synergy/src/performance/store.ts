@@ -73,7 +73,7 @@ export namespace PerformanceStore {
     const conn = open()
     if (!conn) return
     conn
-      .prepare(
+      .query(
         `INSERT OR REPLACE INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)`,
       )
@@ -106,7 +106,7 @@ export namespace PerformanceStore {
     const conn = open()
     if (!conn) return
     conn
-      .prepare(
+      .query(
         `INSERT OR REPLACE INTO perf_spans (trace_id,span_id,parent_span_id,name,module,source,start_time,end_time,duration_ms,status,error_code,error_message,scope_id,session_id,message_id,call_id,rid,process_id,pid,tool,attributes_json)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)`,
       )
@@ -139,7 +139,7 @@ export namespace PerformanceStore {
     const conn = open()
     if (!conn) return
     conn
-      .prepare(
+      .query(
         `INSERT OR REPLACE INTO perf_resource_samples (sample_id,time,iso,source,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,scope_id,session_id,trace_id,labels_json)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)`,
       )
@@ -179,7 +179,7 @@ export namespace PerformanceStore {
     const conn = open()
     if (!conn) return
     conn
-      .prepare(
+      .query(
         `INSERT INTO perf_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,trace_id,span_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
          ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET last_seen_time=excluded.last_seen_time, occurrence_count=perf_issues.occurrence_count+1, evidence_json=excluded.evidence_json`,
@@ -218,7 +218,7 @@ export namespace PerformanceStore {
     page: Record<string, unknown>
   }) {
     open()
-      ?.prepare(
+      ?.query(
         `INSERT OR REPLACE INTO perf_browser_batches (batch_id,received_time,sent_at,source,accepted,rejected,page_json) VALUES (?1,?2,?3,'browser',?4,?5,?6)`,
       )
       .run(input.batchId, input.receivedTime, input.sentAt, input.accepted, input.rejected, JSON.stringify(input.page))

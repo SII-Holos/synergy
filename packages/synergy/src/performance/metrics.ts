@@ -30,7 +30,13 @@ export namespace PerformanceMetrics {
     const sampleRate = input.sampleRate ?? config.samplingRate
     if (sampleRate < 1 && Math.random() > sampleRate) return
     const time = PerformanceClock.now()
-    const metric = PerformanceSchema.Metric.parse({
+    // Hot path: `record` is only ever called from internal, TypeScript-typed
+    // call sites, and labels are already sanitized/coerced by
+    // PerformanceRedaction.record. Constructing the Metric directly avoids a
+    // per-record Zod parse on the highest-frequency observability path (issue
+    // #350 H5). Validation still runs at the external ingestion boundary
+    // (browser batches) where input is untrusted.
+    const metric: PerformanceSchema.Metric = {
       metricId: PerformanceClock.id("met"),
       time,
       iso: PerformanceClock.iso(time),
@@ -52,7 +58,7 @@ export namespace PerformanceMetrics {
       pid: input.pid,
       tool: input.tool,
       sampleRate,
-    })
+    }
     PerformanceStore.insertMetric(metric)
   }
 

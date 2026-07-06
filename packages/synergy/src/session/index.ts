@@ -802,6 +802,7 @@ export namespace Session {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
+      SessionManager.forgetSession(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
@@ -955,8 +956,11 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
-    const session = await SessionManager.requireSession(part.sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
+    // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
+    // sessionID -> scopeID cache instead of loading full session info on every
+    // delta. A session's scope is immutable, so this is safe; on a cold cache it
+    // reads only the small session-index record.
+    const scopeID = asScopeID(await SessionManager.resolveScopeID(part.sessionID))
     const path = StoragePath.messagePart(
       scopeID,
       asSessionID(part.sessionID),
