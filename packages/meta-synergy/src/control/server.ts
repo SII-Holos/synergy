@@ -1,8 +1,8 @@
 import net from "node:net"
 import { unlink } from "node:fs/promises"
-import { MetaSynergyLog } from "../log"
-import { MetaSynergyStore } from "../state/store"
-import { ControlRequestSchema, type MetaSynergyControlRequest, type MetaSynergyControlResponse } from "./schema"
+import { MetaSynergyLog } from "../log.js"
+import { MetaSynergyStore } from "../state/store.js"
+import { ControlRequestSchema, type MetaSynergyControlRequest, type MetaSynergyControlResponse } from "./schema.js"
 
 export class MetaSynergyControlServer {
   readonly socketPath: string

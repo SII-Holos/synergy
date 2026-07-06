@@ -1,5 +1,5 @@
 import z from "zod"
-import { MetaProtocolEnv } from "./env"
+import { MetaProtocolEnv } from "./env.js"
 
 export namespace MetaProtocolHost {
   export const Shell = z.enum(["none", "sh", "cmd", "powershell", "pwsh"])

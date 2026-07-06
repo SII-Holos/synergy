@@ -1,9 +1,9 @@
 import { MetaProtocolEnvelope, MetaProtocolError, MetaProtocolSession } from "@ericsanchezok/meta-protocol"
-import { HolosCallerSchema, type HolosCaller } from "../types"
-import { RPCHandler } from "../rpc/handler"
-import { RPCRequestSchema, type RPCResult } from "../rpc/schema"
-import { SessionManager } from "../session/manager"
-import { MetaSynergyLog } from "../log"
+import { HolosCallerSchema, type HolosCaller } from "../types.js"
+import { RPCHandler } from "../rpc/handler.js"
+import { RPCRequestSchema, type RPCResult } from "../rpc/schema.js"
+import { SessionManager } from "../session/manager.js"
+import { MetaSynergyLog } from "../log.js"
 
 export type SessionOpenDecision = "approve" | "deny" | "pending"
 

@@ -27,6 +27,13 @@ describe("BrowserPolicy user hard safety", () => {
     expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(inside).href, process.cwd()).decision).toBe("allow")
     expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", process.cwd()).decision).toBe("deny")
   })
+
+  test("checks blocked file segments inside directories whose names start with two dots", () => {
+    const filePath = path.join(process.cwd(), "..cache", ".synergy", "token.json")
+    const result = BrowserPolicy.hardCheckNavigation(pathToFileURL(filePath).href, process.cwd())
+    expect(result.decision).toBe("deny")
+    expect(result.reason).toContain("blocked segment")
+  })
 })
 
 describe("BrowserPolicy agent navigation approval split", () => {

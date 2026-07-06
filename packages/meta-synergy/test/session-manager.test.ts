@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { SessionManager } from "../src/session/manager"
+import { SessionManager } from "../src/session/manager.js"
 
 describe("meta-synergy session manager", () => {
   test("opens a session for the first caller", async () => {

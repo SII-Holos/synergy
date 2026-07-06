@@ -1,11 +1,11 @@
 import net from "node:net"
-import { MetaSynergyStore } from "../state/store"
+import { MetaSynergyStore } from "../state/store.js"
 import {
   ControlRequestSchema,
   ControlResponseSchema,
   type MetaSynergyControlRequest,
   type MetaSynergyControlResponse,
-} from "./schema"
+} from "./schema.js"
 
 export class MetaSynergyControlClient {
   static socketPath() {

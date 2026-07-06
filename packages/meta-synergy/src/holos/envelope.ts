@@ -1,6 +1,6 @@
 import { MetaProtocolBridge } from "@ericsanchezok/meta-protocol"
-import type { HolosCaller } from "../types"
-import { MetaSynergyHolosProtocol } from "./protocol"
+import type { HolosCaller } from "../types.js"
+import { MetaSynergyHolosProtocol } from "./protocol.js"
 
 export namespace MetaSynergyHolosEnvelope {
   export function parse(raw: string): { event: string; payload: unknown; caller: HolosCaller } | null {

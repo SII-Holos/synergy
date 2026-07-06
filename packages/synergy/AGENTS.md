@@ -12,6 +12,23 @@
 - **Coverage**: `bun run test:coverage` (full suite with coverage, matching CI)
 - **Profile tests**: `bun run test:profile` (writes JUnit timing to `coverage/test-profile-junit.xml`)
 
+### Quality verification
+
+Before committing changes to core runtime code, run:
+
+```bash
+bun run typecheck         # type-check all packages via turbo
+bun run lint              # lint with oxlint (errors + warnings)
+cd packages/synergy
+bun test                  # full test suite without coverage
+bun run test:changed      # tests affected by changes against origin/dev
+./script/format.ts        # auto-format with prettier (from repo root)
+```
+
+The default local PR preflight (`bun run quality:quick` from repo root) verifies formatting, lint, typecheck, monorepo deps, and package publishing validation. The pre-push hook runs the faster subset documented in the root quality guide. See [docs/open-source-quality.md](../../docs/open-source-quality.md) for the complete quality model.
+
+Do not bypass pre-push hooks. If a hook check fails, fix the root cause rather than skipping it.
+
 ## Code Style
 
 - **Runtime**: Bun with TypeScript ESM modules

@@ -40,8 +40,9 @@ export const myTool = Tool.define({
 6. **Consider permissions** — check if the tool needs permission gating (see `packages/synergy/src/permission/`)
 7. **Register the tool** — add it to the tool registry in `packages/synergy/src/tool/index.ts`
 8. **Regenerate SDK** — run `./script/generate.ts` if the tool is API-visible
-9. **Add tests** — put them in `packages/synergy/test/tool/`
-10. **Run `bun run typecheck`** — verify no type errors
+9. **Run `bun run typecheck`** — verify no type errors
+10. **Run quality preflight** — `bun run quality:quick` from repo root (format, lint, typecheck, monorepo deps, package check)
+11. **Add tests** — put them in `packages/synergy/test/tool/`
 
 ## Key files to reference
 

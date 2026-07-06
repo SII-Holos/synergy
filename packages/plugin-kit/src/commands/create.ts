@@ -3,8 +3,8 @@ import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
 import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
 
 type TemplateName = "tool-ui" | "workbench-panel" | "app-panel" | "api-connector" | "theme-icon"
 
@@ -108,7 +108,7 @@ bun run publish:market
 
 function indexToolUI(name: string): string {
   return `import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
-import { greet } from "./tools"
+import { greet } from "./tools.js"
 
 export const plugin: PluginDescriptor = {
   id: "${name}",
@@ -147,7 +147,7 @@ function indexAppPanel(name: string): string {
 
 function indexApiConnector(name: string): string {
   return `import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
-import { getJSON, postJSON } from "./tools"
+import { getJSON, postJSON } from "./tools.js"
 
 export const plugin: PluginDescriptor = {
   id: "${name}",

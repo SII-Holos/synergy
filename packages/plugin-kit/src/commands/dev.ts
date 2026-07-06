@@ -3,8 +3,8 @@ import fs from "fs"
 import type { Argv } from "yargs"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities, permissionItems, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })

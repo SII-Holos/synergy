@@ -3,24 +3,33 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyRuntime } from "../src/runtime"
-import { MetaSynergyStore } from "../src/state/store"
+import { MetaSynergyRuntime } from "../src/runtime.js"
+import { MetaSynergyStore } from "../src/state/store.js"
 
-const originalHome = process.env.META_SYNERGY_HOME
+const originalMetaHome = process.env.META_SYNERGY_HOME
+const originalSynergyHome = process.env.SYNERGY_TEST_HOME
 const tempRoots: string[] = []
 
 beforeEach(async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "meta-synergy-managed-test-"))
-  tempRoots.push(root)
+  const synergyHome = await mkdtemp(path.join(os.tmpdir(), "meta-synergy-managed-synergy-"))
+  tempRoots.push(root, synergyHome)
   process.env.META_SYNERGY_HOME = root
+  process.env.SYNERGY_TEST_HOME = synergyHome
 })
 
 afterAll(async () => {
-  if (originalHome === undefined) {
+  if (originalMetaHome === undefined) {
     delete process.env.META_SYNERGY_HOME
   } else {
-    process.env.META_SYNERGY_HOME = originalHome
+    process.env.META_SYNERGY_HOME = originalMetaHome
   }
+  if (originalSynergyHome === undefined) {
+    delete process.env.SYNERGY_TEST_HOME
+  } else {
+    process.env.SYNERGY_TEST_HOME = originalSynergyHome
+  }
+
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -66,9 +75,12 @@ describe("meta-synergy managed mode", () => {
 
     const status = await runtime.getStatusPayload()
     expect(status.mode).toBe("managed")
-    expect(status.auth.loggedIn).toBe(true)
-    expect(status.auth.source).toBe("shared")
-    expect(status.auth.hiddenReason).toBe("managed")
+    expect(status.auth).toEqual({
+      loggedIn: false,
+      agentID: null,
+      source: null,
+      hiddenReason: null,
+    })
     expect(status.ownership.local.owned).toBe(true)
 
     const reconnect = await runtime.reconnect()

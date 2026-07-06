@@ -4,7 +4,7 @@ import {
   permissionsHashPayload,
   stablePluginJson,
 } from "@ericsanchezok/synergy-plugin/permissions"
-import { sha256Content } from "./crypto"
+import { sha256Content } from "./crypto.js"
 
 export function computePermissionsHash(manifest: PluginManifest, capabilities: string[]): string {
   return sha256Content(stablePluginJson(permissionsHashPayload(manifest, capabilities)))

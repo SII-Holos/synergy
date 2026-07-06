@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { RPCHandler } from "../src/rpc/handler"
+import { RPCHandler } from "../src/rpc/handler.js"
 
 function sleepCommand(ms: number) {
   return `bun test/fixture/sleep.js ${ms}`

@@ -1,7 +1,7 @@
-import { MetaSynergyStore } from "../state/store"
-import { MetaSynergyStateMigrations } from "../state/migration"
-import type { MetaSynergyMigration } from "./types"
-export type { MetaSynergyMigration } from "./types"
+import { MetaSynergyStore } from "../state/store.js"
+import { MetaSynergyStateMigrations } from "../state/migration.js"
+import type { MetaSynergyMigration } from "./types.js"
+export type { MetaSynergyMigration } from "./types.js"
 
 export namespace MetaSynergyMigrationRunner {
   export async function run(): Promise<void> {

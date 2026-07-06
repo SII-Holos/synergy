@@ -89,8 +89,11 @@ export namespace BrowserPolicy {
     return basename.startsWith(".")
   }
 
-  function containsBlockedFilePathSegment(filePath: string): boolean {
-    const segments = filePath.split(path.sep)
+  function containsBlockedFilePathSegment(filePath: string, workspace: string): boolean {
+    const relative = path.relative(workspace, filePath)
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      return false
+    const segments = relative.split(path.sep)
     return segments.some((s) => BLOCKED_FILE_PATH_SEGMENTS.has(s))
   }
 
@@ -239,7 +242,7 @@ export namespace BrowserPolicy {
    * Check file:// containment. Uses realpath via Bun/Node for symlink resolution.
    */
   export function evaluateFileURL(filePath: string, workspace: string): PolicyResult {
-    if (containsBlockedFilePathSegment(filePath)) {
+    if (containsBlockedFilePathSegment(filePath, workspace)) {
       return {
         decision: "deny",
         reason: `Path contains a blocked segment: ${filePath}`,

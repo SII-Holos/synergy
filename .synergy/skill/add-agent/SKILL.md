@@ -56,3 +56,12 @@ Ensure the agent is registered in the agent index so it can be discovered by the
 - `packages/synergy/src/agent/agents.ts` — agent definitions
 - `packages/synergy/src/agent/prompt/` — all prompt files
 - `packages/synergy/src/agent/index.ts` — agent system entry point
+
+## Quality verification
+
+Before committing a new agent definition or prompt change:
+
+- Run `bun run typecheck` from repo root
+- Run `bun run lint` from repo root
+- Run full quality preflight: `bun run quality:quick`
+- Add tests for the agent if it introduces new tool interactions or prompt variants

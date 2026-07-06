@@ -20,18 +20,18 @@ import type {
   Config,
 } from "@ericsanchezok/synergy-sdk"
 
-import type { BunShell } from "./shell"
-import type { ToolDefinition, ToolResult } from "./tool"
+import type { BunShell } from "./shell.js"
+import type { ToolDefinition, ToolResult } from "./tool.js"
 
-export * from "./tool"
-export type { ToolDisplay, ToolMediaDisplay } from "./display"
+export * from "./tool.js"
+export type { ToolDisplay, ToolMediaDisplay } from "./display.js"
 export type { ToolResult }
-export * from "./manifest"
-export * from "./policy"
-export * from "./spec"
-export * from "./version"
-export * from "./artifact"
-export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"
+export * from "./manifest.js"
+export * from "./policy.js"
+export * from "./spec.js"
+export * from "./version.js"
+export * from "./artifact.js"
+export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell.js"
 
 // ---------------------------------------------------------------------------
 // Plugin Config / Auth / Cache accessors

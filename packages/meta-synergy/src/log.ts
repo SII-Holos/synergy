@@ -1,5 +1,5 @@
 import { appendFile } from "node:fs/promises"
-import { MetaSynergyStore } from "./state/store"
+import { MetaSynergyStore } from "./state/store.js"
 
 let printToConsole = true
 

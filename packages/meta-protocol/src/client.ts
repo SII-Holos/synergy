@@ -1,7 +1,7 @@
-import type { MetaProtocolBash } from "./bash"
-import type { MetaProtocolEnv } from "./env"
-import type { MetaProtocolProcess } from "./process"
-import type { MetaProtocolSession } from "./session"
+import type { MetaProtocolBash } from "./bash.js"
+import type { MetaProtocolEnv } from "./env.js"
+import type { MetaProtocolProcess } from "./process.js"
+import type { MetaProtocolSession } from "./session.js"
 
 export namespace MetaProtocolClient {
   export interface RemoteExecutionOptions {

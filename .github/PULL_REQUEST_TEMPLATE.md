@@ -12,8 +12,11 @@
 
 ## Checklist
 
-- [ ] `bun run typecheck` passes
-- [ ] Tests pass (`cd packages/synergy && bun test`)
-- [ ] Code is formatted (`./script/format.ts`)
-- [ ] Documentation updated (if applicable)
-- [ ] No unrelated changes included
+- [ ] `bun run quality:quick` passes
+- [ ] Relevant narrow tests pass; commands are listed in "How was it tested?"
+- [ ] `bun run package:check` passes if package exports, build output, release logic, or publishable packages changed
+- [ ] `bun run workflow:check` passes if `.github/workflows/**`, GitHub Actions config, or CI helper scripts changed
+- [ ] `bun run secrets:check` passes locally or CI Gitleaks covers the change if auth, provider, channel, config, or credential examples changed
+- [ ] SDK regenerated if server routes or schemas changed (`./script/generate.ts`)
+- [ ] Documentation, AGENTS, and `.synergy` help updated if developer workflow, quality tooling, commands, or contributor rules changed
+- [ ] No secrets, local auth files, unrelated cleanup, placeholder scripts, or redundant compatibility wrappers included

@@ -1,6 +1,6 @@
 import z from "zod"
-import { MetaProtocolEnvelope } from "./envelope"
-import { MetaProtocolEnv } from "./env"
+import { MetaProtocolEnvelope } from "./envelope.js"
+import { MetaProtocolEnv } from "./env.js"
 
 export namespace MetaProtocolProcess {
   export const Action = z.enum(["list", "poll", "log", "write", "send-keys", "kill", "clear", "remove"])

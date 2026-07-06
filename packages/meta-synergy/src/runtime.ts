@@ -1,25 +1,25 @@
 import process from "node:process"
-import { MetaSynergyControlClient } from "./control/client"
-import { MetaSynergyControlServer } from "./control/server"
-import type { MetaSynergyControlRequest } from "./control/schema"
-import { MetaSynergyDisplay } from "./display"
-import { MetaSynergyMigrationRunner } from "./migration"
-import { MetaSynergyHost } from "./host"
-import { MetaSynergyInboundHandler, type SessionOpenDecision } from "./inbound/handler"
-import { MetaSynergyHolosClient } from "./holos/client"
-import { MetaSynergyHolosAuth, type MetaSynergyHolosAuthSource } from "./holos/auth"
-import { MetaSynergyHolosLogin } from "./holos/login"
-import { MetaSynergyLog } from "./log"
-import { MetaSynergyOwnerRegistry } from "./owner-registry"
-import { RPCHandler } from "./rpc/handler"
-import { MetaSynergyLocalService } from "./service/local"
-import { SessionManager } from "./session/manager"
+import { MetaSynergyControlClient } from "./control/client.js"
+import { MetaSynergyControlServer } from "./control/server.js"
+import type { MetaSynergyControlRequest } from "./control/schema.js"
+import { MetaSynergyDisplay } from "./display.js"
+import { MetaSynergyMigrationRunner } from "./migration/index.js"
+import { MetaSynergyHost } from "./host.js"
+import { MetaSynergyInboundHandler, type SessionOpenDecision } from "./inbound/handler.js"
+import { MetaSynergyHolosClient } from "./holos/client.js"
+import { MetaSynergyHolosAuth, type MetaSynergyHolosAuthSource } from "./holos/auth.js"
+import { MetaSynergyHolosLogin } from "./holos/login.js"
+import { MetaSynergyLog } from "./log.js"
+import { MetaSynergyOwnerRegistry } from "./owner-registry.js"
+import { RPCHandler } from "./rpc/handler.js"
+import { MetaSynergyLocalService } from "./service/local.js"
+import { SessionManager } from "./session/manager.js"
 import {
   MetaSynergyStore,
   type MetaSynergyApprovalMode,
   type MetaSynergyPendingRequest,
   type MetaSynergyState,
-} from "./state/store"
+} from "./state/store.js"
 
 export class MetaSynergyRuntime {
   readonly host: MetaSynergyHost

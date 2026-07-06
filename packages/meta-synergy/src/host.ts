@@ -1,5 +1,5 @@
 import { MetaProtocolEnv, MetaProtocolHost } from "@ericsanchezok/meta-protocol"
-import { Platform } from "./platform"
+import { Platform } from "./platform.js"
 
 export interface MetaSynergyHostOptions {
   envID?: MetaProtocolEnv.EnvID

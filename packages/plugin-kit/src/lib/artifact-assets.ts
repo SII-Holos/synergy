@@ -1,7 +1,7 @@
 import path from "path"
 import fs from "fs"
 import { PluginArtifact, type PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { sha256File } from "./crypto"
+import { sha256File } from "./crypto.js"
 
 export interface PackagedAsset {
   label: string

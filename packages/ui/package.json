@@ -24,6 +24,7 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
+    "test": "bun test test/*.test.ts",
     "dev": "vite",
     "generate:tailwind": "bun run script/tailwind.ts"
   },
@@ -32,7 +33,6 @@
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",
-    "@types/katex": "0.16.7",
     "@types/luxon": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
@@ -52,7 +52,7 @@
     "@solidjs/meta": "catalog:",
     "@typescript/native-preview": "catalog:",
     "fuzzysort": "catalog:",
-    "katex": "0.16.27",
+    "katex": "catalog:",
     "lucide-solid": "0.577.0",
     "luxon": "catalog:",
     "marked": "catalog:",

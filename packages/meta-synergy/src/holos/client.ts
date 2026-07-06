@@ -1,9 +1,9 @@
 import { MetaProtocolBridge } from "@ericsanchezok/meta-protocol"
-import type { RPCResult } from "../rpc/schema"
-import { MetaSynergyHolosEnvelope } from "./envelope"
-import { MetaSynergyHolosProtocol } from "./protocol"
-import type { MetaSynergyInboundHandler } from "../inbound/handler"
-import { MetaSynergyLog } from "../log"
+import type { RPCResult } from "../rpc/schema.js"
+import { MetaSynergyHolosEnvelope } from "./envelope.js"
+import { MetaSynergyHolosProtocol } from "./protocol.js"
+import type { MetaSynergyInboundHandler } from "../inbound/handler.js"
+import { MetaSynergyLog } from "../log.js"
 
 const HOLOS_HOST = "www.holosai.io"
 const HOLOS_URL = `https://${HOLOS_HOST}`

@@ -135,7 +135,7 @@
           height: 28px;
           flex: 0 0 auto;
           border-radius: 8px;
-          color: var(--icon-weak);
+          color: var(--icon-weak-base);
         }
 
         [data-slot="dialog-close-button"]:hover:not(:disabled),
@@ -256,7 +256,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--icon-weak);
+    color: var(--icon-weak-base);
   }
 
   [data-slot="dialog-meta-row"] [data-slot="dialog-meta-label"] {

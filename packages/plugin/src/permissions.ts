@@ -1,4 +1,4 @@
-import type { PluginManifest } from "./manifest"
+import type { PluginManifest } from "./manifest.js"
 import type {
   BridgeMethodPolicy,
   RegistryPermissionItem,

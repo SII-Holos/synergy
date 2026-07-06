@@ -1,4 +1,5 @@
-import { publishGenericWorkspacePackage, type DependencyVersionMap } from "../shared/publish-generic"
+import { publishGenericWorkspacePackage } from "../shared/publish-generic"
+import type { DependencyVersionMap } from "../shared/package-manifest"
 import { PLUGIN_KIT_DIR } from "../shared/packages"
 
 export async function publishPluginKitCandidate(

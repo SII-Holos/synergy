@@ -1,9 +1,9 @@
 import { MetaProtocolEnvelope, MetaProtocolError } from "@ericsanchezok/meta-protocol"
-import { ProcessRegistry } from "../exec/process-registry"
-import { MetaSynergyHost, type MetaSynergyHostOptions } from "../host"
-import { BashRunner } from "../exec/bash-runner"
-import { RPCRequestSchema } from "./schema"
-import { MetaSynergyLog } from "../log"
+import { ProcessRegistry } from "../exec/process-registry.js"
+import { MetaSynergyHost, type MetaSynergyHostOptions } from "../host.js"
+import { BashRunner } from "../exec/bash-runner.js"
+import { RPCRequestSchema } from "./schema.js"
+import { MetaSynergyLog } from "../log.js"
 
 export class RPCHandler {
   readonly host: MetaSynergyHost
