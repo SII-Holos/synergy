@@ -123,6 +123,16 @@ function compactionRecoveryPart(id: string, messageID: string): PartType {
   } as PartType
 }
 
+function compactionPart(id: string, messageID: string): PartType {
+  return {
+    id,
+    sessionID: "session",
+    messageID,
+    type: "compaction",
+    auto: false,
+  } as PartType
+}
+
 function textPart(id: string, messageID: string, text = "Hello"): PartType {
   return {
     id,
@@ -339,10 +349,18 @@ describe("session turn assistant collection", () => {
     // chrome, and the compaction card must appear even before the recovery part
     // exists (the "Compressing context..." state).
     const root = user("msg_manual_compact", { isRoot: true, metadata: { compactionBoundary: true } })
-    const parts = [textPart("prompt", root.id, "What did we do so far?")] as PartType[]
+    const parts = [
+      compactionPart("compaction-request", root.id),
+      textPart("prompt", root.id, "What did we do so far?"),
+    ] as PartType[]
     const compaction = compactionAssistant("msg_compaction_assistant", root.id)
 
-    // No compaction_recovery yet (LLM still running), part is undefined.
+    const rootItems = collectUserCompactionTimelineItems(root, parts)
+    expect(rootItems).toHaveLength(1)
+    expect(rootItems[0]).toMatchObject({ kind: "compaction", message: root, part: parts[0] })
+
+    // No compaction_recovery yet (LLM still running), part is undefined on the
+    // assistant card until the structured recovery part is written.
     const items = collectSessionTurnTimelineItems([compaction], {}, true)
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: "compaction", message: compaction })
