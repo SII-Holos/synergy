@@ -308,6 +308,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           await Promise.all(requests)
         },
+        // Force a fresh re-fetch of a session's messages and volatile state,
+        // bypassing the "already loaded" short-circuit in sync(). Used by the
+        // empty-state Refresh button to recover if the initial load missed
+        // messages (issue #328 / #316).
+        async refresh(sessionID: string) {
+          const limit = meta.limit[sessionID] ?? chunk
+          await Promise.all([loadMessages(sessionID, limit), refreshVolatile(sessionID)])
+        },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return
 

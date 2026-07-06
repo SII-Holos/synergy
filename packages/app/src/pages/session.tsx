@@ -1,5 +1,7 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -199,6 +201,7 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  const [emptyRefreshing, setEmptyRefreshing] = createSignal(false)
   // A fresh rewind (new rollback event id) always shows its banner, even if a
   // previous banner was dismissed.
   createEffect(
@@ -986,8 +989,30 @@ function SessionPageContent() {
                             </div>
                           }
                         >
-                          <div class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger">
+                          <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
                             <span class="text-sm text-text-weak">No messages yet</span>
+                            <button
+                              type="button"
+                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
+                              disabled={emptyRefreshing()}
+                              onClick={async () => {
+                                const id = params.id
+                                if (!id || emptyRefreshing()) return
+                                setEmptyRefreshing(true)
+                                try {
+                                  await sync.session.refresh(id)
+                                } finally {
+                                  setEmptyRefreshing(false)
+                                }
+                              }}
+                            >
+                              <Icon
+                                name={getSemanticIcon("action.refresh")}
+                                size="small"
+                                class={emptyRefreshing() ? "animate-spin" : undefined}
+                              />
+                              <span>Refresh</span>
+                            </button>
                           </div>
                         </Show>
                       }
