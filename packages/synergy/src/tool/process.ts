@@ -27,15 +27,21 @@ const parameters = z.object({
     .describe(
       "Optional Synergy Link target ID. Omit for intentional local execution. Invalid or unavailable supplied linkID values run locally with a warning.",
     ),
+  envID: z
+    .string()
+    .optional()
+    .describe("Deprecated: use linkID instead. Accepted temporarily for backward compatibility."),
 })
 
 export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>("process", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
+    const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
     const target = SynergyLinkExecution.resolveExecutionTarget({
-      linkID: params.linkID,
-      linkIDSupplied: Object.hasOwn(params, "linkID"),
+      linkID: effectiveLinkID,
+      linkIDSupplied,
       tool: "process",
     })
     if (target.kind === "remote") {

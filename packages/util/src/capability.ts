@@ -149,6 +149,13 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Run remote-write shell commands",
     description: "Can modify existing remote state outside ordinary branch/PR publication workflows.",
   },
+  shell_remote_execute: {
+    category: "runtime",
+    severity: "high",
+    title: "Execute commands on remote host",
+    description: "Can run bash/process commands on a remote Synergy Link host.",
+    nonBypassable: true,
+  },
   shell_remote_publish: {
     category: "runtime",
     severity: "medium",
@@ -384,8 +391,8 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "file_write",
   "shell_read",
   "shell",
+  "shell_remote_execute",
   "shell_remote_write",
-  "shell_remote_publish",
   "shell_destructive",
   "shell_hardline",
   "file_external_read",

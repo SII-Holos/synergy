@@ -151,7 +151,10 @@ function rewriteLegacyState(input: Record<string, unknown>, destinationRoot: str
   const legacyID = typeof input.envID === "string" ? input.envID : undefined
   delete next.envID
   if (legacyID) {
-    next.linkID = legacyID.startsWith("env_") ? `link_${legacyID.slice("env_".length)}` : legacyID
+    // Always prepend link_ to ensure valid format regardless of legacy ID shape.
+    // Legacy IDs may have been "env_xxx", bare "xxx", or other non-standard forms.
+    const base = legacyID.startsWith("env_") ? legacyID.slice("env_".length) : legacyID
+    next.linkID = base.startsWith("link_") ? base : `link_${base}`
   }
   next.connectionStatus = "disconnected"
   const service =
@@ -177,6 +180,8 @@ async function importLegacyAuthIfNeeded(oldAuthPath: string, files: string[]) {
     await writeFile(`${sharedPath}.bak-${Date.now()}`, oldShared)
   }
   await SynergyLinkHolosAuth.save({ agentID: parsed.agentID, agentSecret: parsed.agentSecret })
+  // Remove legacy credential file to avoid leaving a duplicate copy of secrets on disk
+  await rm(oldAuthPath, { force: true }).catch(() => undefined)
   files.push("shared-holos-auth")
 }
 
