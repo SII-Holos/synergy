@@ -243,6 +243,9 @@ export namespace Session {
       archived: !!session.time.archived,
       parentID: session.parentID,
       endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+      chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
+      chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
+      chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
       completionNotice: {
         unread: session.completionNotice.unread,
       },
