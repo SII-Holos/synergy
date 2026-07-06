@@ -184,6 +184,15 @@ export function SessionTopBar() {
   return (
     <div class="stb-root">
       <div class="stb-left">
+        {/* Mobile hamburger */}
+        <button
+          type="button"
+          class="stb-icon-btn mr-1 md:hidden"
+          aria-label="Open navigation"
+          onClick={() => layout.mobileSidebar.toggle()}
+        >
+          <Icon name="panel-left-open" size="normal" />
+        </button>
         <Show when={!isGlobal()}>
           <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
           <span class="stb-slash">/</span>
