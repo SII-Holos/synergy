@@ -127,8 +127,14 @@ export function collectUserCompactionTimelineItems(
   parts: readonly PartType[],
 ): SessionTurnTimelineItem[] {
   const compactionRecovery = parts.find((part) => part.type === "compaction_recovery")
-  if (!compactionRecovery) return []
-  return [{ kind: "compaction", message, part: compactionRecovery }]
+  if (compactionRecovery) return [{ kind: "compaction", message, part: compactionRecovery }]
+
+  if (!isCompactionBoundaryUser(message)) return []
+
+  const compactionRequest = parts.find((part) => part.type === "compaction")
+  if (!compactionRequest) return []
+
+  return [{ kind: "compaction", message, part: compactionRequest }]
 }
 
 export function shouldShowTurnDiffs(
@@ -623,8 +629,12 @@ export function SessionTurn(
     () => {
       const result: SessionTurnDisplayItem[] = []
       const msg = message()
-      if (msg) result.push(...collectUserCompactionTimelineItems(msg, parts()))
-      for (const item of displayMessages()) {
+      const display = displayMessages()
+      const hasCompactionAssistant = display.some(
+        (item) => item.role === "assistant" && isCompactionAssistant(item as AssistantMessage),
+      )
+      if (msg && !hasCompactionAssistant) result.push(...collectUserCompactionTimelineItems(msg, parts()))
+      for (const item of display) {
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot === false) {
@@ -698,12 +708,14 @@ export function SessionTurn(
     providerPreludeElapsedLabel(providerPreludeStarted(), providerPreludeNow()),
   )
   const showProviderPrelude = createMemo(() =>
-    shouldShowProviderPrelude({
-      working: working(),
-      hasError: !!error(),
-      latestAssistant: lastAssistantMessage(),
-      latestAssistantTimelineItems: latestAssistantTimelineItems(),
-    }),
+    hasCompactionEvent()
+      ? false
+      : shouldShowProviderPrelude({
+          working: working(),
+          hasError: !!error(),
+          latestAssistant: lastAssistantMessage(),
+          latestAssistantTimelineItems: latestAssistantTimelineItems(),
+        }),
   )
 
   createEffect(() => {
