@@ -18,6 +18,7 @@ export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean
   if (!status || status.type === "idle") return "idle"
   if (status.type === "busy") return status.description || "running"
   if (status.type === "retry") return `retry ${status.attempt}`
+  if (status.type === "recovering") return status.description || "recovering"
   return "idle"
 }
 
@@ -53,6 +54,18 @@ export function resolveRuntimeIconState(status: SessionStatus | undefined, waiti
       tooltip: `Runtime: ${label}`,
       tone: "base",
       pulse: true,
+    }
+  }
+
+  if (status?.type === "recovering") {
+    const message = status.description || "Session is recovering from an incomplete turn"
+    return {
+      icon: getSemanticIcon("session.retry"),
+      label,
+      tooltip: message,
+      tone: "danger",
+      pulse: true,
+      copyText: message,
     }
   }
 

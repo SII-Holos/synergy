@@ -55,4 +55,20 @@ describe("status bar runtime state", () => {
       pulse: false,
     })
   })
+
+  test("shows recovering as a danger state", () => {
+    const status: SessionStatus = {
+      type: "recovering",
+      description: "Recovering incomplete turn",
+    }
+
+    const state = resolveRuntimeIconState(status, false)
+
+    expect(runtimeLabel(status, false)).toBe("Recovering incomplete turn")
+    expect(state.icon).toBe(getSemanticIcon("session.retry"))
+    expect(state.tone).toBe("danger")
+    expect(state.pulse).toBe(true)
+    expect(state.tooltip).toBe("Recovering incomplete turn")
+    expect(state.copyText).toBe("Recovering incomplete turn")
+  })
 })

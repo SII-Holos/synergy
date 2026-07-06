@@ -142,9 +142,9 @@ export namespace ToolRegistry {
           const runtime = getRuntime(plugin.id)
           const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
           if (runtimeMode !== "in-process") {
-            custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+            custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, runtimeMode, exposure, display))
           } else {
-            custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+            custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, runtimeMode, exposure, display))
           }
         }
       } catch (err) {
@@ -209,6 +209,7 @@ export namespace ToolRegistry {
     def: ToolDefinition,
     pluginId?: string,
     pluginDir?: string,
+    runtimeMode: "in-process" | "worker" | "process" = "in-process",
     exposure?: ToolExposure.Info,
     display?: ToolDisplay,
   ): Tool.Info {
@@ -217,6 +218,7 @@ export namespace ToolRegistry {
       id: fullId,
       exposure,
       display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
+      source: pluginId ? { type: "plugin", pluginId, toolId: id, pluginDir, runtimeMode } : { type: "local" },
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -251,6 +253,7 @@ export namespace ToolRegistry {
     def: ToolDefinition,
     pluginId: string,
     _pluginDir: string,
+    runtimeMode: "in-process" | "worker" | "process",
     exposure?: ToolExposure.Info,
     display?: ToolDisplay,
   ): Tool.Info {
@@ -259,6 +262,7 @@ export namespace ToolRegistry {
       id: fullId,
       exposure,
       display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
+      source: { type: "plugin", pluginId, toolId: id, pluginDir: _pluginDir, runtimeMode },
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -457,7 +461,13 @@ export namespace ToolRegistry {
       tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
-        return { id: t.id, exposure: ToolExposure.normalize(t.id, t.exposure), display: t.display, ...def }
+        return {
+          id: t.id,
+          exposure: ToolExposure.normalize(t.id, t.exposure),
+          display: t.display,
+          source: t.source,
+          ...def,
+        }
       }),
     )
 

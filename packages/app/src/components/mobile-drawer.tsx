@@ -276,7 +276,7 @@ function SessionListDrawerView(props: {
     if (!store)
       return { isWorking: false, hasPermission: false, hasError: false, hasNotification: false, notificationCount: 0 }
     const status = store.session_status[session.id]
-    const isWorking = status?.type === "busy" || status?.type === "retry"
+    const isWorking = status?.type === "busy" || status?.type === "retry" || status?.type === "recovering"
     const hasPermission = (store.permission[session.id] ?? []).length > 0
     const unseen = props.notification.session.unseen(session.id)
     const hasError = unseen.some((n) => n.type === "error")

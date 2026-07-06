@@ -28,7 +28,7 @@ function getActiveReason(
   notification: ActiveZoneProps["notification"],
 ): ActiveReason | null {
   const status = childStore.session_status[session.id]
-  if (status?.type === "busy" || status?.type === "retry") return "working"
+  if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering") return "working"
 
   const permissions = childStore.permission[session.id] ?? []
   if (permissions.length > 0) return "permission"

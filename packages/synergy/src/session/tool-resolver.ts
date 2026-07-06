@@ -73,10 +73,14 @@ export namespace ToolResolver {
     id: string
     exposure?: ToolExposure.Info
     display?: ToolDisplay
+    source?: Tool.Source
+    diagnostic?: ToolDiagnosticInfo
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
   }
+
+  type RegistryTool = Awaited<ReturnType<typeof ToolRegistry.tools>>[number]
 
   export interface Availability {
     visible: Definition[]
@@ -896,6 +900,11 @@ export namespace ToolResolver {
     const supportsImageInput = input.model.capabilities.input.image
 
     for (const def of defs) {
+      if (def.diagnostic) {
+        diagnostics.set(def.id, def.diagnostic)
+        continue
+      }
+
       const isEphemeral = ephemeralToolIds.has(def.id)
       if (!isEphemeral && def.id === "look_at" && supportsImageInput) continue
       if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
@@ -1026,6 +1035,39 @@ export namespace ToolResolver {
     } as any) as AITool
   }
 
+  function toolSchemaDiagnostic(item: RegistryTool, error: unknown): ToolDiagnosticInfo {
+    const source = item.source
+    const message =
+      source?.type === "plugin"
+        ? `Plugin tool ${item.id} uses an incompatible input schema. Plugin tools must define args with zod >=4.`
+        : `Tool ${item.id} has an invalid input schema: ${errorMessage(error)}`
+    const metadata: Record<string, unknown> = {
+      source,
+      originalError: errorMessage(error),
+    }
+    if (source?.type === "plugin") {
+      metadata.pluginId = source.pluginId
+      metadata.pluginToolId = source.toolId
+      metadata.runtimeMode = source.runtimeMode
+    }
+    return {
+      code: "tool_unavailable",
+      toolName: item.id,
+      message,
+      metadata,
+    }
+  }
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message
+    if (typeof error === "string") return error
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return String(error)
+    }
+  }
+
   async function collectDefinitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions.collect")
     let result: Definition[] = []
@@ -1092,13 +1134,40 @@ export namespace ToolResolver {
     }
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
-      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
-        tool: item.id,
-      }) as JSONSchema7
+      let schema: JSONSchema7
+      try {
+        schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
+          tool: item.id,
+        }) as JSONSchema7
+      } catch (error) {
+        const diagnostic = toolSchemaDiagnostic(item, error)
+        log.warn("tool skipped due to schema failure", {
+          tool: item.id,
+          source: item.source,
+          sessionID: input.sessionID,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostic: diagnostic.message,
+        })
+        result.push({
+          id: item.id,
+          exposure: item.exposure,
+          display: item.display,
+          source: item.source,
+          diagnostic,
+          description: diagnostic.message,
+          inputSchema: {
+            type: "object",
+            additionalProperties: true,
+          },
+        })
+        continue
+      }
+
       result.push({
         id: item.id,
         exposure: item.exposure,
         display: item.display,
+        source: item.source,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
