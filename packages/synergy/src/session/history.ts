@@ -7,7 +7,12 @@ import { ScopeContext } from "@/scope/context"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { fn } from "@/util/fn"
+import { Flag } from "@/flag/flag"
+import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionMessageCache } from "./message-cache"
+
+const log = Log.create({ service: "session.history" })
 import { SessionManager } from "./manager"
 import { Snapshot } from "./snapshot"
 import type { Info } from "./types"
@@ -263,14 +268,40 @@ export namespace SessionHistory {
     },
   )
 
-  export async function rawMessages(input: { sessionID: string; limit?: number }) {
+  async function loadRawFromDisk(sessionID: string) {
     const result = [] as MessageV2.WithParts[]
-    for await (const msg of MessageV2.stream({ sessionID: input.sessionID })) result.push(msg)
+    for await (const msg of MessageV2.stream({ sessionID })) result.push(msg)
     result.reverse()
+    return result
+  }
+
+  export async function rawMessages(input: { sessionID: string; limit?: number }) {
+    // Loop-scoped cache (issue #350 D2): during an active loop the assembled
+    // list is held in memory and maintained by the loop's own writes, avoiding a
+    // full history re-read per step. Outside the window `get` returns undefined
+    // and we read from disk. The cache holds the raw pre-deriveSemantics list, so
+    // the result is identical either way.
+    const useCache = !Flag.SYNERGY_DISABLE_MESSAGE_CACHE
+    let raw = useCache ? SessionMessageCache.get(input.sessionID) : undefined
+    if (raw && Flag.SYNERGY_VERIFY_MESSAGE_CACHE) {
+      const disk = await loadRawFromDisk(input.sessionID)
+      if (JSON.stringify(disk) !== JSON.stringify(raw)) {
+        log.error("session message cache diverged from disk; falling back", { sessionID: input.sessionID })
+        SessionMessageCache.invalidate(input.sessionID)
+        raw = undefined
+      }
+    }
+    if (!raw) {
+      raw = await loadRawFromDisk(input.sessionID)
+      if (useCache) SessionMessageCache.set(input.sessionID, raw)
+    }
     // Canonicalize legacy messages once, at the read boundary, so every
     // downstream consumer reads rootID / isRoot / visible / origin directly
     // (issue #281 §12.2). Must run on the full ordered list before slicing.
-    const derived = MessageV2.deriveSemantics(result)
+    // deriveSemantics returns a fresh top-level array, so callers that mutate it
+    // (e.g. the loop's msgs.push of materialized inbox items) never touch the
+    // cached list.
+    const derived = MessageV2.deriveSemantics(raw)
     return input.limit ? derived.slice(-input.limit) : derived
   }
 

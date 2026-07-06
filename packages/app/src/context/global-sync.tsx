@@ -943,6 +943,35 @@ function createGlobalSync() {
         }
         break
       }
+      case "message.part.delta": {
+        // Compact streaming frame (#350 D1): append the increment to an existing
+        // text/reasoning part with a fine-grained store write, touching only the
+        // .text leaf. If the part container or the part itself is not present yet
+        // (frame arrived before the first checkpoint), ignore it — a full
+        // `message.part.updated` checkpoint follows within EventWire.CHECKPOINT_MS
+        // and reconciles authoritative state.
+        const { messageID, partID, delta } = event.properties as {
+          messageID: string
+          partID: string
+          delta: string
+        }
+        const parts = store.part[messageID]
+        if (!parts) break
+        const result = Binary.search(parts, partID, (p) => p.id)
+        if (!result.found) break
+        // Fine-grained: produce mutates only the .text leaf of this one part, so
+        // a streaming reply re-renders the changed text node rather than the
+        // whole part on every delta.
+        setStore(
+          "part",
+          messageID,
+          result.index,
+          produce((p: any) => {
+            if (typeof p?.text === "string") p.text += delta
+          }),
+        )
+        break
+      }
       case "message.part.updated": {
         const part = event.properties.part
         const parts = store.part[part.messageID]

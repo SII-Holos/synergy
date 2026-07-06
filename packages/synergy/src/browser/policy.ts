@@ -89,12 +89,28 @@ export namespace BrowserPolicy {
     return basename.startsWith(".")
   }
 
-  function containsBlockedFilePathSegment(filePath: string, workspace: string): boolean {
-    const relative = path.relative(workspace, filePath)
-    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-      return false
-    const segments = relative.split(path.sep)
-    return segments.some((s) => BLOCKED_FILE_PATH_SEGMENTS.has(s))
+  function containsBlockedWorkspaceSegment(filePath: string, workspace: string): boolean {
+    const hasBlockedSegment = (target: string, root: string) => {
+      const relativePath = path.relative(root, target)
+      if (
+        !relativePath ||
+        relativePath === ".." ||
+        relativePath.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativePath)
+      ) {
+        return false
+      }
+      const segments = relativePath.split(path.sep).filter(Boolean)
+      return segments.some((segment) => BLOCKED_FILE_PATH_SEGMENTS.has(segment))
+    }
+
+    try {
+      const resolved = realpathSync(filePath)
+      const resolvedWorkspace = realpathSync(workspace)
+      if (isPathContained(resolvedWorkspace, resolved)) return hasBlockedSegment(resolved, resolvedWorkspace)
+    } catch {}
+
+    return hasBlockedSegment(filePath, workspace)
   }
 
   function isContainedWithin(filePath: string, workspace: string): boolean {
@@ -242,7 +258,7 @@ export namespace BrowserPolicy {
    * Check file:// containment. Uses realpath via Bun/Node for symlink resolution.
    */
   export function evaluateFileURL(filePath: string, workspace: string): PolicyResult {
-    if (containsBlockedFilePathSegment(filePath, workspace)) {
+    if (containsBlockedWorkspaceSegment(filePath, workspace)) {
       return {
         decision: "deny",
         reason: `Path contains a blocked segment: ${filePath}`,

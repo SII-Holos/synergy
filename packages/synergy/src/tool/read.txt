@@ -1,5 +1,5 @@
-Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool.
+Assume this tool is able to read files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
 
 Usage:
 - The filePath parameter must be an absolute path, not a relative path
@@ -10,5 +10,4 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-- You can read image files using this tool.
-You can read document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, images, audio, ZIP) using this tool. Text content will be converted to markdown automatically.
+- Use this tool for text files and supported document text extraction (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, audio metadata, ZIP). For image visual inspection, use `view_image` when it is available; use `look_at` when `view_image` is unavailable.

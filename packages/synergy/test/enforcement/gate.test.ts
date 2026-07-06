@@ -974,6 +974,62 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
+  test("view_image inside readRoots is file_read in autonomous mode", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/.synergy/data/media/screenshot.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    const read = envelope.capabilities.find((cap: any) => cap.class === "file_read")!
+    expect(read).toBeDefined()
+    expect(read.paths).toEqual(["/Users/test/.synergy/data/media/screenshot.png"])
+  })
+
+  test("view_image outside workspace and readRoots is classified as file_external_read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/Pictures/private.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    const external = envelope.capabilities.find((cap: any) => cap.class === "file_external_read")!
+    expect(external).toBeDefined()
+    expect(external.paths).toEqual(["/Users/test/Pictures/private.png"])
+  })
+
+  test("view_image inside workspace is classified as file_read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/my-project/screenshots/ui.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    const read = envelope.capabilities.find((cap: any) => cap.class === "file_read")!
+    expect(read).toBeDefined()
+    expect(read.paths).toEqual(["/Users/test/my-project/screenshots/ui.png"])
+  })
+
   test("attach inside readRoots is allowed in autonomous mode", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
@@ -1033,6 +1089,22 @@ describe("EnforcementGate readRoots", () => {
 
     const envelope = gate.evaluate("look_at", {
       file_path: "/Users/test/.ssh/id_rsa",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "secrets")).toBe(true)
+  })
+
+  test("view_image protected credential path is denied in autonomous mode", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/.ssh/id_rsa",
     })
 
     expect(envelope.decision).toBe("deny")

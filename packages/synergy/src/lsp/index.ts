@@ -67,6 +67,18 @@ export namespace LSP {
     }
   }
 
+  // Idle reaping (issue #350 D3/H4): a language-server subprocess (tsserver,
+  // etc.) can hold hundreds of MB and previously lived until the process exited.
+  // Each client is stamped on use; a per-scope sweeper shuts down clients idle
+  // beyond the timeout. Reaping is transparent — getClients re-spawns on the
+  // next request. Disabled with SYNERGY_DISABLE_LSP_REAP.
+  const lastUsedAt = new WeakMap<LSPClient.Info, number>()
+  const LSP_IDLE_MS = 30 * 60 * 1000
+  const LSP_SWEEP_MS = 5 * 60 * 1000
+  function touchClient(client: LSPClient.Info) {
+    lastUsedAt.set(client, Date.now())
+  }
+
   const state = ScopedState.create(
     async () => {
       const clients: LSPClient.Info[] = []
@@ -81,6 +93,7 @@ export namespace LSP {
           servers,
           clients,
           spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
+          sweeper: undefined as ReturnType<typeof setInterval> | undefined,
         }
       }
 
@@ -125,14 +138,34 @@ export namespace LSP {
           .join(", "),
       })
 
+      const sweeper = Flag.SYNERGY_DISABLE_LSP_REAP
+        ? undefined
+        : setInterval(() => {
+            const now = Date.now()
+            for (const client of [...clients]) {
+              if (now - (lastUsedAt.get(client) ?? now) < LSP_IDLE_MS) continue
+              const idx = clients.indexOf(client)
+              if (idx !== -1) clients.splice(idx, 1)
+              const pid = client.pid
+              log.info("reaping idle LSP client", { serverID: client.serverID, root: client.root })
+              void client
+                .shutdown()
+                .then(() => (pid ? LSPPid.untrack(pid) : undefined))
+                .catch((error) => log.warn("failed to shut down idle LSP client", { error }))
+            }
+          }, LSP_SWEEP_MS)
+      sweeper?.unref()
+
       return {
         broken: new Set<string>(),
         servers,
         clients,
         spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
+        sweeper,
       }
     },
     async (state) => {
+      if (state.sweeper) clearInterval(state.sweeper)
       await Promise.all(
         state.clients.map(async (client) => {
           const pid = client.pid
@@ -224,6 +257,7 @@ export namespace LSP {
       }
 
       s.clients.push(client)
+      touchClient(client)
       if (handle.process.pid) {
         LSPPid.track(handle.process.pid)
       }
@@ -277,6 +311,7 @@ export namespace LSP {
       Bus.publish(Event.Updated, {})
     }
 
+    for (const client of result) touchClient(client)
     return result
   }
 

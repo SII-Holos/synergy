@@ -232,6 +232,9 @@
           &:active {
             background: var(--workbench-selected-bg-hover, var(--surface-raised-base-active));
           }
+          &[data-interactive="false"]:active {
+            background: transparent;
+          }
           &:focus-visible {
             outline: none;
           }

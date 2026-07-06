@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test, mock } from "bun:test"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionProcessor } from "../../src/session/processor"
@@ -15,13 +15,35 @@ import { Log } from "../../src/util/log"
 import { Config } from "../../src/config/config"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionCompaction } from "../../src/session/compaction"
+import { Embedding } from "../../src/vector/embedding"
 
 Log.init({ print: false })
+
+const originalEmbeddingGenerate = Embedding.generate
+
+beforeAll(() => {
+  ;(Embedding.generate as any) = mock(async (input: Parameters<typeof Embedding.generate>[0]) => ({
+    id: input.id,
+    vector: [],
+    model: "test-embedding",
+  }))
+})
+
+afterAll(() => {
+  ;(Embedding.generate as any) = originalEmbeddingGenerate
+})
 
 class CompactionIntercept extends Error {
   constructor() {
     super("compaction part injected")
   }
+}
+
+function isCompactionIntercept(error: unknown): boolean {
+  if (error instanceof CompactionIntercept) return true
+  if (!error || typeof error !== "object") return false
+  const nested = error as { error?: unknown; suppressed?: unknown }
+  return nested.error instanceof CompactionIntercept || nested.suppressed instanceof CompactionIntercept
 }
 
 function testModel() {
@@ -52,6 +74,26 @@ function primaryAgent() {
     options: {},
   }
 }
+
+async function fastLoopTestConfig(originalConfigCurrent: typeof Config.current) {
+  const config = await originalConfigCurrent()
+  return {
+    ...config,
+    library: {
+      ...config.library,
+      memory: {
+        ...config.library?.memory,
+        enabled: false,
+      },
+      experience: {
+        ...config.library?.experience,
+        retrieve: false,
+      },
+    },
+    compaction: { auto: true, maxHistoryImages: 8 },
+  }
+}
+
 function testUser(input: {
   id: string
   sessionID: string
@@ -148,10 +190,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     try {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
-      ;(Config.current as any) = mock(async () => ({
-        ...(await originalConfigCurrent()),
-        compaction: { auto: true, maxHistoryImages: 8 },
-      }))
+      ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async () => [])
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
@@ -213,8 +252,14 @@ describe.serial("SessionInvoke preflight compaction", () => {
             text: "Please continue with next steps.",
           })
 
-          await expect(SessionInvoke.loop.force(sessionID)).rejects.toBeInstanceOf(CompactionIntercept)
+          let intercepted: unknown
+          try {
+            await SessionInvoke.loop.force(sessionID)
+          } catch (error) {
+            intercepted = error
+          }
 
+          expect(isCompactionIntercept(intercepted)).toBe(true)
           expect(interceptedCompactionParts).toHaveLength(1)
           const [compactionPart] = interceptedCompactionParts
           expect(compactionPart.sessionID).toBe(sessionID)
@@ -266,10 +311,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     try {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
-      ;(Config.current as any) = mock(async () => ({
-        ...(await originalConfigCurrent()),
-        compaction: { auto: true, maxHistoryImages: 8 },
-      }))
+      ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async (input: Parameters<typeof ToolResolver.definitions>[0]) => {
         definitionToolStates.push(input.session?.toolState)
         return []
@@ -377,10 +419,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     try {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
-      ;(Config.current as any) = mock(async () => ({
-        ...(await originalConfigCurrent()),
-        compaction: { auto: true, maxHistoryImages: 8 },
-      }))
+      ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async () => [])
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
@@ -647,6 +686,142 @@ describe.serial("SessionInvoke preflight compaction", () => {
     const compacted = await filterNewestFirst([realUser, oldAssistant, boundary, summary, continuation])
 
     expect(compacted.map((msg) => msg.info.id)).toEqual(["msg_boundary", "msg_summary", "msg_continue"])
+  })
+
+  test("filters repeated root-anchored auto-compactions to the latest summary", async () => {
+    const sessionID = "ses_test"
+    const root = testUser({
+      id: "msg_root",
+      sessionID,
+      created: 1,
+      parts: [
+        {
+          id: "prt_root_text",
+          sessionID,
+          messageID: "msg_root",
+          type: "text",
+          text: "Implement the compact boundary fix.",
+        },
+        {
+          id: "prt_compact_1",
+          sessionID,
+          messageID: "msg_root",
+          type: "compaction",
+          auto: true,
+        },
+        {
+          id: "prt_compact_2",
+          sessionID,
+          messageID: "msg_root",
+          type: "compaction",
+          auto: true,
+        },
+      ],
+    })
+    const oldAssistant = testAssistant({
+      id: "msg_old_assistant",
+      sessionID,
+      parentID: root.info.id,
+      created: 2,
+      completed: 3,
+      finish: "tool-calls",
+      parts: [
+        {
+          id: "prt_old_text",
+          sessionID,
+          messageID: "msg_old_assistant",
+          type: "text",
+          text: "Large pre-compaction trajectory.",
+        },
+      ],
+    })
+    const summary1 = testAssistant({
+      id: "msg_summary_1",
+      sessionID,
+      parentID: root.info.id,
+      created: 4,
+      completed: 5,
+      summary: true,
+      finish: "stop",
+    })
+    const continue1 = testUser({
+      id: "msg_continue_1",
+      sessionID,
+      created: 6,
+      summaryTitle: "Compaction complete",
+      parts: [
+        {
+          id: "prt_continue_1",
+          sessionID,
+          messageID: "msg_continue_1",
+          type: "text",
+          synthetic: true,
+          text: "Continue if you have next steps",
+        },
+      ],
+    })
+    const middleAssistant = testAssistant({
+      id: "msg_middle_assistant",
+      sessionID,
+      parentID: root.info.id,
+      created: 7,
+      completed: 8,
+      finish: "tool-calls",
+      parts: [
+        {
+          id: "prt_middle_text",
+          sessionID,
+          messageID: "msg_middle_assistant",
+          type: "text",
+          text: "Large trajectory after the first compaction.",
+        },
+      ],
+    })
+    const summary2 = testAssistant({
+      id: "msg_summary_2",
+      sessionID,
+      parentID: root.info.id,
+      created: 9,
+      completed: 10,
+      summary: true,
+      finish: "stop",
+    })
+    const continue2 = testUser({
+      id: "msg_continue_2",
+      sessionID,
+      created: 11,
+      summaryTitle: "Compaction complete",
+      parts: [
+        {
+          id: "prt_continue_2",
+          sessionID,
+          messageID: "msg_continue_2",
+          type: "text",
+          synthetic: true,
+          text: "Continue if you have next steps",
+        },
+      ],
+    })
+
+    const compacted = await filterNewestFirst([
+      root,
+      oldAssistant,
+      summary1,
+      continue1,
+      middleAssistant,
+      summary2,
+      continue2,
+    ])
+
+    expect(compacted.map((msg) => msg.info.id)).toEqual([
+      "msg_root",
+      "msg_summary_1",
+      "msg_summary_2",
+      "msg_continue_2",
+    ])
+    expect(compacted.find((msg) => msg.info.id === "msg_summary_1")?.info.includeInContext).toBe(false)
+    expect(compacted.find((msg) => msg.info.id === "msg_summary_2")?.info.includeInContext).toBeUndefined()
+    expect(SessionCompaction.hasPendingCompaction(root.parts, compacted, root.info.id)).toBe(false)
   })
 
   test("resolves the compaction anchor from the task root by id", () => {

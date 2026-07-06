@@ -124,6 +124,23 @@ export namespace ToolExposure {
         "Expand when you need explicit long-term recall beyond auto-injected context, or when established durable knowledge should be stored or corrected.",
       tools: ["memory_write", "memory_edit", "memory_search", "memory_get"],
     },
+    {
+      id: "email",
+      title: "Email",
+      description: "Compose, send, and read emails via SMTP/IMAP. Supports plain text and HTML mail.",
+      whenToExpand:
+        "Expand when the user asks to send an email, check inbox, read mail, or search for specific emails.",
+      tools: ["email_send", "email_read"],
+    },
+    {
+      id: "worktree",
+      title: "Worktree",
+      description:
+        "Git worktree management: create, enter, leave, and list isolated working trees for parallel branches, experimental changes, or independent checkouts.",
+      whenToExpand:
+        "Expand when a task needs git worktree isolation — broad refactors, experimental branches, parallel PR reviews, or work that should not mutate the current workspace.",
+      tools: ["worktree_enter", "worktree_leave", "worktree_list"],
+    },
   ]
 
   const BUILTIN_GROUP_BY_ID = new Map(BUILTIN_GROUPS.map((group) => [group.id, group]))

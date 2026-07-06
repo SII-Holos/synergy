@@ -410,6 +410,56 @@ describe("SessionInvoke system prompt assembly", () => {
   })
 })
 
+describe("SessionInvoke pre-stream error handling", () => {
+  test("persists tool resolution failures as terminal assistant errors", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const restore = installBasicLoopMocks()
+    const processCalled = mock(async () => "stop" as const)
+    ;(ToolResolver.definitions as any) = mock(async () => {
+      throw new Error("plugin tool uses incompatible schema")
+    })
+    ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
+      message: input.assistantMessage,
+      partFromToolCall: () => undefined,
+      trackExecution: () => {},
+      process: processCalled,
+    }))
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("plugin tool uses incompatible schema")
+
+          expect(processCalled).not.toHaveBeenCalled()
+          const refreshed = await Session.get(session.id)
+          expect(refreshed.pendingReply).toBeUndefined()
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const assistants = messages.filter((message) => message.info.role === "assistant")
+          expect(assistants).toHaveLength(1)
+
+          const assistant = assistants[0]!.info as MessageV2.Assistant
+          expect(assistant.finish).toBe("error")
+          expect(assistant.time.completed).toBeNumber()
+          expect(String((assistant.error?.data as { message?: unknown } | undefined)?.message)).toContain(
+            "plugin tool uses incompatible schema",
+          )
+          expect(SessionProgress.pendingReply(messages)).toBe(false)
+        },
+      })
+    } finally {
+      restore()
+    }
+  })
+})
+
 describe("SessionInvoke inbox boundaries", () => {
   test("context inbox items are not materialized without a confirmed model call", async () => {
     await using tmp = await tmpdir({ git: true })

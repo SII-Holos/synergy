@@ -1,15 +1,16 @@
-Analyze image files (screenshots, diagrams, charts, UI mockups, photos) that require visual interpretation.
+Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly.
 Accepts up to 5 images per call — all images are analyzed together in a single session.
 
-This is a model-visible analysis tool: it lets you inspect an image and use the findings in your reasoning. It does not show the image to the user unless `show_to_user` is true. Use `attach` when the user should receive or inspect the file itself.
+This is a separate-model analysis tool: it returns textual findings from a configured vision model. It does not load the image into the current model context, and it does not show the image to the user unless `show_to_user` is true. Use `attach` when the user should receive or inspect the file itself.
 
 Use this tool when:
-- You need to understand the content of an image (screenshots, diagrams, charts, UI mockups)
-- You need to extract text or data from a screenshot
+- `view_image` is unavailable because the current model does not support image input
+- You need textual analysis of screenshots, diagrams, charts, UI mockups, or photos through the configured vision model
+- You need to extract text or data from a screenshot and direct image context is unavailable
 - You need to classify or process multiple image files at once (up to 5)
-- You generated a visual result and need to verify it before showing it to the user
 
 When NOT to use this tool:
+- When `view_image` is available and you want the active model to inspect the image directly
 - For source code or plain text files (use Read tool instead)
 - For PDF documents — use the Read tool instead (it extracts text from PDFs, DOCX, XLSX, PPTX)
 - For files that need to be edited afterward (use Read for literal content)
