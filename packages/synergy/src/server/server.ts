@@ -295,7 +295,17 @@ export namespace Server {
     return ScopeContext.provide({
       scope,
       async fn() {
-        return next()
+        // Snapshot watermark: capture the scope's event seq before the handler
+        // reads data, then advertise it as a response header. It is a
+        // conservative lower bound on the snapshot's freshness, so the client
+        // apply-gate never rejects a newer event as stale (frontend sync gate).
+        const stampSeq = c.req.method === "GET" ? Bus.currentSeq() : undefined
+        const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
+        await next()
+        if (stampSeq !== undefined && c.res) {
+          c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch) c.res.headers.set("x-synergy-epoch", stampEpoch)
+        }
       },
     })
   }
@@ -436,6 +446,9 @@ export namespace Server {
 
               return
             },
+            // Expose the snapshot sync watermark so the client apply-gate can
+            // read it cross-origin (frontend sync redesign).
+            exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
           }),
         )
         .use(provideRequestScope)
