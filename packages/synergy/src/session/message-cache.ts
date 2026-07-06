@@ -66,7 +66,11 @@ export namespace SessionMessageCache {
     if (idx >= 0) {
       next[idx] = { info, parts: list[idx].parts }
     } else {
-      next.splice(insertionIndex(list, info.id, (m) => m.info.id), 0, { info, parts: [] })
+      next.splice(
+        insertionIndex(list, info.id, (m) => m.info.id),
+        0,
+        { info, parts: [] },
+      )
     }
     cache.set(sessionID, next)
   }
@@ -85,7 +89,12 @@ export namespace SessionMessageCache {
     const pi = msg.parts.findIndex((p) => p.id === part.id)
     const parts = msg.parts.slice()
     if (pi >= 0) parts[pi] = part
-    else parts.splice(insertionIndex(msg.parts, part.id, (p) => p.id), 0, part)
+    else
+      parts.splice(
+        insertionIndex(msg.parts, part.id, (p) => p.id),
+        0,
+        part,
+      )
     const next = list.slice()
     next[mi] = { info: msg.info, parts }
     cache.set(sessionID, next)

@@ -586,7 +586,8 @@ export namespace Server {
               const deltaEncoding = () => {
                 if (deltaData !== undefined) return deltaData
                 const dp = wire.deltaPayload(event.payload)
-                deltaData = dp === event.payload ? fullData : JSON.stringify({ directory: event.directory, payload: dp })
+                deltaData =
+                  dp === event.payload ? fullData : JSON.stringify({ directory: event.directory, payload: dp })
                 return deltaData
               }
               for (const [client, mode] of globalEventClients) {
@@ -620,42 +621,42 @@ export namespace Server {
             return upgradeWebSocket((c) => {
               const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
               return {
-              onOpen(_event, ws) {
-                log.info("global event ws connected", { mode })
-                globalEventClients.set(ws, mode)
-                ws.send(
-                  JSON.stringify({
-                    payload: {
-                      type: "server.connected",
-                      properties: {},
-                    },
-                  }),
-                )
-              },
-              onClose(_event, ws) {
-                globalEventClients.delete(ws)
-                log.info("global event ws disconnected")
-              },
-              onError(_event, ws) {
-                globalEventClients.delete(ws)
-              },
-              onMessage(_event, ws) {
-                try {
-                  if (typeof _event.data !== "string") return
-                  const data = JSON.parse(_event.data)
-                  if (data?.payload?.type === "client.ping") {
-                    ws.send(
-                      JSON.stringify({
-                        payload: {
-                          type: "server.pong",
-                          properties: {},
-                        },
-                      }),
-                    )
-                  }
-                } catch {}
-              },
-            }
+                onOpen(_event, ws) {
+                  log.info("global event ws connected", { mode })
+                  globalEventClients.set(ws, mode)
+                  ws.send(
+                    JSON.stringify({
+                      payload: {
+                        type: "server.connected",
+                        properties: {},
+                      },
+                    }),
+                  )
+                },
+                onClose(_event, ws) {
+                  globalEventClients.delete(ws)
+                  log.info("global event ws disconnected")
+                },
+                onError(_event, ws) {
+                  globalEventClients.delete(ws)
+                },
+                onMessage(_event, ws) {
+                  try {
+                    if (typeof _event.data !== "string") return
+                    const data = JSON.parse(_event.data)
+                    if (data?.payload?.type === "client.ping") {
+                      ws.send(
+                        JSON.stringify({
+                          payload: {
+                            type: "server.pong",
+                            properties: {},
+                          },
+                        }),
+                      )
+                    }
+                  } catch {}
+                },
+              }
             })
           })(),
         )

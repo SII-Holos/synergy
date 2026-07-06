@@ -459,7 +459,10 @@ export namespace PerformanceStore {
 
   function enqueue(job: () => void) {
     if (!PerformanceConfig.current().enabled) return
-    if (pending.length >= MAX_PENDING) pending.shift()
+    // Under sustained overflow, drop the oldest batch in one splice rather than
+    // shift() per enqueue (which is O(n) each time the queue is full). Amortized
+    // O(1) per enqueue (#350 D4).
+    if (pending.length >= MAX_PENDING) pending.splice(0, Math.max(1, Math.floor(MAX_PENDING / 10)))
     pending.push(job)
     if (!flushTimer) {
       flushTimer = setTimeout(flush, FLUSH_MS)
