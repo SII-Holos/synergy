@@ -442,6 +442,20 @@ test("provider auth pool skips exhausted and dead credentials", async () => {
   expect(await Auth.get("openrouter")).toEqual({ type: "api", key: "primary" })
 })
 
+test("usage windows normalize reset timestamps", () => {
+  const iso = "2026-06-25T10:00:00.000Z"
+  const seconds = Date.parse(iso) / 1000
+  const milliseconds = Date.parse(iso)
+
+  expect(AccountUsage.percentWindow({ label: "Session", usedPercent: 25, resetAt: iso })?.resetAt).toBe(iso)
+  expect(AccountUsage.percentWindow({ label: "Session", usedPercent: 25, resetAt: seconds })?.resetAt).toBe(iso)
+  expect(AccountUsage.percentWindow({ label: "Session", usedPercent: 25, resetAt: milliseconds })?.resetAt).toBe(iso)
+
+  for (const resetAt of ["", "not-a-date", NaN, Infinity, 0, -1, null, true, {}]) {
+    expect(AccountUsage.percentWindow({ label: "Session", usedPercent: 25, resetAt })?.resetAt).toBeUndefined()
+  }
+})
+
 test("codex usage parser returns session and weekly quota windows", async () => {
   await Auth.set("openai-codex", {
     type: "oauth",
@@ -458,17 +472,19 @@ test("codex usage parser returns session and weekly quota windows", async () => 
     return jsonResponse({
       plan_type: "plus",
       rate_limit: {
-        primary_window: { used_percent: 25, reset_at: "2026-06-25T10:00:00Z" },
-        secondary_window: { used_percent: 75, reset_at: "2026-06-29T10:00:00Z" },
+        primary_window: { used_percent: 25, reset_at: Date.parse("2026-06-25T10:00:00Z") / 1000 },
+        secondary_window: { used_percent: 75, reset_at: Date.parse("2026-06-29T10:00:00Z") / 1000 },
       },
       credits: { has_credits: true, balance: 12.5 },
     })
   })
 
   expect(snapshot.status).toBe("available")
-  expect(snapshot.windows.map((window) => [window.label, window.usedPercent, window.remainingPercent])).toEqual([
-    ["Session", 25, 75],
-    ["Weekly", 75, 25],
+  expect(
+    snapshot.windows.map((window) => [window.label, window.usedPercent, window.remainingPercent, window.resetAt]),
+  ).toEqual([
+    ["Session", 25, 75, "2026-06-25T10:00:00.000Z"],
+    ["Weekly", 75, 25, "2026-06-29T10:00:00.000Z"],
   ])
   expect(snapshot.details).toContain("Credits balance: $12.50")
 })
@@ -492,9 +508,11 @@ test("anthropic oauth usage parser returns claude quota windows", async () => {
     })
   })
 
-  expect(snapshot.windows.map((window) => [window.label, window.usedPercent, window.remainingPercent])).toEqual([
-    ["Current session", 50, 50],
-    ["Current week", 80, 20],
+  expect(
+    snapshot.windows.map((window) => [window.label, window.usedPercent, window.remainingPercent, window.resetAt]),
+  ).toEqual([
+    ["Current session", 50, 50, "2026-06-25T10:00:00.000Z"],
+    ["Current week", 80, 20, "2026-06-29T10:00:00.000Z"],
   ])
   expect(snapshot.details).toContain("Extra usage: 2.00 / 10.00 USD")
 })
