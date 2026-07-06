@@ -194,6 +194,14 @@ export function Sidebar(props: SidebarProps) {
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
 
+  // When chatName falls back to a raw platform ID (ou_, on_, oc_, user_), display
+  // only the last 8 characters to avoid sidebar clutter.
+  function displayChannelName(chatName: string | undefined, chatId: string): string {
+    const name = chatName ?? chatId.slice(-8)
+    if (/^(ou_|on_|oc_|user_)/.test(name)) return name.slice(-8)
+    return name
+  }
+
   const channelGroupedEntries = createMemo(() => {
     const entries = channelEntries()
     const groups = new Map<string, NavEntry[]>()
@@ -219,7 +227,7 @@ export function Sidebar(props: SidebarProps) {
         const typePrefix = first.chatType === "group" ? "[G] " : first.chatType === "dm" ? "[D] " : ""
         return {
           chatId,
-          name: `${typePrefix}${first.chatName ?? chatId.slice(-8)}`,
+          name: `${typePrefix}${displayChannelName(first.chatName, chatId)}`,
           sessions: sessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
         }
       })
