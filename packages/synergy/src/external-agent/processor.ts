@@ -39,6 +39,7 @@ export namespace ExternalAgentProcessor {
       role: "assistant",
       sessionID,
       parentID,
+      visible: true,
       agent,
       mode: agent,
       path: {
@@ -279,7 +280,7 @@ export namespace ExternalAgentProcessor {
     )
 
     const parts = await MessageV2.parts({ sessionID, messageID: assistantMessage.id })
-    return { info: assistantMessage, parts }
+    return { info: { ...assistantMessage, visible: true }, parts }
   }
 
   async function finalizeTextPart(part: MessageV2.TextPart | undefined) {
