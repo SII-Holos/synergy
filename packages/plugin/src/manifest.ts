@@ -250,6 +250,7 @@ const PluginPermissionsSchema = z
       .object({
         events: z.enum(["none", "selected", "all"]).default("selected"),
         eventNames: z.array(z.string()).default([]),
+        config: z.boolean().default(false),
         toolExecute: z.enum(["none", "own", "declared", "all"]).default("own"),
         permissionAsk: z.enum(["none", "own", "all"]).default("none"),
         promptTransform: z.boolean().default(false),

@@ -267,6 +267,8 @@ export namespace RuntimeReload {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()
         }
+        const { Plugin } = await import("../plugin")
+        await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields: result.changedFields })
         return
       }
       case "provider": {
@@ -282,7 +284,7 @@ export namespace RuntimeReload {
       case "plugin": {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
-        await Plugin.init()
+        await Plugin.init({ source: "plugin_reload" })
         return
       }
       case "mcp": {

@@ -853,6 +853,9 @@ export namespace Config {
     if (result.provider) {
       for (const provider of Object.values(result.provider) as any[]) {
         if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
+        for (const model of Object.values(provider?.models ?? {}) as any[]) {
+          if (model?.options?.apiKey) model.options.apiKey = REDACTED_SENTINEL
+        }
       }
     }
     if (result.mcp) {
@@ -892,9 +895,15 @@ export namespace Config {
     }
     if (result.provider && stored.provider) {
       for (const [key, provider] of Object.entries(result.provider) as [string, any][]) {
+        const storedProvider = (stored.provider as Record<string, any>)[key]
         if (provider?.options?.apiKey === REDACTED_SENTINEL) {
-          const storedProvider = (stored.provider as Record<string, any>)[key]
           if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
+        }
+        for (const [modelKey, model] of Object.entries(provider?.models ?? {}) as [string, any][]) {
+          if (model?.options?.apiKey === REDACTED_SENTINEL) {
+            const storedModel = storedProvider?.models?.[modelKey]
+            if (storedModel?.options?.apiKey) model.options.apiKey = storedModel.options.apiKey
+          }
         }
       }
     }

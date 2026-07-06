@@ -12,6 +12,9 @@ export namespace PromptBudgeter {
   const MESSAGE_OVERHEAD_PER_ITEM = 12
 
   export interface PromptPlanInput {
+    sessionID: string
+    agent: string
+    messageID?: string
     model: Provider.Model
     system: string[]
     systemCacheBreakpoint?: number
@@ -65,7 +68,17 @@ export namespace PromptBudgeter {
   export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
     const system = [...input.system]
     const original = [...system]
-    await Plugin.trigger("experimental.chat.system.transform", {}, { system })
+    await Plugin.trigger(
+      "experimental.chat.system.transform",
+      {
+        phase: "budget",
+        sessionID: input.sessionID,
+        agent: input.agent,
+        model: { providerID: input.model.providerID, modelID: input.model.id },
+        messageID: input.messageID,
+      },
+      { system },
+    )
     const normalizedSystem = system.length > 0 ? system : original
 
     return {

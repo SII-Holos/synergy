@@ -649,6 +649,9 @@ export namespace SessionInvoke {
 
         const promptPlanTimer = log.time("promptBudgeter.buildPlan")
         const promptPlan = await PromptBudgeter.buildPlan({
+          sessionID,
+          agent: agent.name,
+          messageID: R.id,
           model,
           system: systemParts,
           systemCacheBreakpoint,

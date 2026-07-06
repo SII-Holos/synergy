@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { diffPermissions } from "../../src/plugin/consent/diff"
 import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { generatePermissionItems } from "../../src/plugin/consent/summary"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginManifest as PluginManifestSchema, type PluginManifest } from "@ericsanchezok/synergy-plugin"
 
 function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
   const base: PluginManifest = {
@@ -166,6 +166,22 @@ describe("consent module", () => {
       const items = generatePermissionItems(manifest, ["task"])
       expect(items[0].key).toBe("task")
       expect(items[0].severity).toBe("medium")
+    })
+
+    test("config hook is a medium hook permission item", () => {
+      const manifest = PluginManifestSchema.parse({
+        name: "test-plugin",
+        version: "1.0.0",
+        description: "A test plugin",
+        permissions: {
+          hooks: {
+            config: true,
+          },
+        },
+      })
+      const items = generatePermissionItems(manifest, ["config_hook"])
+      expect(items.some((item) => item.key === "config_hook" && item.category === "hooks")).toBe(true)
+      expect(items.some((item) => item.key === "hooks.config" && item.severity === "medium")).toBe(true)
     })
   })
 })
