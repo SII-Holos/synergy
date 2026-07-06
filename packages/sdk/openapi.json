@@ -19759,6 +19759,16 @@
             "type": "string",
             "const": "channel"
           },
+          "chatId": {
+            "type": "string"
+          },
+          "chatName": {
+            "type": "string"
+          },
+          "chatType": {
+            "type": "string",
+            "enum": ["dm", "group"]
+          },
           "completionNotice": {
             "type": "object",
             "properties": {

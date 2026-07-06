@@ -17,29 +17,29 @@ Log.init({ print: false })
 // makeUser() returns the flat user shape for ctx.lastUser.
 // makeUserWrapper() returns the WithParts shape for ctx.messages.
 
-function makeUser(): any {
+function makeUser(agent = "synergy"): any {
   return {
     id: "usr_test",
     role: "user" as const,
     sessionID: "ses_test",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent,
     model: { providerID: "test-provider", modelID: "test-model" },
   }
 }
 
-function makeUserWrapper(): any {
-  return { info: makeUser(), parts: [] }
+function makeUserWrapper(agent = "synergy"): any {
+  return { info: makeUser(agent), parts: [] }
 }
 
-function makeAssistant(toolParts: any[]): any {
+function makeAssistant(toolParts: any[], agent = "synergy"): any {
   return {
     info: {
       id: `msg_${Math.random().toString(36).slice(2)}`,
       role: "assistant" as const,
       sessionID: "ses_test",
-      agent: "synergy",
-      mode: "synergy",
+      agent,
+      mode: agent,
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       modelID: "test-model",
@@ -50,7 +50,12 @@ function makeAssistant(toolParts: any[]): any {
   }
 }
 
-function makeTool(tool: string, input: unknown, status: "completed" | "error"): any {
+function makeTool(
+  tool: string,
+  input: unknown,
+  status: "completed" | "error",
+  options: { output?: string; error?: string; metadata?: Record<string, any> } = {},
+): any {
   return {
     id: `prt_${Math.random().toString(36).slice(2)}`,
     messageID: "msg_test",
@@ -60,8 +65,8 @@ function makeTool(tool: string, input: unknown, status: "completed" | "error"): 
     callID: `call_${Math.random().toString(36).slice(2)}`,
     state:
       status === "completed"
-        ? { status, input, output: "done", title: "ok" }
-        : { status, input, error: "SomeError: test" },
+        ? { status, input, output: options.output ?? "done", title: "ok", metadata: options.metadata ?? {} }
+        : { status, input, error: options.error ?? "SomeError: test" },
   }
 }
 
@@ -75,13 +80,13 @@ function makeTextPart(text: string): any {
   }
 }
 
-function makeCtx(step: number, messages: any[], lastUserParts: any[] = []): any {
+function makeCtx(step: number, messages: any[], lastUserParts: any[] = [], agent = "synergy"): any {
   return {
     session: { id: "ses_test" },
     sessionID: "ses_test",
     step,
     messages,
-    lastUser: makeUser(),
+    lastUser: makeUser(agent),
     lastUserParts,
     abort: new AbortController().signal,
     modelLimits: { context: 200_000, output: 8_192 },
@@ -228,5 +233,113 @@ describe("loop-signals: compact signal", () => {
     expect(fired).toContain("compact")
     expect(fired).toContain("repeat_loop")
     expect(fired).not.toContain("error_loop")
+  })
+})
+
+describe("loop-signals: tool_failure_pattern (scholar search)", () => {
+  test("fires after consecutive no-result scholar searches", async () => {
+    const ctx = makeCtx(
+      2,
+      [
+        makeUserWrapper("scholar"),
+        makeAssistant(
+          [
+            makeTool("websearch", { query: "very specific paper xyz" }, "completed", {
+              output: "No search results found. Please try a different query.",
+              metadata: { searchFailureType: "no_results" },
+            }),
+          ],
+          "scholar",
+        ),
+        makeAssistant(
+          [
+            makeTool("arxiv_search", { query: "very specific paper xyz", startDate: "2026-01-01" }, "completed", {
+              output: "No papers found matching your search criteria.",
+              metadata: { searchFailureType: "no_results" },
+            }),
+          ],
+          "scholar",
+        ),
+      ],
+      [],
+      "scholar",
+    )
+
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("tool_failure_pattern")
+  })
+
+  test("does not fire for non-scholar agents", async () => {
+    const ctx = makeCtx(2, [
+      makeUserWrapper(),
+      makeAssistant([
+        makeTool("websearch", { query: "missing one" }, "completed", {
+          output: "No search results found. Please try a different query.",
+          metadata: { searchFailureType: "no_results" },
+        }),
+      ]),
+      makeAssistant([
+        makeTool("websearch", { query: "missing two" }, "completed", {
+          output: "No search results found. Please try a different query.",
+          metadata: { searchFailureType: "no_results" },
+        }),
+      ]),
+    ])
+
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("tool_failure_pattern")
+  })
+
+  test("fires early stop after reflection and continued failures", async () => {
+    // The early-stop check is independent: it only checks the earlyStopMarker,
+    // not the reflectionMarker. So having the reflection marker present won't block it.
+    const reflectionMarker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
+    reflectionMarker.synthetic = true
+
+    const ctx = makeCtx(
+      4,
+      [
+        makeUserWrapper("scholar"),
+        makeAssistant(
+          [
+            makeTool("websearch", { query: "a" }, "completed", {
+              output: "No search results found. Please try a different query.",
+              metadata: { searchFailureType: "no_results" },
+            }),
+          ],
+          "scholar",
+        ),
+        makeAssistant(
+          [
+            makeTool("webfetch", { url: "https://example.com/a" }, "error", {
+              error: "Request failed with status code: 403",
+            }),
+          ],
+          "scholar",
+        ),
+        makeAssistant(
+          [
+            makeTool("webfetch", { url: "https://example.com/b" }, "error", {
+              error: "Request failed with status code: 404",
+            }),
+          ],
+          "scholar",
+        ),
+        makeAssistant(
+          [
+            makeTool("arxiv_search", { query: "b" }, "completed", {
+              output: "No papers found matching your search criteria.",
+              metadata: { searchFailureType: "no_results" },
+            }),
+          ],
+          "scholar",
+        ),
+      ],
+      [reflectionMarker],
+      "scholar",
+    )
+
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("tool_failure_pattern")
   })
 })

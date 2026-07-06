@@ -91,6 +91,7 @@ export const MessageContext = z
     accountId: z.string(),
     chatId: z.string(),
     chatType: z.enum(["dm", "group"]),
+    chatName: z.string().optional(),
     senderId: z.string(),
     senderName: z.string().optional(),
     text: z.string(),
