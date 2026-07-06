@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createMemo, createRoot } from "solid-js"
-import { createStore, reconcile } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import type { Part, Session } from "@ericsanchezok/synergy-sdk/client"
 
 // Regression guard for issue #319: the session.updated / message.part.updated
@@ -125,6 +125,72 @@ describe.skipIf(!CLIENT_BUILD)("session store reconcile invariants (#319)", () =
 
       expect(callID()).toBe("call_1")
       expect(runs).toBe(1) // stable field memo not recomputed on every delta
+      dispose()
+    })
+  })
+})
+
+// Regression guard for the streaming delta protocol (#350 D1): a
+// `message.part.delta` frame appends the increment to the .text leaf of an
+// existing text part via produce, so only the text node updates and sibling
+// fields keep their identity. A following checkpoint (`message.part.updated`)
+// replaces authoritative state.
+describe.skipIf(!CLIENT_BUILD)("streaming delta append (#350 D1)", () => {
+  function makeTextPart(text: string): Part {
+    return {
+      id: "part_txt",
+      sessionID: "ses_a",
+      messageID: "msg_1",
+      type: "text",
+      text,
+      time: { start: 1 },
+    } as unknown as Part
+  }
+
+  const applyDelta = (setStore: any, delta: string) =>
+    setStore(
+      "part",
+      "msg_1",
+      0,
+      produce((p: any) => {
+        if (typeof p?.text === "string") p.text += delta
+      }),
+    )
+
+  test("delta frames append to text without touching sibling identity", () => {
+    createRoot((dispose) => {
+      const [store, setStore] = createStore<{ part: Record<string, Part[]> }>({
+        part: { msg_1: [makeTextPart("Hel")] },
+      })
+
+      const timeRef = (store.part.msg_1[0] as { time: unknown }).time
+      let timeRuns = 0
+      const timeMemo = createMemo(() => {
+        timeRuns++
+        return (store.part.msg_1[0] as { time: unknown }).time
+      })
+      expect(timeMemo()).toBe(timeRef)
+
+      applyDelta(setStore, "lo")
+      applyDelta(setStore, " world")
+
+      expect((store.part.msg_1[0] as { text: string }).text).toBe("Hello world")
+      // sibling leaf identity preserved => memos reading .time never recompute
+      expect((store.part.msg_1[0] as { time: unknown }).time).toBe(timeRef)
+      expect(timeRuns).toBe(1)
+      dispose()
+    })
+  })
+
+  test("checkpoint reconcile replaces authoritative text after deltas", () => {
+    createRoot((dispose) => {
+      const [store, setStore] = createStore<{ part: Record<string, Part[]> }>({
+        part: { msg_1: [makeTextPart("Hel")] },
+      })
+      applyDelta(setStore, "lo")
+      // checkpoint: full-part update reconciles to the server's authoritative text
+      setStore("part", "msg_1", 0, reconcile(makeTextPart("Hello there")))
+      expect((store.part.msg_1[0] as { text: string }).text).toBe("Hello there")
       dispose()
     })
   })

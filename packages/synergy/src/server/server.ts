@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
+import { EventWire } from "./event-wire"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -151,7 +152,7 @@ export namespace Server {
   let _appMounted = false
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: Set<any> | undefined
+  let _globalEventClients: Map<any, "full" | "delta"> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -570,12 +571,27 @@ export namespace Server {
         .get(
           "/global/event/ws",
           (() => {
-            const globalEventClients: Set<any> = new Set()
+            // client -> wire mode. "delta" clients opt into the compact streaming
+            // protocol (message.part.delta frames + periodic checkpoints, #350 D1);
+            // "full" clients receive the legacy full-part-on-every-delta stream.
+            const globalEventClients = new Map<any, "full" | "delta">()
+            // One encoder shared by all delta clients on this route: they receive
+            // identical frames, so the checkpoint throttle is shared correctly.
+            const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              const data = JSON.stringify(event)
-              for (const client of globalEventClients) {
+              const fullData = JSON.stringify(event)
+              // Compute the delta-mode encoding at most once per event (shared
+              // across all delta clients) instead of per-client stringify.
+              let deltaData: string | undefined
+              const deltaEncoding = () => {
+                if (deltaData !== undefined) return deltaData
+                const dp = wire.deltaPayload(event.payload)
+                deltaData = dp === event.payload ? fullData : JSON.stringify({ directory: event.directory, payload: dp })
+                return deltaData
+              }
+              for (const [client, mode] of globalEventClients) {
                 try {
-                  client.send(data)
+                  client.send(mode === "delta" ? deltaEncoding() : fullData)
                 } catch {
                   globalEventClients.delete(client)
                 }
@@ -584,7 +600,7 @@ export namespace Server {
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
             const heartbeat = setInterval(() => {
-              for (const client of globalEventClients) {
+              for (const client of globalEventClients.keys()) {
                 try {
                   client.send(
                     JSON.stringify({
@@ -601,10 +617,12 @@ export namespace Server {
             }, 30000)
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
-            return upgradeWebSocket(() => ({
+            return upgradeWebSocket((c) => {
+              const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
+              return {
               onOpen(_event, ws) {
-                log.info("global event ws connected")
-                globalEventClients.add(ws)
+                log.info("global event ws connected", { mode })
+                globalEventClients.set(ws, mode)
                 ws.send(
                   JSON.stringify({
                     payload: {
@@ -637,7 +655,8 @@ export namespace Server {
                   }
                 } catch {}
               },
-            }))
+            }
+            })
           })(),
         )
         .post(
@@ -1291,6 +1310,10 @@ export namespace Server {
             log.info("event connected")
             c.header("X-Accel-Buffering", "no")
             c.header("Cache-Control", "no-cache, no-transform")
+            // Opt-in compact streaming protocol (#350 D1). Each SSE connection
+            // owns its own encoder so its checkpoint throttle is independent.
+            const deltaMode = c.req.query("stream") === "delta"
+            const wire = deltaMode ? EventWire.createEncoder() : undefined
             return streamSSE(c, async (stream) => {
               const connectedAt = Date.now()
               ServerSseMetrics.open("events")
@@ -1301,9 +1324,10 @@ export namespace Server {
                 }),
               })
               const unsub = Bus.subscribeAll(async (event) => {
+                const outbound = wire ? wire.deltaPayload(event) : event
                 await stream
                   .writeSSE({
-                    data: JSON.stringify(event),
+                    data: JSON.stringify(outbound),
                   })
                   .catch(() => {
                     ServerSseMetrics.writeFailure("events")
