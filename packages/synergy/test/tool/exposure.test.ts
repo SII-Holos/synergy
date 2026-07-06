@@ -152,6 +152,8 @@ describe("tool exposure", () => {
         expect(ids.has("session_list")).toBe(false)
         expect(ids.has("note_list")).toBe(false)
         expect(ids.has("memory_get")).toBe(false)
+        expect(ids.has("email_send")).toBe(false)
+        expect(ids.has("worktree_enter")).toBe(false)
 
         await Session.update(session.id, (draft) => {
           draft.toolState = { expandedGroups: ["browser"] }
