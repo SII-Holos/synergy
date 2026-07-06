@@ -1050,7 +1050,7 @@ function SessionPageContent() {
                                   file.load(path)
                                 }}
                                 classes={{
-                                  root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
+                                  root: "pb-4 md:pb-[calc(var(--prompt-height,8rem)+32px)]",
                                   header: "px-4",
                                   container: "px-4",
                                 }}

@@ -53,7 +53,7 @@ export function PromptDock(props: {
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
+        "relative md:absolute md:inset-x-0 md:bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
         "pt-12": !props.isNewSession(),
       }}
       style={{

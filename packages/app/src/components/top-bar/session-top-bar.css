@@ -1,8 +1,5 @@
 .stb-root {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -13,6 +10,16 @@
   border-bottom: 1px solid var(--border-weaker-base);
   gap: 16px;
   pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .stb-root {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    border-bottom: none;
+  }
 }
 
 .stb-folder {

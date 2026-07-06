@@ -69,11 +69,12 @@ export function SessionConversation(props: {
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:px-5 md:pb-[calc(var(--prompt-height,10rem)+96px)]"
+      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 transition-[margin] md:px-5"
       contentClassList={{
         "max-w-full": true,
         "md:max-w-[60rem]": !props.showTabs(),
         "mt-0": props.showTabs(),
+        "pb-4 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
       }}
     >
       <BrowserViewEffects timeline={props.timeline} />
