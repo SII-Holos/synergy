@@ -745,8 +745,9 @@ export const SessionRoute = new Hono()
           break
         }
       }
+      const messageID = Identifier.ascending("message")
       const msg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
+        id: messageID,
         role: "user",
         model: {
           providerID: body.providerID,
@@ -754,6 +755,9 @@ export const SessionRoute = new Hono()
         },
         sessionID,
         agent: currentAgent,
+        isRoot: true,
+        rootID: messageID,
+        visible: true,
         // Mark this as a compaction boundary so the frontend suppresses the
         // user chrome (the "What did we do so far?" prompt is internal) and
         // renders only the compaction card for the turn (issue #326).
