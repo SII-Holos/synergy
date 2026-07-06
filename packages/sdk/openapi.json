@@ -22557,7 +22557,7 @@
             "type": "string"
           },
           "vision_model": {
-            "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
+            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
             "type": "string"
           },
           "role_variant": {

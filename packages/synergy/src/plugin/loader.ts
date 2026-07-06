@@ -290,6 +290,9 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
           name: descriptor.name,
           pluginDir: resolved.pluginDir,
           runtimeMode: policy.runtimeMode,
+          tools: Object.keys(hooks.tool ?? {}),
+          hooks: Object.keys(hooks).filter((key) => key !== "tool"),
+          agents: Object.keys(hooks.agents ?? {}),
         })
       }
     } catch (err) {
