@@ -11,6 +11,8 @@ import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
 import { ScopeContext } from "../scope/context"
 import { Dag } from "../session/dag"
+import { CortexOutput } from "../cortex/output"
+import { CortexTypes } from "../cortex/types"
 import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
@@ -48,6 +50,9 @@ const parameters = z.object({
         Category.descriptions() +
         "\nDefault: none (uses subagent's original model and prompt)",
     ),
+  output: CortexTypes.OutputConfig.optional().describe(
+    "Optional output contract for the delegated task. Use structured mode with a JSON Schema when the caller needs machine-readable output.",
+  ),
   worktree: z
     .object({
       create: z.literal(true),
@@ -62,6 +67,7 @@ interface TaskMetadata {
   sessionId: string
   taskId?: string
   background?: boolean
+  output?: CortexTypes.TaskOutput
 }
 
 const SYNC_TIMEOUT_S = ToolTimeout.DEFAULTS.taskAutoBackgroundMs / 1_000
@@ -161,6 +167,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         sessionID,
         model,
         worktree: params.worktree,
+        output: params.output,
       })
 
       await bindDagNode(ctx.sessionID, params.dag_node_id, task)
@@ -271,7 +278,7 @@ Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activit
             title: part.state.status === "completed" ? part.state.title : undefined,
           },
         }))
-      const text = completed.result ?? ""
+      const text = CortexOutput.renderTaskOutput(completed.output)
       const output = text + "\n\n" + ["<task_metadata>", `session_id: ${task.sessionID}`, "</task_metadata>"].join("\n")
 
       return {
@@ -281,6 +288,7 @@ Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activit
           sessionId: task.sessionID,
           taskId: undefined,
           background: false,
+          output: completed.output,
         },
         output,
       }

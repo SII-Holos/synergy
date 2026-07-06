@@ -26,18 +26,10 @@ export type ToolTaskOutput =
   | { mode: "final_response" }
   | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
 
-export type ToolTaskOutputResult =
-  | { mode: "final_response"; text: string }
-  | {
-      mode: "structured"
-      status: "valid" | "invalid"
-      source?: "structured_tool" | "final_response"
-      data?: unknown
-      text?: string
-      repairTurns: number
-      error?: string
-      validationErrors?: string[]
-    }
+export type ToolTaskRunOutput =
+  | { mode: "summary"; value: string }
+  | { mode: "final_response"; value: string }
+  | { mode: "structured"; value: unknown }
 
 export interface ToolTaskRunInput {
   subagent: string
@@ -57,9 +49,8 @@ export interface ToolTaskRunInput {
 export interface ToolTaskRunResult {
   taskId: string
   sessionId: string
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "timeout"
-  output: string
-  outputResult?: ToolTaskOutputResult
+  status: "completed" | "error" | "cancelled" | "timeout"
+  output?: ToolTaskRunOutput
   error?: string
 }
 

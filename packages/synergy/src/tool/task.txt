@@ -33,7 +33,7 @@ Use the **`task_output`** tool to check on running background tasks:
 - `mode="summary"` — Compact one-liner: status, health, elapsed time
 - `mode="progress"` — Detailed progress: tool call list, health, duration
 - `mode="tail"` — Recent session activity from the subagent's conversation
-- `mode="full"` (default) — Full result with progress summary
+- `mode="full"` (default) — Full result with progress summary; structured output is rendered as JSON
 - `block: true` — Wait (up to 300s) for the task to finish, then return full result
 
 Use **`task_list()`** to list all visible background tasks at once.
@@ -51,7 +51,8 @@ Use **`task_list()`** to list all visible background tasks at once.
      need to restate all context — focus your prompt on what's new or different this time.
    - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish
      or use a different session.
-4. Clearly tell the agent whether to write code or just research
+4. Pass `output` when the caller needs a specific completion contract: `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas can describe top-level objects, arrays, primitives, `anyOf`, or `oneOf`; the result is rendered as JSON for tool text and also exposed in metadata.
+5. Clearly tell the agent whether to write code or just research
 
 ## Writing effective prompts
 

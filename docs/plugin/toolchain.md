@@ -117,7 +117,7 @@ await context.task?.run({
 })
 ```
 
-Declare `permissions.tools.task` in `plugin.json` before using this service. `output.mode: "structured"` is a Cortex-native output contract: Cortex validates the child result and stores it on `task.outputResult`, while `task.result` remains the normal trajectory summary.
+Declare `permissions.tools.task` in `plugin.json` before using this service. `output.mode: "structured"` is a Cortex-native output contract: Cortex validates the child result and returns it through `result.output` with `mode: "structured"`; the internal transport wrapper is not visible to plugins.
 
 ## Runtime Limits
 

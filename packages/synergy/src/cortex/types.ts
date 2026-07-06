@@ -29,7 +29,8 @@ export namespace CortexTypes {
   export const ExecutionRole = z.enum(["primary", "delegated_subagent"])
   export type ExecutionRole = z.infer<typeof ExecutionRole>
 
-  const OutputSchema = z.record(z.string(), z.unknown())
+  export const JsonSchemaObject = z.record(z.string(), z.unknown())
+  export type JsonSchemaObject = z.infer<typeof JsonSchemaObject>
   const MaxRepairTurns = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])
 
   export const OutputConfig = z.union([
@@ -37,29 +38,27 @@ export namespace CortexTypes {
     z.object({ mode: z.literal("final_response") }),
     z.object({
       mode: z.literal("structured"),
-      schema: OutputSchema,
+      schema: JsonSchemaObject,
       maxRepairTurns: MaxRepairTurns.optional(),
     }),
   ])
   export type OutputConfig = z.infer<typeof OutputConfig>
 
-  export const OutputResult = z.union([
+  export const TaskOutput = z.union([
+    z.object({
+      mode: z.literal("summary"),
+      value: z.string(),
+    }),
     z.object({
       mode: z.literal("final_response"),
-      text: z.string(),
+      value: z.string(),
     }),
     z.object({
       mode: z.literal("structured"),
-      status: z.enum(["valid", "invalid"]),
-      source: z.enum(["structured_tool", "final_response"]).optional(),
-      data: z.unknown().optional(),
-      text: z.string().optional(),
-      repairTurns: z.number().int().min(0),
-      error: z.string().optional(),
-      validationErrors: z.array(z.string()).optional(),
+      value: z.unknown(),
     }),
   ])
-  export type OutputResult = z.infer<typeof OutputResult>
+  export type TaskOutput = z.infer<typeof TaskOutput>
 
   export const Task = z
     .object({
@@ -77,14 +76,13 @@ export namespace CortexTypes {
       status: TaskStatus,
       startedAt: z.number(),
       completedAt: z.number().optional(),
-      result: z.string().optional(),
       error: z.string().optional(),
       progress: TaskProgress.optional(),
       notifyParentOnComplete: z.boolean().optional(),
       visibility: z.enum(["visible", "hidden"]).optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
-      output: OutputConfig.optional(),
-      outputResult: OutputResult.optional(),
+      outputConfig: OutputConfig.optional(),
+      output: TaskOutput.optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>

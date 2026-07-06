@@ -140,7 +140,7 @@ export namespace Cortex {
           startedAt: Date.now(),
           visibility: input.visibility,
           tools: input.tools,
-          output: input.output,
+          outputConfig: input.output,
         },
         workspace: (parent as import("../session/types").Info).workspace,
         completionNotice: { silent: input.visibility === "hidden" },
@@ -190,7 +190,7 @@ export namespace Cortex {
       notifyParentOnComplete: input.notifyParentOnComplete ?? (input.visibility === "hidden" ? false : undefined),
       visibility: input.visibility,
       tools: input.tools,
-      output: input.output,
+      outputConfig: input.output,
     }
 
     tasks.set(taskID, task)
@@ -255,10 +255,11 @@ export namespace Cortex {
     if (!resolvedModel) {
       throw new Error(`No model configured for agent ${task.agent}`)
     }
-    const output = CortexOutput.normalize(task.output)
-    if (agent.external && output.mode === "structured") {
+    const outputConfig = CortexOutput.normalize(task.outputConfig)
+    if (agent.external && outputConfig.mode === "structured") {
       throw new Error("Structured Cortex output is not supported for external agents")
     }
+    CortexOutput.assertValidStructuredSchema(outputConfig)
     // Persist resolved model to session metadata
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
@@ -314,11 +315,11 @@ export namespace Cortex {
         }
       })
 
-      const parts = await resolveInputParts(CortexOutput.initialPrompt(task.prompt, output))
-      const invokeTools = CortexOutput.toolsFor(task.tools, output)
-      const ephemeralTools = CortexOutput.ephemeralTools(output)
+      const parts = await resolveInputParts(CortexOutput.initialPrompt(task.prompt, outputConfig))
+      const invokeTools = CortexOutput.toolsFor(task.tools, outputConfig)
+      const ephemeralTools = CortexOutput.ephemeralTools(outputConfig)
 
-      await SessionInvoke.invokeInternal({
+      const initialMessage = await SessionInvoke.invokeInternal({
         sessionID: task.sessionID,
         model: resolvedModel,
         agent: task.agent,
@@ -327,33 +328,41 @@ export namespace Cortex {
         ephemeralTools,
       })
 
-      let outputResult = await CortexOutput.resolve(task.sessionID, output, 0)
-      if (output.mode === "structured") {
+      let outputResolution = await CortexOutput.resolve({
+        sessionID: task.sessionID,
+        output: outputConfig,
+        rootMessageID: rootMessageID(initialMessage),
+      })
+      if (outputConfig.mode === "structured") {
         let repairTurns = 0
-        while (outputResult?.mode === "structured" && outputResult.status === "invalid") {
-          if (repairTurns >= CortexOutput.maxRepairTurns(output)) break
+        while (outputResolution && !outputResolution.ok) {
+          if (repairTurns >= CortexOutput.maxRepairTurns(outputConfig)) break
           repairTurns++
-          const repairParts = await resolveInputParts(CortexOutput.repairPrompt(output, outputResult, repairTurns))
-          await SessionInvoke.invokeInternal({
+          const repairParts = await resolveInputParts(
+            CortexOutput.repairPrompt(outputConfig, outputResolution, repairTurns),
+          )
+          const repairMessage = await SessionInvoke.invokeInternal({
             sessionID: task.sessionID,
             model: resolvedModel,
             agent: task.agent,
             parts: repairParts,
-            tools: invokeTools,
+            tools: CortexOutput.repairTools(),
             ephemeralTools,
           })
-          outputResult = await CortexOutput.resolve(task.sessionID, output, repairTurns)
+          outputResolution = await CortexOutput.resolve({
+            sessionID: task.sessionID,
+            output: outputConfig,
+            rootMessageID: rootMessageID(repairMessage),
+          })
         }
 
-        if (outputResult?.mode === "structured" && outputResult.status === "invalid") {
+        if (outputResolution && !outputResolution.ok) {
           unsub()
           unsub = undefined
           updateTaskStatus(
             task.id,
             "error",
-            outputResult.error ?? "Structured Cortex output is invalid",
-            undefined,
-            outputResult,
+            `Structured output validation failed after ${CortexOutput.maxRepairTurns(outputConfig)} repair turns: ${outputResolution.error}`,
           )
           return
         }
@@ -362,10 +371,8 @@ export namespace Cortex {
       unsub()
       unsub = undefined
 
-      const result = agent.external
-        ? await extractExternalTaskResult(task.sessionID)
-        : await Trajectory.summarize(task.sessionID)
-      updateTaskStatus(task.id, "completed", undefined, result || undefined, outputResult)
+      const completedOutput = await completedTaskOutput(task, agent, outputConfig, outputResolution)
+      updateTaskStatus(task.id, "completed", undefined, completedOutput)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
@@ -373,12 +380,39 @@ export namespace Cortex {
     }
   }
 
+  async function completedTaskOutput(
+    task: CortexTypes.Task,
+    agent: Awaited<ReturnType<typeof Agent.get>>,
+    outputConfig: CortexTypes.OutputConfig,
+    resolution: CortexOutput.Resolution | undefined,
+  ): Promise<CortexTypes.TaskOutput> {
+    if (outputConfig.mode === "final_response") {
+      return resolution?.ok ? resolution.output : { mode: "final_response", value: "" }
+    }
+    if (outputConfig.mode === "structured") {
+      if (!resolution?.ok) throw new Error("Structured Cortex output was not resolved")
+      return resolution.output
+    }
+    const value = agent.external
+      ? await extractExternalTaskResult(task.sessionID)
+      : await Trajectory.summarize(task.sessionID)
+    return { mode: "summary", value }
+  }
+
+  function rootMessageID(message: MessageV2.WithParts): string {
+    if (message.info.role === "assistant") return message.info.rootID ?? message.info.parentID
+    return message.info.rootID ?? message.info.id
+  }
+
+  function truncate(value: string, maxChars: number): string {
+    return value.length > maxChars ? value.slice(0, maxChars - 3) + "..." : value
+  }
+
   function updateTaskStatus(
     taskID: string,
     status: CortexTypes.TaskStatus,
     error?: string,
-    result?: string,
-    outputResult?: CortexTypes.OutputResult,
+    output?: CortexTypes.TaskOutput,
   ): void {
     const task = tasks.get(taskID)
     if (!task) return
@@ -390,8 +424,7 @@ export namespace Cortex {
 
     task.completedAt = Date.now()
     if (error) task.error = error
-    if (result) task.result = result
-    if (outputResult) task.outputResult = outputResult
+    if (output) task.output = output
     tasks.set(taskID, task)
 
     setTaskStatus(taskID, status)
@@ -401,8 +434,7 @@ export namespace Cortex {
       if (draft.cortex) {
         draft.cortex.completedAt = task.completedAt
         if (error) draft.cortex.error = error
-        if (result) draft.cortex.result = result
-        if (outputResult) draft.cortex.outputResult = outputResult
+        if (output) draft.cortex.output = output
       }
     }).catch((error) => {
       log.error("failed to persist terminal task fields", { taskID, error })
@@ -451,10 +483,7 @@ export namespace Cortex {
       const task = tasks.get(taskID)
       if (task) {
         task.prompt = ""
-        task.result = undefined
-        task.error = undefined
-        task.outputResult = undefined
-        log.info("task strings evicted", { taskID })
+        log.info("task prompt evicted", { taskID })
       }
     }, CLEANUP_DELAY_MS)
 
@@ -478,10 +507,9 @@ export namespace Cortex {
       const node = nodes.find((n) => n.id === task.dagNodeId)
       if (!node) return
       node.status = task.status === "completed" ? "completed" : "failed"
-      if (task.result || task.error) {
-        const raw = task.status === "completed" ? (task.result ?? "") : (task.error ?? "")
-        node.result = raw.length > 8192 ? raw.slice(0, 8189) + "..." : raw
-      }
+      const raw =
+        task.status === "completed" ? CortexOutput.renderTaskOutputForDag(task.output) : (task.error ?? "Task failed")
+      node.result = truncate(raw, 8192)
       Dag.autoPromote(nodes)
       await Dag.update({ sessionID: task.parentSessionID, nodes })
       log.info("dag node updated", { dagNodeId: task.dagNodeId, status: node.status })
@@ -665,7 +693,20 @@ export namespace Cortex {
       return [renderProgress(task), "", "--- Error ---", task.error ?? "Unknown error"].join("\n")
     }
 
-    return [renderProgress(task), "", "--- Result ---", task.result ?? "No output captured"].join("\n")
+    return [renderProgress(task), "", "--- Result ---", CortexOutput.renderTaskOutput(task.output)].join("\n")
+  }
+
+  export function outputView(taskID: string) {
+    const task = tasks.get(taskID)
+    if (!task) {
+      return {
+        taskID,
+        status: "error" as const,
+        rendered: `Task ${taskID} not found. It may have expired or been cancelled.`,
+        error: "Task not found",
+      }
+    }
+    return CortexOutput.renderTaskOutputView(task)
   }
 
   function renderProgress(task: CortexTypes.Task): string {
