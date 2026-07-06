@@ -14,6 +14,7 @@ export namespace SessionModePolicy {
     "scan_files",
     "parse_code",
     "look_at",
+    "view_image",
     "scan_document",
     "ast_grep",
     "lsp",

@@ -43,13 +43,13 @@ Session.messages({sessionID})
   = rawMessages（按 id 升序全量读取）
     → applyEvents（history.ts:259，过滤 activeRollbacks 的 droppedMessageIDs 集合）
 → filterCompacted（message-v2.ts:945，从新到旧回溯，
-   遇到"带 compaction part 且已有完成 summary assistant 的 user 消息"即截断）
+   以最新完成的 compaction summary assistant 作为截断点，回溯保留对应 boundary user）
 ```
 
 要点：
 
 - 回退是**软删除**：消息不动，事件（`RollbackEvent.droppedMessageIDs`）在读路径过滤。
-- compaction 截断后，摘要 assistant（`summary: true`）留在窗口内，代替被截断的历史。
+- compaction 截断后，任务 root 和摘要 assistant（`summary: true`）留在窗口内，代替被截断的历史；重复 auto-compaction 时，较旧 summary 保留为 `includeInContext:false` 以供 pending-compaction 计数，不重复进入模型上下文。
 - 被 prune 的 tool part 在 `MessageV2.parts`（message-v2.ts:919）读取时把 `output` 置空（`state.time.compacted` 存在时）。
 
 ### 1.2 新设计
@@ -59,7 +59,7 @@ Session.messages({sessionID})
 1. **回退过滤改为前缀切割**：`RollbackEvent` 通用形式记 `cutMessageID`，`applyEvents` 的谓词从"id ∈ droppedMessageIDs 集合"变为"存在 active 事件使 `msg.id >= cutMessageID`"。`/undo` 的 root 步长与消息级 rewind 共用同一事件与过滤。
 2. **rootID 组的原子性由切点选择保证**：cut 点只能落在消息边界上；按 root 边界切时整组消失，按消息级 rewind 切时留下"root 存在、无终止回复"的半任务——这是合法状态（`needsModelCall` 为真但不自启）。
 
-`filterCompacted` 不变。
+`filterCompacted` 保持为 L2 确定性投影；它不改变落盘消息，只在有效视图中表达最新 compaction 边界。
 
 ---
 

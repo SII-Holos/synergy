@@ -119,15 +119,20 @@ describe("tool exposure", () => {
     expect(internal.exposure).toEqual({ mode: "internal" })
   })
 
-  test("ToolResolver hides look_at when the active model supports image input", async () => {
+  test("ToolResolver exposes exactly one image inspection tool for active model capability", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
 
-        expect((await definitionIDs(session)).has("look_at")).toBe(true)
-        expect((await definitionIDs(session, { model: imageModel })).has("look_at")).toBe(false)
+        const textOnly = await definitionIDs(session)
+        expect(textOnly.has("look_at")).toBe(true)
+        expect(textOnly.has("view_image")).toBe(false)
+
+        const imageCapable = await definitionIDs(session, { model: imageModel })
+        expect(imageCapable.has("look_at")).toBe(false)
+        expect(imageCapable.has("view_image")).toBe(true)
       },
     })
   })
@@ -222,6 +227,64 @@ describe("tool exposure", () => {
         const search = await SearchToolsTool.init({ agent: allowAllAgent })
         const searchResult = await search.execute({ query: id, limit: 8 }, toolContext(session.id))
         expect((searchResult.metadata.results as Array<any>).some((entry) => entry.id === id)).toBe(false)
+      },
+    })
+  })
+
+  test("skips plugin tools with incompatible schemas without hiding valid tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const suffix = Math.random().toString(36).slice(2)
+        const goodId = `good_plugin_schema_${suffix}`
+        const badId = `bad_plugin_schema_${suffix}`
+        await ToolRegistry.register(
+          Tool.define(goodId, {
+            description: "A valid test plugin tool.",
+            parameters: z.object({ query: z.string() }),
+            async execute() {
+              return { title: goodId, output: "ok", metadata: {} }
+            },
+          }),
+        )
+        await ToolRegistry.register({
+          id: badId,
+          source: {
+            type: "plugin",
+            pluginId: "focus",
+            toolId: "bad_schema",
+            pluginDir: "/tmp/focus",
+            runtimeMode: "in-process",
+          },
+          init: async () => ({
+            description: "An invalid plugin tool.",
+            parameters: z.object({ broken: { _def: { typeName: "ZodString" } } as any }),
+            async execute() {
+              return { title: badId, output: "should not run", metadata: {} }
+            },
+          }),
+        })
+
+        const session = await Session.create({})
+        const availability = await ToolResolver.availability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          session,
+          includeMCP: false,
+        })
+
+        expect(availability.visible.some((item) => item.id === goodId)).toBe(true)
+        expect(availability.visible.some((item) => item.id === badId)).toBe(false)
+        const diagnostic = availability.diagnostics.get(badId)
+        expect(diagnostic?.code).toBe("tool_unavailable")
+        expect(diagnostic?.message).toContain("zod >=4")
+        expect(diagnostic?.metadata).toMatchObject({
+          pluginId: "focus",
+          pluginToolId: "bad_schema",
+          runtimeMode: "in-process",
+        })
       },
     })
   })

@@ -15,6 +15,18 @@ export namespace Tool {
     agent?: Agent.Info
   }
 
+  export type Source =
+    | {
+        type: "plugin"
+        pluginId: string
+        toolId: string
+        pluginDir?: string
+        runtimeMode: "in-process" | "worker" | "process"
+      }
+    | {
+        type: "local"
+      }
+
   export type Context<M extends Metadata = Metadata> = {
     sessionID: string
     messageID: string
@@ -29,6 +41,7 @@ export namespace Tool {
     id: string
     exposure?: ToolExposure.Info
     display?: ToolDisplay
+    source?: Source
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters

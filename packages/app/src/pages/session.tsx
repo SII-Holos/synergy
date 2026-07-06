@@ -23,7 +23,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { Session, SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
+import type { Session, SessionInboxItem, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
@@ -491,14 +491,29 @@ function SessionPageContent() {
     ),
   )
 
-  const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
+  const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
+  const status = createMemo<SessionStatus>(() => {
+    const runtimeStatus = sync.data.session_status[params.id ?? ""]
+    if (runtimeStatus && runtimeStatus.type !== "idle") return runtimeStatus
+    const working = currentSession()?.working
+    if (working?.status === "busy") return { type: "busy", description: working.description }
+    if (working?.status === "retry") {
+      return {
+        type: "retry",
+        attempt: working.attempt,
+        message: working.message,
+        next: working.next,
+      }
+    }
+    if (working?.status === "recovering") return { type: "recovering" }
+    return runtimeStatus ?? idle
+  })
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
     return (sync.data.message[params.id] ?? []).length > 0
   })
 
-  const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
   const focusedBlueprintWriteParts = new Set<string>()
   const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {

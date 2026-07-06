@@ -128,6 +128,11 @@ export namespace SessionInvoke {
 
       try {
         return await loop(input.sessionID)
+      } catch (error) {
+        await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+          log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+        })
+        throw error
       } finally {
         ephemeralToolsByMessage.delete(message.info.id)
       }
@@ -486,21 +491,19 @@ export namespace SessionInvoke {
           }
         }
 
-        await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+        try {
+          await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+        } catch (error) {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          break
+        }
 
         // Launch independent async work in parallel: tool resolution, system
         // prompt assembly, cortex context, and memory recall (flashback) all
         // run concurrently to minimise time-to-first-token.
         const isTopSession = !session.parentID
 
-        const [
-          toolDefinitions,
-          [envParts, customParts],
-          cortexExecutionContext,
-          cortexReminder,
-          agendaReminder,
-          memoryResult,
-        ] = await Promise.all([
+        const turnPreparation = await Promise.all([
           ToolResolver.definitions({
             agent,
             model,
@@ -518,7 +521,20 @@ export namespace SessionInvoke {
           buildCortexReminder(sessionID),
           buildAgendaReminder(sessionID, scopeID),
           recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
-        ])
+        ]).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
+        })
+        if (!turnPreparation) break
+
+        const [
+          toolDefinitions,
+          [envParts, customParts],
+          cortexExecutionContext,
+          cortexReminder,
+          agendaReminder,
+          memoryResult,
+        ] = turnPreparation
 
         for (const def of toolDefinitions) {
           if (def.display) toolDisplayByName.set(def.id, def.display)
@@ -667,16 +683,24 @@ export namespace SessionInvoke {
           systemCacheBreakpoint,
           messages: preparedMessages,
           toolDefinitions,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         promptPlanTimer.stop()
+        if (!promptPlan) break
 
         const calibration = buildCalibration(msgs)
         const promptDecideTimer = log.time("promptBudgeter.decide")
         const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         promptDecideTimer.stop()
+        if (!promptDecision) break
 
         if (
           !jobCtx.compactionAutoDisabled &&
@@ -709,8 +733,12 @@ export namespace SessionInvoke {
           userTools: R.tools,
           ephemeralTools: ephemeralToolsByMessage.get(R.id),
           includeMCP: true,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         toolResolveTimer.stop()
+        if (!resolvedTools) break
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         const processTimer = log.time("processor.process")
@@ -765,16 +793,19 @@ export namespace SessionInvoke {
           if (error !== deadlineError) {
             PerformanceSpans.end(turnSpan, { status: "error", error })
             turnSpanEnded = true
-            throw error
+            await completeAssistantWithError({ sessionID, processor, model, error })
+            result = "stop"
+          } else {
+            log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
+            processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+            processor.message.finish = "error"
+            processor.message.time.completed = Date.now()
+            await Session.updateMessage(processor.message)
+            Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+            result = "stop"
+            PerformanceSpans.end(turnSpan, { status: "timeout", error: deadlineError })
+            turnSpanEnded = true
           }
-          log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
-          processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
-          processor.message.time.completed = Date.now()
-          await Session.updateMessage(processor.message)
-          Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
-          result = "stop"
-          PerformanceSpans.end(turnSpan, { status: "timeout", error: deadlineError })
-          turnSpanEnded = true
         } finally {
           clearTimeout(turnTimer)
           processTimer.stop()
@@ -957,6 +988,101 @@ export namespace SessionInvoke {
 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
+    })
+  }
+
+  async function completeAssistantWithError(input: {
+    sessionID: string
+    processor: SessionProcessor.Info
+    model: Provider.Model
+    error: unknown
+  }): Promise<void> {
+    const message = input.processor.message
+    if (message.time.completed != null) return
+
+    message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
+    message.finish = "error"
+    message.time.completed = Date.now()
+    await Session.updateMessage(message)
+    Bus.publish(SessionEvent.Error, { sessionID: input.sessionID, error: message.error })
+    Session.updateLastExchange(input.sessionID).catch((error) =>
+      log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
+    )
+    ExperienceEncoder.onComplete(message)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID: input.sessionID,
+        userMessageID: message.parentID,
+        assistantMessageID: message.id,
+        assistant: message,
+        finish: message.finish,
+        error: message.error,
+      },
+      {},
+    ).catch((error) => {
+      log.warn("session.turn.after hook failed after turn error", { sessionID: input.sessionID, error })
+    })
+  }
+
+  async function writeErrorAssistantIfMissing(sessionID: string, user: MessageV2.User, error: unknown): Promise<void> {
+    const messages = await Session.messages({ sessionID })
+    if (SessionProgress.findTerminalReply(messages, user.id)) return
+
+    const assistant = (await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      parentID: user.id,
+      rootID: user.rootID ?? user.id,
+      visible: true,
+      role: "assistant",
+      mode: user.agent,
+      agent: user.agent,
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      cost: 0,
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      modelID: user.model.modelID,
+      providerID: user.model.providerID,
+      time: {
+        created: Date.now(),
+        completed: Date.now(),
+      },
+      finish: "error",
+      error: MessageV2.fromError(error, { providerID: user.model.providerID }),
+      sessionID,
+    })) as MessageV2.Assistant
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+      if (!draft.time.archived && !draft.completionNotice.silent) {
+        draft.completionNotice.unread = true
+      }
+    })
+    Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
+    Session.updateLastExchange(sessionID).catch((err) =>
+      log.warn("failed to update lastExchange", { sessionID, error: err }),
+    )
+    ExperienceEncoder.onComplete(assistant)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistant.parentID,
+        assistantMessageID: assistant.id,
+        assistant,
+        finish: assistant.finish,
+        error: assistant.error,
+      },
+      {},
+    ).catch((err) => {
+      log.warn("session.turn.after hook failed after invoke error", { sessionID, error: err })
     })
   }
 

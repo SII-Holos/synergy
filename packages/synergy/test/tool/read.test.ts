@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReadTool } from "../../src/tool/read"
 import { ScopeContext } from "../../src/scope/context"
-import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 import { PermissionNext } from "../../src/permission/next"
 import { Agent } from "../../src/agent/agent"
@@ -265,10 +264,9 @@ describe("tool.read truncation", () => {
     })
   })
 
-  test("image files set truncated to false", async () => {
+  test("image files are treated as binary and do not attach model-visible image context", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        // 1x1 red PNG
         const png = Buffer.from(
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
           "base64",
@@ -280,24 +278,9 @@ describe("tool.read truncation", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
-        const result = await read.execute({ filePath: path.join(tmp.path, "image.png") }, ctx)
-        expect(result.metadata.truncated).toBe(false)
-        expect(result.attachments).toBeDefined()
-        expect(result.attachments?.length).toBe(1)
-      },
-    })
-  })
-
-  test("large image files are properly attached without error", async () => {
-    await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(FIXTURES_DIR)).scope,
-      fn: async () => {
-        const read = await ReadTool.init()
-        const result = await read.execute({ filePath: path.join(FIXTURES_DIR, "large-image.png") }, ctx)
-        expect(result.metadata.truncated).toBe(false)
-        expect(result.attachments).toBeDefined()
-        expect(result.attachments?.length).toBe(1)
-        expect(result.attachments?.[0].type).toBe("attachment")
+        await expect(read.execute({ filePath: path.join(tmp.path, "image.png") }, ctx)).rejects.toThrow(
+          "Cannot read binary file",
+        )
       },
     })
   })
