@@ -81,9 +81,9 @@ export namespace Storage {
         using _ = await Lock.write(target)
         const content = await Bun.file(target).json()
         fn(content)
-        const bytes = byteLength(JSON.stringify(content, null, 2))
-        await writeJsonAtomic(target, content)
-        PerformanceResources.addWrite(bytes)
+        const serialized = JSON.stringify(content, null, 2)
+        await writeJsonAtomic(target, serialized)
+        PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
         return content as T
       }),
     )
@@ -95,9 +95,9 @@ export namespace Storage {
     return measureStorage("write", key, async () =>
       withErrorHandling(async () => {
         using _ = await Lock.write(target)
-        const bytes = byteLength(JSON.stringify(content, null, 2))
-        await writeJsonAtomic(target, content)
-        PerformanceResources.addWrite(bytes)
+        const serialized = JSON.stringify(content, null, 2)
+        await writeJsonAtomic(target, serialized)
+        PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
       }),
     )
   }
@@ -186,10 +186,6 @@ export namespace Storage {
     }
   }
 
-  function byteLength(value: string) {
-    return new TextEncoder().encode(value).byteLength
-  }
-
   async function withErrorHandling<T>(body: () => Promise<T>) {
     return body().catch((e) => {
       if (!(e instanceof Error)) throw e
@@ -224,13 +220,13 @@ export namespace Storage {
     })
   }
 
-  async function writeJsonAtomic(target: string, content: unknown) {
+  async function writeJsonAtomic(target: string, serialized: string) {
     await fs.mkdir(path.dirname(target), { recursive: true })
     const tmp = path.join(
       path.dirname(target),
       `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     )
-    await Bun.write(tmp, JSON.stringify(content, null, 2))
+    await Bun.write(tmp, serialized)
     await fs.rename(tmp, target)
   }
 

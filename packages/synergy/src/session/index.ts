@@ -26,6 +26,7 @@ import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "./interaction"
 import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
@@ -802,6 +803,8 @@ export namespace Session {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
+      SessionManager.forgetSession(sessionID)
+      SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
@@ -850,6 +853,7 @@ export namespace Session {
       StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), asMessageID(canonical.id)),
       canonical,
     )
+    SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
@@ -874,6 +878,7 @@ export namespace Session {
           }
         },
       )
+      SessionMessageCache.upsertMessage(result.sessionID, result)
       Bus.publish(MessageV2.Event.Updated, {
         info: result,
       })
@@ -890,6 +895,8 @@ export namespace Session {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
       await Storage.remove(StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)))
+      // Structural change: drop the cache and let the next read repopulate.
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -915,6 +922,7 @@ export namespace Session {
           asPartID(input.partID),
         ),
       )
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -955,8 +963,11 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
-    const session = await SessionManager.requireSession(part.sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
+    // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
+    // sessionID -> scopeID cache instead of loading full session info on every
+    // delta. A session's scope is immutable, so this is safe; on a cold cache it
+    // reads only the small session-index record.
+    const scopeID = asScopeID(await SessionManager.resolveScopeID(part.sessionID))
     const path = StoragePath.messagePart(
       scopeID,
       asSessionID(part.sessionID),
@@ -970,6 +981,10 @@ export namespace Session {
       // durably before returning (preserves the original write-through contract).
       partWriteBuffer.cancel(part.id)
       await Storage.write(path, part)
+      // Maintain the loop-scoped message cache on durable writes only (#350 D2);
+      // per-delta streamed updates are coalesced by the write-behind buffer and
+      // do not need to advance the cache — the terminal write for each part does.
+      SessionMessageCache.upsertPart(part.sessionID, part)
     }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
