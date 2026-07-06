@@ -948,7 +948,12 @@ export namespace Session {
   // deltas are coalesced to at most one disk write per interval; discrete updates
   // (tool state, the final no-delta part write) persist immediately so nothing is
   // lost at a meaningful boundary. The event is always broadcast on every delta.
-  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) => Storage.write(path, value))
+  // Part files are the highest-frequency writes and are never hand-edited, so
+  // they persist as compact JSON (no pretty-print) to cut serialization and disk
+  // bytes on the streaming path.
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) =>
+    Storage.write(path, value, { compact: true }),
+  )
 
   /**
    * Flush all buffered streaming part writes to disk and await them. Called at
@@ -985,7 +990,7 @@ export namespace Session {
       // Discrete/terminal update: cancel any pending streamed write and persist
       // durably before returning (preserves the original write-through contract).
       partWriteBuffer.cancel(part.id)
-      await Storage.write(path, part)
+      await Storage.write(path, part, { compact: true })
       // Maintain the loop-scoped message cache on durable writes only (#350 D2);
       // per-delta streamed updates are coalesced by the write-behind buffer and
       // do not need to advance the cache — the terminal write for each part does.
