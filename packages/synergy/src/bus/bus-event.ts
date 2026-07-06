@@ -9,10 +9,18 @@ export namespace BusEvent {
 
   const registry = new Map<string, Definition>()
 
-  export function define<Type extends string, Properties extends ZodType>(type: Type, properties: Properties) {
+  export function define<Type extends string, Properties extends ZodType>(
+    type: Type,
+    properties: Properties,
+    // High-frequency, coalescible events (e.g. part deltas) are marked
+    // streaming: they are not sequenced or journaled, and the client applies
+    // them without gap detection (a full snapshot/anchor always follows).
+    options?: { streaming?: boolean },
+  ) {
     const result = {
       type,
       properties,
+      streaming: options?.streaming ?? false,
     }
     registry.set(type, result)
     return result

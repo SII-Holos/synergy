@@ -110,6 +110,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             setMeta("limit", sessionID, limit)
             setMeta("complete", sessionID, all.length < limit)
           })
+          // Track this bucket for LRU eviction now that it is loaded.
+          globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
         })
         .finally(() => {
           setMeta("loading", sessionID, false)
@@ -192,6 +194,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     return {
       data: store,
       set: setStore,
+      // Protect a session's message/part buckets from LRU eviction while it is
+      // the actively-viewed session (pass undefined to clear).
+      markActiveSession(sessionID: string | undefined) {
+        globalSync.markActiveSession(sdk.scopeKey, sessionID)
+      },
       get status() {
         return store.status
       },
@@ -264,16 +271,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                     ? Promise.resolve()
                     : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
                         if (!session.data) return
-                        reconcileCortexFromSession(session.data)
+                        const data = session.data
+                        reconcileCortexFromSession(data)
+                        const match = Binary.search(store.session, sessionID, (s) => s.id)
+                        if (match.found) {
+                          // reconcile so a re-fetch of an already-present session
+                          // preserves object identity and doesn't invalidate
+                          // downstream memos (issue #319).
+                          setStore("session", match.index, reconcile(data))
+                          return
+                        }
                         setStore(
                           "session",
                           produce((draft) => {
-                            const match = Binary.search(draft, sessionID, (s) => s.id)
-                            if (match.found) {
-                              draft[match.index] = session.data
-                              return
-                            }
-                            draft.splice(match.index, 0, session.data)
+                            draft.splice(match.index, 0, data)
                           }),
                         )
                       })
@@ -296,6 +307,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           }
 
           await Promise.all(requests)
+        },
+        // Force a fresh re-fetch of a session's messages and volatile state,
+        // bypassing the "already loaded" short-circuit in sync(). Used by the
+        // empty-state Refresh button to recover if the initial load missed
+        // messages (issue #328 / #316).
+        async refresh(sessionID: string) {
+          const limit = meta.limit[sessionID] ?? chunk
+          await Promise.all([loadMessages(sessionID, limit), refreshVolatile(sessionID)])
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return

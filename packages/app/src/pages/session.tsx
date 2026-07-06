@@ -1,5 +1,7 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -199,6 +201,7 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  const [emptyRefreshing, setEmptyRefreshing] = createSignal(false)
   // A fresh rewind (new rollback event id) always shows its banner, even if a
   // previous banner was dismissed.
   createEffect(
@@ -307,24 +310,11 @@ function SessionPageContent() {
   const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
   const lastRenderableUserMessage = lastRoot
-  const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
-  // Composer agent/model inheritance: use lastRoot instead of lastUserMessage
-  createEffect(
-    on(
-      () =>
-        [lastRoot()?.id, lastRoot()?.agent, lastRoot()?.model, lastRoot()?.variant, selectableAgentNames()] as const,
-      () => {
-        const msg = lastRoot()
-        if (!msg) return
-        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
-        local.agent.set(msg.agent)
-        if (msg.model) {
-          local.model.set(msg.model)
-          local.model.variant.set(msg.variant, msg.model)
-        }
-      },
-    ),
-  )
+  // Composer agent/model inheritance is handled inside local.model/local.agent as
+  // a read-only "sessionDefault" derivation (server modelOverride, else the last
+  // root message). The old effect that wrote lastRoot's agent/model back into the
+  // local selector store was removed: it let a late message load silently
+  // overwrite the user's explicit in-composer choice (issue #318).
 
   const renderedUserMessages = createMemo(() => {
     const msgs = visibleRoots()
@@ -468,24 +458,25 @@ function SessionPageContent() {
   const hydratedSessions = new Set<string>()
   const initializedSessions = new Set<string>()
 
+  // Single idempotent entry point for loading a session's data. Runs on session
+  // switch and on (re)connect; sync.session.sync dedups concurrent/ready loads
+  // internally. Replaces two separate effects that both called sync (one on
+  // params.id, one on sdk.connected) and double-fetched on mount.
   createEffect(
     on(
-      () => params.id,
-      (id, prevId) => {
+      () => [params.id, sdk.connected()] as const,
+      ([id, connected], prev) => {
+        const prevId = prev?.[0]
         if (prevId && prevId !== id) {
           hydratedSessions.delete(prevId)
           initializedSessions.delete(prevId)
         }
-        if (id) sync.session.sync(id, { refreshVolatile: true })
+        // Protect the viewed session's buckets from LRU eviction.
+        sync.markActiveSession(id)
+        if (connected && id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
   )
-
-  createEffect(() => {
-    if (!sdk.connected()) return
-    const id = params.id
-    if (id) sync.session.sync(id, { refreshVolatile: true })
-  })
 
   createEffect(
     on(
@@ -998,8 +989,30 @@ function SessionPageContent() {
                             </div>
                           }
                         >
-                          <div class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger">
+                          <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
                             <span class="text-sm text-text-weak">No messages yet</span>
+                            <button
+                              type="button"
+                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
+                              disabled={emptyRefreshing()}
+                              onClick={async () => {
+                                const id = params.id
+                                if (!id || emptyRefreshing()) return
+                                setEmptyRefreshing(true)
+                                try {
+                                  await sync.session.refresh(id)
+                                } finally {
+                                  setEmptyRefreshing(false)
+                                }
+                              }}
+                            >
+                              <Icon
+                                name={getSemanticIcon("action.refresh")}
+                                size="small"
+                                class={emptyRefreshing() ? "animate-spin" : undefined}
+                              />
+                              <span>Refresh</span>
+                            </button>
                           </div>
                         </Show>
                       }

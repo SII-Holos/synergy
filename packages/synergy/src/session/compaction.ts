@@ -39,11 +39,30 @@ export namespace SessionCompaction {
   /** Detect whether a processor error was caused by exceeding the model's context window. */
   export function isContextExceeded(error: unknown): boolean {
     if (!error || typeof error !== "object") return false
-    const obj = error as { name?: string; data?: { message?: string; statusCode?: number; responseBody?: string } }
-    if (obj.name !== "APIError") return false
-    // Check the primary error message and the raw response body, since
-    // ProviderTransform.error() may rewrite the message and drop keywords.
-    const texts = [obj.data?.message ?? "", obj.data?.responseBody ?? ""].map((s) => s.toLowerCase())
+    const obj = error as {
+      name?: string
+      message?: string
+      cause?: unknown
+      data?: { message?: string; statusCode?: number; responseBody?: string; code?: string; error?: unknown }
+    }
+    // Gather text from every place the context-window signal might survive
+    // normalization: the top-level message (wrapped/plain errors), the APIError
+    // data fields, and — as a last resort — a bounded stringification of the
+    // whole error object so a nested `code: "context_length_exceeded"` still
+    // matches even when the shape was rewritten (issue #321).
+    let serialized = ""
+    try {
+      serialized = JSON.stringify(obj).slice(0, 4000)
+    } catch {
+      serialized = ""
+    }
+    const texts = [
+      obj.message ?? "",
+      obj.data?.message ?? "",
+      obj.data?.responseBody ?? "",
+      obj.data?.code ?? "",
+      serialized,
+    ].map((s) => String(s).toLowerCase())
     return texts.some(
       (msg) =>
         msg.includes("context_length_exceeded") ||
@@ -54,6 +73,28 @@ export namespace SessionCompaction {
         (msg.includes("too long") && msg.includes("context")) ||
         (msg.includes("request too large") && msg.includes("token")),
     )
+  }
+
+  /**
+   * Whether the task root R has an unfulfilled compaction request: more
+   * `compaction` parts than completed compaction summaries anchored on R. Used
+   * to gate both proactive injection and the compact loop signal so compaction
+   * can repeat across a long task (issue #321) — a completed compaction no
+   * longer permanently blocks the next one — without re-compacting endlessly.
+   */
+  export function hasPendingCompaction(
+    rootParts: readonly MessageV2.Part[],
+    messages: readonly MessageV2.WithParts[],
+    rootID: string,
+  ): boolean {
+    const requests = rootParts.reduce((n, p) => (p.type === "compaction" ? n + 1 : n), 0)
+    if (requests === 0) return false
+    const fulfilled = messages.reduce((n, m) => {
+      if (m.info.role !== "assistant") return n
+      const a = m.info as MessageV2.Assistant
+      return a.summary === true && !!a.finish && a.parentID === rootID ? n + 1 : n
+    }, 0)
+    return requests > fulfilled
   }
 
   const IMAGE_TOKEN_ESTIMATE = 500
