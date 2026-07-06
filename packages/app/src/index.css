@@ -228,7 +228,7 @@ a:active,
   background-color: var(--workbench-canvas-bg);
 }
 
-.synergy-workbench-canvas :where(.bg-background-base) {
+.synergy-workbench-canvas :where(.bg-background-base, .bg-background-weak) {
   background-color: var(--workbench-panel-bg);
 }
 
