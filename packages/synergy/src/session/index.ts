@@ -1067,6 +1067,19 @@ export namespace Session {
   ) {
     const existing = await SessionManager.getSession(endpoint)
     if (existing) {
+      const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
+      const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
+      const chatNameChanged = newChatName != null && existingChatName !== newChatName
+      if (chatNameChanged) {
+        return update(existing.id, (draft) => {
+          if (draft.endpoint?.kind === "channel") {
+            draft.endpoint.channel.chatName = newChatName
+          }
+          if (interaction && draft.interaction?.mode !== interaction.mode) {
+            draft.interaction = interaction
+          }
+        })
+      }
       if (interaction && existing.interaction?.mode !== interaction.mode) {
         return update(existing.id, (draft) => {
           draft.interaction = interaction
