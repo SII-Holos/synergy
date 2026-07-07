@@ -1,14 +1,16 @@
 import { useMarked } from "../context/marked"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
+import {
+  markdownFallbackHtml,
+  isCurrentMarkdownRender,
+  markdownRenderEntry,
+  type MarkdownRenderEntry,
+} from "./markdown-render"
 import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
 import * as smd from "streaming-markdown"
 
-type Entry = {
-  hash: string
-  html: string
-}
+type Entry = MarkdownRenderEntry
 
 const max = 200
 const cache = new Map<string, Entry>()
@@ -187,22 +189,28 @@ export function Markdown(
   // source short-circuits the resource so no marked work happens mid-stream.
   const [html] = createResource(
     () => (local.streaming ? null : local.text),
-    async (markdown) => {
+    async (markdown: string | null) => {
       if (markdown == null) return null
-      const hash = checksum(markdown)
-      const key = local.cacheKey ?? hash
+      const entry = markdownRenderEntry(markdown, "")
+      const key = local.cacheKey ?? entry.hash
 
-      if (key && hash) {
+      if (key && entry.hash) {
         const cached = cache.get(key)
-        if (cached && cached.hash === hash) {
+        if (cached && cached.hash === entry.hash) {
           touch(key, cached)
-          return cached.html
+          return cached
         }
       }
 
-      const next = sanitizeHtml(await marked.parse(markdown))
-      if (key && hash) touch(key, { hash, html: next })
-      return next
+      let next: string
+      try {
+        next = sanitizeHtml(await marked.parse(markdown))
+      } catch {
+        next = markdownFallbackHtml(markdown)
+      }
+      const rendered = markdownRenderEntry(markdown, next)
+      if (key && rendered.hash) touch(key, rendered)
+      return rendered
     },
     { initialValue: null },
   )
@@ -241,10 +249,10 @@ export function Markdown(
   // then run the one-time DOM enhancement (copy buttons, table wrap, katex copy).
   createEffect(() => {
     if (local.streaming) return
-    const rendered = html.latest
-    if (rendered == null) return
+    const rendered = html()
+    if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
     endStream()
-    container.innerHTML = rendered
+    container.innerHTML = rendered.html
     const cleanup = enhanceMarkdown(container)
     onCleanup(cleanup)
   })

@@ -652,8 +652,10 @@ export namespace SessionInvoke {
         const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
         if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
-        // Layer 4.55: Always-on — git commit coauthor footer reminder
-        systemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+        // Layer 4.55: Configurable — git commit coauthor footer reminder
+        if ((await Config.current()).experimental?.coauthor_reminder !== false) {
+          systemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+        }
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
         if (agendaReminder) systemParts.push(agendaReminder)

@@ -67,6 +67,7 @@ describe("settings catalog", () => {
   test("field save strategies are metadata-only and cover editable fields", () => {
     expect(FIELD_SAVE_STRATEGY.snapshot).toBe("auto")
     expect(FIELD_SAVE_STRATEGY.controlProfile).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
     for (const role of MODEL_ROLES) {
       expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")

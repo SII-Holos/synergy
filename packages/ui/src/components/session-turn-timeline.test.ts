@@ -9,6 +9,43 @@ import type {
 
 const Empty = () => null
 
+mock.module("@ericsanchezok/synergy-util/binary", () => ({
+  Binary: {
+    search: <T>(items: T[], value: string, getValue: (item: T) => string) => {
+      const index = items.findIndex((item) => getValue(item) === value)
+      return index >= 0 ? { found: true, index } : { found: false, index: -1 }
+    },
+  },
+}))
+mock.module("@ericsanchezok/synergy-util/model-limit", () => ({
+  ModelLimit: {
+    actualInput: (tokens: { input: number; cache: { read: number; write: number } }) =>
+      tokens.input + tokens.cache.read + tokens.cache.write,
+  },
+}))
+mock.module("@ericsanchezok/synergy-util/path", () => ({
+  getDirectory: (path: string) => path.slice(0, path.lastIndexOf("/")),
+  getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
+}))
+mock.module("solid-js", () => ({
+  createEffect: () => {},
+  createMemo: (fn: () => unknown) => fn,
+  createSignal: (initial: unknown) => {
+    let value = initial
+    return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
+  },
+  ErrorBoundary: Empty,
+  For: Empty,
+  Match: Empty,
+  on: (_source: unknown, fn: unknown) => fn,
+  onCleanup: () => {},
+  Show: Empty,
+  Switch: Empty,
+}))
+mock.module("solid-js/store", () => ({
+  createStore: (initial: unknown) => [initial, () => {}],
+}))
+mock.module("solid-js/web", () => ({ Dynamic: Empty }))
 mock.module("../context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
 mock.module("../context/diff", () => ({ useDiffComponent: () => Empty }))
 mock.module("../hooks", () => ({
@@ -26,6 +63,16 @@ mock.module("./accordion", () => {
 })
 mock.module("./attachment-card", () => ({ AttachmentGallery: Empty }))
 mock.module("./button", () => ({ Button: Empty }))
+mock.module("./clipboard", () => ({
+  createCopyController: () => ({
+    copied: () => false,
+    copy: () => {},
+    disabled: () => false,
+    icon: () => "copy",
+    state: () => "idle",
+    tooltip: () => "Copy Markdown",
+  }),
+}))
 mock.module("./diff-changes", () => ({ DiffChanges: Empty }))
 mock.module("./compaction-card", () => ({ CompactionCard: Empty }))
 mock.module("./error-card", () => ({ ErrorCard: Empty }))
@@ -35,6 +82,7 @@ mock.module("./media-generation-card", () => ({ MediaGenerationCard: Empty }))
 mock.module("./message-part", () => ({ Message: Empty, Part: Empty }))
 mock.module("./session-turn.css", () => ({}))
 mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }))
+mock.module("./special-user-message", () => ({ getSpecialUserMessageRenderer: () => undefined }))
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
@@ -47,9 +95,12 @@ const {
   isGuidedContextUserMessage,
   shouldShowTurnDiffs,
   shouldShowTurnUserChrome,
+  formatTurnCost,
+  formatTurnTokenCount,
   providerPreludeElapsedLabel,
   providerPreludeText,
   shouldShowProviderPrelude,
+  turnCompletionStats,
   timelineItemStableKey,
   timelineVisualKind,
 } = await import("./session-turn")
@@ -485,6 +536,89 @@ describe("session turn timeline", () => {
     expect(providerPreludeElapsedLabel(1_000, 61_000)).toBe("01:00")
     expect(providerPreludeElapsedLabel(1_000, 3_601_000)).toBe("1:00:00")
     expect(providerPreludeElapsedLabel(undefined, 1_000)).toBeUndefined()
+  })
+
+  test("formats completed turn token and cost labels compactly", () => {
+    expect(formatTurnTokenCount(999)).toBe("999")
+    expect(formatTurnTokenCount(12_345)).toBe("12.3k")
+    expect(formatTurnTokenCount(1_250_000)).toBe("1.3M")
+    expect(formatTurnCost(0)).toBeUndefined()
+    expect(formatTurnCost(0.0042)).toBe("$0.0042")
+    expect(formatTurnCost(0.04)).toBe("$0.04")
+  })
+
+  test("builds completed turn stats from assistant timing, tokens, reasoning, and cost", () => {
+    const message = {
+      ...completedAssistant("assistant-stats"),
+      time: { created: 1_000, completed: 62_000 },
+      tokens: {
+        input: 12_345,
+        output: 678,
+        reasoning: 42,
+        cache: { read: 100, write: 0 },
+      },
+      cost: 0.0042,
+    } as AssistantMessage
+
+    expect(turnCompletionStats([message])).toEqual({
+      duration: "01:01",
+      segments: ["12.4k input", "678 output", "42 reasoning", "$0.0042"],
+    })
+  })
+
+  test("builds completed turn stats for textless or zero-cost turns", () => {
+    const message = {
+      ...completedAssistant("assistant-stats"),
+      time: { created: 1_000, completed: 3_601_000 },
+      tokens: {
+        input: 0,
+        output: 2048,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      cost: 0,
+    } as AssistantMessage
+
+    expect(turnCompletionStats([message])).toEqual({
+      duration: "1:00:00",
+      segments: ["2,048 output"],
+    })
+  })
+
+  test("aggregates completed turn stats across all assistant messages in the turn", () => {
+    const first = {
+      ...completedAssistant("assistant-first"),
+      time: { created: 1_000, completed: 10_000 },
+      tokens: {
+        input: 1_000,
+        output: 200,
+        reasoning: 20,
+        cache: { read: 100, write: 50 },
+      },
+      cost: 0.01,
+    } as AssistantMessage
+    const second = {
+      ...completedAssistant("assistant-second"),
+      time: { created: 20_000, completed: 62_000 },
+      tokens: {
+        input: 2_000,
+        output: 300,
+        reasoning: 30,
+        cache: { read: 0, write: 0 },
+      },
+      cost: 0.02,
+    } as AssistantMessage
+
+    expect(turnCompletionStats([first, second])).toEqual({
+      duration: "01:01",
+      segments: ["3,150 input", "500 output", "50 reasoning", "$0.03"],
+    })
+  })
+
+  test("does not build completed turn stats before all assistant messages complete", () => {
+    expect(turnCompletionStats([])).toBeUndefined()
+    expect(turnCompletionStats([assistant("assistant-running")])).toBeUndefined()
+    expect(turnCompletionStats([completedAssistant("assistant-done"), assistant("assistant-running")])).toBeUndefined()
   })
 
   test("keeps reasoning before a running media placeholder and later text", () => {

@@ -124,6 +124,7 @@ export const SemanticIconToken = {
   // Prompt composer and command entry
   "prompt.attach": "paperclip",
   "prompt.plan": "list-checks",
+  "prompt.lattice": "orbit",
   "prompt.shell": "file-terminal",
   "prompt.signal": "signal",
   "prompt.submit": "corner-down-left",

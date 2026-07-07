@@ -17,6 +17,7 @@ export function ModelsPanel(props: {
   popoverLayer?: HTMLElement
   onModelChange: (key: ModelKey, value: string) => void
   onVariantChange: (roleId: string, variant: string) => void
+  onQuickSwitcherChange: (preferences: ModelsStore["quick_switcher"]) => void
   onConnectProvider: () => void
 }) {
   const providerGroups = () => groupByProvider(props.providerModels())
@@ -105,7 +106,13 @@ export function ModelsPanel(props: {
         title="Quick switcher models"
         description="Pick the connected models that appear in model switchers and command shortcuts."
       >
-        <ConnectedModelManager class="settings-connected-model-list" searchAutofocus={false} selectable={false} />
+        <ConnectedModelManager
+          class="settings-connected-model-list"
+          searchAutofocus={false}
+          selectable={false}
+          quickSwitcher={props.models.quick_switcher}
+          onQuickSwitcherChange={props.onQuickSwitcherChange}
+        />
       </SettingsSection>
     </SettingsPage>
   )

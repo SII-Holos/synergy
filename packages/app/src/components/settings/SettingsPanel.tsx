@@ -148,6 +148,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       thinking_model: cfg?.thinking_model ?? "",
       long_context_model: cfg?.long_context_model ?? "",
       creative_model: cfg?.creative_model ?? "",
+      quick_switcher: cfg?.quick_switcher?.models ?? [],
     }
   })
 
@@ -492,6 +493,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onVariantChange={(roleId, variant) =>
               setSettings("roleVariant", roleId, variant || (undefined as unknown as string))
             }
+            onQuickSwitcherChange={(preferences) => setSettings("models", "quick_switcher", preferences)}
             onConnectProvider={() => setActiveTab("providers")}
           />
         )
