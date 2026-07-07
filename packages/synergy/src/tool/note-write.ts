@@ -58,6 +58,7 @@ async function updateExisting(input: {
   auditAgent?: string
   content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
   ctx: Tool.Context
+  optimistic?: boolean
 }) {
   const existing = await NoteStore.getAny(ScopeContext.current.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
@@ -84,7 +85,7 @@ async function updateExisting(input: {
     title: input.title ?? undefined,
     content: input.content(existing),
     tags: input.tags ?? undefined,
-    expectedVersion: existing.version,
+    ...(input.optimistic === false ? {} : { expectedVersion: existing.version }),
   }
 
   if (nextKind === "note") {
@@ -235,6 +236,7 @@ export const NoteWriteTool = Tool.define("note_write", {
         auditAgent: params.auditAgent,
         content: () => tiptapContent,
         ctx,
+        optimistic: false,
       })
     }
 

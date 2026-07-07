@@ -38,6 +38,7 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
@@ -81,6 +82,7 @@ function SessionPageContent() {
   const navigate = useNavigate()
   const location = useLocation()
   const sdk = useSDK()
+  const navigateToSession = useNavigateToSession()
   const prompt = usePrompt()
   const workbench = useWorkbenchPanels()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
@@ -1112,7 +1114,7 @@ function SessionPageContent() {
               prompt={prompt}
               sync={sync}
               sdk={sdk}
-              navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
+              navigate={navigateToSession}
               handoffPrompt={handoff.prompt}
               meta={sessionMeta}
               parentTitle={parentSession()?.title}
