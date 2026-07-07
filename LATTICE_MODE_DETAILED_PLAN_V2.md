@@ -62,15 +62,15 @@ route（`/blueprint/loop` 系列）行为完全不变，仅实现搬迁。现有
 
 ```ts
 export interface ContinuationPolicy {
-  id: string                 // "blueprint_loop" | "lattice"
-  priority: number           // 大者先执行，第一个返回 true 的 policy 消费该次 idle
+  id: string // "blueprint_loop" | "lattice"
+  priority: number // 大者先执行，第一个返回 true 的 policy 消费该次 idle
   handle(input: { session: Session.Info; scopeID: string; sessionID: string }): Promise<boolean>
 }
 
 export namespace ContinuationKernel {
   export function register(policy: ContinuationPolicy): void
-  export function init(): void        // 唯一的 SessionEvent.Idle 订阅（ScopedState 模式，同现有实现）
-  export async function kick(sessionID: string): Promise<boolean>  // 主动触发一次评估（供 route 使用）
+  export function init(): void // 唯一的 SessionEvent.Idle 订阅（ScopedState 模式，同现有实现）
+  export async function kick(sessionID: string): Promise<boolean> // 主动触发一次评估（供 route 使用）
 }
 ```
 
@@ -146,22 +146,17 @@ type LatticeMode = "auto" | "collaborative"
 type LatticePhase =
   | "initial_planning"
   | "step_blueprinting"
-  | "blueprint_review"        // 仅 collaborative
+  | "blueprint_review" // 仅 collaborative
   | "blueprint_execution"
   | "result_analysis"
 
-type LatticeRunStatus =
-  | "active"
-  | "paused"
-  | "completed"
-  | "failed"
-  | "cancelled"
+type LatticeRunStatus = "active" | "paused" | "completed" | "failed" | "cancelled"
 
 type PathwayStepStatus =
   | "pending"
   | "ready"
   | "blueprinting"
-  | "reviewing"      // 仅 collaborative review 期间
+  | "reviewing" // 仅 collaborative review 期间
   | "running"
   | "completed"
   | "failed"
@@ -192,7 +187,7 @@ type PathwayStepStatus =
 **存储路径**（`storage/path.ts` 新增）：
 
 ```ts
-latticeRun   = (scopeID, sessionID) => ["lattice", "runs", scopeID, sessionID]
+latticeRun = (scopeID, sessionID) => ["lattice", "runs", scopeID, sessionID]
 latticeEventsRoot = (scopeID, sessionID) => ["lattice", "events", scopeID, sessionID]
 latticeEvent = (scopeID, sessionID, eventID) => [...latticeEventsRoot, eventID]
 ```
@@ -236,18 +231,18 @@ lattice?: {
 
 ### 自动 transition 总表
 
-| 触发 | 条件 | 结果 |
-|---|---|---|
-| `pathway_patch` 写入有效初始 Pathway | phase = initial_planning，≥1 个 ready/pending step | currentStepID = 顺序中第一个 ready step；phase → step_blueprinting |
-| `pathway_patch` 绑定当前 step 的 blueprintNoteID | phase = step_blueprinting | collaborative：step → reviewing，phase → blueprint_review；auto：phase → blueprint_execution（step 保持 ready，**loop 不在此处启动**） |
-| Kernel LatticePolicy 在 idle 时发现 phase = blueprint_execution、当前 step 已绑定 note、无 active loop | 公共安全闸通过 | `BlueprintLoopService.createAndStart`（orchestration = lattice）；step → running；首次时置 firstBlueprintStarted = true |
-| 前端 `POST /lattice/run/:id/continue` | collaborative + blueprint_review + 已绑定 | 同步 `createAndStart`（可带 userPrompt）；step → running；phase → blueprint_execution |
-| Bridge 收到 loop terminal event：completed | run active | step → completed（resultSummary 取 audit summary）；phase → result_analysis |
-| Bridge：failed | run active | step → failed；phase → result_analysis |
-| Bridge：cancelled（用户从 UI cancel loop） | — | step → ready（清除 blueprintLoopID，events 记录）；run → paused（statusReason = blueprint_loop_cancelled）；**保留 session.lattice**，UI 显示 paused + Resume 入口 |
-| Bridge：任意 terminal event 且 run 已 paused | — | 只记录 step 结果与 event，不推进 phase、不触发 continuation |
-| result_analysis 中 `pathway_patch` 更新后 | 存在下一个 ready step 且失败 step（若有）已被 recovery step 关联 | currentStepID = 下一个 ready step；phase → step_blueprinting |
-| result_analysis 中 `pathway_patch` 更新后 | 无剩余可执行 step，且无未被 addressesFailedStepIDs 覆盖的 failed step | run → completed |
+| 触发                                                                                                   | 条件                                                                  | 结果                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pathway_patch` 写入有效初始 Pathway                                                                   | phase = initial_planning，≥1 个 ready/pending step                    | currentStepID = 顺序中第一个 ready step；phase → step_blueprinting                                                                                                 |
+| `pathway_patch` 绑定当前 step 的 blueprintNoteID                                                       | phase = step_blueprinting                                             | collaborative：step → reviewing，phase → blueprint_review；auto：phase → blueprint_execution（step 保持 ready，**loop 不在此处启动**）                             |
+| Kernel LatticePolicy 在 idle 时发现 phase = blueprint_execution、当前 step 已绑定 note、无 active loop | 公共安全闸通过                                                        | `BlueprintLoopService.createAndStart`（orchestration = lattice）；step → running；首次时置 firstBlueprintStarted = true                                            |
+| 前端 `POST /lattice/run/:id/continue`                                                                  | collaborative + blueprint_review + 已绑定                             | 同步 `createAndStart`（可带 userPrompt）；step → running；phase → blueprint_execution                                                                              |
+| Bridge 收到 loop terminal event：completed                                                             | run active                                                            | step → completed（resultSummary 取 audit summary）；phase → result_analysis                                                                                        |
+| Bridge：failed                                                                                         | run active                                                            | step → failed；phase → result_analysis                                                                                                                             |
+| Bridge：cancelled（用户从 UI cancel loop）                                                             | —                                                                     | step → ready（清除 blueprintLoopID，events 记录）；run → paused（statusReason = blueprint_loop_cancelled）；**保留 session.lattice**，UI 显示 paused + Resume 入口 |
+| Bridge：任意 terminal event 且 run 已 paused                                                           | —                                                                     | 只记录 step 结果与 event，不推进 phase、不触发 continuation                                                                                                        |
+| result_analysis 中 `pathway_patch` 更新后                                                              | 存在下一个 ready step 且失败 step（若有）已被 recovery step 关联      | currentStepID = 下一个 ready step；phase → step_blueprinting                                                                                                       |
+| result_analysis 中 `pathway_patch` 更新后                                                              | 无剩余可执行 step，且无未被 addressesFailedStepIDs 覆盖的 failed step | run → completed                                                                                                                                                    |
 
 **auto 模式 loop 启动为什么走 kernel（idle 时）而不是 pathway_patch 同步启动**：pathway_patch 在 agent turn 中间执行，同步 start 会让 first prompt 因 session running 进 inbox 排队，loop 状态已是 running 而 session 还在收尾 planning 语境——状态偏差且 turn 边界脏。挪到 idle 后由 kernel 统一启动，turn 边界干净，且**同一机制天然覆盖 pause→resume 的重启**（resume 后 phase = blueprint_execution + step 已绑定 + 无 active loop → kernel 重新 createAndStart，自动绕开 `LoopError.AlreadyActive`，因为 pause 已 cancel 旧 loop）。
 
@@ -420,7 +415,7 @@ continuation.txt
 
 统一走现有 choke point：**扩展 `session/tool-mode-policy.ts` 的 `SessionModePolicy`**（增加 lattice 分支；不新建第二层策略），并改 `session/tool-resolver.ts`：
 
-- 非 Lattice session：pathway_* 不可见。
+- 非 Lattice session：pathway\_\* 不可见。
 - Lattice session：pathway_read 全 phase 可见；pathway_patch 按 phase 显示（blueprint_execution 期间对 running step 只读）。
 - auto 且 firstBlueprintStarted === true：question 不可见（或调用时返回 mode diagnostic）。
 - collaborative：question 始终可见。
@@ -608,7 +603,7 @@ body: { userPrompt?: string }
 
 ### Tool tests
 
-- pathway_* 非 Lattice session 不可见。
+- pathway\_\* 非 Lattice session 不可见。
 - pathway_read 全 phase 可见；pathway_patch 在 blueprint_execution 对当前 running step 拒绝。
 - auto + firstBlueprintStarted → question 不可见/报 diagnostic；collaborative 全 phase 可用。
 - forcedToolGroups：lattice session 强制 note group。

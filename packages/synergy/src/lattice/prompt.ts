@@ -41,7 +41,8 @@ export namespace LatticePrompt {
   }
 
   function dynamicContext(run: LatticeTypes.Run): string {
-    const budget = run.maxModelCalls > 0 ? `${run.modelCallCount}/${run.maxModelCalls}` : `${run.modelCallCount}/unlimited`
+    const budget =
+      run.maxModelCalls > 0 ? `${run.modelCallCount}/${run.maxModelCalls}` : `${run.modelCallCount}/unlimited`
     const lines = [
       "<lattice-context>",
       `Run: ${run.id}`,

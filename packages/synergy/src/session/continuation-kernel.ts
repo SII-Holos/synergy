@@ -147,7 +147,8 @@ export namespace ContinuationKernel {
     builtinsRegistered = true
     // Static requires avoid a top-level import cycle (policies import the
     // kernel for its types). Registration happens once, lazily.
-    const { BlueprintContinuationPolicy } = require("./blueprint-continuation") as typeof import("./blueprint-continuation")
+    const { BlueprintContinuationPolicy } =
+      require("./blueprint-continuation") as typeof import("./blueprint-continuation")
     register(BlueprintContinuationPolicy)
     const { LatticeContinuationPolicy } = require("../lattice/policy") as typeof import("../lattice/policy")
     register(LatticeContinuationPolicy)

@@ -18,7 +18,8 @@ export const PathwayReadTool = Tool.define("pathway_read", {
     const events = await LatticeStore.listEvents(scopeID, ctx.sessionID)
     const recent = events.slice(-8)
 
-    const budget = run.maxModelCalls > 0 ? `${run.modelCallCount}/${run.maxModelCalls}` : `${run.modelCallCount}/unlimited`
+    const budget =
+      run.maxModelCalls > 0 ? `${run.modelCallCount}/${run.maxModelCalls}` : `${run.modelCallCount}/unlimited`
     const lines: string[] = [
       `Lattice run ${run.id}`,
       `mode: ${run.mode}`,

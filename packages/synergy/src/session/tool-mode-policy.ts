@@ -167,10 +167,7 @@ export namespace SessionModePolicy {
    *  - in auto mode after the first BlueprintLoop has started, `question` is
    *    hidden so the run keeps advancing without waiting for the user.
    */
-  function latticeVisibility(
-    toolName: string,
-    session?: Pick<SessionInfo, "lattice">,
-  ): ToolDiagnostic | undefined {
+  function latticeVisibility(toolName: string, session?: Pick<SessionInfo, "lattice">): ToolDiagnostic | undefined {
     if (!isLattice(session)) {
       if (PATHWAY_TOOLS.has(toolName)) {
         return {

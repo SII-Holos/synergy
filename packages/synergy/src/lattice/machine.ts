@@ -56,7 +56,10 @@ export namespace LatticeMachine {
       if (input.bindCurrentBlueprint) {
         const current = findStep(draft, draft.currentStepID)
         if (!current) {
-          throw new LatticeError.PhaseViolation({ phase: draft.phase, reason: "no current step to bind a Blueprint to" })
+          throw new LatticeError.PhaseViolation({
+            phase: draft.phase,
+            reason: "no current step to bind a Blueprint to",
+          })
         }
         if (LatticeTypes.isTerminalStep(current.status)) {
           throw new LatticeError.InvalidPathway({ reason: "cannot bind a Blueprint to a terminal step" })
@@ -123,7 +126,9 @@ export namespace LatticeMachine {
           throw new LatticeError.InvalidPathway({ reason: `unknown step id ${item.id}` })
         }
         if (prior.status === "running" && prior.objective !== item.objective) {
-          throw new LatticeError.InvalidPathway({ reason: `cannot change the objective of the running step ${item.id}` })
+          throw new LatticeError.InvalidPathway({
+            reason: `cannot change the objective of the running step ${item.id}`,
+          })
         }
         return {
           ...prior,
