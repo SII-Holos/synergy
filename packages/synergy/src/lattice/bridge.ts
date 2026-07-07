@@ -16,11 +16,13 @@ export namespace LatticeBridge {
 
   const subscription = ScopedState.create(
     () => {
-      const unsubscribe = Bus.subscribe(LoopEvent.Updated, (event) => {
+      const unsubscribe = Bus.subscribe(LoopEvent.Updated, (event) =>
+        // Return the promise so Bus.publish awaits the phase transition — the
+        // finish tool relies on the run advancing before the session is woken.
         handle(event.properties.loop).catch((error) => {
           log.error("lattice bridge failed", { loopID: event.properties.loop.id, error })
-        })
-      })
+        }),
+      )
       return { unsubscribe }
     },
     async (state) => state.unsubscribe(),
