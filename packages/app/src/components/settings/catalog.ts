@@ -241,7 +241,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     30,
     "settings.timeouts",
     "Agent, provider, and tool timeout controls.",
-    ["timeout", "provider", "tool"],
+    ["timeout", "provider", "tool", "coauthor", "commit", "git", "prompt"],
     ["runtime"],
   ),
   section(

@@ -111,6 +111,16 @@ export function TimeoutsPanel(props: {
     <SettingsPage title="Timeouts" description="Agent, provider, and tool timeout controls.">
       <SettingsSection title="Agent">
         <SettingRow
+          title="Co-author Reminder"
+          description="Remind agents to include the Synergy co-author footer when creating git commits."
+          trailing={
+            <Switch
+              checked={props.runtime.coauthorReminder !== "false"}
+              onChange={(value) => props.onRuntimeChange("coauthorReminder", value ? "true" : "false")}
+            />
+          }
+        />
+        <SettingRow
           title="Invoke Timeout"
           description="Milliseconds before a task invoke call times out."
           trailing={

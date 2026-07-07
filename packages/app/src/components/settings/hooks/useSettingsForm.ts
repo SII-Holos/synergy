@@ -125,6 +125,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     toolOverrides: formatRecord(cfg.timeout?.tool?.overrides),
     watcherIgnore: formatList(cfg.watcher?.ignore),
     logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
+    coauthorReminder: cfg.experimental?.coauthor_reminder !== false ? "true" : "false",
   })
 
   params.setSettings("email", {

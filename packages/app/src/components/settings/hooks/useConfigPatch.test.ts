@@ -45,4 +45,42 @@ describe("settings config patch", () => {
       tool: { default_sec: 7200 },
     })
   })
+
+  test("coauthor reminder defaults on without materializing experimental config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toBeUndefined()
+  })
+
+  test("coauthor reminder can be disabled in experimental config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "false"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ coauthor_reminder: false })
+  })
+
+  test("coauthor reminder can be re-enabled from explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "true"
+
+    expect(
+      buildPatch({
+        cfg: { experimental: { coauthor_reminder: false } } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ coauthor_reminder: true })
+  })
 })

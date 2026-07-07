@@ -1562,6 +1562,10 @@ export const Info = z
     experimental: z
       .object({
         batch_tool: z.boolean().optional().describe("Enable the batch tool"),
+        coauthor_reminder: z
+          .boolean()
+          .optional()
+          .describe("Include the git commit Co-authored-by footer reminder in agent prompts"),
         openTelemetry: z
           .boolean()
           .optional()

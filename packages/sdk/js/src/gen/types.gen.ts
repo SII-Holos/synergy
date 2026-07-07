@@ -2734,6 +2734,10 @@ export type Config = {
      */
     batch_tool?: boolean
     /**
+     * Include the git commit Co-authored-by footer reminder in agent prompts
+     */
+    coauthor_reminder?: boolean
+    /**
      * Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)
      */
     openTelemetry?: boolean

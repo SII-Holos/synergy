@@ -59,6 +59,7 @@ export const UI_DEFAULTS = {
   toolOverrides: "" as string,
   watcherIgnore: "" as string,
   logLevel: "" as string,
+  coauthorReminder: "true" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -255,6 +256,7 @@ export type RuntimeStore = {
   toolOverrides: string
   watcherIgnore: string
   logLevel: string
+  coauthorReminder: string
 }
 
 export type SettingsState = {
@@ -331,6 +333,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       toolOverrides: UI_DEFAULTS.toolOverrides,
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
+      coauthorReminder: UI_DEFAULTS.coauthorReminder,
     },
     email: {
       enabled: true,
