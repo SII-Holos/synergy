@@ -157,8 +157,8 @@ export function PermissionDock(props: PermissionDockProps) {
                   </Tabs>
                 </Show>
 
-                <div class="flex items-center justify-between gap-3">
-                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div class="flex min-w-0 flex-1 items-center gap-2">
                     <Icon
                       name={getSemanticIcon("settings.permissions")}
                       size="small"
@@ -174,7 +174,7 @@ export function PermissionDock(props: PermissionDockProps) {
                       </span>
                     </Show>
                   </div>
-                  <div class="flex items-center gap-1.5 shrink-0">
+                  <div class="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
                     <Button variant="ghost" size="small" onClick={() => respond("reject")}>
                       Deny
                     </Button>
