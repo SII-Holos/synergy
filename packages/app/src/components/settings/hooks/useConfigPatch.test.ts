@@ -29,6 +29,33 @@ describe("settings config patch", () => {
     })
   })
 
+  test("persists quick switcher model preferences through the models domain", () => {
+    const state = defaultSettingsState("enter")
+    state.models.quick_switcher = [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }]
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({
+      models: [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }],
+    })
+  })
+
+  test("clears quick switcher config when all preferences return to defaults", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { quick_switcher: { models: [{ providerID: "openai", modelID: "gpt-5.5", state: "remove" }] } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({ models: [] })
+  })
+
   test("provider idle timeout can be disabled with false", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"

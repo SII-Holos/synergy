@@ -1,7 +1,7 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
-import type { SettingsState } from "../types"
+import type { QuickSwitcherPreference, SettingsState } from "../types"
 import {
   MODEL_DEFAULTS,
   TOAST_TYPES,
@@ -48,6 +48,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
+    quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(),
   })
   params.setSettings("roleVariant", cfg.role_variant ?? {})
 
@@ -177,6 +178,39 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
 
   params.setInitialized(true)
   return setName
+}
+
+export function readLegacyQuickSwitcherPreferences(storage: Storage = localStorage): QuickSwitcherPreference[] {
+  const raw = storage.getItem("synergy.global.dat:model")
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!parsed || typeof parsed !== "object") return []
+
+  const record = parsed as Record<string, unknown>
+  const preferences = Array.isArray(record.quickSwitcher)
+    ? (record.quickSwitcher as QuickSwitcherPreference[])
+    : Array.isArray(record.user)
+      ? record.user.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const entry = item as Record<string, unknown>
+          if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+          const state = entry.visibility === "hide" ? "remove" : "add"
+          return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+        })
+      : []
+
+  return preferences.filter(
+    (item) =>
+      typeof item.providerID === "string" &&
+      typeof item.modelID === "string" &&
+      (item.state === "add" || item.state === "remove"),
+  )
 }
 
 function formatList(values: string[] | undefined): string {

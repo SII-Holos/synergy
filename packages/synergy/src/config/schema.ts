@@ -1247,6 +1247,24 @@ export const PluginMarketplace = z
 export type PluginMarketplace = z.infer<typeof PluginMarketplace>
 
 export const PLUGIN_MARKETPLACE_DEFAULTS = DEFAULT_PLUGIN_MARKETPLACE_CONFIG as Required<PluginMarketplace>
+const QuickSwitcherModel = z
+  .object({
+    providerID: z.string().describe("Provider id for the quick switcher model preference"),
+    modelID: z.string().describe("Model id for the quick switcher model preference"),
+    state: z.enum(["add", "remove"]).describe("Whether to force-add or force-remove the model from the quick switcher"),
+  })
+  .strict()
+  .meta({ ref: "QuickSwitcherModelConfig" })
+export type QuickSwitcherModel = z.infer<typeof QuickSwitcherModel>
+
+export const QuickSwitcher = z
+  .object({
+    models: z.array(QuickSwitcherModel).optional().describe("Per-model quick switcher visibility preferences"),
+  })
+  .strict()
+  .meta({ ref: "QuickSwitcherConfig" })
+export type QuickSwitcher = z.infer<typeof QuickSwitcher>
+
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1384,6 +1402,7 @@ export const Info = z
       .describe(
         "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
       ),
+    quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
     default_agent: z
       .string()
       .optional()
