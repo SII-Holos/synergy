@@ -108,6 +108,16 @@ export function deleteArchivedNoteConfirm(count: number): ConfirmCopy {
   }
 }
 
+export function deleteArchivedSessionConfirm(title: string | undefined): ConfirmCopy {
+  return {
+    title: "Delete archived session?",
+    description: `Delete ${quoted(title, "Untitled session")} permanently? This removes the session, messages, history, and associated data. This cannot be undone.`,
+    confirmLabel: "Delete permanently",
+    cancelLabel: "Cancel",
+    tone: "danger",
+  }
+}
+
 export function overwriteImportConfirm(conflictCount: number): ConfirmCopy {
   return {
     title: `Overwrite ${conflictCount} conflicting ${plural(conflictCount, "key")}?`,

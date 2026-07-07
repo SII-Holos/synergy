@@ -52,6 +52,7 @@ import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
+import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
@@ -634,6 +635,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onOpenDomain={(domain) => void openDomain(domain)}
           />
         )
+      case "archived-sessions":
+        return <ArchivedSessionsPanel />
       default:
         return renderPluginSection(active)
     }

@@ -1654,6 +1654,35 @@
               "type": "string"
             },
             "description": "Include archived sessions (default: false)"
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "type": "string",
+              "enum": ["exclude", "include", "only"]
+            },
+            "description": "Archived session filter. Defaults to exclude; supersedes includeArchived."
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "default": "updated",
+              "type": "string",
+              "enum": ["updated", "created", "archived", "scope"]
+            },
+            "description": "Sort sessions by timestamp or scope label"
+          },
+          {
+            "in": "query",
+            "name": "sortDir",
+            "schema": {
+              "default": "desc",
+              "type": "string",
+              "enum": ["asc", "desc"]
+            },
+            "description": "Sort direction"
           }
         ],
         "x-codeSamples": [

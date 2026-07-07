@@ -1443,6 +1443,9 @@ export class Session extends HeyApiClient {
       scopeID?: string
       parentOnly?: string
       includeArchived?: string
+      archived?: "exclude" | "include" | "only"
+      sortBy?: "updated" | "created" | "archived" | "scope"
+      sortDir?: "asc" | "desc"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1457,6 +1460,9 @@ export class Session extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
+            { in: "query", key: "archived" },
+            { in: "query", key: "sortBy" },
+            { in: "query", key: "sortDir" },
           ],
         },
       ],

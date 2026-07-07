@@ -198,4 +198,110 @@ describe("GET /global/session", () => {
       },
     })
   })
+
+  test("supports archived-only filtering with accurate total and search", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let active: Session.Info | undefined
+    let archivedNeedle: Session.Info | undefined
+    let archivedOther: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        active = await Session.create({ title: "Cleanup Active" })
+        archivedNeedle = await Session.create({ title: "Cleanup Needle" })
+        archivedOther = await Session.create({ title: "Other Archived" })
+        await Session.update(archivedNeedle.id, (draft) => {
+          draft.time.archived = 100
+        })
+        await Session.update(archivedOther.id, (draft) => {
+          draft.time.archived = 200
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+
+        const def = await app.request("/global/session")
+        const defBody = await def.json()
+        const defIDs = defBody.data.map((s: any) => s.id)
+        expect(defIDs).toContain(active!.id)
+        expect(defIDs).not.toContain(archivedNeedle!.id)
+        expect(defIDs).not.toContain(archivedOther!.id)
+
+        const archived = await app.request("/global/session?archived=only")
+        const archivedBody = await archived.json()
+        const archivedIDs = archivedBody.data.map((s: any) => s.id)
+        expect(archivedBody.total).toBe(2)
+        expect(archivedIDs).toContain(archivedNeedle!.id)
+        expect(archivedIDs).toContain(archivedOther!.id)
+        expect(archivedIDs).not.toContain(active!.id)
+
+        const searched = await app.request("/global/session?archived=only&search=Needle")
+        const searchedBody = await searched.json()
+        expect(searchedBody.total).toBe(1)
+        expect(searchedBody.data.map((s: any) => s.id)).toEqual([archivedNeedle!.id])
+
+        await Session.remove(archivedOther!.id)
+        await Session.remove(archivedNeedle!.id)
+        await Session.remove(active!.id)
+      },
+    })
+  })
+
+  test("sorts archived sessions by archive time and scope", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+
+    let older: Session.Info | undefined
+    let newer: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope: scopeA,
+      fn: async () => {
+        older = await Session.create({ title: "Older Archived" })
+        await Session.update(older.id, (draft) => {
+          draft.time.archived = 100
+        })
+      },
+    })
+    await ScopeContext.provide({
+      scope: scopeB,
+      fn: async () => {
+        newer = await Session.create({ title: "Newer Archived" })
+        await Session.update(newer.id, (draft) => {
+          draft.time.archived = 300
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+
+        const byArchive = await app.request("/global/session?archived=only&sortBy=archived&sortDir=desc")
+        const archiveBody = await byArchive.json()
+        const archiveIDs = archiveBody.data.map((s: any) => s.id)
+        expect(archiveIDs.indexOf(newer!.id)).toBeLessThan(archiveIDs.indexOf(older!.id))
+
+        const byScope = await app.request("/global/session?archived=only&sortBy=scope&sortDir=asc")
+        const scopeBody = await byScope.json()
+        const matching = scopeBody.data.filter((s: any) => s.id === older!.id || s.id === newer!.id)
+        expect(matching.map((s: any) => s.scope.directory)).toEqual(
+          [...matching].map((s: any) => s.scope.directory).sort((a: string, b: string) => a.localeCompare(b)),
+        )
+
+        await Session.remove(newer!.id)
+        await Session.remove(older!.id)
+      },
+    })
+  })
 })
