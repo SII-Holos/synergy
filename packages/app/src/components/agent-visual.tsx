@@ -20,6 +20,7 @@ const COLORS = {
   knowledge: "rgba(14, 165, 233, 0.35)",
   research: "rgba(139, 92, 246, 0.35)",
   external: "rgba(16, 185, 129, 0.35)",
+  supervisor: "rgba(220, 38, 38, 0.35)",
   neutral: "rgba(107, 114, 128, 0.35)",
 } as const
 
@@ -73,6 +74,8 @@ const VISUALS: Record<string, AgentVisual> = {
   "memory-curator": { emoji: "🤗", label: "Memory", color: COLORS.knowledge },
   "note-librarian": { emoji: "😊", label: "Notes", color: COLORS.knowledge },
   "session-historian": { emoji: "🤨", label: "Session History", color: COLORS.knowledge },
+
+  supervisor: { emoji: "👀", label: "Supervisor", color: COLORS.supervisor },
 
   codex: { emoji: "🫡", label: "Codex", color: COLORS.knowledge, external: true },
   "claude-code": { emoji: "😉", label: "Claude Code", color: COLORS.max, external: true },
