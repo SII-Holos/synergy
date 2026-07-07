@@ -73,8 +73,8 @@ describe("consent module", () => {
       expect(computeRisk(["config:read"])).toBe("low")
     })
 
-    test("task delegation is medium", () => {
-      expect(computeRisk(["task"])).toBe("medium")
+    test("task delegation is low", () => {
+      expect(computeRisk(["task"])).toBe("low")
     })
 
     test("high + medium = high", () => {
@@ -161,11 +161,11 @@ describe("consent module", () => {
       expect(items[0].severity).toBe("high")
     })
 
-    test("task delegation is medium", () => {
+    test("task delegation is low", () => {
       const manifest = makeManifest()
       const items = generatePermissionItems(manifest, ["task"])
       expect(items[0].key).toBe("task")
-      expect(items[0].severity).toBe("medium")
+      expect(items[0].severity).toBe("low")
     })
 
     test("config hook is a medium hook permission item", () => {

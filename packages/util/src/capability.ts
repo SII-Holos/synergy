@@ -254,7 +254,7 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
   },
   task: {
     category: "tools",
-    severity: "medium",
+    severity: "low",
     title: "Delegate tasks to subagents",
     description: "Can launch approved Synergy subagents from plugin tools.",
   },
