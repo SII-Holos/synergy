@@ -30,6 +30,8 @@ import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
+import { PathwayReadTool } from "./pathway-read"
+import { PathwayPatchTool } from "./pathway-patch"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -379,6 +381,8 @@ export namespace ToolRegistry {
       NoteDeleteTool,
       BlueprintLoopFinishTool,
       BlueprintLoopRestartTool,
+      PathwayReadTool,
+      PathwayPatchTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,

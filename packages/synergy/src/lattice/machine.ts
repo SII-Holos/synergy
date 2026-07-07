@@ -225,6 +225,7 @@ export namespace LatticeMachine {
     stepID: string,
     loopID: string,
   ): Promise<LatticeTypes.Run> {
+    const wasFirst = !(await LatticeStore.getOrUndefined(scopeID, sessionID))?.firstBlueprintStarted
     const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
       const step = findStep(draft, stepID)
       if (!step) return
@@ -236,6 +237,14 @@ export namespace LatticeMachine {
       draft.firstBlueprintStarted = true
       setPhase(draft, "blueprint_execution")
     })
+    // Mirror the monotonic first-blueprint flag onto the session so tool gating
+    // (auto mode hides `question` after the first loop) can decide synchronously.
+    if (wasFirst) {
+      const { Session } = await import("../session")
+      await Session.update(sessionID, (draft) => {
+        if (draft.lattice) draft.lattice = { ...draft.lattice, firstBlueprintStarted: true }
+      }).catch(() => undefined)
+    }
     await LatticeStore.appendEvent(scopeID, run, { kind: "step_started", stepID, phase: run.phase })
     return run
   }

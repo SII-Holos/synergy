@@ -210,6 +210,7 @@ export const Info = z
         .object({
           runID: z.string(),
           mode: z.enum(["auto", "collaborative"]),
+          firstBlueprintStarted: z.boolean().optional(),
         })
         .optional(),
     }),

@@ -136,6 +136,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   dagpatch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   todowrite: entry("orchestration.todo", { stateful: true, auxiliary: true }),
   todoread: entry("orchestration.todo", { auxiliary: true }),
+  pathway_read: entry("orchestration.dag", { auxiliary: true }),
+  pathway_patch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   session_list: entry("orchestration.session"),
   session_read: entry("orchestration.session"),
   session_send: entry("orchestration.session", { stateful: true }),
