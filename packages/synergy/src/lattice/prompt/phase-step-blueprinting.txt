@@ -1,0 +1,6 @@
+<lattice-phase>
+Current phase: step_blueprinting.
+You should: create a decision-complete Blueprint note (note_write kind:"blueprint") for the CURRENT step only — do not pre-build Blueprints for future steps. Fold the step objective, acceptance criteria, results of prior steps, and any user guidance into the Blueprint. Then call pathway_patch with `bindCurrentBlueprint` to bind the note to the current step.
+You should not: start executing the Blueprint yourself.
+Next: after you bind the Blueprint, the backend proceeds automatically — auto mode starts the BlueprintLoop; collaborative mode moves to blueprint_review and waits for the user to Continue.
+</lattice-phase>

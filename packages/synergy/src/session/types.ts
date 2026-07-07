@@ -206,6 +206,12 @@ export const Info = z
           planMode: z.boolean().optional(),
         })
         .optional(),
+      lattice: z
+        .object({
+          runID: z.string(),
+          mode: z.enum(["auto", "collaborative"]),
+        })
+        .optional(),
     }),
   )
   .meta({
