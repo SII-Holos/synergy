@@ -88,13 +88,13 @@ jobs:
       - name: Run package tests
         run: bun turbo test
         env:
-          META_SYNERGY_HOME: /tmp/meta-synergy-ci-test
+          SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
       - name: Run Synergy coverage
         run: bun test --coverage --timeout 30000 --coverage-reporter=lcov
         working-directory: packages/synergy
         env:
-          META_SYNERGY_HOME: /tmp/meta-synergy-ci-test
+          SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
   package-validation:
     name: Package Validation

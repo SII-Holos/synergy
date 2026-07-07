@@ -3,11 +3,10 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./bash.txt"
 import { ScopeContext } from "../scope/context"
 import { Truncate } from "./truncation"
-import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
-import { RemoteExecution } from "./remote-execution"
+import { SynergyLinkExecution } from "./synergy-link-execution"
 import { LocalBashBackend } from "./bash/local"
 import { RemoteBashBackend } from "./bash/remote"
-import type { BashBackend, BashMetadata } from "./bash/shared"
+import type { BashMetadata } from "./bash/shared"
 
 const parameters = z.object({
   command: z.string().describe("The command to execute"),
@@ -22,32 +21,31 @@ const parameters = z.object({
     .describe(
       "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
     ),
-  backgroundAfterSeconds: z
-    .number()
-    .refine((value) => Number.isFinite(value) && value > 0)
+  background: z
+    .boolean()
     .optional()
     .describe(
-      "Seconds to wait before auto-backgrounding. Defaults to 30. Use a positive value for commands that may run longer; it should not exceed timeoutSeconds when both are set.",
+      "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
     ),
-  timeoutSeconds: z
+  yieldSeconds: z
     .number()
-    .refine((value) => Number.isFinite(value) && value > 0)
+    .positive()
     .optional()
-    .describe("Hard command termination timeout in seconds. Applies to foreground and backgrounded commands."),
-  envID: MetaProtocolEnv.EnvID.optional().describe(
-    "Optional execution environment ID. Omit for local execution; provide one to target a remote execution backend.",
-  ),
+    .describe(
+      "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
+    ),
+  linkID: z
+    .string()
+    .optional()
+    .describe(
+      "Optional Synergy Link target ID. Omit for intentional local execution. Invalid or unavailable supplied linkID values run locally with a warning.",
+    ),
+  envID: z
+    .string()
+    .optional()
+    .describe("Deprecated: use linkID instead. Accepted temporarily for backward compatibility."),
 })
 
-function selectBackend(envID?: string): BashBackend {
-  const target = RemoteExecution.resolveTarget(envID)
-  if (target.kind === "remote") {
-    return RemoteBashBackend
-  }
-  return LocalBashBackend
-}
-
-// TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   get description() {
     return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
@@ -56,9 +54,22 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   },
   parameters,
   async execute(params, ctx) {
-    return selectBackend(params.envID).execute(
-      { ...params, backgroundAfterSeconds: params.backgroundAfterSeconds ?? 30 },
-      ctx,
-    )
+    // Accept deprecated envID for backward compat — map to linkID with a warning
+    const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
+    const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
+    const target = SynergyLinkExecution.resolveExecutionTarget({
+      linkID: effectiveLinkID,
+      linkIDSupplied,
+      tool: "bash",
+    })
+    if (target.kind === "remote") {
+      return RemoteBashBackend.execute(params, target)
+    }
+
+    const result = await LocalBashBackend.execute({ ...params, backgroundAfterSeconds: params.yieldSeconds }, ctx)
+    if (target.kind === "local_fallback") {
+      return SynergyLinkExecution.withLocalFallbackWarning(result, target.warning)
+    }
+    return result
   },
 })

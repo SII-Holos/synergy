@@ -19,7 +19,6 @@ Before executing the command, please follow these steps:
      - python /path/with spaces/script.py (incorrect - will fail)
    - After ensuring proper quoting, execute the command.
    - Capture the output of the command.
-
 3. User-visible artifacts:
    - If the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation.
    - Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files.
@@ -29,17 +28,15 @@ Usage notes:
   - The `command` parameter is required.
   - The `description` parameter is required — write a clear, concise description (5-10 words).
   - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output — just run the command directly.
-  - `envID` is optional. Omit it to run in the current local environment; provide it to target a remote execution backend.
-  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
-  - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
-  - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
+  - `linkID` is optional. Omit it to run in the current local environment; provide it to target a Synergy Link target.
+  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
+  - When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote bash does not implicitly create sessions.
+  - Remote linkIDs always start with `link_` (e.g. `"link_abc123"`). Any other value will be rejected.
 
-  - Commands auto-background after 30 seconds by default. Use `backgroundAfterSeconds` only when a command needs a different positive auto-background threshold:
-    - Increase `backgroundAfterSeconds` for commands that are expected to run longer before returning useful foreground output.
-    - Keep `backgroundAfterSeconds` less than or equal to `timeoutSeconds` when both are set.
-    - Use `timeoutSeconds` to hard-terminate a command after that many seconds; it applies in foreground and after auto-backgrounding.
-    - If the command completes before `backgroundAfterSeconds`, it returns normally.
-    - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
+  - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
+  - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
+  - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
+  - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
   - Do NOT rely on bash auto-backgrounding for these.

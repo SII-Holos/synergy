@@ -1,28 +1,26 @@
 import z from "zod"
-import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
+import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import { Tool } from "./tool"
-import { RemoteExecution } from "./remote-execution"
+import { SynergyLinkExecution } from "./synergy-link-execution"
 import { ToolTimeout } from "./timeout"
 
 const CONNECT_TIMEOUT_MS = ToolTimeout.DEFAULTS.connectMs
 
 const parameters = z.object({
-  action: z.enum(["open", "close", "status", "list"]).describe("Remote session action to perform"),
-  envID: MetaProtocolEnv.EnvID.optional().describe(
-    "Remote execution environment ID. Required except for list. Use a real remote envID such as 'env_...'; do not pass local aliases like ':local' or 'local'.",
-  ),
+  action: z.enum(["open", "close", "status", "list"]).describe("Synergy Link session action to perform"),
+  linkID: z.string().optional().describe("Synergy Link target ID. Required except for list. Must start with link_."),
   targetAgentID: z.string().optional().describe("Holos target agent ID. Required for open."),
-  label: z.string().optional().describe("Optional label for the remote collaboration session."),
+  label: z.string().optional().describe("Optional label for the Synergy Link session."),
 })
 
 type ConnectMetadata = {
   action: "open" | "close" | "status" | "list"
-  envID?: string
+  linkID?: string
   targetAgentID?: string
   sessionID?: string
   status?: string
   sessions?: Array<{
-    envID: string
+    linkID: string
     targetAgentID: string
     sessionID: string
     status: string
@@ -34,70 +32,59 @@ type ConnectMetadata = {
 
 export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("connect", {
   description:
-    "Manage explicit remote collaboration sessions for meta-synergy hosts. Open a session before running remote bash or process commands, then close it when done.",
+    "Manage explicit Synergy Link sessions. Open a session before running remote bash or process commands. connect requires a valid linkID for remote lifecycle actions and never falls back locally.",
   parameters,
   async execute(params) {
     if (params.action === "list") {
-      const sessions = RemoteExecution.allSessions()
+      const sessions = SynergyLinkExecution.allSessions()
       return {
-        title: "Remote sessions",
+        title: "Synergy Link sessions",
         metadata: {
           action: "list",
           sessions: sessions.map((session) => ({ ...session })),
         },
         output:
           sessions.length === 0
-            ? "No active remote sessions."
+            ? "No active Synergy Link sessions."
             : sessions
                 .map(
                   (session) =>
-                    `${session.envID} -> ${session.targetAgentID} :: ${session.sessionID} (${session.status})`,
+                    `${session.linkID} -> ${session.targetAgentID} :: ${session.sessionID} (${session.status})`,
                 )
                 .join("\n"),
       }
     }
 
-    if (!params.envID) {
-      throw new Error(
-        "connect requires a real remote envID for actions other than list. Omit envID for local bash/process execution; do not pass local aliases like ':local' or 'local'.",
-      )
-    }
-
-    const normalizedEnvID = RemoteExecution.normalizeEnvID(params.envID)
-    if (!normalizedEnvID) {
-      throw new Error(
-        `connect cannot use envID "${params.envID}" because it resolves to the local machine. Omit envID for local bash/process execution. Use a real remote envID such as "env_..." when opening or checking a remote session.`,
-      )
-    }
+    const linkID = SynergyLinkIdentity.requireLinkID(params.linkID)
 
     if (params.action === "status") {
-      const session = RemoteExecution.getSession(normalizedEnvID)
+      const session = SynergyLinkExecution.getSession(linkID)
       return {
         title: session ? "Connection status" : "Connection not found",
         metadata: {
           action: "status",
-          envID: normalizedEnvID,
+          linkID,
           targetAgentID: session?.targetAgentID,
           sessionID: session?.sessionID,
           status: session?.status ?? "missing",
         },
-        output: session ? JSON.stringify(session, null, 2) : `No active connection for env ${normalizedEnvID}.`,
+        output: session ? JSON.stringify(session, null, 2) : `No active connection for link ${linkID}.`,
       }
     }
 
     if (params.action === "open") {
       if (!params.targetAgentID) {
         throw new Error(
-          `connect open requires targetAgentID. Provide the Holos target agent ID together with a real remote envID such as "env_...".`,
+          `connect open requires targetAgentID. Provide it together with a Synergy Link ID such as "link_...".`,
         )
       }
-      const client = RemoteExecution.requireClient(normalizedEnvID, "connect")
+      const client = SynergyLinkExecution.requireClient(linkID, "connect")
 
       let opened
       try {
         opened = await Promise.race([
           client.executeSession(
-            normalizedEnvID,
+            linkID,
             { action: "open", label: params.label },
             { targetAgentID: params.targetAgentID },
           ),
@@ -106,7 +93,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
               () =>
                 reject(
                   new Error(
-                    `Connection to env "${normalizedEnvID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s. The remote host may be unreachable or slow to respond.`,
+                    `Connection to link "${linkID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s. The Synergy Link host may be unreachable or slow to respond.`,
                   ),
                 ),
               CONNECT_TIMEOUT_MS,
@@ -115,17 +102,32 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         ])
       } catch (error) {
         throw new Error(
-          `Failed to open connection to env "${normalizedEnvID}": ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to open connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
         )
+      }
+
+      if (opened.metadata.status !== "opened") {
+        SynergyLinkExecution.clearSession(linkID)
+        return {
+          title: opened.title,
+          metadata: {
+            action: "open",
+            linkID,
+            targetAgentID: params.targetAgentID,
+            sessionID: opened.metadata.sessionID,
+            status: opened.metadata.status,
+          },
+          output: opened.output,
+        }
       }
 
       const sessionID = opened.metadata.sessionID
       if (!sessionID) {
-        throw new Error(`Connection open for env ${normalizedEnvID} did not return a session ID.`)
+        throw new Error(`Connection open for link ${linkID} did not return a session ID.`)
       }
 
-      RemoteExecution.upsertSession({
-        envID: normalizedEnvID,
+      SynergyLinkExecution.upsertSession({
+        linkID,
         targetAgentID: params.targetAgentID,
         sessionID,
         status: "opened",
@@ -138,7 +140,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         title: "Connected",
         metadata: {
           action: "open",
-          envID: normalizedEnvID,
+          linkID,
           targetAgentID: params.targetAgentID,
           sessionID,
           status: opened.metadata.status,
@@ -147,14 +149,14 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       }
     }
 
-    const client = RemoteExecution.requireClient(normalizedEnvID, "connect")
-    const session = RemoteExecution.requireSession(normalizedEnvID)
+    const client = SynergyLinkExecution.requireClient(linkID, "connect")
+    const session = SynergyLinkExecution.requireSession(linkID)
 
     let closed
     try {
       closed = await Promise.race([
         client.executeSession(
-          normalizedEnvID,
+          linkID,
           { action: "close", sessionID: session.sessionID },
           { targetAgentID: session.targetAgentID },
         ),
@@ -162,28 +164,26 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           setTimeout(
             () =>
               reject(
-                new Error(
-                  `Closing connection to env "${normalizedEnvID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s.`,
-                ),
+                new Error(`Closing connection to link "${linkID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s.`),
               ),
             CONNECT_TIMEOUT_MS,
           ),
         ),
       ])
     } catch (error) {
-      RemoteExecution.clearSession(normalizedEnvID)
+      SynergyLinkExecution.clearSession(linkID)
       throw new Error(
-        `Failed to close connection to env "${normalizedEnvID}": ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to close connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
       )
     }
 
-    RemoteExecution.clearSession(normalizedEnvID)
+    SynergyLinkExecution.clearSession(linkID)
 
     return {
       title: "Disconnected",
       metadata: {
         action: "close",
-        envID: normalizedEnvID,
+        linkID,
         targetAgentID: session.targetAgentID,
         sessionID: session.sessionID,
         status: closed.metadata.status,

@@ -445,10 +445,18 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
   }
   return paths
 }
-
 function hasNetworkActivity(command: string): boolean {
   const lower = command.toLowerCase()
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
+}
+
+/** Check whether a linkID looks like a valid Synergy Link target. */
+function isValidSynergyLinkID(linkID: unknown): boolean {
+  return typeof linkID === "string" && linkID.startsWith("link_") && linkID.length > 5
+}
+
+function effectiveSynergyLinkID(args: Record<string, any>): unknown {
+  return args.linkID ?? args.envID
 }
 
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
@@ -658,7 +666,17 @@ export namespace EnforcementGate {
         // boundary so Smart allow can never bypass a profile deny on it.
         // shell_remote_publish covers ordinary branch push and PR creation.
         // shell_remote_write is broader remote mutation and stays Smart allow eligible.
+        // shell_remote_execute applies when linkID targets a remote Synergy Link host.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
+
+        // If a valid remote linkID is supplied, execution runs on the remote host,
+        // not the local machine. Add a separate remote-execute capability so
+        // profiles can distinguish local vs remote shell execution. Deprecated
+        // envID is accepted by the tool layer as a linkID alias, so it must be
+        // classified through the same remote-execute boundary.
+        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
+          caps.push({ class: "shell_remote_execute", nonBypassable: true })
+        }
 
         // Defense-in-depth: secondary destructive pattern checks.
         if (risk !== "shell_destructive") {
@@ -867,6 +885,9 @@ export namespace EnforcementGate {
           caps.push({ class: "shell", nonBypassable: false })
         } else {
           caps.push({ class: "file_read", nonBypassable: false })
+        }
+        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
+          caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }
         return { capabilities: caps }
       }

@@ -1,9 +1,9 @@
-import { MetaProtocolBridge, MetaProtocolEnvelope } from "@ericsanchezok/meta-protocol"
+import { SynergyLinkBridge, SynergyLinkEnvelope } from "@ericsanchezok/synergy-link-protocol"
 import { Envelope } from "@/holos/envelope"
 import { HolosProvider, HolosRuntime } from "@/holos/runtime"
-import type { RemoteExecutionRequest } from "./client"
+import type { SynergyLinkRequest } from "./client"
 
-export class HolosRemoteExecutionTransport {
+export class HolosSynergyLinkTransport {
   readonly #pending = new Map<
     string,
     {
@@ -18,11 +18,11 @@ export class HolosRemoteExecutionTransport {
     this.#unsubscribe = HolosRuntime.registerAppEventHandler((input) => this.#handleEvent(input))
   }
 
-  async request(input: RemoteExecutionRequest): Promise<unknown> {
+  async request(input: SynergyLinkRequest): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(input.requestID)
-        reject(new Error(`Timed out waiting for remote response ${input.requestID}.`))
+        reject(new Error(`Timed out waiting for Synergy Link response ${input.requestID}.`))
       }, 30_000)
       timer.unref?.()
 
@@ -31,17 +31,17 @@ export class HolosRemoteExecutionTransport {
       if (!input.targetAgentID) {
         clearTimeout(timer)
         this.#pending.delete(input.requestID)
-        reject(new Error(`Remote request ${input.requestID} is missing targetAgentID.`))
+        reject(new Error(`Synergy Link request ${input.requestID} is missing targetAgentID.`))
         return
       }
 
       this.provider
-        .send(input.targetAgentID, MetaProtocolBridge.RequestEvent, input)
+        .send(input.targetAgentID, SynergyLinkBridge.REQUEST_EVENT, input)
         .then((result) => {
           if (!result.sent) {
             clearTimeout(timer)
             this.#pending.delete(input.requestID)
-            reject(new Error(`Remote request ${input.requestID} was not delivered.`))
+            reject(new Error(`Synergy Link request ${input.requestID} was not delivered.`))
           }
         })
         .catch((error) => {
@@ -56,14 +56,14 @@ export class HolosRemoteExecutionTransport {
     this.#unsubscribe()
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer)
-      pending.reject(new Error("Holos remote transport disposed."))
+      pending.reject(new Error("Holos Synergy Link transport disposed."))
     }
     this.#pending.clear()
   }
 
   async #handleEvent(input: { event: string; payload: unknown; caller: Envelope.Caller }): Promise<boolean> {
-    if (input.event !== MetaProtocolBridge.ResponseEvent) return false
-    const parsed = MetaProtocolEnvelope.ResultBase.safeParse(input.payload)
+    if (input.event !== SynergyLinkBridge.RESPONSE_EVENT) return false
+    const parsed = SynergyLinkEnvelope.ResultBase.safeParse(input.payload)
     if (!parsed.success) return false
     const pending = this.#pending.get(parsed.data.requestID)
     if (!pending) return false
