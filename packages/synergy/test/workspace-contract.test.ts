@@ -54,6 +54,7 @@ describe("Workbench surface contract", () => {
     const layoutSrc = await fs.readFile(layoutPath, "utf-8")
 
     expect(layoutSrc).toContain("WorkbenchPanelsProvider")
+    expect(sessionSrc).not.toContain("WorkbenchPanelsProvider")
     expect(sessionSrc).toContain('<WorkbenchSurface surface="side" />')
     expect(sessionSrc).toContain('<WorkbenchSurface surface="bottom" />')
     expect(sessionSrc).not.toContain("WorkspaceRail")
