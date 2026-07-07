@@ -576,6 +576,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                 messageID: info.id,
                 sessionID: input.sessionID,
                 type: "text",
+                origin: "system" as const,
                 text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
               },
               await Attachment.toPart({
