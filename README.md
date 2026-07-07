@@ -598,27 +598,27 @@ This repository is a Bun monorepo.
 - `packages/ui` — shared UI components
 - `packages/util` — shared utilities and common helpers
 - `packages/script` — build and release utilities
-- `packages/meta-synergy` — companion CLI for connecting to remote Synergy hosts (see below)
+- `packages/synergy-link` — companion CLI for connecting to remote Synergy hosts (see below)
 
-## MetaSynergy (Experimental)
+## Synergy Link (Experimental)
 
-MetaSynergy is a lightweight companion CLI that connects to a remote Synergy host — useful when you want to use Synergy as a backend service without running the full local runtime.
+Synergy Link is a lightweight companion CLI that connects to a remote Synergy host — useful when you want to use Synergy as a backend service without running the full local runtime.
 
-> ⚠️ MetaSynergy is experimental. The API, behavior, and release artifacts may change without notice.
+> ⚠️ Synergy Link is experimental. The API, behavior, and release artifacts may change without notice.
 
 ### Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/synergy-link/install | bash
 ```
 
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash -s -- --version 2.4.3
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/synergy-link/install | bash -s -- --version 2.4.3
 ```
 
-The installer places the binary under `~/.meta-synergy/bin/` and optionally adds it to your `PATH`.
+The installer places the binary under `~/.synergy-link/bin/` and optionally adds it to your `PATH`.
 
 ## Development
 

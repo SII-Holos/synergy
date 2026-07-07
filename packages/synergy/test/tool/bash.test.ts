@@ -37,7 +37,6 @@ function bunEval(script: string) {
   const executable = process.execPath.replace(/\\/g, "/")
   const encoded = Buffer.from(script).toString("base64")
   const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
-  if (process.platform === "win32") return `"${executable}" -e "${evalScript}"`
   return `"${executable}" -e ${JSON.stringify(evalScript)}`
 }
 
@@ -78,37 +77,30 @@ describe("tool.bash", () => {
       bash.parameters.safeParse({
         command: "echo ok",
         description: "Echo ok",
-        backgroundAfterSeconds: 1,
-        timeoutSeconds: 1,
+        background: true,
+        yieldSeconds: 1,
       }).success,
     ).toBe(true)
     expect(
       bash.parameters.safeParse({
         command: "echo ok",
         description: "Echo ok",
-        backgroundAfterSeconds: 0,
+        yieldSeconds: 0,
       }).success,
     ).toBe(false)
-    expect(
-      bash.parameters.safeParse({
-        command: "echo ok",
-        description: "Echo ok",
-        timeoutSeconds: 0,
-      }).success,
-    ).toBe(false)
-    expect(
-      bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", backgroundAfterSeconds: -1 }).success,
-    ).toBe(false)
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", yieldSeconds: -1 }).success).toBe(
+      false,
+    )
   })
 
-  test("auto-backgrounds long commands after backgroundAfterSeconds", async () => {
+  test("auto-backgrounds long commands after yieldSeconds", async () => {
     await withProjectScope(async () => {
       const bash = await BashTool.init()
       const result = await bash.execute(
         {
           command: sleepCommand(250),
           description: "Sleep briefly",
-          backgroundAfterSeconds: 0.05,
+          yieldSeconds: 0.05,
         },
         ctx,
       )
@@ -126,55 +118,13 @@ describe("tool.bash", () => {
         {
           command: "echo foreground",
           description: "Echo foreground",
-          backgroundAfterSeconds: 1,
+          yieldSeconds: 1,
         },
         ctx,
       )
       expect(result.metadata.background).toBeUndefined()
       expect(result.metadata.exit).toBe(0)
       expect(result.output).toContain("foreground")
-    })
-  })
-
-  test("timeoutSeconds kills foreground commands", async () => {
-    await withProjectScope(async () => {
-      const bash = await BashTool.init()
-      const result = await bash.execute(
-        {
-          command: sleepCommand(1000),
-          description: "Timeout foreground",
-          backgroundAfterSeconds: 1,
-          timeoutSeconds: 0.05,
-        },
-        ctx,
-      )
-      expect(result.metadata.background).toBeUndefined()
-      expect(result.output).toContain("command timed out after 0.05s")
-    })
-  })
-
-  test("timeoutSeconds kills auto-backgrounded commands through process registry", async () => {
-    await withProjectScope(async () => {
-      const bash = await BashTool.init()
-      const result = await bash.execute(
-        {
-          command: sleepCommand(1000),
-          description: "Timeout background",
-          backgroundAfterSeconds: 0.05,
-          timeoutSeconds: 0.1,
-        },
-        ctx,
-      )
-      expect(result.metadata.background).toBe(true)
-      expect(result.metadata.processId).toBeString()
-      let finished = result.metadata.processId ? ProcessRegistry.getFinished(result.metadata.processId) : undefined
-      for (let i = 0; i < 20 && !finished; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 100))
-        finished = result.metadata.processId ? ProcessRegistry.getFinished(result.metadata.processId) : undefined
-      }
-      expect(finished?.output).toContain("command timed out after 0.1s")
-      expect(finished?.status).toBe("killed")
-      if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
     })
   })
 
@@ -223,21 +173,22 @@ describe("tool.bash", () => {
     })
   })
 
-  test("rejects placeholder env IDs with semantic guidance", async () => {
+  test("runs locally with warning for placeholder link IDs", async () => {
     await ScopeContext.provide({
       scope: (await Scope.fromDirectory(projectRoot)).scope,
       fn: async () => {
         const bash = await BashTool.init()
-        await expect(
-          bash.execute(
-            {
-              envID: "undefined",
-              command: "echo 'bad env'",
-              description: "Echo bad env",
-            },
-            ctx,
-          ),
-        ).rejects.toThrow("do NOT include the envID parameter at all")
+        const result = await bash.execute(
+          {
+            linkID: "undefined",
+            command: "echo 'bad link'",
+            description: "Echo bad link",
+          },
+          ctx,
+        )
+        expect(result.output).toContain("Synergy Link warning")
+        expect(result.output).toContain("bad link")
+        expect(result.metadata.warnings?.[0]?.code).toBe("synergy_link.invalid_link_id")
       },
     })
   })
@@ -607,7 +558,7 @@ describe("tool.bash output cap", () => {
         const result = await bash.execute(
           {
             command: bunEval(`process.stdout.write("x".repeat(300000))`),
-            backgroundAfterSeconds: 0.05,
+            yieldSeconds: 0.05,
             description: "Generate 300KB output with auto-background",
           },
           ctx,

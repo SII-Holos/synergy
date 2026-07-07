@@ -1235,7 +1235,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "cable",
         title: "Connect",
-        subtitle: input.envID,
+        subtitle: input.linkID,
       }
     // TODO: legacy qzcli — remove when replaced by native inspire tools
     case "qzcli_qz_auth_login":

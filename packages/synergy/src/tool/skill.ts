@@ -131,26 +131,42 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      // Always try direct lookup first (uses cached state, won't re-scan)
+      // Load the full catalog first for accurate diagnostics
+      let skills: Skill.Info[]
+      try {
+        skills = await Skill.all()
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        throw new Error(`Skill "${params.name}" not found. Skills catalog is unavailable: ${msg}`)
+      }
+
       let skill: Skill.Info | undefined
       try {
         skill = await Skill.get(params.name)
       } catch {
-        // Skill.get can throw if catalog loading failed, ignore and try fallback
+        // Skill.get can throw if catalog loading failed; fall through to search from all()
       }
 
       if (!skill) {
-        // Fallback: try to load what we can
+        skill = skills.find((s) => s.name === params.name)
+      }
+
+      if (!skill) {
+        let diagnosticsMsg = ""
         try {
-          const skills = await Skill.all()
-          skill = skills.find((s) => s.name === params.name)
-          if (!skill) {
-            const available = skills.map((s) => s.name).join(", ")
-            throw new Error(`Skill "${params.name}" not found. Available skills: ${available || "none"}`)
+          const diagnostics = await Skill.diagnostics()
+          const relevant = diagnostics.filter((d) => d.name === params.name || d.path.includes(`/${params.name}/`))
+          if (relevant.length > 0) {
+            diagnosticsMsg =
+              "\nRelated diagnostics:\n" +
+              relevant
+                .map((d) => `  - [${d.severity ?? "error"}]${d.code ? ` ${d.code}` : ""} ${d.path}: ${d.message}`)
+                .join("\n")
           }
         } catch {
-          throw new Error(`Skill "${params.name}" not found. Skills catalog is unavailable.`)
+          // diagnostics unavailable, skip
         }
+        throw new Error(`Skill "${params.name}" not found.${diagnosticsMsg}`)
       }
 
       await ctx.ask({

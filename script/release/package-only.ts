@@ -7,22 +7,22 @@ import { configureNpmAuth, npmTagMatches, npmVersionExists } from "./shared/runt
 import type { DependencyVersionMap } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildMetaProtocol } from "./nodes/build-meta-protocol"
+import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
+import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
 import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 
-type PackageAlias = "sdk" | "util" | "meta-protocol" | "plugin" | "plugin-kit"
+type PackageAlias = "sdk" | "util" | "synergy-link-protocol" | "plugin" | "plugin-kit"
 
 const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "@ericsanchezok/synergy-sdk",
   util: "@ericsanchezok/synergy-util",
-  "meta-protocol": "@ericsanchezok/meta-protocol",
+  "synergy-link-protocol": "@ericsanchezok/synergy-link-protocol",
   plugin: "@ericsanchezok/synergy-plugin",
   "plugin-kit": "@ericsanchezok/synergy-plugin-kit",
 }
@@ -30,7 +30,7 @@ const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
 const TAG_PREFIX_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "synergy-sdk",
   util: "synergy-util",
-  "meta-protocol": "meta-protocol",
+  "synergy-link-protocol": "synergy-link-protocol",
   plugin: "synergy-plugin",
   "plugin-kit": "synergy-plugin-kit",
 }
@@ -46,8 +46,9 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     .filter(Boolean)
   const result: PackageAlias[] = []
   for (const alias of aliases) {
+    // Backward compat alias for existing CI pipelines — remove once CI configs are updated
     if (alias === "meta") {
-      result.push("meta-protocol")
+      result.push("synergy-link-protocol")
       continue
     }
     if (!(alias in PACKAGE_BY_ALIAS)) {
@@ -108,7 +109,7 @@ async function rewriteSelectedVersions(versionByPackage: Record<string, string>)
 async function buildPackage(alias: PackageAlias) {
   if (alias === "sdk") await generateSdk()
   if (alias === "util") await buildUtil()
-  if (alias === "meta-protocol") await buildMetaProtocol()
+  if (alias === "synergy-link-protocol") await buildSynergyLinkProtocol()
   if (alias === "plugin") await buildPlugin()
   if (alias === "plugin-kit") await buildPluginKit()
 }
@@ -121,7 +122,7 @@ async function publishPackage(
 ) {
   if (alias === "sdk") await publishSdkCandidate(version, channel)
   if (alias === "util") await publishUtilCandidate(version, channel)
-  if (alias === "meta-protocol") await publishMetaProtocolCandidate(version, channel)
+  if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel)
   if (alias === "plugin") await publishPluginCandidate(version, channel)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
 }

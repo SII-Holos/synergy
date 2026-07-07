@@ -11,6 +11,7 @@ import { RuntimeSchema } from "./schema"
 import { SkillPaths } from "../skill/paths"
 import { Log } from "../util/log"
 import { isPathContained } from "../util/path-contain"
+import type { Skill } from "../skill/skill"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -103,7 +104,9 @@ export namespace RuntimeReload {
     const params = Input.parse(input)
     const requested = normalizeTargets(params.targets)
     const executed = [] as Target[]
-    const failed = [] as string[]
+    const failed = [] as Target[]
+    const failures: RuntimeSchema.ReloadFailure[] = []
+    const diagnostics: RuntimeSchema.ReloadDiagnostic[] = []
     const warnings = [] as string[]
     const changedFields = new Set<string>()
     const restartRequired = new Set<string>()
@@ -126,6 +129,8 @@ export namespace RuntimeReload {
       scope: params.scope ?? "auto",
       executed,
       failed,
+      failures,
+      diagnostics,
       changedFields,
       restartRequired,
       liveApplied,
@@ -170,6 +175,9 @@ export namespace RuntimeReload {
       restartRequired: [...restartRequired],
       liveApplied: [...liveApplied],
       warnings: unique(warnings),
+      failed: unique(failed),
+      failures,
+      diagnostics,
     }
 
     GlobalBus.emit("event", {
@@ -192,7 +200,9 @@ export namespace RuntimeReload {
   interface ExecuteContext {
     scope: Scope
     executed: Target[]
-    failed: string[]
+    failed: Target[]
+    failures: RuntimeSchema.ReloadFailure[]
+    diagnostics: RuntimeSchema.ReloadDiagnostic[]
     changedFields: Set<string>
     restartRequired: Set<string>
     liveApplied: Set<string>
@@ -226,9 +236,31 @@ export namespace RuntimeReload {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       ctx.failed.push(target)
+      ctx.failures.push({ target, message, code: `${target}.reload_failed` })
       ctx.warnings.push(`Failed to reload ${target}: ${message}`)
       reloadLog.error("target reload failed", { target, error: err instanceof Error ? err : new Error(message) })
     }
+  }
+
+  function mapSkillDiagnostics(
+    skillDiagnostics: Array<{
+      path: string
+      name: string
+      message: string
+      severity?: "error" | "warning" | "info"
+      code?: string
+      source?: string
+    }>,
+  ): RuntimeSchema.ReloadDiagnostic[] {
+    return skillDiagnostics.map((d) => ({
+      target: "skill" as const,
+      severity: d.severity ?? "error",
+      message: d.message,
+      code: d.code,
+      name: d.name,
+      path: d.path,
+      source: d.source,
+    }))
   }
 
   async function executeTargetCore(target: Target, ctx: ExecuteContext) {
@@ -242,6 +274,13 @@ export namespace RuntimeReload {
           if (CONFIG_LIVE_APPLIED.has(field)) ctx.liveApplied.add(field)
           if (CONFIG_CLIENT_SIDE.has(field)) {
             ctx.warnings.push(`Config field \`${field}\` is client-side and is not reloaded by the server runtime`)
+            ctx.diagnostics.push({
+              target: "config",
+              severity: "info",
+              code: "config.client_side_field_not_reloaded",
+              name: field,
+              message: `Config field \`${field}\` is client-side and is not reloaded by the server runtime`,
+            })
           }
         }
         // Infer cascades from changed config fields
@@ -285,6 +324,29 @@ export namespace RuntimeReload {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
         await Plugin.init({ source: "plugin_reload" })
+        // Collect disabled plugin diagnostics
+        try {
+          const disabled = await Plugin.getDisabled()
+          for (const d of disabled) {
+            ctx.diagnostics.push({
+              target: "plugin",
+              severity: "error",
+              code: `plugin.${d.phase}_failed`,
+              name: d.pluginId,
+              path: d.entryPath ?? d.pluginDir ?? d.spec,
+              phase: d.phase,
+              source: d.source,
+              message: d.reason,
+            })
+          }
+        } catch {
+          ctx.diagnostics.push({
+            target: "plugin",
+            severity: "warning",
+            code: "plugin.diagnostics_unavailable",
+            message: "Unable to collect disabled plugin diagnostics",
+          })
+        }
         return
       }
       case "mcp": {
@@ -328,8 +390,9 @@ export namespace RuntimeReload {
         return
       }
       case "skill": {
-        const { Skill } = await import("../skill/skill")
-        await Skill.reload()
+        const { Skill: SkillMod } = await import("../skill/skill")
+        await SkillMod.reload()
+        ctx.diagnostics.push(...mapSkillDiagnostics(await SkillMod.diagnostics()))
         return
       }
     }
@@ -586,6 +649,41 @@ export namespace RuntimeReload {
     return [...new Set(items)]
   }
 
+  // ─── Compact result formatter for auto-reload output ─────────────────
+
+  /** Format a compact summary of reload diagnostics suitable for auto-reload tool output. */
+  export function formatCompactResult(result: Result): string {
+    const lines: string[] = [
+      `Runtime reload applied`,
+      `<runtime_reload>`,
+      `targets=${result.requested.join(",")}`,
+      `executed=${result.executed.join(",")}`,
+    ]
+    if (result.failed.length > 0) {
+      lines.push(`failed=${result.failed.join(",")}`)
+    }
+    lines.push(`</runtime_reload>`)
+
+    if (result.failures.length > 0) {
+      for (const f of result.failures) {
+        lines.push(`  - [failure] ${f.target} ${f.code ?? "unknown"}: ${f.message}`)
+      }
+    }
+    const maxDiagnostics = 5
+    if (result.diagnostics.length > 0) {
+      const shown = result.diagnostics.slice(0, maxDiagnostics)
+      for (const d of shown) {
+        const loc = d.name ? ` ${d.name}` : d.path ? ` at ${d.path}` : ""
+        lines.push(`  - [${d.severity}] ${d.target}${d.code ? ` ${d.code}` : ""}${loc}: ${d.message}`)
+      }
+      if (result.diagnostics.length > maxDiagnostics) {
+        lines.push(`  ... and ${result.diagnostics.length - maxDiagnostics} more diagnostics in metadata.runtimeReload`)
+      }
+    }
+
+    return lines.join("\n")
+  }
+
   // ─── Auto-reload (file watcher integration) ─────────────────────────
 
   const reloadLog = Log.create({ service: "runtime.reload.auto" })
@@ -596,7 +694,7 @@ export namespace RuntimeReload {
   // are merged into a single reload with the union of their targets.
   let debounceTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; targets: Set<Target> }>()
 
-  function debounceReload(file: string, scope: "global" | "project", targets: Target[]) {
+  function debounceReload(_file: string, scope: "global" | "project", targets: Target[]) {
     const key = scope
     const existing = debounceTimers.get(key)
     if (existing) {

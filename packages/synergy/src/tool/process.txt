@@ -13,9 +13,9 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 
 ## Usage
 
-`envID` is optional. Omit it to manage processes in the current local environment; provide it to target a remote execution backend.
-For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
-When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote process management does not implicitly create sessions.
+`linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target.
+For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
+When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote process management does not implicitly create sessions.
 
 After a bash command auto-backgrounds:
 ```

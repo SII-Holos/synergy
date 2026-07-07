@@ -307,6 +307,42 @@ describe("EnforcementGate shell classification", () => {
   })
 })
 
+describe("EnforcementGate Synergy Link classification", () => {
+  test("bash with linkID or deprecated envID gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { command: "echo remote", linkID: "link_test" },
+      { command: "echo remote", envID: "link_test" },
+    ]) {
+      const result = gate.classify("bash", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
+  })
+
+  test("process with linkID or deprecated envID gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { action: "list", linkID: "link_test" },
+      { action: "list", envID: "link_test" },
+    ]) {
+      const result = gate.classify("process", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
+  })
+})
+
 // ------------------------------------------------------------------
 // 2b. isDestructive boundary correctness
 // ------------------------------------------------------------------
@@ -2462,7 +2498,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "status", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "status", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
@@ -2473,7 +2509,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "open", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "open", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
@@ -2484,7 +2520,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "close", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "close", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)

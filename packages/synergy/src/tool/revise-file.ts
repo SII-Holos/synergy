@@ -304,7 +304,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         })
       : undefined
     const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(primaryCanonical)
-    if (runtimeReload) outputBlocks.push(`Runtime reload applied: ${runtimeReload.executed.join(",")}`)
+    if (runtimeReload) outputBlocks.push(RuntimeReload.formatCompactResult(runtimeReload))
     if (builtinSourceWarning) outputBlocks.push(builtinSourceWarning)
 
     const output = outputBlocks.join("\n")

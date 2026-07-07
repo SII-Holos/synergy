@@ -146,18 +146,18 @@ export const SkillRoute = new Hono()
           description: "Skills reloaded successfully",
           content: {
             "application/json": {
-              schema: resolver(z.boolean()),
+              schema: resolver(RuntimeReload.Result),
             },
           },
         },
       },
     }),
     async (c) => {
-      await RuntimeReload.reload({
+      const result = await RuntimeReload.reload({
         targets: ["skill"],
         reason: "skill.reload route",
       })
-      return c.json(true)
+      return c.json(result)
     },
   )
   .delete(

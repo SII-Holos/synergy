@@ -8,7 +8,7 @@
     "customConditions": ["browser"],
     "paths": {
       "@/*": ["./src/*"],
-      "@ericsanchezok/meta-protocol": ["../meta-protocol/src/index.ts"]
+      "@ericsanchezok/synergy-link-protocol": ["../synergy-link-protocol/src/index.ts"]
     }
   },
   "include": ["src/**/*", "test/**/*", "script/**/*", "scripts/**/*", "parsers-config.ts"],

@@ -21,7 +21,7 @@ on:
           - major
         default: patch
       packages:
-        description: "Package-only aliases: plugin-kit, plugin, util, sdk, meta-protocol"
+        description: "Package-only aliases: plugin-kit, plugin, util, sdk, synergy-link-protocol"
         required: false
         type: string
         default: ""

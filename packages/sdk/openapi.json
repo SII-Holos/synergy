@@ -8613,7 +8613,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/RuntimeReloadResult"
                 }
               }
             }
@@ -24029,6 +24029,64 @@
           "all"
         ]
       },
+      "RuntimeReloadFailure": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["target", "message"]
+      },
+      "RuntimeReloadDiagnostic": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["target", "severity", "message"]
+      },
       "RuntimeReloadResult": {
         "type": "object",
         "properties": {
@@ -24076,6 +24134,24 @@
             "items": {
               "type": "string"
             }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadFailure"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
+            }
           }
         },
         "required": [
@@ -24086,7 +24162,10 @@
           "changedFields",
           "restartRequired",
           "liveApplied",
-          "warnings"
+          "warnings",
+          "failed",
+          "failures",
+          "diagnostics"
         ]
       },
       "RuntimeReloadScope": {
@@ -28136,6 +28215,17 @@
                 },
                 "message": {
                   "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["error", "warning", "info"]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
                 }
               },
               "required": ["path", "name", "message"]
