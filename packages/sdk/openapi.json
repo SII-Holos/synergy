@@ -21260,6 +21260,40 @@
         },
         "additionalProperties": false
       },
+      "QuickSwitcherModelConfig": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "description": "Provider id for the quick switcher model preference",
+            "type": "string"
+          },
+          "modelID": {
+            "description": "Model id for the quick switcher model preference",
+            "type": "string"
+          },
+          "state": {
+            "description": "Whether to force-add or force-remove the model from the quick switcher",
+            "type": "string",
+            "enum": ["add", "remove"]
+          }
+        },
+        "required": ["providerID", "modelID", "state"],
+        "additionalProperties": false
+      },
+      "QuickSwitcherConfig": {
+        "description": "Quick switcher model visibility preferences",
+        "type": "object",
+        "properties": {
+          "models": {
+            "description": "Per-model quick switcher visibility preferences",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuickSwitcherModelConfig"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "ModelRole": {
         "type": "string",
         "enum": ["vision", "nano", "mini", "mid", "thinking", "long", "creative"]
@@ -23123,6 +23157,9 @@
               "type": "string"
             }
           },
+          "quick_switcher": {
+            "$ref": "#/components/schemas/QuickSwitcherConfig"
+          },
           "default_agent": {
             "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
             "type": "string"
@@ -23452,6 +23489,10 @@
             "properties": {
               "batch_tool": {
                 "description": "Enable the batch tool",
+                "type": "boolean"
+              },
+              "coauthor_reminder": {
+                "description": "Include the git commit Co-authored-by footer reminder in agent prompts",
                 "type": "boolean"
               },
               "openTelemetry": {

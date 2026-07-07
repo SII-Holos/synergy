@@ -29,6 +29,33 @@ describe("settings config patch", () => {
     })
   })
 
+  test("persists quick switcher model preferences through the models domain", () => {
+    const state = defaultSettingsState("enter")
+    state.models.quick_switcher = [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }]
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({
+      models: [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }],
+    })
+  })
+
+  test("clears quick switcher config when all preferences return to defaults", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { quick_switcher: { models: [{ providerID: "openai", modelID: "gpt-5.5", state: "remove" }] } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({ models: [] })
+  })
+
   test("provider idle timeout can be disabled with false", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"
@@ -44,5 +71,43 @@ describe("settings config patch", () => {
       provider: { ttfb_sec: 3600, idle_sec: false },
       tool: { default_sec: 7200 },
     })
+  })
+
+  test("coauthor reminder defaults on without materializing experimental config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toBeUndefined()
+  })
+
+  test("coauthor reminder can be disabled in experimental config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "false"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ coauthor_reminder: false })
+  })
+
+  test("coauthor reminder can be re-enabled from explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "true"
+
+    expect(
+      buildPatch({
+        cfg: { experimental: { coauthor_reminder: false } } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ coauthor_reminder: true })
   })
 })

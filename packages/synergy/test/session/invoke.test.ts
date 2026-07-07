@@ -73,6 +73,7 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
 function installBasicLoopMocks(options?: {
   onBuildPlan?: (input: any) => void
   onProcess?: (input: any, assistant: MessageV2.Assistant, callIndex: number) => Promise<void> | void
+  config?: Record<string, unknown>
 }) {
   const originalGetModel = Provider.getModel
   const originalGetAgent = Agent.get
@@ -115,6 +116,7 @@ function installBasicLoopMocks(options?: {
     ...(await originalConfigCurrent()),
     compaction: { auto: true, maxHistoryImages: 8 },
     library: { memory: { enabled: false }, experience: { retrieve: false } },
+    ...options?.config,
   }))
   ;(ToolResolver.definitions as any) = mock(async () => [])
   ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
@@ -660,6 +662,67 @@ describe("SessionInvoke inbox boundaries", () => {
           expect(guided!.info.isRoot).toBe(false)
           expect(guided!.info.rootID).toBe(user.id)
           expect(guided!.info.origin?.type).toBe("user")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke coauthor reminder prompt", () => {
+  test("includes the coauthor reminder by default", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let systemPrompt = ""
+    const restore = installBasicLoopMocks({
+      onProcess: async (input) => {
+        systemPrompt = input.system.join("\n")
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(systemPrompt).toContain("<coauthor-reminder>")
+          expect(systemPrompt).toContain("Co-authored-by: synergy-agent")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("omits the coauthor reminder when explicitly disabled", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let systemPrompt = ""
+    const restore = installBasicLoopMocks({
+      config: { experimental: { coauthor_reminder: false } },
+      onProcess: async (input) => {
+        systemPrompt = input.system.join("\n")
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
+          expect(systemPrompt).not.toContain("Co-authored-by: synergy-agent")
         },
       })
     } finally {
