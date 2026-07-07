@@ -7,6 +7,7 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useFile } from "@/context/file"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function FileVisual(props: { path: string; active?: boolean }): JSX.Element {
   return (
@@ -35,13 +36,19 @@ export function SortableTab(props: { tab: string; onTabClose: (tab: string) => v
           value={props.tab}
           closeButton={
             <Tooltip value="Close tab" placement="bottom">
-              <IconButton icon="x" variant="ghost" onClick={() => props.onTabClose(props.tab)} />
+              <IconButton
+                icon={getSemanticIcon("action.close")}
+                variant="ghost"
+                onClick={() => props.onTabClose(props.tab)}
+              />
             </Tooltip>
           }
           hideCloseButton
           onMiddleClick={() => props.onTabClose(props.tab)}
         >
-          <Show when={path()}>{(p) => <FileVisual path={p()} />}</Show>
+          <Show keyed when={path()}>
+            {(filePath) => <FileVisual path={filePath} />}
+          </Show>
         </Tabs.Trigger>
       </div>
     </div>

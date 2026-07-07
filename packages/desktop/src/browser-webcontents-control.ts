@@ -136,7 +136,12 @@ export class BrowserWebContentsControl {
         return {
           type: "console",
           pageId,
-          entries: diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? [],
+          entries: (diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? []).map((e) => ({
+            type: e.level,
+            text: e.text,
+            timestamp: e.timestamp,
+            stackTrace: e.stackTrace,
+          })),
         }
       case "network":
         return {
@@ -296,7 +301,7 @@ export class BrowserWebContentsControl {
         return nodes.map((element, index) => {
           const rect = element.getBoundingClientRect()
           return {
-            ref: "@n" + (index + 1),
+            ref: "@e" + (index + 1),
             role: roleFor(element),
             name: String(nameFor(element)).replace(/\\s+/g, " ").trim().slice(0, 200),
             value: "value" in element && typeof element.value === "string" ? element.value : undefined,

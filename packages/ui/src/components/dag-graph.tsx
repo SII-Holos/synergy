@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
 import "./dag-graph.css"
+import { getSemanticIcon } from "./semantic-icon"
 
 export interface DagNode {
   id: string
@@ -632,7 +633,7 @@ export function DagGraph(props: {
           </div>
         </div>
         <Portal>
-          <Show when={inspectorNode()}>
+          <Show keyed when={inspectorNode()}>
             {(node) => (
               <div
                 data-slot="dag-node-preview"
@@ -644,22 +645,22 @@ export function DagGraph(props: {
                 onClick={(event) => event.stopPropagation()}
               >
                 <div data-slot="dag-node-preview-header">
-                  <span data-slot="dag-node-preview-status" data-status={node().status}>
-                    {statusLabel(node().status)}
+                  <span data-slot="dag-node-preview-status" data-status={node.status}>
+                    {statusLabel(node.status)}
                   </span>
-                  <Show when={node().assign}>
-                    {(assign) => <span data-slot="dag-node-preview-agent">@{assign()}</span>}
+                  <Show keyed when={node.assign}>
+                    {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
                   </Show>
-                  {node().session_id && props.onOpenSession ? (
+                  {node.session_id && props.onOpenSession ? (
                     <button
                       type="button"
                       data-slot="dag-node-preview-open-session"
                       onClick={(event) => {
                         event.stopPropagation()
-                        props.onOpenSession?.(node().session_id!)
+                        props.onOpenSession?.(node.session_id!)
                       }}
                     >
-                      <Icon name="log-in" size="small" />
+                      <Icon name={getSemanticIcon("action.open")} size="small" />
                       Open session
                     </button>
                   ) : null}
@@ -673,27 +674,31 @@ export function DagGraph(props: {
                       closeNodeInspector()
                     }}
                   >
-                    <Icon name="x" size="small" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </div>
-                <div data-slot="dag-node-preview-title">{node().content}</div>
+                <div data-slot="dag-node-preview-title">{node.content}</div>
                 <div data-slot="dag-node-preview-meta">
-                  <Show when={node().task_id}>
-                    {(taskID) => <span title={taskID()}>Task: {displayIdentifier(taskID())}</span>}
+                  <Show keyed when={node.task_id}>
+                    {(taskID) => <span title={taskID}>Task: {displayIdentifier(taskID)}</span>}
                   </Show>
-                  <Show when={node().session_id}>
-                    {(sessionID) => <span title={sessionID()}>Session: {displayIdentifier(sessionID())}</span>}
+                  <Show keyed when={node.session_id}>
+                    {(sessionID) => <span title={sessionID}>Session: {displayIdentifier(sessionID)}</span>}
                   </Show>
-                  <Show when={node().worktree}>{(worktree) => <span>Worktree: {worktree()}</span>}</Show>
-                  <Show when={node().deps.length > 0}>
-                    <span>Deps: {node().deps.join(", ")}</span>
+                  <Show keyed when={node.worktree}>
+                    {(worktree) => <span>Worktree: {worktree}</span>}
+                  </Show>
+                  <Show when={node.deps.length > 0}>
+                    <span>Deps: {node.deps.join(", ")}</span>
                   </Show>
                 </div>
-                <Show when={node().memo}>{(memo) => <div data-slot="dag-node-preview-note">{memo()}</div>}</Show>
-                <Show when={node().result}>
+                <Show keyed when={node.memo}>
+                  {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
+                </Show>
+                <Show keyed when={node.result}>
                   {(result) => (
                     <div data-slot="dag-node-preview-result">
-                      <Markdown text={result()} cacheKey={`dag-node-result-${node().id}`} />
+                      <Markdown text={result} cacheKey={`dag-node-result-${node.id}`} />
                     </div>
                   )}
                 </Show>

@@ -548,21 +548,20 @@ function createGlobalSync() {
     )
   }
 
-  function reconcileCortexFromSession(setStore: SetStoreFunction<State>, info: Session) {
+  function reconcileCortexFromSession(store: State, setStore: SetStoreFunction<State>, info: Session) {
     const cortex = info.cortex
     if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+    const idx = store.cortex.findIndex((task) => task.sessionID === info.id)
+    if (idx === -1) return
     setStore(
       "cortex",
-      produce((draft) => {
-        const idx = draft.findIndex((task) => task.sessionID === info.id)
-        if (idx === -1) return
-        draft[idx] = {
-          ...draft[idx],
-          status: cortex.status,
-          completedAt: cortex.completedAt ?? draft[idx].completedAt,
-          result: cortex.result ?? draft[idx].result,
-          error: cortex.error ?? draft[idx].error,
-        }
+      idx,
+      reconcile({
+        ...store.cortex[idx],
+        status: cortex.status,
+        completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
+        output: cortex.output ?? store.cortex[idx].output,
+        error: cortex.error ?? store.cortex[idx].error,
       }),
     )
   }
@@ -847,7 +846,7 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info as Session
-        reconcileCortexFromSession(setStore, info)
+        reconcileCortexFromSession(store, setStore, info)
         const result = Binary.search(store.session, info.id, (s) => s.id)
         if (info.time.archived) {
           if (result.found) {

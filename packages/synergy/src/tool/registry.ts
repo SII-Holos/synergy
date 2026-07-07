@@ -30,6 +30,8 @@ import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
+import { PathwayReadTool } from "./pathway-read"
+import { PathwayPatchTool } from "./pathway-patch"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -51,6 +53,8 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraAcceptTool } from "./agora-accept"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
+import { OpenAIImageGenTool } from "./openai-image-gen"
+import { OpenAIImageEditTool } from "./openai-image-edit"
 
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
@@ -81,6 +85,7 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
 import { ExpandToolsTool } from "./expand-tools"
 import { WorktreeEnterTool } from "./worktree-enter"
@@ -108,6 +113,7 @@ import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
 import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
+import { BrowserHealthTool } from "./browser-health"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -328,9 +334,9 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.current()
+    await Config.current()
 
-    return [
+    const builtin: Tool.Info[] = [
       ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
@@ -379,6 +385,8 @@ export namespace ToolRegistry {
       NoteDeleteTool,
       BlueprintLoopFinishTool,
       BlueprintLoopRestartTool,
+      PathwayReadTool,
+      PathwayPatchTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
@@ -430,9 +438,17 @@ export namespace ToolRegistry {
       BrowserActionTool,
       BrowserEvalTool,
       BrowserViewTool,
+      BrowserHealthTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...custom,
     ]
+
+    const codexAccess = await CodexProvider.resolveToken({
+      allowMissing: true,
+      refreshIfExpiring: false,
+    }).catch(() => undefined)
+    if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
+
+    return [...builtin, ...custom]
   }
 
   export async function ids() {

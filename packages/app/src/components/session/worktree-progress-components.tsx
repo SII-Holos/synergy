@@ -38,7 +38,9 @@ export function StepList(props: { steps: SessionStartProgress["steps"] }) {
             <StepIcon state={step.state} />
             <div class="wtd-step-copy">
               <span class="wtd-step-title">{step.label}</span>
-              <Show when={step.detail}>{(detail) => <span class="wtd-step-detail">{detail()}</span>}</Show>
+              <Show keyed when={step.detail}>
+                {(detail) => <span class="wtd-step-detail">{detail}</span>}
+              </Show>
             </div>
             <span class="wtd-step-status">
               <Switch>

@@ -164,7 +164,7 @@ const plan = await context.task?.run({
 })
 ```
 
-When `output.mode` is `structured`, Cortex validates the child task result against the schema and may run repair turns before completing. Cortex still stores its normal task trajectory summary in `task.result`; the structured value is returned to the plugin call site as `plan.outputResult.data`.
+When `output.mode` is `structured`, Cortex validates the child task result against the schema and may run repair turns before completing. The plugin receives the completed task output as `plan.output`; read structured data with `plan.output?.mode === "structured" ? plan.output.value : undefined`. The schema may describe a top-level object, array, primitive, `anyOf`, or `oneOf` payload. Cortex's internal tool transport wrapper is not visible to plugins.
 
 ## Hooks
 

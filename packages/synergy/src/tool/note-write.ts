@@ -70,6 +70,7 @@ async function updateExisting(input: {
   const session = await Session.get(input.ctx.sessionID)
   const decision = NoteBlueprintPolicy.evaluateWrite({
     planMode: session.blueprint?.planMode === true,
+    latticeActive: session.lattice != null,
     action: "update",
     existingKind: existing.kind ?? "note",
     requestedKind: nextKind,
@@ -156,6 +157,7 @@ export const NoteWriteTool = Tool.define("note_write", {
       const session = await Session.get(ctx.sessionID)
       const decision = NoteBlueprintPolicy.evaluateWrite({
         planMode: session.blueprint?.planMode === true,
+        latticeActive: session.lattice != null,
         action: "create",
         requestedKind: kind,
       })

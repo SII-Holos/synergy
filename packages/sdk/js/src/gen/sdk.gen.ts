@@ -203,6 +203,21 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
+  LatticeModeInput,
+  LatticeRunCancelErrors,
+  LatticeRunCancelResponses,
+  LatticeRunContinueErrors,
+  LatticeRunContinueResponses,
+  LatticeRunEventsErrors,
+  LatticeRunEventsResponses,
+  LatticeRunGetErrors,
+  LatticeRunGetResponses,
+  LatticeRunListErrors,
+  LatticeRunListResponses,
+  LatticeSessionGetRunErrors,
+  LatticeSessionGetRunResponses,
+  LatticeSessionModeErrors,
+  LatticeSessionModeResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
   LibraryExperienceGetErrors,
@@ -2677,6 +2692,81 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Toggle Lattice mode
+   *
+   * Enable (create/continue/restart) or disable (pause) Lattice mode on a session.
+   */
+  public mode<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      latticeModeInput?: LatticeModeInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "latticeModeInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<LatticeSessionModeResponses, LatticeSessionModeErrors, ThrowOnError>({
+      url: "/lattice/session/{id}/mode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get session Lattice run
+   *
+   * Read the session's single Lattice run (or null).
+   */
+  public getRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      LatticeSessionGetRunResponses,
+      LatticeSessionGetRunErrors,
+      ThrowOnError
+    >({
+      url: "/lattice/session/{id}",
+      ...options,
+      ...params,
     })
   }
 
@@ -7619,6 +7709,173 @@ export class Blueprint extends HeyApiClient {
   session = new Session({ client: this.client })
 }
 
+export class Run extends HeyApiClient {
+  /**
+   * List Lattice runs
+   *
+   * List all Lattice runs for the current scope (at most one per session).
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<LatticeRunListResponses, LatticeRunListErrors, ThrowOnError>({
+      url: "/lattice/run",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Lattice run
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<LatticeRunGetResponses, LatticeRunGetErrors, ThrowOnError>({
+      url: "/lattice/run/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List Lattice run events
+   */
+  public events<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<LatticeRunEventsResponses, LatticeRunEventsErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Continue a collaborative Blueprint review
+   *
+   * Start the current step's BlueprintLoop (collaborative blueprint_review only).
+   */
+  public continue<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      userPrompt?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "userPrompt" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LatticeRunContinueResponses, LatticeRunContinueErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/continue",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel a Lattice run
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LatticeRunCancelResponses, LatticeRunCancelErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Lattice extends HeyApiClient {
+  session = new Session({ client: this.client })
+
+  run = new Run({ client: this.client })
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -9513,6 +9770,8 @@ export class SynergyClient extends HeyApiClient {
   note = new Note({ client: this.client })
 
   blueprint = new Blueprint({ client: this.client })
+
+  lattice = new Lattice({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

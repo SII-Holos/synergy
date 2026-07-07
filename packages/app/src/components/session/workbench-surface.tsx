@@ -25,6 +25,7 @@ import type {
   WorkbenchPanelTab,
 } from "@/plugin/registries/workbench-panel-registry"
 import "./workbench-surface.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 function WorkbenchPanelContent(props: {
   entry: WorkbenchPanelEntry
@@ -234,7 +235,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                       void workbench.closeTab(tab.id)
                     }}
                   >
-                    <Icon name="x" size="small" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </div>
               )}
@@ -242,7 +243,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
             <Show when={addablePanels().length > 0}>
               <div class="workbench-surface-add-wrap">
                 <IconButton
-                  icon="plus"
+                  icon={getSemanticIcon("action.add")}
                   variant="ghost"
                   aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
                   aria-expanded={local.addOpen}

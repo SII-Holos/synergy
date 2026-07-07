@@ -43,6 +43,7 @@ export namespace BlueprintLoopStore {
     firstPrompt?: string
     loopIndex?: number
     model?: { providerID: string; modelID: string }
+    orchestration?: Info["orchestration"]
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
@@ -75,6 +76,7 @@ export namespace BlueprintLoopStore {
       parentSessionID: input.parentSessionID,
       firstPrompt: input.firstPrompt,
       loopIndex: input.loopIndex,
+      orchestration: input.orchestration,
       model: input.model,
       time: { created: now, updated: now },
     }

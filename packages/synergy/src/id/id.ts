@@ -34,6 +34,9 @@ export namespace Identifier {
     superplan_node: "spn",
     superplan_merge: "spm",
     superplan_event: "spe",
+    lattice_run: "ltr",
+    lattice_step: "lts",
+    lattice_event: "lte",
     history: "hst",
   } as const
 

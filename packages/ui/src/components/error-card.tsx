@@ -4,6 +4,7 @@ import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
 import "./error-card.css"
+import { getSemanticIcon } from "./semantic-icon"
 
 export interface ErrorCardProps {
   /** Full raw error text — copy button copies this exactly */
@@ -33,7 +34,7 @@ export function ErrorCard(props: ErrorCardProps) {
   return (
     <Card variant="error">
       <div data-component="error-card" data-compact={local.compact ? "" : undefined}>
-        <Icon name="ban" size="small" />
+        <Icon name={getSemanticIcon("state.error")} size="small" />
         <div data-slot="error-card-content">
           <Show when={local.compact}>
             <span data-slot="error-card-message">{local.error}</span>

@@ -60,16 +60,23 @@ export namespace SessionModePolicy {
     "communication.question",
   ])
 
-  const PLAN_MODE_ALLOWED_BASH_CAPABILITIES = new Set(["shell_read", "file_read", "file_external_read"])
+  const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
 
   export function isPlanMode(session?: Pick<SessionInfo, "blueprint">) {
     return session?.blueprint?.planMode === true
   }
 
+  export function isLattice(session?: Pick<SessionInfo, "lattice">) {
+    return !!session?.lattice
+  }
+
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "blueprint">
+    session?: Pick<SessionInfo, "blueprint" | "lattice">
   }): ToolDiagnostic | undefined {
+    const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
+    if (latticeDiagnostic) return latticeDiagnostic
+
     if (!isPlanMode(input.session)) return undefined
     if (PLAN_MODE_EXPLICIT_ALLOW.has(input.toolName)) return undefined
 
@@ -96,19 +103,7 @@ export namespace SessionModePolicy {
 
     const staticDiagnostic = visibility({ toolName: input.toolName, session: input.session })
     if (staticDiagnostic) return staticDiagnostic
-
-    if (input.toolName !== "bash") return undefined
-
-    const classes = [...new Set(input.capabilities.map((cap) => cap.class))]
-    const blocked = classes.filter((className) => !PLAN_MODE_ALLOWED_BASH_CAPABILITIES.has(className))
-    if (blocked.length === 0) return undefined
-
-    return planModeBlocked(input.toolName, {
-      reason: "bash command is not read-only under Plan Mode",
-      command: String(input.args.command ?? ""),
-      capabilities: classes,
-      blockedCapabilities: blocked,
-    })
+    return undefined
   }
 
   export function unavailable(input: {
@@ -164,6 +159,38 @@ export namespace SessionModePolicy {
       message: `The "${input.toolName}" tool is not currently visible. Use search_tools or expand_tools when a deferred planning capability is appropriate.`,
       metadata: input.metadata,
     }
+  }
+
+  /**
+   * Lattice tool visibility:
+   *  - pathway_* tools are hidden outside an active Lattice session;
+   *  - in auto mode after the first BlueprintLoop has started, `question` is
+   *    hidden so the run keeps advancing without waiting for the user.
+   */
+  function latticeVisibility(toolName: string, session?: Pick<SessionInfo, "lattice">): ToolDiagnostic | undefined {
+    if (!isLattice(session)) {
+      if (PATHWAY_TOOLS.has(toolName)) {
+        return {
+          code: "tool_unavailable",
+          toolName,
+          message: `The "${toolName}" tool is only available while this session is in Lattice mode.`,
+        }
+      }
+      return undefined
+    }
+
+    const lattice = session!.lattice!
+    if (toolName === "question" && lattice.mode === "auto" && lattice.firstBlueprintStarted === true) {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: [
+          `The "question" tool is disabled in autonomous Lattice mode once the first BlueprintLoop has started.`,
+          "Do not wait for the user: replan forward and keep advancing the Pathway.",
+        ].join("\n"),
+      }
+    }
+    return undefined
   }
 
   function planModeBlocked(toolName: string, metadata: Record<string, unknown>): ToolDiagnostic {

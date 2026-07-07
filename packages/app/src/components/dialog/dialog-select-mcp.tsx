@@ -119,7 +119,7 @@ export const DialogSelectMcp: Component = () => {
       title={
         <div class="mcp-dialog-title">
           <span class="mcp-dialog-icon" aria-hidden="true">
-            <Icon name={getSemanticIcon("connection.mcp")} size="small" />
+            <Icon name={getSemanticIcon("mcp.main")} size="small" />
           </span>
           <span>MCPs</span>
         </div>
@@ -182,7 +182,7 @@ export const DialogSelectMcp: Component = () => {
           fallback={
             <div class="mcp-empty-state">
               <span class="mcp-empty-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon(totalCount() === 0 ? "settings.mcp" : "action.search")} size="normal" />
+                <Icon name={getSemanticIcon(totalCount() === 0 ? "mcp.main" : "action.search")} size="normal" />
               </span>
               <div class="mcp-empty-title">{totalCount() === 0 ? "No MCP servers configured" : "No matches"}</div>
               <div class="mcp-empty-copy">

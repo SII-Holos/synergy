@@ -29,6 +29,7 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "./semantic-icon"
 import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
@@ -36,6 +37,7 @@ import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
+import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
@@ -389,27 +391,27 @@ function displayItemVisualKind(
   return timelineVisualKind(item)
 }
 
-function originIconName(origin: { type: string; label?: string; detail?: string } | undefined): string {
-  if (!origin || !origin.type) return "message-square"
+function originIconToken(origin: { type: string; label?: string; detail?: string } | undefined): SemanticIconTokenName {
+  if (!origin || !origin.type) return "session.default"
   switch (origin.type) {
     case "cortex":
-      return "bot"
+      return "cortex.main"
     case "agenda":
-      return "calendar-days"
+      return "session.background"
     case "blueprint":
-      return "clipboard-list"
+      return "blueprint.main"
     case "channel":
-      return "message-circle"
+      return "channels.main"
     case "agent":
-      return "corner-down-left"
+      return "prompt.submit"
     case "compaction":
-      return "archive"
+      return "settings.compaction"
     case "plugin":
-      return "puzzle"
+      return "plugins.main"
     case "system":
-      return "cpu"
+      return "settings.models"
     default:
-      return "bot"
+      return "session.default"
   }
 }
 
@@ -433,7 +435,7 @@ function TimelineDisplay(props: {
     return (
       <div data-slot="session-turn-rewind-wrapper">
         <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
-          <Icon name={originIconName(props.item.message.origin)} size="small" />
+          <Icon name={getSemanticIcon(originIconToken(props.item.message.origin))} size="small" />
           <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
         </div>
         <button
@@ -445,7 +447,7 @@ function TimelineDisplay(props: {
           }}
           title="Rewind to before this message"
         >
-          <Icon name="undo-2" size="small" />
+          <Icon name={getSemanticIcon("session.rewind")} size="small" />
           <span>Rewind</span>
         </button>
       </div>
@@ -484,7 +486,7 @@ function MailboxSourceBadge(props: { message: UserMessage }) {
 
   return (
     <div data-slot="session-turn-mailbox-source">
-      <Icon name="message-square" size="small" />
+      <Icon name={getSemanticIcon("session.inbox")} size="small" />
       <span>
         From{" "}
         <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
@@ -696,6 +698,37 @@ export function SessionTurn(
     const lastTool = items.findLastIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
     return { firstReasoning, lastReasoning, firstTool, lastTool }
   })
+
+  const markdownText = createMemo(() => {
+    const last = lastAssistantMessage()
+    if (!last) return ""
+    const parts = data.store.part[last.id]
+    if (!parts) return ""
+    const texts: string[] = []
+    for (const part of parts) {
+      if (part.type !== "text") continue
+      const textPart = part as TextPart
+      if (textPart.synthetic || textPart.origin === "system") continue
+      const text = textPart.text?.trim()
+      if (text) texts.push(text)
+    }
+    return texts.join("\n\n")
+  })
+
+  const assistantTimestamp = createMemo(() => {
+    const last = lastAssistantMessage()
+    if (!last?.time.completed) return undefined
+    const date = new Date(last.time.completed)
+    const hours = date.getHours().toString().padStart(2, "0")
+    const minutes = date.getMinutes().toString().padStart(2, "0")
+    return `${hours}:${minutes}`
+  })
+  const copyController = createCopyController({
+    text: markdownText,
+    copyLabel: "Copy Markdown",
+    copiedLabel: "Copied!",
+    failureDescription: "Unable to copy the message.",
+  })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
   )
@@ -807,7 +840,7 @@ export function SessionTurn(
                             }}
                             title="Rewind to before this message"
                           >
-                            <Icon name="undo-2" size="small" />
+                            <Icon name={getSemanticIcon("session.rewind")} size="small" />
                             <span>Rewind</span>
                           </button>
                         </Show>
@@ -926,6 +959,30 @@ export function SessionTurn(
                               Show more changes ({(msg().summary?.diffs?.length ?? 0) - store.diffLimit})
                             </Button>
                           </Show>
+                        </Show>
+                        <Show when={!working() && markdownText()}>
+                          <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
+                            <div data-slot="assistant-message-meta">
+                              <Show keyed when={assistantTimestamp()}>
+                                {(value) => <span data-slot="assistant-message-time">{value}</span>}
+                              </Show>
+                              <button
+                                type="button"
+                                data-slot="assistant-message-copy"
+                                data-copy-state={copyController.state()}
+                                aria-label={copyController.tooltip()}
+                                disabled={copyController.disabled()}
+                                onClick={() => void copyController.copy()}
+                              >
+                                <Icon
+                                  name={
+                                    copyController.copied() ? getSemanticIcon("state.success") : copyController.icon()
+                                  }
+                                  size="small"
+                                />
+                              </button>
+                            </div>
+                          </div>
                         </Show>
                       </div>
                     </Show>

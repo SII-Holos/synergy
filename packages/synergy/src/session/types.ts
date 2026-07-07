@@ -6,6 +6,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
+import { CortexTypes } from "@/cortex/types"
 
 // Workspace metadata intentionally allows extra fields so future workspace
 // implementations can carry type-specific data without breaking old sessions.
@@ -48,12 +49,11 @@ const CortexDelegationInfoInner = z.object({
       modelID: z.string(),
     })
     .optional(),
-  result: z.string().optional(),
   error: z.string().optional(),
   visibility: z.enum(["visible", "hidden"]).optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
-  output: z.any().optional(),
-  outputResult: z.any().optional(),
+  outputConfig: CortexTypes.OutputConfig.optional(),
+  output: CortexTypes.TaskOutput.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
@@ -204,6 +204,13 @@ export const Info = z
           loopID: z.string().optional(),
           loopRole: z.enum(["execution", "audit"]).optional(),
           planMode: z.boolean().optional(),
+        })
+        .optional(),
+      lattice: z
+        .object({
+          runID: z.string(),
+          mode: z.enum(["auto", "collaborative"]),
+          firstBlueprintStarted: z.boolean().optional(),
         })
         .optional(),
     }),

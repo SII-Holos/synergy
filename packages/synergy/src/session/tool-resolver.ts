@@ -864,8 +864,11 @@ export namespace ToolResolver {
 
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
-    if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
+    if (session?.blueprint?.planMode || session?.blueprint?.loopID || session?.lattice) {
       result.add("note")
+    }
+    if (session?.interaction?.source === "chronicler") {
+      result.add("memory")
     }
     return result
   }

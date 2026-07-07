@@ -3,6 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session, SessionStatus, PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type ChildStore = {
   session_status: { [sessionID: string]: SessionStatus }
@@ -186,7 +187,7 @@ function ActiveCard(props: {
       <div class="flex items-center justify-between mt-auto pt-2">
         <span class="text-10-regular text-text-weak">{relativeTime(updatedAt())}</span>
         <Show when={isPinned()}>
-          <Icon name="pin" size="small" class="text-text-weaker size-3" />
+          <Icon name={getSemanticIcon("action.pin")} size="small" class="text-text-weaker size-3" />
         </Show>
       </div>
     </div>

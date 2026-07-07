@@ -7,6 +7,7 @@ import { relativeTime } from "@/utils/time"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 import "./global-search-modal.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type SessionItem = NonNullable<GlobalSessionSearchResponse["data"]>[number]
 
@@ -123,7 +124,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
       <div class="gsm-overlay" onClick={props.onClose} />
       <div ref={containerRef} class="gsm-container" onKeyDown={handleKeyDown}>
         <div class="gsm-search-bar">
-          <Icon name="search" size="large" class="gsm-search-icon" />
+          <Icon name={getSemanticIcon("action.search")} size="large" class="gsm-search-icon" />
           <input
             ref={inputRef}
             type="text"
@@ -136,13 +137,13 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
             <div class="gsm-spinner" />
           </Show>
           <button type="button" class="gsm-close-btn" onClick={props.onClose}>
-            <Icon name="x" size="small" />
+            <Icon name={getSemanticIcon("action.close")} size="small" />
           </button>
         </div>
         <div class="gsm-results">
           <Show when={!loading() && groupedResults().length === 0}>
             <div class="gsm-empty">
-              <Icon name="search" size="large" class="text-icon-weak" />
+              <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak" />
               <span class="text-13-medium text-text-weak">
                 {query().length > 0 ? `No sessions matching "${query()}"` : "No sessions found"}
               </span>
@@ -160,7 +161,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
                 onClick={() => handleSelect(item)}
               >
                 <div class="gsm-item-icon">
-                  <Icon name="file-text" size="normal" />
+                  <Icon name={getSemanticIcon("settings.commands")} size="normal" />
                 </div>
                 <div class="gsm-item-content">
                   <div class="gsm-item-title">{item.title}</div>

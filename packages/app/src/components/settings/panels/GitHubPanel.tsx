@@ -50,7 +50,7 @@ export function GitHubPanel() {
       <SettingsSection>
         <div class="providers-detail-summary">
           <div class="flex items-center gap-3 min-w-0">
-            <Icon name={getSemanticIcon("settings.github")} class="providers-detail-icon" />
+            <Icon name={getSemanticIcon("github.main")} class="providers-detail-icon" />
             <div class="min-w-0">
               <div class="providers-detail-title">GitHub</div>
               <div class="providers-detail-copy">

@@ -282,8 +282,20 @@
   }
 
   [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {
-    padding-top: 0;
-    padding-bottom: 0;
+    padding: 0;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column-layout"] {
+    justify-content: flex-start;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column"] {
+    flex: 0 1 auto;
+    align-items: flex-start;
   }
 
   [data-slot="session-turn-timeline-item"] > [data-component="text-part"] [data-component="markdown"],
@@ -391,5 +403,70 @@
     &::-webkit-scrollbar {
       display: none;
     }
+  }
+
+  /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
+  [data-slot="assistant-message-meta"] {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    min-height: 18px;
+    color: var(--text-weak);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-x-small);
+    font-weight: var(--font-weight-regular);
+    line-height: 1.2;
+    opacity: 0.54;
+    pointer-events: none;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+
+  [data-slot="assistant-message-time"] {
+    color: var(--text-weak);
+    font-variant-numeric: tabular-nums;
+  }
+
+  [data-slot="assistant-message-copy"] {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--icon-weak-base);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+
+    &:hover {
+      color: var(--icon-base);
+      background: var(--surface-base-hover);
+    }
+
+    &[data-copy-state="copied"] {
+      color: var(--icon-success-base);
+    }
+
+    &[data-copy-state="failed"] {
+      color: var(--icon-critical-base);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-xs-border-focus);
+    }
+  }
+
+  /* Reveal the footer fully when any part of the turn is hovered */
+  [data-slot="session-turn-message-container"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="session-turn-content"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="assistant-message-meta"]:hover {
+    opacity: 1;
+    pointer-events: auto;
   }
 }

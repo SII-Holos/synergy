@@ -136,6 +136,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   dagpatch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   todowrite: entry("orchestration.todo", { stateful: true, auxiliary: true }),
   todoread: entry("orchestration.todo", { auxiliary: true }),
+  pathway_read: entry("orchestration.dag", { auxiliary: true }),
+  pathway_patch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   session_list: entry("orchestration.session"),
   session_read: entry("orchestration.session"),
   session_send: entry("orchestration.session", { stateful: true }),
@@ -196,6 +198,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
+  openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
+  openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
@@ -261,6 +265,11 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(send|notify|message)/i, kind: "communication.deliver" },
   { pattern: /^question/i, kind: "communication.question" },
   // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
+  {
+    pattern: /^(openai[-_])?image[-_](gen|edit)/i,
+    kind: "communication.visual",
+    traits: { externalIO: true, stateful: true },
+  },
   { pattern: /^render/i, kind: "communication.visual" },
   { pattern: /^attach/i, kind: "communication.deliver" },
   { pattern: /^browser_/i, kind: "browser.inspect" },
@@ -321,7 +330,7 @@ export namespace ToolTaxonomy {
     "platform.external": "Tool",
     "communication.question": "Ask",
     "communication.email": "Email",
-    "communication.visual": "Diagram",
+    "communication.visual": "Visual",
     "communication.deliver": "Deliver",
     "browser.navigate": "Navigate",
     "browser.interact": "Interact",

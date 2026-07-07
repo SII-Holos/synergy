@@ -7502,11 +7502,62 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "taskID": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "queued", "running", "completed", "error", "cancelled"]
+                    },
+                    "rendered": {
+                      "type": "string"
+                    },
                     "output": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "summary"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["mode", "value"]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "final_response"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["mode", "value"]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "structured"
+                            },
+                            "value": {}
+                          },
+                          "required": ["mode", "value"]
+                        }
+                      ]
+                    },
+                    "error": {
                       "type": "string"
                     }
                   },
-                  "required": ["output"]
+                  "required": ["taskID", "status", "rendered"]
                 }
               }
             }
@@ -8562,7 +8613,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/RuntimeReloadResult"
                 }
               }
             }
@@ -12270,6 +12321,508 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.session.planMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/session/{id}/mode": {
+      "put": {
+        "operationId": "lattice.session.mode",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle Lattice mode",
+        "description": "Enable (create/continue/restart) or disable (pause) Lattice mode on a session.",
+        "responses": {
+          "200": {
+            "description": "Lattice run or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LatticeRun"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LatticeModeInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.session.mode({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/session/{id}": {
+      "get": {
+        "operationId": "lattice.session.getRun",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get session Lattice run",
+        "description": "Read the session's single Lattice run (or null).",
+        "responses": {
+          "200": {
+            "description": "Lattice run or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LatticeRun"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.session.getRun({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run": {
+      "get": {
+        "operationId": "lattice.run.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List Lattice runs",
+        "description": "List all Lattice runs for the current scope (at most one per session).",
+        "responses": {
+          "200": {
+            "description": "Lattice runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LatticeRun"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}": {
+      "get": {
+        "operationId": "lattice.run.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Lattice run ID"
+          }
+        ],
+        "summary": "Get Lattice run",
+        "responses": {
+          "200": {
+            "description": "Lattice run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}/events": {
+      "get": {
+        "operationId": "lattice.run.events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Lattice run ID"
+          }
+        ],
+        "summary": "List Lattice run events",
+        "responses": {
+          "200": {
+            "description": "Lattice events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LatticeEvent"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.events({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}/continue": {
+      "post": {
+        "operationId": "lattice.run.continue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Lattice run ID"
+          }
+        ],
+        "summary": "Continue a collaborative Blueprint review",
+        "description": "Start the current step's BlueprintLoop (collaborative blueprint_review only).",
+        "responses": {
+          "200": {
+            "description": "Updated run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userPrompt": {
+                    "description": "Optional instruction merged into the loop start",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.continue({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}/cancel": {
+      "post": {
+        "operationId": "lattice.run.cancel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Lattice run ID"
+          }
+        ],
+        "summary": "Cancel a Lattice run",
+        "responses": {
+          "200": {
+            "description": "Cancelled run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.cancel({\n  ...\n})"
           }
         ]
       }
@@ -22557,7 +23110,7 @@
             "type": "string"
           },
           "vision_model": {
-            "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
+            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
             "type": "string"
           },
           "role_variant": {
@@ -23476,6 +24029,64 @@
           "all"
         ]
       },
+      "RuntimeReloadFailure": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["target", "message"]
+      },
+      "RuntimeReloadDiagnostic": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["target", "severity", "message"]
+      },
       "RuntimeReloadResult": {
         "type": "object",
         "properties": {
@@ -23523,6 +24134,24 @@
             "items": {
               "type": "string"
             }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadFailure"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
+            }
           }
         },
         "required": [
@@ -23533,7 +24162,10 @@
           "changedFields",
           "restartRequired",
           "liveApplied",
-          "warnings"
+          "warnings",
+          "failed",
+          "failures",
+          "diagnostics"
         ]
       },
       "RuntimeReloadScope": {
@@ -24139,9 +24771,6 @@
             },
             "required": ["providerID", "modelID"]
           },
-          "result": {
-            "type": "string"
-          },
           "error": {
             "type": "string"
           },
@@ -24158,8 +24787,107 @@
               "type": "boolean"
             }
           },
-          "output": {},
-          "outputResult": {}
+          "outputConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  }
+                },
+                "required": ["mode"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "maxRepairTurns": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": ["mode", "schema"]
+              }
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "value": {}
+                },
+                "required": ["mode", "value"]
+              }
+            ]
+          }
         },
         "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
       },
@@ -24435,6 +25163,22 @@
                 "type": "boolean"
               }
             }
+          },
+          "lattice": {
+            "type": "object",
+            "properties": {
+              "runID": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["auto", "collaborative"]
+              },
+              "firstBlueprintStarted": {
+                "type": "boolean"
+              }
+            },
+            "required": ["runID", "mode"]
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
@@ -26830,9 +27574,6 @@
           "completedAt": {
             "type": "number"
           },
-          "result": {
-            "type": "string"
-          },
           "error": {
             "type": "string"
           },
@@ -26903,7 +27644,7 @@
               "type": "boolean"
             }
           },
-          "output": {
+          "outputConfig": {
             "anyOf": [
               {
                 "type": "object",
@@ -26963,8 +27704,21 @@
               }
             ]
           },
-          "outputResult": {
+          "output": {
             "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
               {
                 "type": "object",
                 "properties": {
@@ -26972,11 +27726,11 @@
                     "type": "string",
                     "const": "final_response"
                   },
-                  "text": {
+                  "value": {
                     "type": "string"
                   }
                 },
-                "required": ["mode", "text"]
+                "required": ["mode", "value"]
               },
               {
                 "type": "object",
@@ -26985,34 +27739,9 @@
                     "type": "string",
                     "const": "structured"
                   },
-                  "status": {
-                    "type": "string",
-                    "enum": ["valid", "invalid"]
-                  },
-                  "source": {
-                    "type": "string",
-                    "enum": ["structured_tool", "final_response"]
-                  },
-                  "data": {},
-                  "text": {
-                    "type": "string"
-                  },
-                  "repairTurns": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "error": {
-                    "type": "string"
-                  },
-                  "validationErrors": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+                  "value": {}
                 },
-                "required": ["mode", "status", "repairTurns"]
+                "required": ["mode", "value"]
               }
             ]
           }
@@ -27486,6 +28215,17 @@
                 },
                 "message": {
                   "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["error", "warning", "info"]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
                 }
               },
               "required": ["path", "name", "message"]
@@ -29099,6 +29839,20 @@
           "loopIndex": {
             "type": "number"
           },
+          "orchestration": {
+            "description": "External orchestrator that owns this loop's lifecycle (e.g. Lattice)",
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "lattice"
+              },
+              "runID": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "runID"]
+          },
           "audit": {
             "type": "object",
             "properties": {
@@ -29221,6 +29975,296 @@
           }
         },
         "required": ["stepCount", "messageCount"]
+      },
+      "LatticeStep": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^lts.*"
+          },
+          "title": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "blueprinting",
+              "reviewing",
+              "running",
+              "completed",
+              "failed",
+              "blocked",
+              "cancelled"
+            ]
+          },
+          "acceptanceCriteria": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blueprintNoteID": {
+            "type": "string"
+          },
+          "blueprintVersion": {
+            "type": "number"
+          },
+          "blueprintLoopID": {
+            "type": "string",
+            "pattern": "^bll.*"
+          },
+          "resultSummary": {
+            "type": "string"
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "resultCommit": {
+            "type": "string"
+          },
+          "worktreeID": {
+            "type": "string"
+          },
+          "addressesFailedStepIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^lts.*"
+            }
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "started": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "title", "objective", "status", "time"]
+      },
+      "LatticeRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ltr.*"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["auto", "collaborative"]
+          },
+          "maxModelCalls": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "modelCallCount": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "paused", "completed", "failed", "cancelled"]
+          },
+          "statusReason": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "initial_planning",
+              "step_blueprinting",
+              "blueprint_review",
+              "blueprint_execution",
+              "result_analysis"
+            ]
+          },
+          "goal": {
+            "type": "string"
+          },
+          "currentStepID": {
+            "type": "string",
+            "pattern": "^lts.*"
+          },
+          "firstBlueprintStarted": {
+            "default": false,
+            "type": "boolean"
+          },
+          "assumptions": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pathway": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LatticeStep"
+            }
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "paused": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "scopeID", "sessionID", "mode", "status", "phase", "time"]
+      },
+      "LatticeModeInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable or disable Lattice mode for the session",
+            "type": "boolean"
+          },
+          "mode": {
+            "description": "Lattice mode (default auto)",
+            "type": "string",
+            "enum": ["auto", "collaborative"]
+          },
+          "max_model_calls": {
+            "description": "Model-call budget (0 = unlimited). Not Pathway steps.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "goal": {
+            "description": "High-level goal for the run",
+            "type": "string"
+          },
+          "action": {
+            "description": "Resume a paused run or restart it",
+            "type": "string",
+            "enum": ["continue", "restart"]
+          }
+        },
+        "required": ["enabled"]
+      },
+      "LatticeEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^lte.*"
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^ltr.*"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "run_created",
+              "run_updated",
+              "phase_changed",
+              "step_added",
+              "step_updated",
+              "step_blueprint_bound",
+              "step_started",
+              "step_completed",
+              "step_failed",
+              "step_cancelled",
+              "loop_cancelled",
+              "run_paused",
+              "run_resumed",
+              "run_completed",
+              "run_failed",
+              "run_cancelled",
+              "budget_exhausted"
+            ]
+          },
+          "stepID": {
+            "type": "string",
+            "pattern": "^lts.*"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "initial_planning",
+              "step_blueprinting",
+              "blueprint_review",
+              "blueprint_execution",
+              "result_analysis"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": ["id", "runID", "scopeID", "sessionID", "kind", "time"]
       },
       "AssetInfo": {
         "type": "object",
@@ -32382,6 +33426,63 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.lattice.run.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.run.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.event.appended": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.event.appended"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "event": {
+                "$ref": "#/components/schemas/LatticeEvent"
+              }
+            },
+            "required": ["event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.agenda.item.created": {
         "type": "object",
         "properties": {
@@ -33064,6 +34165,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.event.appended"
           },
           {
             "$ref": "#/components/schemas/Event.agenda.item.created"

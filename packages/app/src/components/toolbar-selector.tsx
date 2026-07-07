@@ -1,6 +1,7 @@
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { createSignal, type JSX } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function ToolbarSelectorPopover(props: {
   trigger: JSX.Element
@@ -35,7 +36,7 @@ export function ToolbarSelectorTrigger(props: { icon: IconName; label: string })
     >
       <Icon name={props.icon} size="small" class="text-icon-base" />
       <span>{props.label}</span>
-      <Icon name="chevron-down" size="small" class="text-icon-weak" />
+      <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="text-icon-weak" />
     </button>
   )
 }

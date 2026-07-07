@@ -17,7 +17,7 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
 
-const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
+const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
 
 ToolRegistry.register({
   name: "read",
@@ -1639,7 +1639,11 @@ ToolRegistry.register({
         <div data-component="tool-output" data-scrollable>
           <Show
             when={lines().length > 0}
-            fallback={<Show when={props.output}>{(output) => <ToolTextOutput text={output()} />}</Show>}
+            fallback={
+              <Show keyed when={props.output}>
+                {(output) => <ToolTextOutput text={output} />}
+              </Show>
+            }
           >
             <div class="flex flex-col gap-1.5 text-12-regular text-text-subtle">
               <For each={lines()}>{(line) => <div>{line}</div>}</For>
@@ -1668,18 +1672,69 @@ ToolRegistry.register({
         }}
       >
         <Show
+          keyed
           when={html()}
           fallback={
-            <Show when={props.output}>
+            <Show keyed when={props.output}>
               {(output) => (
                 <div data-component="tool-output">
-                  <ToolTextOutput text={output()} />
+                  <ToolTextOutput text={output} />
                 </div>
               )}
             </Show>
           }
         >
-          {(content) => <RenderHtml html={content()} />}
+          {(content) => <RenderHtml html={content} />}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "openai_image_gen",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "image",
+          title: "Generate Image",
+          subtitlePath: (props.input.output_path as string | undefined) ?? undefined,
+          tags: props.input.quality ? [{ label: props.input.quality as string }] : undefined,
+        }}
+      >
+        <Show keyed when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "openai_image_edit",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "image",
+          title: "Edit Image",
+          subtitlePath: (props.input.output_path as string | undefined) ?? undefined,
+          tags: props.input.quality ? [{ label: props.input.quality as string }] : undefined,
+        }}
+      >
+        <Show keyed when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output} />
+            </div>
+          )}
         </Show>
       </BasicTool>
     )

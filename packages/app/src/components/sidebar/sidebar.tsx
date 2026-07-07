@@ -357,7 +357,7 @@ export function Sidebar(props: SidebarProps) {
                   class="sb-collapsed-logo"
                   draggable={false}
                 />
-                <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
+                <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
@@ -369,7 +369,7 @@ export function Sidebar(props: SidebarProps) {
           <div class="sb-header-actions">
             <Tooltip value="Search sessions" placement="right">
               <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
-                <Icon name="search" size="normal" />
+                <Icon name={getSemanticIcon("action.search")} size="normal" />
               </button>
             </Tooltip>
             <Tooltip value="Collapse sidebar" placement="right">
@@ -379,7 +379,7 @@ export function Sidebar(props: SidebarProps) {
                 aria-label="Collapse sidebar"
                 onClick={() => layout.sidebar.toggle()}
               >
-                <Icon name="panel-left-close" size="normal" />
+                <Icon name={getSemanticIcon("app.sidebar.close")} size="normal" />
               </button>
             </Tooltip>
           </div>
@@ -409,7 +409,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => navigate("/agenda")}
           >
-            <Icon name="clock" size="normal" />
+            <Icon name={getSemanticIcon("agenda.main")} size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Agenda</span>
             </Show>
@@ -424,7 +424,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => navigate("/library")}
           >
-            <Icon name="book-open" size="normal" />
+            <Icon name={getSemanticIcon("library.main")} size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Library</span>
             </Show>
@@ -439,7 +439,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => navigate("/performance")}
           >
-            <Icon name={getSemanticIcon("perf.dashboard")} size="normal" />
+            <Icon name={getSemanticIcon("performance.main")} size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Performance</span>
             </Show>
@@ -454,7 +454,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => navigate("/plugins/marketplace")}
           >
-            <Icon name={getSemanticIcon("app.plugins")} size="normal" />
+            <Icon name={getSemanticIcon("plugins.main")} size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Plugins</span>
             </Show>
@@ -495,7 +495,7 @@ export function Sidebar(props: SidebarProps) {
                 }}
                 onClick={() => setProjectsFlyoutOpen((v) => !v)}
               >
-                <Icon name="folder-plus" size="normal" />
+                <Icon name={getSemanticIcon("workspace.add")} size="normal" />
               </button>
             </Tooltip>
           </div>
@@ -652,7 +652,7 @@ export function Sidebar(props: SidebarProps) {
                       aria-label="Collapse all projects"
                       onClick={(e) => handleCollapseAllProjects(e)}
                     >
-                      <Icon name="list-collapse" size="small" />
+                      <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
                     </button>
                   </Tooltip>
                 </Show>
@@ -665,7 +665,7 @@ export function Sidebar(props: SidebarProps) {
                       handleAddProject()
                     }}
                   >
-                    <Icon name="plus" size="small" />
+                    <Icon name={getSemanticIcon("action.add")} size="small" />
                   </button>
                 </Tooltip>
               </div>
@@ -724,7 +724,7 @@ export function Sidebar(props: SidebarProps) {
                       handleProjectClick(scope.worktree)
                     }}
                   >
-                    <Icon name="folder" size="small" />
+                    <Icon name={getSemanticIcon("workspace.main")} size="small" />
                     <span class="sb-flyout-project-name">{getScopeLabel(scope)}</span>
                   </button>
                   <SidebarSessionList
@@ -864,7 +864,7 @@ function SidebarProjectGroup(props: {
               if (scope) props.onProjectClick(scope.worktree)
             }}
           >
-            <Icon name="folder" size="normal" class="sb-project-folder" />
+            <Icon name={getSemanticIcon("workspace.main")} size="normal" class="sb-project-folder" />
             <span class="sb-project-name">{props.scope() ? getScopeLabel(props.scope()!) : ""}</span>
           </button>
           <div class="sb-project-actions">
@@ -879,7 +879,7 @@ function SidebarProjectGroup(props: {
                 setMenuOpen((value) => !value)
               }}
             >
-              <Icon name="ellipsis" size="small" />
+              <Icon name={getSemanticIcon("action.more")} size="small" />
             </button>
             <button
               type="button"
@@ -889,14 +889,14 @@ function SidebarProjectGroup(props: {
                 if (scope) props.onProjectPlus(event, scope)
               }}
             >
-              <Icon name="square-pen" size="small" />
+              <Icon name={getSemanticIcon("notes.create")} size="small" />
             </button>
             <Show when={menuOpen()}>
               <>
                 <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
                 <div class="sb-project-menu">
                   <button type="button" class="sb-menu-item" disabled>
-                    <Icon name="pin" size="small" />
+                    <Icon name={getSemanticIcon("action.pin")} size="small" />
                     <span>Pin</span>
                     <span class="sb-menu-disabled-label">Coming soon</span>
                   </button>
@@ -908,7 +908,7 @@ function SidebarProjectGroup(props: {
                       if (scope) props.onProjectEdit(event, scope)
                     }}
                   >
-                    <Icon name="pencil" size="small" />
+                    <Icon name={getSemanticIcon("action.rename")} size="small" />
                     <span>Edit</span>
                   </button>
                   <button
@@ -919,7 +919,7 @@ function SidebarProjectGroup(props: {
                       if (scope) props.onProjectArchive(event, scope)
                     }}
                   >
-                    <Icon name="trash-2" size="small" />
+                    <Icon name={getSemanticIcon("action.remove")} size="small" />
                     <span>Archive</span>
                   </button>
                 </div>
@@ -1407,7 +1407,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <div class="sidebar-account-section-label">Holos Connection</div>
               <div class="sidebar-holos-status-panel">
                 <div class="sidebar-holos-status-row">
-                  <Icon name={getSemanticIcon("connection.holos")} size="small" />
+                  <Icon name={getSemanticIcon("holos.main")} size="small" />
                   <span>Login</span>
                   <span
                     class="sidebar-account-menuStatus"
@@ -1417,7 +1417,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   </span>
                 </div>
                 <div class="sidebar-holos-status-row">
-                  <Icon name={getSemanticIcon("settings.providers")} size="small" />
+                  <Icon name={getSemanticIcon("providers.main")} size="small" />
                   <span>Service</span>
                   <span class="sidebar-account-menuStatus" data-tone={connectionTone()}>
                     {holosMenuRightLabel()}
@@ -1479,11 +1479,11 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   role="menuitem"
                   onClick={() => openSettings("providers")}
                 >
-                  <Icon name={getSemanticIcon("settings.providers")} size="small" />
+                  <Icon name={getSemanticIcon("providers.main")} size="small" />
                   <span>Providers</span>
                 </button>
                 <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
-                  <Icon name={getSemanticIcon("account.repository")} size="small" />
+                  <Icon name={getSemanticIcon("github.main")} size="small" />
                   <span>Repository</span>
                   <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
                 </button>
@@ -1520,7 +1520,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               role="menuitem"
               onClick={() => openSettings("providers")}
             >
-              <Icon name={getSemanticIcon("settings.providers")} size="small" />
+              <Icon name={getSemanticIcon("providers.main")} size="small" />
               <span>Providers</span>
             </button>
             <button
@@ -1533,7 +1533,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <span>Usage</span>
             </button>
             <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
-              <Icon name={getSemanticIcon("account.repository")} size="small" />
+              <Icon name={getSemanticIcon("github.main")} size="small" />
               <span>Repository</span>
               <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
             </button>

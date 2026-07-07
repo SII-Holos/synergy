@@ -7,6 +7,7 @@ import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { useData } from "@ericsanchezok/synergy-ui/context"
 import { ToolRegistry, getToolInfo } from "@ericsanchezok/synergy-ui/message-part"
 import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface PermissionDockProps {
   sessionID: string
@@ -158,7 +159,11 @@ export function PermissionDock(props: PermissionDockProps) {
 
                 <div class="flex items-center justify-between gap-3">
                   <div class="flex items-center gap-2 min-w-0 flex-1">
-                    <Icon name="shield-alert" size="small" class="shrink-0 text-icon-warning-base" />
+                    <Icon
+                      name={getSemanticIcon("settings.permissions")}
+                      size="small"
+                      class="shrink-0 text-icon-warning-base"
+                    />
                     <span class="text-14-medium text-text-strong truncate">{permissionLabel()}</span>
                     <Show when={item().origin === "child"}>
                       <span class="text-12-regular text-text-subtle shrink-0">
@@ -187,7 +192,7 @@ export function PermissionDock(props: PermissionDockProps) {
                 <Show when={riskReason()}>
                   {(reason) => (
                     <div class="flex items-center gap-1.5 text-12-regular text-text-weak">
-                      <Icon name="alert-triangle" size="small" class="shrink-0 text-icon-subtle" />
+                      <Icon name={getSemanticIcon("state.warning")} size="small" class="shrink-0 text-icon-subtle" />
                       <span>{reason()}</span>
                     </div>
                   )}

@@ -150,6 +150,7 @@ New-session initialization must use a blocking workbench progress surface whenev
 Session Inbox should read as a transient queue surface, not a debug overlay. Use explicit text actions for queue promotion, keep destructive actions behind secondary menus plus confirmation, make after-turn batching visible as one reply cycle, and let inbox items fill the popover width with quiet row rhythm instead of nested icon-heavy cards.
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
+Product UI icons must use semantic tokens rather than raw Lucide literals. Each built-in glyph should express one user-facing concept; raw icon literals belong only inside base controls, tool-card/icon registry plumbing, file-type icons, or plugin-provided icon paths.
 
 Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the organization and platform behind Synergy, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks may identify the backing organization/platform layer in the app shell and account surfaces, and SII marks should only identify the institute layer.
 

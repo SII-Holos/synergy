@@ -32,7 +32,7 @@ export function McpCard(props: {
           onClick={() => setExpanded((value) => !value)}
         >
           <span class="settings-mcp-icon">
-            <Icon name={getSemanticIcon("settings.mcp")} size="small" />
+            <Icon name={getSemanticIcon("mcp.main")} size="small" />
           </span>
           <span class="settings-mcp-summary-copy">
             <span class="settings-mcp-title-row">

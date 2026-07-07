@@ -39,7 +39,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("orchestration.dag"),
+          icon: getSemanticIcon("dag.main"),
           title: "DAG",
           subtitle: firstReady() || "",
           tags: ratio() ? [{ label: ratio() }] : undefined,
@@ -72,7 +72,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("orchestration.dag"),
+          icon: getSemanticIcon("dag.main"),
           title: "DAG",
           subtitle: "updated",
           tags: ratio() ? [{ label: ratio() }] : undefined,
@@ -105,7 +105,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("orchestration.dag"),
+          icon: getSemanticIcon("dag.main"),
           title: "Read DAG",
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}

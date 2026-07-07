@@ -87,7 +87,7 @@ const ACTION_GROUPS: QuickActionGroup[] = [
     actions: [
       {
         type: "runtime",
-        icon: "command.note",
+        icon: "notes.main",
         label: "Note",
         description: "Write or update a project note",
         command: "note",

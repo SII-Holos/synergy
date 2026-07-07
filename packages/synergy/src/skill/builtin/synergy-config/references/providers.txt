@@ -397,7 +397,7 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 
 ### Cloudflare AI Gateway
 - Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` env vars.
-- Uses the `cf-aig-authorization` header.
+- Auth uses `CLOUDFLARE_API_TOKEN` (API token) as `cf-aig-authorization` header.
 
 ### OpenRouter / Vercel
 - Adds `HTTP-Referer` and `X-Title` headers automatically.

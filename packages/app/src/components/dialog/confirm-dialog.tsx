@@ -7,6 +7,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { ConfirmTone } from "./confirm-copy"
 import "./confirm-dialog.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type { ConfirmTone } from "./confirm-copy"
 
@@ -61,7 +62,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
             if (!pending()) dialog.close()
           }}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       }
     >

@@ -1282,6 +1282,124 @@ async function migrateSessionCompletionNotice(progress: (current: number, total:
   log.info("session completion notice migration complete", { total: tasks.length, changed, scopes: changedScopes.size })
 }
 
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function legacyCortexOutputConfig(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value)
+  if (!record) return undefined
+  if ("value" in record) return undefined
+  const mode = record.mode
+  if (mode === undefined || mode === "summary" || mode === "final_response") return record
+  if (mode === "structured" && asRecord(record.schema)) return record
+  return undefined
+}
+
+function cortexTaskOutput(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value)
+  if (!record || !("value" in record)) return undefined
+  const mode = record.mode
+  if (mode === "summary" && typeof record.value === "string") return record
+  if (mode === "final_response" && typeof record.value === "string") return record
+  if (mode === "structured") return record
+  return undefined
+}
+
+function legacyStructuredOutputError(outputResult: Record<string, unknown>): string {
+  const error = asString(outputResult.error)
+  if (error) return error
+  const validationErrors = Array.isArray(outputResult.validationErrors)
+    ? outputResult.validationErrors.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : []
+  if (validationErrors.length > 0) return `Structured output validation failed: ${validationErrors.join("; ")}`
+  return "Structured output validation failed"
+}
+
+function migrateCortexOutputContract(cortex: Record<string, unknown>): {
+  changed: boolean
+  cortex: Record<string, unknown>
+} {
+  const next = { ...cortex }
+  const oldOutputConfig = legacyCortexOutputConfig(cortex.output)
+  const oldOutputResult = asRecord(cortex.outputResult)
+  const oldResult = asOptionalString(cortex.result)
+  let output = cortexTaskOutput(cortex.output)
+  let structuredInvalid = false
+
+  if (oldOutputResult) {
+    if (oldOutputResult.mode === "structured") {
+      if (oldOutputResult.status === "valid" || oldOutputResult.valid === true) {
+        output = { mode: "structured", value: oldOutputResult.data }
+      } else {
+        output = undefined
+        structuredInvalid = true
+        next.status = "error"
+        next.error = legacyStructuredOutputError(oldOutputResult)
+      }
+    } else if (oldOutputResult.mode === "final_response") {
+      output = { mode: "final_response", value: asOptionalString(oldOutputResult.text) ?? "" }
+    }
+  }
+
+  if (!output && !structuredInvalid && oldResult !== undefined) {
+    output = { mode: "summary", value: oldResult }
+  }
+
+  delete next.result
+  delete next.outputResult
+  delete next.output
+
+  if (next.outputConfig === undefined && oldOutputConfig) {
+    next.outputConfig = oldOutputConfig
+  }
+  if (output) {
+    next.output = output
+  }
+
+  return {
+    changed: JSON.stringify(next) !== JSON.stringify(cortex),
+    cortex: next,
+  }
+}
+
+async function migrateCortexTaskOutputContract(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
+  const allScopeIDs = Array.from(new Set(["home", ...scopeIDs]))
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of allScopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const info = await Storage.read<any>(StoragePath.sessionInfo(scope, sid)).catch(() => undefined)
+    const cortex = asRecord(info?.cortex)
+    if (info && cortex) {
+      const migrated = migrateCortexOutputContract(cortex)
+      if (migrated.changed) {
+        await Storage.write(StoragePath.sessionInfo(scope, sid), {
+          ...info,
+          cortex: migrated.cortex,
+        })
+        changed++
+      }
+    }
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("cortex task output contract migration complete", { total: tasks.length, changed })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -1824,6 +1942,13 @@ export const migrations: Migration[] = [
         progress(done, allScopeIDs.length)
       }
       log.info("session nav channel fields backfill complete", { scopes: allScopeIDs.length })
+    },
+  },
+  {
+    id: "20260707-cortex-task-output-contract",
+    description: "Migrate Cortex task metadata to outputConfig/output contract and remove legacy output fields",
+    async up(progress) {
+      await migrateCortexTaskOutputContract(progress)
     },
   },
 ]

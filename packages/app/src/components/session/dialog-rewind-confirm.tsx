@@ -8,6 +8,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import "./dialog-rewind-confirm.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface DialogRewindConfirmProps {
   /** The target user message to rewind to (cut = this message and everything after) */
@@ -140,7 +141,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
             if (!state.pending) dialog.close()
           }}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       }
     >

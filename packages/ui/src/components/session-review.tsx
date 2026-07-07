@@ -11,6 +11,7 @@ import { For, Match, Show, Switch, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type FileDiff } from "@ericsanchezok/synergy-sdk"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import { getSemanticIcon } from "./semantic-icon"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -115,7 +116,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                                 props.onViewFile?.(diff.file)
                               }}
                             >
-                              <Icon name="eye" size="small" />
+                              <Icon name={getSemanticIcon("action.view")} size="small" />
                             </button>
                           </Show>
                         </div>

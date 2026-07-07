@@ -3,6 +3,7 @@ import { Popover } from "@kobalte/core/popover"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import "./session-resonance-popover.css"
+import { getSemanticIcon } from "./semantic-icon"
 
 export interface InjectedContext {
   memory?: string
@@ -86,7 +87,7 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
         title="Resonance"
         onClick={(e: MouseEvent) => e.stopPropagation()}
       >
-        <Icon name="brain" size="small" />
+        <Icon name={getSemanticIcon("memory.main")} size="small" />
         <Show when={hasContent()}>
           <span data-slot="resonance-trigger-count">{totalCount()}</span>
         </Show>
@@ -108,7 +109,7 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
                 </button>
               </Show>
               <Popover.CloseButton data-slot="resonance-close">
-                <Icon name="x" size="small" />
+                <Icon name={getSemanticIcon("action.close")} size="small" />
               </Popover.CloseButton>
             </div>
           </div>

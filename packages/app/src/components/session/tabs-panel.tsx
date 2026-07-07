@@ -20,6 +20,7 @@ import { SessionReviewTab } from "./session-review-tab"
 import { SortableTab, FileVisual } from "./session-sortable-tab"
 import { DialogSelectFile } from "@/components/dialog"
 import { FileTabContent } from "./file-tab-content"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface TabsPanelProps {
   activeTab: () => string
@@ -83,7 +84,11 @@ export function TabsPanel(props: TabsPanelProps) {
                     value="context"
                     closeButton={
                       <Tooltip value="Close tab" placement="bottom">
-                        <IconButton icon="x" variant="ghost" onClick={() => props.tabs().close("context")} />
+                        <IconButton
+                          icon={getSemanticIcon("action.close")}
+                          variant="ghost"
+                          onClick={() => props.tabs().close("context")}
+                        />
                       </Tooltip>
                     }
                     hideCloseButton
@@ -106,7 +111,7 @@ export function TabsPanel(props: TabsPanelProps) {
             <div class="shrink-0 flex items-center justify-center h-full px-1">
               <TooltipKeybind title="Open file" keybind={props.command.keybind("file.open")} placement="left">
                 <IconButton
-                  icon="plus"
+                  icon={getSemanticIcon("action.add")}
                   variant="ghost"
                   class="!size-7 !rounded-lg"
                   iconSize="normal"
@@ -170,12 +175,14 @@ export function TabsPanel(props: TabsPanelProps) {
           </For>
         </Tabs>
         <DragOverlay>
-          <Show when={props.activeDraggable}>
+          <Show keyed when={props.activeDraggable}>
             {(tab) => {
-              const path = createMemo(() => props.file.pathFromTab(tab()))
+              const path = createMemo(() => props.file.pathFromTab(tab))
               return (
                 <div class="relative px-6 h-12 flex items-center bg-background-stronger border-x border-border-weak-base border-b border-b-transparent">
-                  <Show when={path()}>{(p) => <FileVisual active path={p()} />}</Show>
+                  <Show keyed when={path()}>
+                    {(filePath) => <FileVisual active path={filePath} />}
+                  </Show>
                 </div>
               )
             }}

@@ -61,7 +61,11 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
-import { BlueprintContinuation } from "./blueprint-continuation"
+import { ContinuationKernel } from "./continuation-kernel"
+import { LatticeBridge } from "../lattice/bridge"
+import { LatticeStore } from "../lattice/store"
+import { LatticePrompt } from "../lattice/prompt"
+import { LatticeModelCalls } from "../lattice/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
@@ -180,7 +184,8 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    BlueprintContinuation.init()
+    ContinuationKernel.init()
+    LatticeBridge.init()
     SessionManager.registerRuntime(sessionID)
     const abort = SessionManager.acquire(sessionID)
     if (!abort) {
@@ -197,6 +202,9 @@ export namespace SessionInvoke {
     await using _ = defer(async () => {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
+      if (LatticeModelCalls.peek(sessionID) > 0) {
+        await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
+      }
       await SessionManager.release(sessionID)
     })
 
@@ -361,7 +369,8 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
-          const override = await resolveExternalModelOverride(R.model, adapter.name)
+          const codexNativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
+          const override = codexNativeAuth ? undefined : await resolveExternalModelOverride(R.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
@@ -613,6 +622,14 @@ export namespace SessionInvoke {
           }
         }
 
+        // Layer 2.6: Semi-static — Lattice pathway context (active run only)
+        if (session?.lattice) {
+          const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
+          if (latticeRun && latticeRun.status === "active") {
+            systemParts.push(LatticePrompt.build(session, latticeRun))
+          }
+        }
+
         // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {
           systemParts.push(memoryResult.context)
@@ -741,6 +758,9 @@ export namespace SessionInvoke {
         if (!resolvedTools) break
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
+        // Count LLM calls for an active Lattice run in memory; flushed to the
+        // run at turn boundaries / policy entry (never written per call).
+        if (session?.lattice) LatticeModelCalls.record(sessionID)
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
@@ -1366,9 +1386,9 @@ export namespace SessionInvoke {
   function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
     switch (adapterName) {
       case "codex":
-        config.model = override.model
-        if (override.providerID) config.providerID = override.providerID
-        if (override.baseURL) config.baseURL = override.baseURL
+        // Codex external agent uses the native Codex/ChatGPT authentication path.
+        // It should only be exposed after the openai-codex provider is authenticated,
+        // and must not receive OpenAI-compatible baseURL/API-key overrides.
         break
       case "claude-code":
         config.model = override.model

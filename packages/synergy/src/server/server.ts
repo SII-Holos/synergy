@@ -69,6 +69,7 @@ import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
+import { LatticeRoute } from "./lattice"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
@@ -215,6 +216,8 @@ export namespace Server {
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
       pathname.startsWith("/blueprint/") ||
+      pathname === "/lattice" ||
+      pathname.startsWith("/lattice/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -579,7 +582,12 @@ export namespace Server {
             // identical frames, so the checkpoint throttle is shared correctly.
             const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              const fullData = JSON.stringify(event)
+              let fullData: string | undefined
+              const fullEncoding = () => {
+                if (fullData !== undefined) return fullData
+                fullData = JSON.stringify(event)
+                return fullData
+              }
               // Compute the delta-mode encoding at most once per event (shared
               // across all delta clients) instead of per-client stringify.
               let deltaData: string | undefined
@@ -587,12 +595,12 @@ export namespace Server {
                 if (deltaData !== undefined) return deltaData
                 const dp = wire.deltaPayload(event.payload)
                 deltaData =
-                  dp === event.payload ? fullData : JSON.stringify({ directory: event.directory, payload: dp })
+                  dp === event.payload ? fullEncoding() : JSON.stringify({ directory: event.directory, payload: dp })
                 return deltaData
               }
               for (const [client, mode] of globalEventClients) {
                 try {
-                  client.send(mode === "delta" ? deltaEncoding() : fullData)
+                  client.send(mode === "delta" ? deltaEncoding() : fullEncoding())
                 } catch {
                   globalEventClients.delete(client)
                 }
@@ -600,17 +608,16 @@ export namespace Server {
             }
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
+            const heartbeatData = JSON.stringify({
+              payload: {
+                type: "server.heartbeat",
+                properties: {},
+              },
+            })
             const heartbeat = setInterval(() => {
               for (const client of globalEventClients.keys()) {
                 try {
-                  client.send(
-                    JSON.stringify({
-                      payload: {
-                        type: "server.heartbeat",
-                        properties: {},
-                      },
-                    }),
-                  )
+                  client.send(heartbeatData)
                 } catch {
                   globalEventClients.delete(client)
                 }
@@ -1051,6 +1058,7 @@ export namespace Server {
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)
+        .route("/lattice", LatticeRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)

@@ -117,7 +117,7 @@ function HolosIconButton() {
       trigger={
         <Tooltip placement="top" value={label()}>
           <button type="button" classList={iconButtonClass()}>
-            <Icon name={getSemanticIcon("connection.holos")} size="small" class="translate-y-px" />
+            <Icon name={getSemanticIcon("holos.main")} size="small" class="translate-y-px" />
             <div
               classList={{
                 ...statusDotClass(dot()),
@@ -584,7 +584,10 @@ export function StatusBar() {
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
   const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
-  const branch = createMemo(() => workspaceField(session(), "branch") || sync.data.vcs?.branch)
+  const branch = createMemo(() => {
+    if (isWorktree()) return workspaceField(session(), "branch")
+    return workspaceField(session(), "branch") || sync.data.vcs?.branch
+  })
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
   const retryMessage = createMemo(() => {
@@ -645,20 +648,25 @@ export function StatusBar() {
         <Show when={isWorktree()}>
           <PanelRow>{workspaceName()}</PanelRow>
         </Show>
-        <Show when={branch()}>{(b) => <PanelRow>{b()}</PanelRow>}</Show>
+        <Show keyed when={branch()}>
+          {(currentBranch) => <PanelRow>{currentBranch}</PanelRow>}
+        </Show>
       </PanelSection>
 
       <PanelSection title="Runtime">
         <PanelRow>
           {runtime()}
-          <Show when={status()?.type === "busy" && (status() as Extract<SessionStatus, { type: "busy" }>)?.description}>
-            {(desc) => <span class="text-text-weaker"> · {desc()}</span>}
+          <Show
+            keyed
+            when={status()?.type === "busy" && (status() as Extract<SessionStatus, { type: "busy" }>)?.description}
+          >
+            {(desc) => <span class="text-text-weaker"> · {desc}</span>}
           </Show>
         </PanelRow>
-        <Show when={retryMessage()}>
+        <Show keyed when={retryMessage()}>
           {(message) => (
             <PanelRow>
-              <span class="text-text-critical-base break-words">{message()}</span>
+              <span class="text-text-critical-base break-words">{message}</span>
             </PanelRow>
           )}
         </Show>
@@ -699,7 +707,9 @@ export function StatusBar() {
 
         <Show when={params.dir}>
           <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} />
-          <Show when={branch()}>{(b) => <BranchIconButton branch={b()} />}</Show>
+          <Show keyed when={branch()}>
+            {(currentBranch) => <BranchIconButton branch={currentBranch} />}
+          </Show>
           <RuntimeIconButton status={status()} waiting={waiting()} />
 
           <div class="w-px h-4 bg-border-weak" />

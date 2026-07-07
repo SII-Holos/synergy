@@ -188,7 +188,9 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         <div class="flex gap-4">
           {/* Radar chart — left */}
           <div class="shrink-0" style={{ width: "280px" }}>
-            <Show when={radarData()}>{(data) => <Radar data={data()} options={radarOptions()} />}</Show>
+            <Show keyed when={radarData()}>
+              {(data) => <Radar data={data} options={radarOptions()} />}
+            </Show>
           </div>
 
           {/* Stats column — right */}
@@ -237,7 +239,9 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             Reward Distribution by Dimension
           </div>
           <div class="h-36">
-            <Show when={barData()}>{(data) => <Bar data={data()} options={barOptions()} />}</Show>
+            <Show keyed when={barData()}>
+              {(data) => <Bar data={data} options={barOptions()} />}
+            </Show>
           </div>
           {/* Legend */}
           <div class="flex items-center gap-4 mt-2 text-9-regular text-text-weaker">

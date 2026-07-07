@@ -109,7 +109,7 @@ export const SaveFileTool = Tool.define("save_file", {
         })
         let output = header
         output += diagnostics.output
-        if (runtimeReload) output += `\nRuntime reload applied: ${runtimeReload.executed.join(",")}`
+        if (runtimeReload) output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}`
         if (builtinSourceWarning) output += `\n${builtinSourceWarning}`
 
         return {

@@ -93,7 +93,8 @@ describe("CortexTypes", () => {
         status: "completed" as const,
         startedAt: Date.now(),
         completedAt: Date.now() + 1000,
-        result: "Task completed successfully",
+        outputConfig: { mode: "summary" },
+        output: { mode: "summary", value: "Task completed successfully" },
         notifyParentOnComplete: false,
         progress: {
           toolCalls: 3,
@@ -102,7 +103,7 @@ describe("CortexTypes", () => {
       }
       const result = CortexTypes.Task.parse(task)
       expect(result.category).toBe("visual-engineering")
-      expect(result.result).toBe("Task completed successfully")
+      expect(result.output).toEqual({ mode: "summary", value: "Task completed successfully" })
       expect(result.notifyParentOnComplete).toBe(false)
     })
 
