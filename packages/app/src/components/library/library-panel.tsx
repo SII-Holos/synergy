@@ -5,6 +5,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { AppPanel } from "@/components/app-panel"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, formatBytes } from "./shared"
 import { StatsView, type LibraryStatsSyncHandle } from "./stats/stats-view"
@@ -19,6 +21,7 @@ export function LibraryPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const params = useParams()
+  const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const [view, setView] = createSignal<View>("stats")
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
@@ -89,6 +92,7 @@ export function LibraryPanel() {
   return (
     <AppPanel.Root class="library-workbench">
       <AppPanel.Content>
+        <WorkspaceMobileHeader onClose={onCloseWorkspace} />
         <AppPanel.Header class="library-header">
           <div class="library-header-inner">
             <AppPanel.HeaderRow>

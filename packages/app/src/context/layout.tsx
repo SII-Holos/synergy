@@ -132,6 +132,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         mobileSidebar: {
           opened: false,
         },
+        rightSidebar: {
+          opened: false,
+        },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
         workbenchSurfaces: {} as Record<string, WorkbenchSurfacesLayoutState>,
@@ -1158,6 +1161,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         toggle() {
           setStore("mobileSidebar", "opened", (x) => !x)
+        },
+      },
+      rightSidebar: {
+        opened: createMemo(() => store.rightSidebar?.opened ?? false),
+        show() {
+          setStore("rightSidebar", "opened", true)
+        },
+        hide() {
+          setStore("rightSidebar", "opened", false)
+        },
+        toggle() {
+          setStore("rightSidebar", "opened", (x) => !x)
         },
       },
       view(sessionKey: string) {

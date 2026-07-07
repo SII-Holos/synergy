@@ -480,71 +480,101 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     void togglePlanMode()
   }
 
-  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
-    {
-      id: "context",
-      label: "Context",
-      items: [
-        {
-          id: "files",
-          label: "Add files",
-          description: "Attach files or images",
-          icon: getSemanticIcon("prompt.attach"),
-          onSelect: () => fileInputRef.click(),
-        },
-      ],
-    },
-    {
-      id: "workflow",
-      label: "Workflow",
-      items: [
-        {
-          id: "plan-mode",
-          label: "Plan mode",
-          description: planMode() ? "Planning before execution" : "Ask for an approach first",
-          icon: getSemanticIcon("prompt.plan"),
-          selected: planMode(),
-          ariaDisabled: blueprintModeLocked() || planMode() || latticeActive(),
-          title: blueprintModeLocked()
-            ? "Plan Mode is unavailable while a Blueprint is equipped"
-            : latticeActive()
-              ? "Plan Mode is unavailable while Lattice is active"
-              : planMode()
-                ? "Plan Mode is already enabled"
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
+    const agentSection: PromptAddMenuSection = {
+      id: "agent",
+      label: "Agent",
+      items: local.agent
+        .list()
+        .filter((a) => !a.hidden)
+        .map((agent) => {
+          const visual = getAgentVisual(agent)
+          const disabled = sessionHasMessages() && !!agent.external
+          return {
+            id: `agent-${agent.name}`,
+            label: visual.label,
+            icon: getSemanticIcon("agents.main"),
+            selected: local.agent.current()?.name === agent.name,
+            disabled,
+            tooltip: disabled ? "Create a new session to use this external agent" : undefined,
+            onSelect: () => {
+              if (!disabled) local.agent.set(agent.name)
+            },
+          }
+        }),
+    }
+    return [
+      {
+        id: "context",
+        label: "Context",
+        items: [
+          {
+            id: "files",
+            label: "Add files",
+            description: "Attach files or images",
+            icon: getSemanticIcon("prompt.attach"),
+            onSelect: () => fileInputRef.click(),
+          },
+        ],
+      },
+      ...(props.hideAgentSelector || layout.isDesktop() ? [] : [agentSection]),
+      {
+        id: "workflow",
+        label: "Workflow",
+        items: [
+          {
+            id: "plan-mode",
+            label: "Plan mode",
+            description: planMode() ? "Planning before execution" : "Ask for an approach first",
+            icon: getSemanticIcon("prompt.plan"),
+            selected: planMode(),
+            ariaDisabled: blueprintModeLocked() || planMode() || latticeActive(),
+            title: blueprintModeLocked()
+              ? "Plan Mode is unavailable while a Blueprint is equipped"
+              : latticeActive()
+                ? "Plan Mode is unavailable while Lattice is active"
+                : planMode()
+                  ? "Plan Mode is already enabled"
+                  : undefined,
+            tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
+            iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
+            classList: {
+              "bg-workbench-selected-bg": planMode(),
+              "text-text-base": planMode(),
+              "opacity-60": blueprintModeLocked() || latticeActive(),
+            },
+            onSelect: selectPlanModeFromMenu,
+          },
+          {
+            id: "lattice-mode",
+            label: "Lattice",
+            description: latticeActive() ? "Recursive Blueprint run active" : "Run a goal as a recursive Blueprint",
+            icon: getSemanticIcon("prompt.plan"),
+            selected: latticeActive(),
+            ariaDisabled: !params.id || blueprintModeLocked(),
+            title: !params.id
+              ? "Open a session to use Lattice"
+              : blueprintModeLocked()
+                ? "Lattice is unavailable while a Blueprint is equipped"
                 : undefined,
-          tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
-          iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-          labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
-          classList: {
-            "bg-workbench-selected-bg": planMode(),
-            "text-text-base": planMode(),
-            "opacity-60": blueprintModeLocked() || latticeActive(),
+            iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": latticeActive(),
+              "text-text-base": latticeActive(),
+              "opacity-60": !params.id || blueprintModeLocked(),
+            },
+            onSelect: openLatticeDialog,
           },
-          onSelect: selectPlanModeFromMenu,
-        },
-        {
-          id: "lattice-mode",
-          label: "Lattice",
-          description: latticeActive() ? "Recursive Blueprint run active" : "Run a goal as a recursive Blueprint",
-          icon: getSemanticIcon("prompt.plan"),
-          selected: latticeActive(),
-          ariaDisabled: !params.id || blueprintModeLocked(),
-          title: !params.id
-            ? "Open a session to use Lattice"
-            : blueprintModeLocked()
-              ? "Lattice is unavailable while a Blueprint is equipped"
-              : undefined,
-          iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-          classList: {
-            "bg-workbench-selected-bg": latticeActive(),
-            "text-text-base": latticeActive(),
-            "opacity-60": !params.id || blueprintModeLocked(),
-          },
-          onSelect: openLatticeDialog,
-        },
-      ],
-    },
-  ])
+        ],
+      },
+    ]
+  })
 
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
     if (params.id) return []
@@ -611,10 +641,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
-  })
-  const sessionHasMessages = createMemo(() => {
-    if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
   })
   const cortexRunning = createMemo(() => {
     const id = params.id
@@ -1139,7 +1165,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
-        <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+        <div class="absolute -top-3 right-5 z-20 hidden md:flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
           <QuickActions
             class="relative"
@@ -1304,63 +1330,65 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </Match>
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
-                  <ToolbarSelectorPopover
-                    trigger={
-                      <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
-                        <span class="text-12-medium text-text-base whitespace-nowrap">
-                          {getAgentVisual(local.agent.current()).label}
-                        </span>
-                        <Icon
-                          name={getSemanticIcon("navigation.collapse")}
-                          size="small"
-                          class="text-icon-weak shrink-0"
-                        />
-                      </button>
-                    }
-                    title="Select agent"
-                    contentClass="w-52 max-h-80"
-                    placement="top-start"
-                  >
-                    {(close) => (
-                      <List
-                        class="p-1"
-                        items={local.agent.list().filter((a) => !a.hidden)}
-                        key={(x) => x.name}
-                        filterKeys={["name"]}
-                        onSelect={(x) => {
-                          if (!x) return
-                          if (sessionHasMessages() && x.external) return
-                          local.agent.set(x.name)
-                          close()
-                        }}
-                      >
-                        {(agent) => {
-                          const visual = getAgentVisual(agent)
-                          return (
-                            <Tooltip
-                              placement="right"
-                              value={
-                                sessionHasMessages() && agent.external
-                                  ? "Create a new session to use this external agent"
-                                  : undefined
-                              }
-                            >
-                              <div
-                                classList={{
-                                  "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                                  "opacity-45": sessionHasMessages() && !!agent.external,
-                                }}
+                  <div class="hidden md:block">
+                    <ToolbarSelectorPopover
+                      trigger={
+                        <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
+                          <span class="text-12-medium text-text-base whitespace-nowrap">
+                            {getAgentVisual(local.agent.current()).label}
+                          </span>
+                          <Icon
+                            name={getSemanticIcon("navigation.collapse")}
+                            size="small"
+                            class="text-icon-weak shrink-0"
+                          />
+                        </button>
+                      }
+                      title="Select agent"
+                      contentClass="w-52 max-h-80"
+                      placement="top-start"
+                    >
+                      {(close) => (
+                        <List
+                          class="p-1"
+                          items={local.agent.list().filter((a) => !a.hidden)}
+                          key={(x) => x.name}
+                          filterKeys={["name"]}
+                          onSelect={(x) => {
+                            if (!x) return
+                            if (sessionHasMessages() && x.external) return
+                            local.agent.set(x.name)
+                            close()
+                          }}
+                        >
+                          {(agent) => {
+                            const visual = getAgentVisual(agent)
+                            return (
+                              <Tooltip
+                                placement="right"
+                                value={
+                                  sessionHasMessages() && agent.external
+                                    ? "Create a new session to use this external agent"
+                                    : undefined
+                                }
                               >
-                                <div class="min-w-0">
-                                  <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                                >
+                                  <div class="min-w-0">
+                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                  </div>
                                 </div>
-                              </div>
-                            </Tooltip>
-                          )
-                        }}
-                      </List>
-                    )}
-                  </ToolbarSelectorPopover>
+                              </Tooltip>
+                            )
+                          }}
+                        </List>
+                      )}
+                    </ToolbarSelectorPopover>
+                  </div>
                 </Show>
                 <PermissionModeSelector
                   working={working}

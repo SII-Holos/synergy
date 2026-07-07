@@ -41,7 +41,8 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkbenchPanelsProvider, useWorkbenchPanels } from "@/context/workbench-panels"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
@@ -65,11 +66,7 @@ const handoff = {
 }
 
 export default function Page() {
-  return (
-    <WorkbenchPanelsProvider>
-      <SessionPageContent />
-    </WorkbenchPanelsProvider>
-  )
+  return <SessionPageContent />
 }
 
 function SessionPageContent() {
@@ -929,7 +926,7 @@ function SessionPageContent() {
       <WorkspaceNotesTool />
       <WorkspaceTerminalTool />
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
-        <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+        <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
           {/* Mobile tab bar */}
           <Show when={!isDesktop() && hasReview()}>
             <Tabs class="h-auto">
@@ -1050,7 +1047,7 @@ function SessionPageContent() {
                                   file.load(path)
                                 }}
                                 classes={{
-                                  root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
+                                  root: "pb-4 md:pb-[calc(var(--prompt-height,8rem)+32px)]",
                                   header: "px-4",
                                   container: "px-4",
                                 }}
@@ -1171,8 +1168,19 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show when={isDesktop()}>
+          {/* Desktop side workspace */}
+          <div class="hidden md:block">
             <WorkbenchSurface surface="side" />
+          </div>
+
+          {/* Mobile side workspace overlay */}
+          <Show when={!isDesktop() && sideOpen()}>
+            <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
+              <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
+              <div class="mobile-workbench-overlay relative flex-1 min-h-0">
+                <WorkbenchSurface surface="side" />
+              </div>
+            </div>
           </Show>
         </div>
 

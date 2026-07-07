@@ -383,8 +383,12 @@ function classifyGitHubCommand(words: string[]): BashRisk | null {
     if (subsub === "create") {
       return "shell_remote_publish"
     }
-    // PR updates and communication remain generic remote writes.
-    if (subsub === "edit" || subsub === "ready" || subsub === "comment" || subsub === "review") {
+    // PR communication commands (comment, review) are non-destructive and part of the development workflow.
+    if (subsub === "comment" || subsub === "review") {
+      return "shell_remote_publish"
+    }
+    // PR metadata edits and status transitions remain generic remote writes.
+    if (subsub === "edit" || subsub === "ready") {
       return "shell_remote_write"
     }
     // PR merge/close/reopen terminate or reopen review state and are destructive for automation.
@@ -401,7 +405,12 @@ function classifyGitHubCommand(words: string[]): BashRisk | null {
     if (subsub === "view" || subsub === "list" || subsub === "status") {
       return "shell_read"
     }
-    if (subsub === "create" || subsub === "edit" || subsub === "comment" || subsub === "close" || subsub === "reopen") {
+    // Issue creation and comments are non-destructive communication.
+    if (subsub === "create" || subsub === "comment") {
+      return "shell_remote_publish"
+    }
+    // Issue metadata edits and status transitions remain remote writes.
+    if (subsub === "edit" || subsub === "close" || subsub === "reopen") {
       return "shell_remote_write"
     }
     return "shell_remote_write"

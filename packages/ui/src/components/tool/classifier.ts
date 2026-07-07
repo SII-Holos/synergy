@@ -150,7 +150,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   communication: {
     icon: "mail",
     label: "Send",
-    subtitleKeys: ["to", "target", "subject"],
+    subtitleKeys: ["to", "target", "subject", "output_path", "input_paths", "prompt"],
   },
   skill: {
     icon: "sparkles",
@@ -312,6 +312,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   question: "communication",
   email_send: "communication",
   email_read: "communication",
+  openai_image_gen: "communication",
+  openai_image_edit: "communication",
   diagram: "analyze",
   render: "analyze",
   attach: "communication",
@@ -371,6 +373,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(email|mail)/i, category: "communication" },
   { pattern: /^(send|notify|message)/i, category: "communication" },
   { pattern: /^question/i, category: "communication" },
+  { pattern: /^(openai[-_])?image[-_](gen|edit)/i, category: "communication" },
   { pattern: /^diagram/i, category: "analyze" },
   { pattern: /^attach/i, category: "communication" },
 ]
@@ -379,7 +382,11 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
 
 const INPUT_HEURISTICS: { keys: string[]; writeHint?: string[]; category: SemanticCategory }[] = [
   { keys: ["command", "cmd", "script"], category: "shell" },
-  { keys: ["filePath", "file_path"], writeHint: ["content", "newString", "oldString", "diff"], category: "file-write" },
+  {
+    keys: ["filePath", "file_path", "output_path", "outputPath"],
+    writeHint: ["content", "newString", "oldString", "diff", "prompt", "input_paths"],
+    category: "file-write",
+  },
   { keys: ["filePath", "file_path", "path"], category: "file-read" },
   { keys: ["query", "pattern", "regex", "search"], category: "search" },
   { keys: ["url", "href", "endpoint"], category: "web" },
