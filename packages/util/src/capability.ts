@@ -153,7 +153,8 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     category: "runtime",
     severity: "medium",
     title: "Publish development changes",
-    description: "Can push explicit non-protected branches or create pull requests without destructive remote updates.",
+    description:
+      "Can push explicit non-protected branches, create pull requests, comment on PRs/issues, and create issues without destructive remote updates.",
   },
   shell_destructive: {
     category: "runtime",
