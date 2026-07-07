@@ -63,7 +63,7 @@ describe("resolveSessionVisualState", () => {
   test("uses Home icon only for idle Home sessions", () => {
     const visual = resolveSessionVisualState(store(), entry())
 
-    expect(visual.icon).toBe("home")
+    expect(visual.icon).toBe(getSemanticIcon("navigation.home"))
     expect(visual.tone).toBe("default")
     expect(visual.pulse).toBeUndefined()
   })
@@ -71,7 +71,7 @@ describe("resolveSessionVisualState", () => {
   test("marks idle unread sessions as response ready", () => {
     const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true } }))
 
-    expect(visual.icon).toBe("home")
+    expect(visual.icon).toBe(getSemanticIcon("navigation.home"))
     expect(visual.completionUnread).toBe(true)
     expect(visual.label).toBe("Home session; response ready")
   })
@@ -180,7 +180,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe("scan-eye")
+    expect(visual.icon).toBe(getSemanticIcon("command.review"))
     expect(visual.label).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
@@ -206,7 +206,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe("scan-eye")
+    expect(visual.icon).toBe(getSemanticIcon("command.review"))
     expect(visual.label).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
@@ -220,7 +220,7 @@ describe("resolveSessionVisualState", () => {
       entry(),
     )
 
-    expect(visual.icon).toBe("scan-eye")
+    expect(visual.icon).toBe(getSemanticIcon("command.review"))
     expect(visual.label).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
     expect(visual.pulse).toBe(true)

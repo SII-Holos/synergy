@@ -61,7 +61,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
         return { icon: blueprintIcon, label: "Blueprint waiting for you", tone: "blueprint-waiting", pulse: true }
       if (fullSession.blueprint.loopRole === "audit") {
         return {
-          icon: "scan-eye",
+          icon: getSemanticIcon("command.review"),
           label: "Auditing Blueprint",
           tone: "blueprint-audit",
           pulse: running || childTasksRunning ? true : undefined,
@@ -69,7 +69,12 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
       }
       if (running) return { icon: blueprintIcon, label: "Running Blueprint", tone: "blueprint-running", pulse: true }
       if (childTasksRunning)
-        return { icon: "scan-eye", label: "Auditing Blueprint", tone: "blueprint-audit", pulse: true }
+        return {
+          icon: getSemanticIcon("command.review"),
+          label: "Auditing Blueprint",
+          tone: "blueprint-audit",
+          pulse: true,
+        }
       return { icon: blueprintIcon, label: "Blueprint session", tone: "blueprint" }
     }
     if (waiting)
@@ -112,7 +117,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   }
   if (entry.category === "home") {
     return {
-      icon: "home",
+      icon: getSemanticIcon("navigation.home"),
       label: `Home session${unread ? "; response ready" : ""}`,
       tone: "default",
       completionUnread: unread || undefined,

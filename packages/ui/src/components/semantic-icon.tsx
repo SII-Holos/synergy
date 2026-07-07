@@ -126,6 +126,7 @@ export const SemanticIconToken = {
   "prompt.signal": "signal",
   "prompt.submit": "corner-down-left",
   "prompt.send": "send",
+  "prompt.submitArrow": "arrow-up",
   "prompt.blueprintStart": "circle-play",
 
   // Quick actions and runtime commands

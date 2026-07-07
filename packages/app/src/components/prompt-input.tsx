@@ -1511,7 +1511,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     type="submit"
                     disabled={!canSubmit()}
-                    icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
+                    icon={
+                      working() && !prompt.dirty()
+                        ? getSemanticIcon("action.stop")
+                        : getSemanticIcon("prompt.submitArrow")
+                    }
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />
