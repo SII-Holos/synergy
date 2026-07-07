@@ -22,6 +22,8 @@ import { StartupReporter } from "../cli/startup-reporter"
 import { Installation } from "../global/installation"
 import type { RuntimeMode } from "../plugin-runtime/registry"
 import { resolveInstalledPluginPolicy, type PluginSource } from "./trust"
+import { resolveRuntimeLimits } from "../plugin-runtime/health"
+import { withTimeout } from "../util/timeout"
 import {
   archiveCacheDir,
   assertCanonicalPluginIdentity,
@@ -177,6 +179,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
   }
 
   const candidates: ResolvedLoadCandidate[] = []
+  const defaultStartupTimeoutMs = resolveRuntimeLimits(config.pluginRuntimePolicy?.limits).startupTimeoutMs
   for (const configPath of pluginPaths) {
     log.info("loading plugin", { path: configPath })
     const name = PluginSpec.displayName(configPath)
@@ -187,10 +190,14 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       if (showInstallUI) {
         StartupReporter.active()?.plugin({ name, status: "loaded" })
       }
-      resolved = await resolvePluginSpec(configPath, {
-        cwd: ScopeContext.current.directory,
-        install: !configPath.startsWith("file://"),
-      })
+      resolved = await withPluginStartupTimeout(
+        resolvePluginSpec(configPath, {
+          cwd: ScopeContext.current.directory,
+          install: !configPath.startsWith("file://"),
+        }),
+        defaultStartupTimeoutMs,
+        { name, phase: "resolve" },
+      )
       if (showInstallUI) {
         StartupReporter.active()?.plugin({ name, status: resolved.cached ? "cached" : "installed" })
       }
@@ -229,10 +236,17 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
     const pluginIdFromManifest = resolved.manifest.name
     const lockEntry = lockfile?.plugins[pluginIdFromManifest]
     const source = lockEntry?.source ?? resolved.source
+    const startupTimeoutMs = resolveRuntimeLimits(
+      config.pluginRuntimePolicy?.limits,
+      resolved.manifest.runtime?.resources,
+    ).startupTimeoutMs
 
     try {
       const importUrl = importUrlForEntry(resolved.entryPath, reloadVersion)
-      const mod = await import(importUrl)
+      const mod = await withPluginStartupTimeout(import(importUrl), startupTimeoutMs, {
+        name: pluginIdFromManifest,
+        phase: "import",
+      })
 
       const seen = new Set<PluginDescriptor>()
 
@@ -265,7 +279,10 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
           auth: createAuthStore(pluginId),
           cache: createCacheStore(pluginId),
         }
-        const hooks = await descriptor.init(input)
+        const hooks = await withPluginStartupTimeout(Promise.resolve(descriptor.init(input)), startupTimeoutMs, {
+          name: pluginId,
+          phase: "init",
+        })
         loaded.push({
           id: pluginId,
           name: descriptor.name,
@@ -317,6 +334,16 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
 
   return { loaded, disabled }
 })
+
+async function withPluginStartupTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  input: { name: string; phase: "resolve" | "import" | "init" },
+): Promise<T> {
+  return withTimeout(promise, timeoutMs, {
+    message: `Plugin ${input.phase} timed out after ${timeoutMs}ms: ${input.name}`,
+  })
+}
 
 function recordDisabled(list: DisabledPlugin[], input: Omit<DisabledPlugin, "disabledAt">) {
   const disabled: DisabledPlugin = {

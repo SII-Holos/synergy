@@ -39,18 +39,19 @@ ToolRegistry.register({
         }}
       >
         <Show
+          keyed
           when={doc()}
           fallback={
-            <Show when={props.output}>
+            <Show keyed when={props.output}>
               {(output) => (
                 <div data-component="tool-output">
-                  <ToolTextOutput text={output()} />
+                  <ToolTextOutput text={output} />
                 </div>
               )}
             </Show>
           }
         >
-          {(document) => <DiagramRenderer document={document()} />}
+          {(document) => <DiagramRenderer document={document} />}
         </Show>
       </BasicTool>
     )

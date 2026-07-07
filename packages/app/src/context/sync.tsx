@@ -41,18 +41,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const reconcileCortexFromSession = (session: Session) => {
       const cortex = session.cortex
       if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+      const idx = store.cortex.findIndex((task) => task.sessionID === session.id)
+      if (idx === -1) return
       setStore(
         "cortex",
-        produce((draft) => {
-          const idx = draft.findIndex((task) => task.sessionID === session.id)
-          if (idx === -1) return
-          draft[idx] = {
-            ...draft[idx],
-            status: cortex.status,
-            completedAt: cortex.completedAt ?? draft[idx].completedAt,
-            result: cortex.result ?? draft[idx].result,
-            error: cortex.error ?? draft[idx].error,
-          }
+        idx,
+        reconcile({
+          ...store.cortex[idx],
+          status: cortex.status,
+          completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
+          output: cortex.output ?? store.cortex[idx].output,
+          error: cortex.error ?? store.cortex[idx].error,
         }),
       )
     }

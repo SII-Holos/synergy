@@ -190,6 +190,26 @@ describe.serial("performance observability store", () => {
     expect(operations).toContain("remove")
   })
 
+  test("aggregates high-frequency count metrics before sqlite flush", () => {
+    for (let i = 0; i < 5; i++) {
+      PerformanceMetrics.record({
+        name: "llm.stream.output_chars",
+        value: 3,
+        unit: "count",
+        module: "llm",
+        sessionID: "session_perf_aggregate",
+        messageID: "message_perf_aggregate",
+        labels: { kind: "text" },
+      })
+    }
+    PerformanceStore.flush()
+
+    const rows = PerformanceStore.queryMetrics({ since: 0, names: ["llm.stream.output_chars"] })
+    const matching = rows.filter((row) => row.session_id === "session_perf_aggregate")
+    expect(matching).toHaveLength(1)
+    expect(matching[0].value).toBe(15)
+  })
+
   test("resource sampler records finite process and app IO samples", () => {
     PerformanceResources.addRead(128)
     PerformanceResources.addWrite(256)

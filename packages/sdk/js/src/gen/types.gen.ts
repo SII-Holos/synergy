@@ -3182,14 +3182,38 @@ export type SessionCortexDelegation = {
     providerID: string
     modelID: string
   }
-  result?: string
   error?: string
   visibility?: "visible" | "hidden"
   tools?: {
     [key: string]: boolean
   }
-  output?: unknown
-  outputResult?: unknown
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
 }
 
 export type SessionSuperPlanInfo = {
@@ -4151,7 +4175,6 @@ export type CortexTask = {
   status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
   startedAt: number
   completedAt?: number
-  result?: string
   error?: string
   progress?: {
     toolCalls: number
@@ -4174,7 +4197,7 @@ export type CortexTask = {
   tools?: {
     [key: string]: boolean
   }
-  output?:
+  outputConfig?:
     | {
         mode?: "summary"
       }
@@ -4188,20 +4211,18 @@ export type CortexTask = {
         }
         maxRepairTurns?: 0 | 1 | 2 | 3
       }
-  outputResult?:
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
     | {
         mode: "final_response"
-        text: string
+        value: string
       }
     | {
         mode: "structured"
-        status: "valid" | "invalid"
-        source?: "structured_tool" | "final_response"
-        data?: unknown
-        text?: string
-        repairTurns: number
-        error?: string
-        validationErrors?: Array<string>
+        value: unknown
       }
 }
 
@@ -9682,7 +9703,23 @@ export type CortexOutputResponses = {
    * Task output
    */
   200: {
-    output: string
+    taskID: string
+    status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
+    rendered: string
+    output?:
+      | {
+          mode: "summary"
+          value: string
+        }
+      | {
+          mode: "final_response"
+          value: string
+        }
+      | {
+          mode: "structured"
+          value: unknown
+        }
+    error?: string
   }
 }
 

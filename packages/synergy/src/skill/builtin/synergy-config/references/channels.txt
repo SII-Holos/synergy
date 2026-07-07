@@ -50,6 +50,8 @@ Channels integrate Synergy with external messaging platforms.
 | `appId` | (required) | Feishu app ID |
 | `appSecret` | (required) | Feishu app secret |
 | `domain` | auto | `"feishu"` (China) or `"lark"` (international) |
+| `botOpenId` | (none) | Bot open_id used to verify real @mentions in group chats |
+| `model` | (none) | Model override in `providerID/modelID` format (e.g. `openai/gpt-4o`) |
 | `enabled` | true | Enable this account |
 | `allowDM` | true | Allow direct messages |
 | `allowGroup` | true | Allow group messages |
@@ -69,23 +71,22 @@ Channels integrate Synergy with external messaging platforms.
 
 Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
 
-### Holos channel
+### Holos platform configuration
+
+Holos is configured under `100-holos.jsonc`, not in channels:
 
 ```jsonc
 {
-  "channel": {
-    "holos": {
-      "type": "holos",
-      "apiUrl": "https://www.holosai.io",
-      "wsUrl": "wss://www.holosai.io",
-      "portalUrl": "https://www.holosai.io",
-      "accounts": {
-        "default": { "enabled": true }
-      }
-    }
+  "holos": {
+    "enabled": true,
+    "apiUrl": "https://api.holosai.io",
+    "wsUrl": "wss://api.holosai.io",
+    "portalUrl": "https://www.holosai.io"
   }
 }
 ```
+
+See the Holos domain file (`100-holos.jsonc`) — do not add `type: "holos"` under `channel`.
 
 ### Reload
 
@@ -102,7 +103,7 @@ Channel config belongs only in:
 <project>/.synergy/synergy.d/90-channels.jsonc
 ```
 
-Do not edit model, provider, email, Holos, or runtime domain files when importing or updating channels.
+Holos config belongs in `100-holos.jsonc`, not in channels. Do not edit model, provider, email, or runtime domain files when importing or updating channels.
 
 ---
 

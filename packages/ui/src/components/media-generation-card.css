@@ -68,39 +68,66 @@
 }
 
 [data-slot="media-generation-grid"] {
+  inset: -24px;
   opacity: 0.26;
   background-image: radial-gradient(circle, color-mix(in srgb, var(--text-base) 16%, transparent) 1px, transparent 1px);
   background-position: 0 0;
   background-size: 18px 18px;
   mask-image: linear-gradient(135deg, transparent 0%, black 30%, black 68%, transparent 100%);
+  animation: media-generation-grid-drift 8s linear infinite;
+  will-change: transform;
 }
 
 [data-slot="media-generation-shimmer"] {
-  opacity: 0.16;
+  inset: -30%;
+  opacity: 0.2;
   background:
-    radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--text-base) 8%, transparent) 0 16%, transparent 32%),
+    radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--text-base) 10%, transparent) 0 16%, transparent 32%),
     linear-gradient(
       115deg,
       transparent 0%,
-      color-mix(in srgb, var(--workbench-control-bg, var(--surface-raised-base)) 18%, transparent) 42%,
-      color-mix(in srgb, var(--text-base) 6%, transparent) 54%,
-      transparent 72%
+      transparent 34%,
+      color-mix(in srgb, var(--workbench-control-bg, var(--surface-raised-base)) 24%, transparent) 44%,
+      color-mix(in srgb, var(--text-base) 8%, transparent) 52%,
+      transparent 64%,
+      transparent 100%
     );
-  animation: media-generation-soft-pulse 2.4s ease-in-out infinite alternate;
+  animation: media-generation-sweep 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  transform: translateX(-18%);
+  will-change: transform, opacity;
 }
 
-@keyframes media-generation-soft-pulse {
+@keyframes media-generation-grid-drift {
   from {
-    opacity: 0.12;
+    transform: translate3d(0, 0, 0);
   }
   to {
-    opacity: 0.28;
+    transform: translate3d(18px, 18px, 0);
+  }
+}
+
+@keyframes media-generation-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-28%);
+  }
+  18% {
+    opacity: 0.22;
+  }
+  62% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(28%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-slot="media-generation-grid"],
   [data-slot="media-generation-shimmer"] {
     animation: none;
+    transform: none;
   }
 }
 

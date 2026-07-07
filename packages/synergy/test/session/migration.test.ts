@@ -591,4 +591,96 @@ describe("session migrations", () => {
       },
     })
   })
+
+  test("migrates legacy cortex output contract fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const summary = await Session.create({ title: "Legacy Cortex Summary" })
+        const structured = await Session.create({ title: "Legacy Cortex Structured" })
+        const invalid = await Session.create({ title: "Legacy Cortex Invalid" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const summaryKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(summary.id))
+        const structuredKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(structured.id))
+        const invalidKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(invalid.id))
+
+        await Storage.write(summaryKey, {
+          ...summary,
+          cortex: {
+            parentSessionID: "ses_parent",
+            parentMessageID: "msg_parent",
+            description: "legacy summary",
+            agent: "developer",
+            startedAt: 1,
+            completedAt: 2,
+            status: "completed",
+            result: "legacy summary text",
+            output: { mode: "summary" },
+          },
+        })
+        await Storage.write(structuredKey, {
+          ...structured,
+          cortex: {
+            parentSessionID: "ses_parent",
+            parentMessageID: "msg_parent",
+            description: "legacy structured",
+            agent: "developer",
+            startedAt: 1,
+            completedAt: 2,
+            status: "completed",
+            output: { mode: "structured", schema: { type: "array", items: { type: "string" } } },
+            outputResult: { mode: "structured", status: "valid", data: ["a", "b"] },
+          },
+        })
+        await Storage.write(invalidKey, {
+          ...invalid,
+          cortex: {
+            parentSessionID: "ses_parent",
+            parentMessageID: "msg_parent",
+            description: "legacy invalid",
+            agent: "developer",
+            startedAt: 1,
+            completedAt: 2,
+            status: "completed",
+            outputResult: {
+              mode: "structured",
+              status: "invalid",
+              error: "expected string",
+            },
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260707-cortex-task-output-contract")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const migratedSummary = await Storage.read<any>(summaryKey)
+        const migratedStructured = await Storage.read<any>(structuredKey)
+        const migratedInvalid = await Storage.read<any>(invalidKey)
+
+        expect(migratedSummary.cortex.outputConfig).toEqual({ mode: "summary" })
+        expect(migratedSummary.cortex.output).toEqual({ mode: "summary", value: "legacy summary text" })
+        expect(migratedStructured.cortex.outputConfig).toEqual({
+          mode: "structured",
+          schema: { type: "array", items: { type: "string" } },
+        })
+        expect(migratedStructured.cortex.output).toEqual({ mode: "structured", value: ["a", "b"] })
+        expect(migratedInvalid.cortex.status).toBe("error")
+        expect(migratedInvalid.cortex.error).toBe("expected string")
+        expect(migratedInvalid.cortex.output).toBeUndefined()
+
+        const serialized = JSON.stringify({ migratedSummary, migratedStructured, migratedInvalid })
+        expect(serialized).not.toContain("outputResult")
+        expect(serialized).not.toContain('"result"')
+
+        await migration!.up(() => {})
+        expect(JSON.stringify(await Storage.read<any>(summaryKey))).toBe(JSON.stringify(migratedSummary))
+        expect(JSON.stringify(await Storage.read<any>(structuredKey))).toBe(JSON.stringify(migratedStructured))
+        expect(JSON.stringify(await Storage.read<any>(invalidKey))).toBe(JSON.stringify(migratedInvalid))
+      },
+    })
+  })
 })

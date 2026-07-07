@@ -5,7 +5,6 @@ import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "@/agent/agent"
 import { Snapshot } from "@/session/snapshot"
-import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
@@ -728,7 +727,7 @@ export namespace SessionProcessor {
                       const part = reasoningMap[value.id]
                       part.text += value.text
                       if (value.providerMetadata) part.metadata = value.providerMetadata
-                      if (part.text) await Session.updatePart({ part, delta: value.text })
+                      if (part.text) await Session.updatePartDelta(part, value.text)
                     }
                     break
 
@@ -1001,10 +1000,6 @@ export namespace SessionProcessor {
                       }
                       snapshot = undefined
                     }
-                    SessionSummary.summarize({
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.parentID,
-                    }).catch(() => {})
                     break
                   }
 
@@ -1049,11 +1044,7 @@ export namespace SessionProcessor {
                     if (currentText) {
                       currentText.text += value.text
                       if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                      if (currentText.text)
-                        await Session.updatePart({
-                          part: currentText,
-                          delta: value.text,
-                        })
+                      if (currentText.text) await Session.updatePartDelta(currentText, value.text)
                     }
                     break
 

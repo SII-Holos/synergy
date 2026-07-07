@@ -191,7 +191,6 @@
     [data-kind="text"],
     [data-kind="reasoning"],
     [data-kind="non-root-user"],
-    [data-kind="tool-attachments"],
     [data-kind="provider-prelude"]
   ) {
     max-width: min(54rem, 100%);
@@ -284,6 +283,19 @@
 
   [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {
     padding: 0;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column-layout"] {
+    justify-content: flex-start;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column"] {
+    flex: 0 1 auto;
+    align-items: flex-start;
   }
 
   [data-slot="session-turn-timeline-item"] > [data-component="text-part"] [data-component="markdown"],
