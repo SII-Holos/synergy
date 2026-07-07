@@ -83,12 +83,32 @@ function SourceSessionLink(props: { sessionID: string | undefined }): JSX.Elemen
   }) as unknown as JSX.Element
 }
 
-function PlanModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
+function WorkflowModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
+  const label = createMemo(() => {
+    const mode = props.message.metadata?.workflowMode
+    if (mode === "plan") return "Plan mode"
+    if (mode === "lattice") return "Lattice"
+    if (mode === "light_loop") return "Light loop"
+    // Legacy back compat
+    if (props.message.metadata?.planModeRequest === true) return "Plan mode"
+    return "Workflow mode"
+  })
+  const kind = createMemo(() => {
+    const mode = props.message.metadata?.workflowMode
+    if (mode === "plan" || props.message.metadata?.planModeRequest === true) return "plan-mode-request"
+    if (mode === "lattice") return "lattice-mode-request"
+    if (mode === "light_loop") return "light-loop-mode-request"
+    return undefined
+  })
   return h(
     "div",
-    { "data-component": "special-user-message", "data-kind": "plan-mode-request", "data-layout": "user-bubble" },
+    {
+      "data-component": "special-user-message",
+      "data-kind": kind(),
+      "data-layout": "user-bubble",
+    },
     [
-      h("div", { "data-slot": "special-message-badge" }, "Plan mode"),
+      h("div", { "data-slot": "special-message-badge" }, label()),
       h(Message, { message: props.message, parts: props.parts, userVariant: "turn-bubble" }),
     ],
   ) as unknown as JSX.Element
@@ -254,11 +274,15 @@ registerSpecialUserMessageRenderer({
 })
 
 registerSpecialUserMessageRenderer({
-  id: "plan-mode-user-request",
+  id: "workflow-mode-user-request",
   match(message) {
-    return message.metadata?.planModeRequest === true
+    return (
+      (typeof message.metadata?.workflowMode === "string" &&
+        ["plan", "lattice", "light_loop"].includes(message.metadata.workflowMode)) ||
+      message.metadata?.planModeRequest === true
+    )
   },
-  component: PlanModeUserRequestMessage,
+  component: WorkflowModeUserRequestMessage,
 })
 
 registerSpecialUserMessageRenderer({

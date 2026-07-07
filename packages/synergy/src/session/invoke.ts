@@ -70,7 +70,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
-import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
+import { WorkflowModeUserWrapper } from "./workflow-mode-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
 
@@ -693,7 +693,7 @@ Do not stop early — the user expects thorough completion, not a best-effort at
             )
           }
         }
-        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+        const modelSessionMessages = WorkflowModeUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
