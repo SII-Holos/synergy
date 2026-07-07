@@ -61,7 +61,11 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
-import { BlueprintContinuation } from "./blueprint-continuation"
+import { ContinuationKernel } from "./continuation-kernel"
+import { LatticeBridge } from "../lattice/bridge"
+import { LatticeStore } from "../lattice/store"
+import { LatticePrompt } from "../lattice/prompt"
+import { LatticeModelCalls } from "../lattice/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
@@ -180,7 +184,8 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    BlueprintContinuation.init()
+    ContinuationKernel.init()
+    LatticeBridge.init()
     SessionManager.registerRuntime(sessionID)
     const abort = SessionManager.acquire(sessionID)
     if (!abort) {
@@ -197,6 +202,9 @@ export namespace SessionInvoke {
     await using _ = defer(async () => {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
+      if (LatticeModelCalls.peek(sessionID) > 0) {
+        await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
+      }
       await SessionManager.release(sessionID)
     })
 
@@ -614,6 +622,14 @@ export namespace SessionInvoke {
           }
         }
 
+        // Layer 2.6: Semi-static — Lattice pathway context (active run only)
+        if (session?.lattice) {
+          const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
+          if (latticeRun && latticeRun.status === "active") {
+            systemParts.push(LatticePrompt.build(session, latticeRun))
+          }
+        }
+
         // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {
           systemParts.push(memoryResult.context)
@@ -742,6 +758,9 @@ export namespace SessionInvoke {
         if (!resolvedTools) break
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
+        // Count LLM calls for an active Lattice run in memory; flushed to the
+        // run at turn boundaries / policy entry (never written per call).
+        if (session?.lattice) LatticeModelCalls.record(sessionID)
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()

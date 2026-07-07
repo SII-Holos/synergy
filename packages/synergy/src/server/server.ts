@@ -69,6 +69,7 @@ import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
+import { LatticeRoute } from "./lattice"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
@@ -215,6 +216,8 @@ export namespace Server {
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
       pathname.startsWith("/blueprint/") ||
+      pathname === "/lattice" ||
+      pathname.startsWith("/lattice/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -1055,6 +1058,7 @@ export namespace Server {
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)
+        .route("/lattice", LatticeRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)

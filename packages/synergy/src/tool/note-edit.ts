@@ -662,6 +662,7 @@ export const NoteEditTool = Tool.define("note_edit", {
     const session = await Session.get(ctx.sessionID)
     const decision = NoteBlueprintPolicy.evaluateWrite({
       planMode: session.blueprint?.planMode === true,
+      latticeActive: session.lattice != null,
       action: "edit",
       existingKind: existing.kind ?? "note",
     })

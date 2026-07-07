@@ -1,0 +1,6 @@
+<lattice-phase>
+Current phase: result_analysis.
+You should: analyze the outcome of the step that just finished. If the current step's bound loop appears already terminal but this context still reads like execution, call pathway_read first to confirm the latest phase. Record the step's result with pathway_patch (`recordResult`). If the step failed, replan forward: add a recovery/replacement step whose addressesFailedStepIDs references the failed step. You may reorder or revise future (non-terminal) steps.
+You should not: change or delete any terminal step, and do not convert a failed step to completed.
+Next: after you update the Pathway, the backend selects the next ready step and returns to step_blueprinting, or completes the run when no steps remain.
+</lattice-phase>

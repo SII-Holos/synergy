@@ -3308,6 +3308,11 @@ export type Session = {
     loopRole?: "execution" | "audit"
     planMode?: boolean
   }
+  lattice?: {
+    runID: string
+    mode: "auto" | "collaborative"
+    firstBlueprintStarted?: boolean
+  }
 }
 
 export type VcsInfo = {
@@ -4876,6 +4881,13 @@ export type BlueprintLoopInfo = {
   userPrompt?: string
   error?: string
   loopIndex?: number
+  /**
+   * External orchestrator that owns this loop's lifecycle (e.g. Lattice)
+   */
+  orchestration?: {
+    kind: "lattice"
+    runID: string
+  }
   audit?: {
     lastReason?: string
     lastAuditedAt?: number
@@ -4947,6 +4959,118 @@ export type BlueprintLoopActivity = {
   stepCount: number
   messageCount: number
   lastActivityAt?: number
+}
+
+export type LatticeStep = {
+  id: string
+  title: string
+  objective: string
+  status:
+    | "pending"
+    | "ready"
+    | "blueprinting"
+    | "reviewing"
+    | "running"
+    | "completed"
+    | "failed"
+    | "blocked"
+    | "cancelled"
+  acceptanceCriteria?: Array<string>
+  assumptions?: Array<string>
+  blueprintNoteID?: string
+  blueprintVersion?: number
+  blueprintLoopID?: string
+  resultSummary?: string
+  failureReason?: string
+  resultCommit?: string
+  worktreeID?: string
+  addressesFailedStepIDs?: Array<string>
+  time: {
+    created: number
+    updated: number
+    started?: number
+    completed?: number
+  }
+}
+
+export type LatticeRun = {
+  id: string
+  scopeID: string
+  sessionID: string
+  mode: "auto" | "collaborative"
+  maxModelCalls?: number
+  modelCallCount?: number
+  status: "active" | "paused" | "completed" | "failed" | "cancelled"
+  statusReason?: string
+  phase: "initial_planning" | "step_blueprinting" | "blueprint_review" | "blueprint_execution" | "result_analysis"
+  goal?: string
+  currentStepID?: string
+  firstBlueprintStarted?: boolean
+  assumptions?: Array<string>
+  pathway?: Array<LatticeStep>
+  time: {
+    created: number
+    updated: number
+    paused?: number
+    completed?: number
+  }
+}
+
+export type LatticeModeInput = {
+  /**
+   * Enable or disable Lattice mode for the session
+   */
+  enabled: boolean
+  /**
+   * Lattice mode (default auto)
+   */
+  mode?: "auto" | "collaborative"
+  /**
+   * Model-call budget (0 = unlimited). Not Pathway steps.
+   */
+  max_model_calls?: number
+  /**
+   * High-level goal for the run
+   */
+  goal?: string
+  /**
+   * Resume a paused run or restart it
+   */
+  action?: "continue" | "restart"
+}
+
+export type LatticeEvent = {
+  id: string
+  runID: string
+  scopeID: string
+  sessionID: string
+  kind:
+    | "run_created"
+    | "run_updated"
+    | "phase_changed"
+    | "step_added"
+    | "step_updated"
+    | "step_blueprint_bound"
+    | "step_started"
+    | "step_completed"
+    | "step_failed"
+    | "step_cancelled"
+    | "loop_cancelled"
+    | "run_paused"
+    | "run_resumed"
+    | "run_completed"
+    | "run_failed"
+    | "run_cancelled"
+    | "budget_exhausted"
+  stepID?: string
+  phase?: "initial_planning" | "step_blueprinting" | "blueprint_review" | "blueprint_execution" | "result_analysis"
+  message?: string
+  data?: {
+    [key: string]: unknown
+  }
+  time: {
+    created: number
+  }
 }
 
 export type AssetInfo = {
@@ -5983,6 +6107,27 @@ export type EventBlueprintLoopRestarted = {
   }
 }
 
+export type EventLatticeRunCreated = {
+  type: "lattice.run.created"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeRunUpdated = {
+  type: "lattice.run.updated"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeEventAppended = {
+  type: "lattice.event.appended"
+  properties: {
+    event: LatticeEvent
+  }
+}
+
 export type EventAgendaItemCreated = {
   type: "agenda.item.created"
   properties: {
@@ -6229,6 +6374,9 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRestarted
+  | EventLatticeRunCreated
+  | EventLatticeRunUpdated
+  | EventLatticeEventAppended
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
@@ -11986,6 +12134,257 @@ export type BlueprintSessionPlanModeResponses = {
 
 export type BlueprintSessionPlanModeResponse =
   BlueprintSessionPlanModeResponses[keyof BlueprintSessionPlanModeResponses]
+
+export type LatticeSessionModeData = {
+  body?: LatticeModeInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/session/{id}/mode"
+}
+
+export type LatticeSessionModeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LatticeSessionModeError = LatticeSessionModeErrors[keyof LatticeSessionModeErrors]
+
+export type LatticeSessionModeResponses = {
+  /**
+   * Lattice run or null
+   */
+  200: LatticeRun | null
+}
+
+export type LatticeSessionModeResponse = LatticeSessionModeResponses[keyof LatticeSessionModeResponses]
+
+export type LatticeSessionGetRunData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/session/{id}"
+}
+
+export type LatticeSessionGetRunErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LatticeSessionGetRunError = LatticeSessionGetRunErrors[keyof LatticeSessionGetRunErrors]
+
+export type LatticeSessionGetRunResponses = {
+  /**
+   * Lattice run or null
+   */
+  200: LatticeRun | null
+}
+
+export type LatticeSessionGetRunResponse = LatticeSessionGetRunResponses[keyof LatticeSessionGetRunResponses]
+
+export type LatticeRunListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/run"
+}
+
+export type LatticeRunListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LatticeRunListError = LatticeRunListErrors[keyof LatticeRunListErrors]
+
+export type LatticeRunListResponses = {
+  /**
+   * Lattice runs
+   */
+  200: Array<LatticeRun>
+}
+
+export type LatticeRunListResponse = LatticeRunListResponses[keyof LatticeRunListResponses]
+
+export type LatticeRunGetData = {
+  body?: never
+  path: {
+    /**
+     * Lattice run ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/run/{id}"
+}
+
+export type LatticeRunGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LatticeRunGetError = LatticeRunGetErrors[keyof LatticeRunGetErrors]
+
+export type LatticeRunGetResponses = {
+  /**
+   * Lattice run
+   */
+  200: LatticeRun
+}
+
+export type LatticeRunGetResponse = LatticeRunGetResponses[keyof LatticeRunGetResponses]
+
+export type LatticeRunEventsData = {
+  body?: never
+  path: {
+    /**
+     * Lattice run ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/run/{id}/events"
+}
+
+export type LatticeRunEventsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LatticeRunEventsError = LatticeRunEventsErrors[keyof LatticeRunEventsErrors]
+
+export type LatticeRunEventsResponses = {
+  /**
+   * Lattice events
+   */
+  200: Array<LatticeEvent>
+}
+
+export type LatticeRunEventsResponse = LatticeRunEventsResponses[keyof LatticeRunEventsResponses]
+
+export type LatticeRunContinueData = {
+  body?: {
+    /**
+     * Optional instruction merged into the loop start
+     */
+    userPrompt?: string
+  }
+  path: {
+    /**
+     * Lattice run ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/run/{id}/continue"
+}
+
+export type LatticeRunContinueErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LatticeRunContinueError = LatticeRunContinueErrors[keyof LatticeRunContinueErrors]
+
+export type LatticeRunContinueResponses = {
+  /**
+   * Updated run
+   */
+  200: LatticeRun
+}
+
+export type LatticeRunContinueResponse = LatticeRunContinueResponses[keyof LatticeRunContinueResponses]
+
+export type LatticeRunCancelData = {
+  body?: never
+  path: {
+    /**
+     * Lattice run ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lattice/run/{id}/cancel"
+}
+
+export type LatticeRunCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LatticeRunCancelError = LatticeRunCancelErrors[keyof LatticeRunCancelErrors]
+
+export type LatticeRunCancelResponses = {
+  /**
+   * Cancelled run
+   */
+  200: LatticeRun
+}
+
+export type LatticeRunCancelResponse = LatticeRunCancelResponses[keyof LatticeRunCancelResponses]
 
 export type AssetUploadData = {
   body?: {

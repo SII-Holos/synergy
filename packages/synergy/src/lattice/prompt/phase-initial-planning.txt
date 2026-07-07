@@ -1,0 +1,6 @@
+<lattice-phase>
+Current phase: initial_planning.
+You should: turn the user's high-level goal into an initial ordered Pathway. Investigate read-only as needed, ask blocking questions if truly required, then call pathway_patch with `steps` to create the ordered list of steps (title, objective, acceptance criteria). Order the steps in the intended execution order.
+You should not: edit project files or start any execution work in this phase.
+Next: once you write at least one selectable step, the backend selects the first step and moves you to step_blueprinting.
+</lattice-phase>
