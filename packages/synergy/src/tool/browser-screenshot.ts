@@ -1,10 +1,13 @@
 import z from "zod"
+import fs from "fs/promises"
+import path from "path"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserOwner } from "../browser/owner"
 import { BrowserLocator } from "../browser/locator"
 import { BrowserScreenshot } from "../browser/screenshot"
 import { Asset } from "../asset/asset"
+import { Global } from "../global"
 import { Identifier } from "../id/id"
 
 const ClipSchema = z.object({
@@ -16,7 +19,7 @@ const ClipSchema = z.object({
 
 export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   description:
-    "Capture a screenshot of the current browser page. Supports viewport, fullPage, locator-targeted, and region clip captures. Saves the image as an attachment delivered to the user. Returns page dimensions and a preview description.",
+    "Capture a screenshot of the current browser page. Supports viewport, fullPage, locator-targeted, and region clip captures. Delivers the screenshot as an image attachment and optionally saves a local copy under Synergy managed media storage.",
   parameters: z.object({
     pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
     format: z.enum(["jpeg", "png"]).default("png").describe("Image format. Default png."),
@@ -26,6 +29,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
       .optional()
       .describe("Element locator for Playwright-powered element screenshot."),
     clip: ClipSchema.optional().describe("Screenshot region clip {x, y, width, height}. Overrides locator."),
+    save: z.boolean().default(false).describe("Save a local copy under Synergy managed media storage. Default false."),
   }),
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
@@ -100,23 +104,27 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
 // ── Shared result builder ────────────────────────────────────────────
 async function finishResult(
   tab: { id: string; url: string; title: string },
-  params: { format: "png" | "jpeg"; fullPage: boolean },
-  ctx: { sessionID: string; messageID: string },
+  params: { format: "png" | "jpeg"; fullPage: boolean; save: boolean },
+  ctx: {
+    sessionID: string
+    messageID: string
+  },
   buffer: Buffer,
   width: number,
   height: number,
   captureKind: string,
 ) {
   const mime = params.format === "jpeg" ? "image/jpeg" : "image/png"
-  const assetId = await Asset.write(buffer, mime)
-
   const filename = `screenshot-${tab.id.slice(0, 8)}-${Date.now()}.${params.format}`
+  const assetId = await Asset.write(buffer, mime, filename)
+  const localPath = await saveScreenshotFile(params.save, filename, buffer)
 
   const outputParts: string[] = [`Screenshot captured: ${width}x${height} ${params.format.toUpperCase()}`]
   if (captureKind === "fullPage") outputParts.push("(full page)")
   if (captureKind === "locator") outputParts.push("(locator)")
   if (captureKind === "clip") outputParts.push("(clip)")
-  outputParts.push(`Delivered as conversation attachment ${filename}; no local filesystem path was created.`)
+  outputParts.push(`Delivered as conversation attachment ${filename}.`)
+  if (localPath) outputParts.push(`Saved local copy: ${localPath}`)
 
   return {
     title: `Screenshot of ${tab.url || tab.title || "page"}`,
@@ -131,6 +139,7 @@ async function finishResult(
       captureKind,
       assetId,
       filename,
+      localPath,
     },
     attachments: [
       {
@@ -149,4 +158,19 @@ async function finishResult(
       },
     ],
   }
+}
+
+async function saveScreenshotFile(save: boolean, filename: string, buffer: Buffer): Promise<string | undefined> {
+  if (!save) return undefined
+
+  const filepath = path.join(browserScreenshotMediaDir(), filename)
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, buffer)
+  return filepath
+}
+
+function browserScreenshotMediaDir(): string {
+  const now = new Date()
+  const dateFolder = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+  return path.join(Global.Path.media, dateFolder, "browser-screenshots")
 }
