@@ -3,6 +3,8 @@ import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { AppPanel } from "@/components/app-panel"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
@@ -45,6 +47,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
   const navigate = useNavigate()
+  const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const [query, setQuery] = createSignal("")
   const [debouncedQuery, setDebouncedQuery] = createSignal("")
   const [view, setView] = createSignal<MarketplaceView>(props.initialSource ?? "official")
@@ -137,6 +140,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
   return (
     <AppPanel.Root class="plugin-marketplace-workbench">
       <AppPanel.Content>
+        <WorkspaceMobileHeader onClose={onCloseWorkspace} />
         <AppPanel.Header class="plugin-marketplace-header">
           <div class="plugin-marketplace-header-inner">
             <AppPanel.HeaderRow>

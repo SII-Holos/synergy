@@ -12,6 +12,8 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { agendaActionConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
@@ -75,6 +77,7 @@ export function AgendaPanel() {
   const params = useParams()
 
   const [tab, setTab] = createSignal<PanelTab>("schedule")
+  const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const [popoverItem, setPopoverItem] = createSignal<AgendaItem | undefined>()
   const [popoverRect, setPopoverRect] = createSignal<DOMRect | undefined>()
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
@@ -269,6 +272,7 @@ export function AgendaPanel() {
   return (
     <AppPanel.Root>
       <AppPanel.Content>
+        <WorkspaceMobileHeader onClose={onCloseWorkspace} />
         <AppPanel.Header class="agenda-header">
           <div class="agenda-header-inner">
             <AppPanel.HeaderRow>

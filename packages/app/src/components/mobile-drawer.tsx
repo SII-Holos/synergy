@@ -7,6 +7,7 @@ import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
@@ -51,11 +52,11 @@ export function MobileDrawer() {
         />
         {/* Drawer panel */}
         <div
-          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl"
+          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
           {/* Header */}
-          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
+          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img src={holosLogoPath(theme.mode())} alt="Holos" class="size-6 shrink-0" />
               <span class="text-14-medium text-text-strong">Synergy</span>
@@ -104,12 +105,22 @@ export function MobileDrawer() {
   )
 }
 
-const DRAWER_TOOLS = [
+interface DrawerTool {
+  id: string
+  label: string
+  icon: string
+  href?: string
+  panelId?: string
+}
+
+const DRAWER_TOOLS: DrawerTool[] = [
   { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
   { id: "library", label: "Library", icon: "book-open", href: "/library" },
   { id: "performance", label: "Performance", icon: "radar", href: "/performance" },
   { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
-] as const
+  { id: "notes", label: "Notes", icon: "notebook-pen", panelId: "notes" },
+  { id: "browser", label: "Browser", icon: "globe", panelId: "browser" },
+]
 
 function ScopeListView(props: {
   currentDir: string | undefined
@@ -121,6 +132,8 @@ function ScopeListView(props: {
   const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const location = useLocation()
+  const params = useParams()
+  const workbench = useWorkbenchPanels()
 
   const scopes = createMemo(() => {
     const homePath = globalSync.data.paths?.home
@@ -199,27 +212,48 @@ function ScopeListView(props: {
       <div class="px-4 pb-1.5">
         <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
       </div>
-      <div class="grid grid-cols-4 gap-1 px-3 pb-2">
+      <div class="grid grid-cols-3 gap-1 px-3 pb-2">
         <For each={DRAWER_TOOLS}>
-          {(tool) => (
-            <button
-              type="button"
-              classList={{
-                "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                "bg-surface-raised-base-hover text-text-strong":
-                  tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href,
-                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                  tool.id === "plugins" ? !location.pathname.startsWith("/plugins") : location.pathname !== tool.href,
-              }}
-              onClick={() => {
-                navigate(tool.href)
-                props.onClose()
-              }}
-            >
-              <Icon name={tool.icon} size="normal" />
-              <span class="text-[10px] font-medium leading-none">{tool.label}</span>
-            </button>
-          )}
+          {(tool) => {
+            const hasSession = createMemo(() => !!params.id)
+            const isDisabled = createMemo(() => tool.panelId === "browser" && !hasSession())
+            const isActive = createMemo(() => {
+              if (isDisabled()) return false
+              if (tool.panelId) {
+                const side = workbench.surface("side")
+                return side.opened() && side.activeTab()?.panelId === tool.panelId
+              }
+              if (tool.id === "plugins") return location.pathname.startsWith(tool.href ?? "")
+              return location.pathname === tool.href
+            })
+
+            return (
+              <button
+                type="button"
+                disabled={isDisabled()}
+                classList={{
+                  "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
+                  "bg-surface-raised-base-hover text-text-strong": isActive(),
+                  "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                    !isActive() && !isDisabled(),
+                  "opacity-50 cursor-not-allowed": isDisabled(),
+                }}
+                onClick={() => {
+                  if (isDisabled()) return
+                  if (tool.panelId) {
+                    void workbench.openPanel(tool.panelId, { reuseExisting: true })
+                    props.onClose()
+                    return
+                  }
+                  navigate(tool.href!)
+                  props.onClose()
+                }}
+              >
+                <Icon name={tool.icon} size="normal" />
+                <span class="text-[10px] font-medium leading-none">{tool.label}</span>
+              </button>
+            )
+          }}
         </For>
       </div>
     </div>
