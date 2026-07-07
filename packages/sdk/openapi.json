@@ -32828,6 +32828,9 @@
             "properties": {
               "info": {
                 "$ref": "#/components/schemas/Session"
+              },
+              "navEntry": {
+                "$ref": "#/components/schemas/SessionNavEntry"
               }
             },
             "required": ["info"]

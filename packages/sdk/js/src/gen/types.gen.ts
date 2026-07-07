@@ -5937,6 +5937,7 @@ export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
     info: Session
+    navEntry?: SessionNavEntry
   }
 }
 

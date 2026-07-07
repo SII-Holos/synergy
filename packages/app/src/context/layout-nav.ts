@@ -18,19 +18,22 @@ export type NavSessionUpdate = {
   completionNoticeUnread?: boolean
 }
 
-export function navUpdateFromSession(info: {
-  id: string
-  title?: string
-  pinned?: number
-  parentID?: string
-  time?: { updated?: number; archived?: number }
-  completionNotice?: { unread?: boolean }
-}): NavSessionUpdate {
+export function navUpdateFromSession(
+  info: {
+    id: string
+    title?: string
+    pinned?: number
+    parentID?: string
+    time?: { updated?: number; archived?: number }
+    completionNotice?: { unread?: boolean }
+  },
+  navEntry?: Pick<NavEntry, "lastActivityAt">,
+): NavSessionUpdate {
   return {
     id: info.id,
     title: info.title,
     pinned: info.pinned,
-    lastActivityAt: info.time?.updated,
+    lastActivityAt: navEntry?.lastActivityAt ?? info.time?.updated,
     archived: !!info.time?.archived,
     parentID: info.parentID,
     completionNoticeUnread: info.completionNotice?.unread,

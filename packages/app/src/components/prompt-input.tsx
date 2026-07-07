@@ -492,6 +492,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
+  const cancelLattice = async () => {
+    if (!params.id) {
+      setPendingLattice(null)
+      return
+    }
+
+    try {
+      await sdk.client.lattice.session.mode({
+        id: params.id,
+        latticeModeInput: { enabled: false },
+      })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to cancel Lattice",
+        description: err instanceof Error ? err.message : "Request failed",
+      })
+    }
+  }
+
   const openLatticeDialog = (event?: Event) => {
     if (blueprintModeLocked()) {
       event?.preventDefault()
@@ -1445,6 +1465,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         </span>
                       </span>
                       <span class="prompt-input-compact-label text-12-medium leading-none">Plan</span>
+                    </button>
+                  </Tooltip>
+                </Show>
+                <Show when={latticeActive()}>
+                  <Tooltip placement="top" value="Cancel Lattice">
+                    <button
+                      type="button"
+                      aria-label="Cancel Lattice"
+                      class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak hover:text-text-base"
+                      onClick={() => void cancelLattice()}
+                    >
+                      <span class="relative flex size-4 shrink-0 items-center justify-center">
+                        <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                          <Icon name={getSemanticIcon("prompt.lattice")} size="small" class="text-icon-weak" />
+                        </span>
+                        <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                          <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
+                        </span>
+                      </span>
+                      <span class="prompt-input-compact-label text-12-medium leading-none">Lattice</span>
                     </button>
                   </Tooltip>
                 </Show>
