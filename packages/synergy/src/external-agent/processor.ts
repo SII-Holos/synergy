@@ -39,6 +39,7 @@ export namespace ExternalAgentProcessor {
       role: "assistant",
       sessionID,
       parentID,
+      visible: true,
       agent,
       mode: agent,
       path: {

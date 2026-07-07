@@ -24,7 +24,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | Global | `~/.synergy/config/synergy.d/` | Canonical global domain config. |
 | Project | `<project>/.synergy/synergy.d/` | Canonical project domain config. Overrides global. |
 
-**Precedence** (low → high): remote/well-known → global → project → `SYNERGY_CONFIG_CONTENT` env var.
+**Precedence** (low → high): remote/well-known → global → `SYNERGY_CONFIG` file → `SYNERGY_CONFIG_CONTENT` inline JSON → project → `SYNERGY_CONFIG_DIR` fragments/markdown → `SYNERGY_PERMISSION` overlay.
 
 Web Settings uses these same canonical domains. Common fields are editable in forms, and complex domains can be opened from Settings with the system default editor.
 
@@ -35,12 +35,12 @@ Web Settings uses these same canonical domains. Common fields are editable in fo
 | Domain file | Owned keys |
 |---|---|
 | `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `username`, `layout`, `embedding`, `rerank` |
-| `10-models.jsonc` | `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
-| `20-providers.jsonc` | `provider`, `enabled_providers`, `disabled_providers` |
+| `10-models.jsonc` | `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model`, `role_variant` |
+| `20-providers.jsonc` | `provider`, `providerCatalog`, `enabled_providers`, `disabled_providers` |
 | `30-library.jsonc` | `library` |
 | `40-mcp.jsonc` | `mcp`, `mcpDefaults` |
 | `50-plugins.jsonc` | `plugin`, `pluginConfig`, `pluginApprovalPolicy`, `pluginRuntimePolicy`, `pluginMarketplace` |
-| `60-agents.jsonc` | `default_agent`, `agent`, `external_agent`, `instructions`, `category` |
+| `60-agents.jsonc` | `default_agent`, `agent`, `external_agent`, `instructions`, `project_doc_fallback_filenames`, `project_doc_max_bytes`, `category` |
 | `70-commands.jsonc` | `command` |
 | `80-permissions.jsonc` | `permission`, `tools`, `controlProfile`, `sandbox`, `smartAllow` |
 | `90-channels.jsonc` | `channel` |
@@ -55,14 +55,14 @@ Web Settings uses these same canonical domains. Common fields are editable in fo
 | Provider credential store | `~/.synergy/data/auth/provider-auth.json` |
 | MCP OAuth credentials | `~/.synergy/data/auth/mcp.json` |
 | Provider/model cache | `~/.synergy/cache/models.json` |
-| Agent markdown (global) | `~/.synergy/config/agent/<name>.md` |
-| Agent markdown (project) | `<project>/.synergy/agent/<name>.md` |
-| Skills (global) | `~/.synergy/config/{skill,skills}/**/SKILL.md` |
-| Skills (project) | `<project>/.synergy/{skill,skills}/**/SKILL.md` |
+| Agent markdown (global) | `~/.synergy/config/{agent,agents}/<name>.md` |
+| Agent markdown (project) | `<project>/.synergy/{agent,agents}/<name>.md` |
+| Skills (global) | `~/.synergy/config/{skill,skills}/**/{SKILL.md,Skill.md}` plus compat roots |
+| Skills (project) | `<project>/.synergy/{skill,skills}/**/{SKILL.md,Skill.md}` plus compat roots |
 | Commands (global) | `~/.synergy/config/{command,commands}/**/*.md` |
 | Commands (project) | `<project>/.synergy/{command,commands}/**/*.md` |
-| Plugins (global) | `~/.synergy/config/{plugin,plugins}/*.{ts,js}` |
-| Plugins (project) | `<project>/.synergy/{plugin,plugins}/*.{ts,js}` |
+| Custom tools (global) | `~/.synergy/config/tool/*.{ts,js}` |
+| Custom tools (project) | `<project>/.synergy/tool/*.{ts,js}` |
 
 ### Default scope recommendations
 
@@ -84,7 +84,7 @@ Every config change follows this pattern:
 ### Critical rules
 
 1. Always read before writing — merge, never overwrite
-2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/provider-auth.json`) or `{env:VAR_NAME}` references
+2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/provider-auth.json`), `{env:VAR_NAME}` references, or `{file:/path/to/secret}` references
 3. Preserve existing JSONC comments
 4. Always reload after writing — changes don't apply until reloaded
 5. `$schema` belongs only in `00-general.jsonc`; other domain files should contain only their owned keys

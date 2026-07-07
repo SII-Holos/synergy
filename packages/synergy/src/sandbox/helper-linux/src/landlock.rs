@@ -113,7 +113,7 @@ fn push_rule_once(rules: &mut Vec<LandlockRule>, rule: LandlockRule) {
 
 #[cfg(target_os = "linux")]
 mod sys {
-    use libc::{c_int, c_long, c_uint, c_void, size_t};
+    use libc::{c_int, c_long, c_uint, size_t};
     use std::ffi::CString;
     use std::io;
     use std::os::unix::ffi::OsStrExt;
@@ -125,7 +125,7 @@ mod sys {
     const SYS_LANDLOCK_RESTRICT_SELF: c_long = 446;
 
     // Rule type: path-beneath is the only type in the current kernel.
-    const LANDLOCK_RULE_PATH_BENEATH: c_uint = 1;
+    pub const LANDLOCK_RULE_PATH_BENEATH: c_uint = 1;
 
     // Filesystem access flags (from linux/landlock.h).
     const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;

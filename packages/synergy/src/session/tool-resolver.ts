@@ -867,6 +867,9 @@ export namespace ToolResolver {
     if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
       result.add("note")
     }
+    if (session?.interaction?.source === "chronicler") {
+      result.add("memory")
+    }
     return result
   }
 

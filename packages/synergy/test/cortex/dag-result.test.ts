@@ -1,10 +1,151 @@
 import { DagPatchTool } from "../../src/tool/dag"
-import { describe, expect, test, beforeEach, afterEach } from "bun:test"
+import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test"
 import { Dag } from "../../src/session/dag"
 import { Cortex } from "../../src/cortex"
 import { Session } from "../../src/session"
+import { SessionInvoke } from "../../src/session/invoke"
+import { Agent } from "../../src/agent/agent"
+import { Config } from "../../src/config/config"
+import { Provider } from "../../src/provider/provider"
+import { PromptBudgeter } from "../../src/session/prompt-budgeter"
+import { SessionProcessor } from "../../src/session/processor"
+import { ToolResolver } from "../../src/session/tool-resolver"
+import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+import { CortexOutput } from "../../src/cortex/output"
+import { PermissionNext } from "../../src/permission/next"
+
+function testModel() {
+  return {
+    id: "test-model",
+    providerID: "test-provider",
+    name: "Test Model",
+    limit: { context: 100_000, output: 8_192 },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    capabilities: {
+      toolcall: true,
+      attachment: false,
+      reasoning: false,
+      temperature: true,
+      input: { text: true, image: false, audio: false, video: false, pdf: false },
+      output: { text: true, image: false, audio: false, video: false, pdf: false },
+    },
+    api: { id: "test", url: "https://example.invalid", npm: "@ai-sdk/openai" },
+    options: {},
+  }
+}
+
+async function writeAssistantText(sessionID: string, text: string) {
+  const parentID = Identifier.ascending("message")
+  const message = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "assistant",
+    parentID,
+    rootID: parentID,
+    mode: "test",
+    agent: "developer",
+    path: {
+      cwd: ScopeContext.current.directory,
+      root: ScopeContext.current.directory,
+    },
+    cost: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    },
+    modelID: "test-model",
+    providerID: "test-provider",
+    time: { created: Date.now(), completed: Date.now() },
+    finish: "stop",
+    sessionID,
+  })
+  const part = await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: message.id,
+    sessionID,
+    type: "text",
+    text,
+  })
+  return { info: message, parts: [part] }
+}
+
+function installDagLoopMocks(options?: {
+  onBuildPlan?: (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => void
+}) {
+  const originalGetModel = Provider.getModel
+  const originalGetAgent = Agent.get
+  const originalGetAvailableModel = Agent.getAvailableModel
+  const originalConfigCurrent = Config.current
+  const originalDefinitions = ToolResolver.definitions
+  const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
+  const originalBuildPlan = PromptBudgeter.buildPlan
+  const originalDecide = PromptBudgeter.decide
+  const originalProcessorCreate = SessionProcessor.create
+
+  ;(Provider.getModel as any) = mock(async () => testModel())
+  ;(Agent.get as any) = mock(async (name: string) => ({
+    name,
+    mode: "primary",
+    permission: PermissionNext.fromConfig({ "*": "allow" }),
+    options: {},
+    model: { providerID: "test-provider", modelID: "test-model" },
+  }))
+  ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
+  ;(Config.current as any) = mock(async () => ({
+    ...(await originalConfigCurrent()),
+    compaction: { auto: true, maxHistoryImages: 8 },
+    library: { memory: { enabled: false }, experience: { retrieve: false } },
+  }))
+  ;(ToolResolver.definitions as any) = mock(async () => [])
+  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+  ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
+    options?.onBuildPlan?.(input)
+    return {
+      system: input.system,
+      systemCacheBreakpoint: input.systemCacheBreakpoint,
+      messages: input.messages,
+      toolDefinitions: input.toolDefinitions,
+    }
+  })
+  ;(PromptBudgeter.decide as any) = mock(async () => ({
+    budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
+    measure: { system: 10, messages: 10, tools: 0, total: 20 },
+    shouldCompact: false,
+  }))
+  ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
+    message: input.assistantMessage,
+    partFromToolCall: () => undefined,
+    trackExecution: () => {},
+    process: mock(async () => {
+      input.assistantMessage.finish = "stop"
+      input.assistantMessage.time.completed = Date.now()
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: input.assistantMessage.id,
+        sessionID: input.assistantMessage.sessionID,
+        type: "text",
+        text: "downstream used upstream context",
+      })
+      await Session.updateMessage(input.assistantMessage)
+      return "stop" as const
+    }),
+  }))
+
+  return () => {
+    ;(Provider.getModel as any) = originalGetModel
+    ;(Agent.get as any) = originalGetAgent
+    ;(Agent.getAvailableModel as any) = originalGetAvailableModel
+    ;(Config.current as any) = originalConfigCurrent
+    ;(ToolResolver.definitions as any) = originalDefinitions
+    ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
+    ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
+    ;(PromptBudgeter.decide as any) = originalDecide
+    ;(SessionProcessor.create as any) = originalProcessorCreate
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Schema tests: Dag.Node with optional result field
@@ -48,114 +189,6 @@ describe("Dag.Node result field (schema)", () => {
 })
 
 // ---------------------------------------------------------------------------
-// updateDagNode: long result truncation (> 8192 chars)
-//
-// We test truncation by building a Task-like object that has a very long error
-// and verifying the truncation logic applied to the result field. Since we
-// can't call updateDagNode directly, we test this by examining the code logic:
-// raw.length > 8192 ? raw.slice(0, 8189) + "..." : raw
-// This preserves exactly 8192 total when truncated: 8189 chars + "..."
-// ---------------------------------------------------------------------------
-
-describe("updateDagNode truncation logic", () => {
-  // The truncation formula from the implementation:
-  //   node.result = raw.length > 8192 ? raw.slice(0, 8189) + "..." : raw
-  // We verify this invariant here.
-  const TRUNCATE_AT = 8192
-  const SLICE_AT = 8189
-
-  test("result ≤ 8192 chars is stored unchanged", () => {
-    const short = "x".repeat(8192)
-    expect(short.length).toBe(8192)
-    const result = short.length > TRUNCATE_AT ? short.slice(0, SLICE_AT) + "..." : short
-    expect(result).toBe(short)
-    expect(result.length).toBe(8192)
-  })
-
-  test("result 8193 chars is truncated to 8192 with ... suffix", () => {
-    const long = "a".repeat(8193)
-    const result = long.length > TRUNCATE_AT ? long.slice(0, SLICE_AT) + "..." : long
-    expect(result.length).toBe(8192)
-    expect(result).toBe("a".repeat(8189) + "...")
-    expect(result.slice(-3)).toBe("...")
-  })
-
-  test("result 20000 chars is truncated to 8192 with ... suffix", () => {
-    const long = "b".repeat(20000)
-    const result = long.length > TRUNCATE_AT ? long.slice(0, SLICE_AT) + "..." : long
-    expect(result.length).toBe(8192)
-    expect(result).toBe("b".repeat(8189) + "...")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// buildDagUpstreamContext truncation logic (per-node and total)
-//
-// buildDagUpstreamContext is non-exported in invoke.ts. We verify its
-// truncation invariants:
-//   - Per node: > 4096 chars → truncated to 4096 (4093 + "...")
-//   - Total: > 16384 chars → capped at 16384 total
-// ---------------------------------------------------------------------------
-
-describe("buildDagUpstreamContext truncation invariants", () => {
-  const MAX_PER_NODE = 4096
-  const MAX_TOTAL = 16384
-
-  test("per-node: ≤ 4096 chars passes through unchanged", () => {
-    const result = "x".repeat(4096)
-    expect(result.length).toBe(4096)
-    const truncated = result.length > MAX_PER_NODE ? result.slice(0, MAX_PER_NODE - 3) + "..." : result
-    expect(truncated).toBe(result)
-    expect(truncated.length).toBe(4096)
-  })
-
-  test("per-node: 4097 chars truncated to 4096 with ... suffix", () => {
-    const result = "y".repeat(4097)
-    const truncated = result.length > MAX_PER_NODE ? result.slice(0, MAX_PER_NODE - 3) + "..." : result
-    expect(truncated.length).toBe(4096)
-    expect(truncated).toBe("y".repeat(4093) + "...")
-  })
-
-  test("per-node: 10000 chars truncated to 4096 with ... suffix", () => {
-    const result = "z".repeat(10000)
-    const truncated = result.length > MAX_PER_NODE ? result.slice(0, MAX_PER_NODE - 3) + "..." : result
-    expect(truncated.length).toBe(4096)
-    expect(truncated).toBe("z".repeat(4093) + "...")
-  })
-
-  test("total: 5 deps × 4000 chars fits within 16384", () => {
-    const blocks: string[] = []
-    let total = 0
-    for (let i = 0; i < 5; i++) {
-      const block = `## Node: dep${i} — Result\n**Result**:\n${"r".repeat(4000)}`
-      const blockSize = block.length + 2
-      if (total + blockSize > MAX_TOTAL) break
-      blocks.push(block)
-      total += blockSize
-    }
-    expect(blocks.length).toBeGreaterThanOrEqual(4)
-    expect(total).toBeLessThanOrEqual(MAX_TOTAL)
-  })
-
-  test("total: 5 deps × 5000 chars hits the 16384 cap", () => {
-    const blocks: string[] = []
-    let total = 0
-    for (let i = 0; i < 5; i++) {
-      const // after per-node truncation, each is 4096
-        truncated = "d".repeat(4093) + "..."
-      const block = `## Node: dep${i} — Result\n**Result**:\n${truncated}`
-      const blockSize = block.length + 2
-      if (total + blockSize > MAX_TOTAL) break
-      blocks.push(block)
-      total += blockSize
-    }
-    // With blocks of ~4100+ chars each, only ~3 will fit
-    expect(blocks.length).toBeLessThan(5)
-    expect(total).toBeLessThanOrEqual(MAX_TOTAL)
-  })
-})
-
-// ---------------------------------------------------------------------------
 // buildCortexExecutionContext integration test
 //
 // Verifies that the DAG node result from an upstream completed task is
@@ -171,6 +204,121 @@ describe("delegated subagent with DAG context (integration)", () => {
     Cortex.reset()
   })
 
+  test("structured task output is rendered into DAG result text", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalInvokeInternal = SessionInvoke.invokeInternal
+        ;(SessionInvoke.invokeInternal as any) = mock(
+          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+            return writeAssistantText(input.sessionID, JSON.stringify({ choice: "blue", items: ["a", "b"] }))
+          },
+        )
+        try {
+          const parentSession = await Session.create({})
+          await Dag.update({
+            sessionID: parentSession.id,
+            nodes: [{ id: "structured-node", content: "Produce structured data", status: "pending", deps: [] }],
+          })
+
+          const task = await Cortex.launch({
+            description: "Structured DAG result",
+            prompt: "Choose structured result",
+            agent: "developer",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_structured_dag",
+            dagNodeId: "structured-node",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+            output: {
+              mode: "structured",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["choice", "items"],
+                properties: {
+                  choice: { type: "string" },
+                  items: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+          })
+
+          const completed = await Cortex.waitFor(task.id, 10)
+          expect(completed?.status).toBe("completed")
+          await Bun.sleep(20)
+
+          const node = (await Dag.get(parentSession.id)).find((n) => n.id === "structured-node")
+          expect(node?.status).toBe("completed")
+          expect(node?.result).toBe(
+            CortexOutput.renderTaskOutputForDag({ mode: "structured", value: { choice: "blue", items: ["a", "b"] } }),
+          )
+        } finally {
+          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+        }
+      },
+    })
+  })
+
+  test("downstream delegated subagent context includes structured upstream DAG result", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        let systemText = ""
+        const restore = installDagLoopMocks({
+          onBuildPlan(input) {
+            systemText = input.system.join("\n")
+          },
+        })
+        try {
+          const parentSession = await Session.create({})
+          await Dag.update({
+            sessionID: parentSession.id,
+            nodes: [
+              {
+                id: "upstream-structured",
+                content: "Upstream structured result",
+                status: "completed",
+                deps: [],
+                result: CortexOutput.renderTaskOutputForDag({
+                  mode: "structured",
+                  value: { winner: "drake", score: 3 },
+                }),
+              },
+              {
+                id: "downstream-context",
+                content: "Use upstream structured result",
+                status: "pending",
+                deps: ["upstream-structured"],
+              },
+            ],
+          })
+
+          const task = await Cortex.launch({
+            description: "Downstream reads structured DAG result",
+            prompt: "Use upstream structured result",
+            agent: "developer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_downstream_structured",
+            dagNodeId: "downstream-context",
+            notifyParentOnComplete: false,
+          })
+
+          const completed = await Cortex.waitFor(task.id, 10)
+          expect(completed?.status).toBe("completed")
+          expect(systemText).toContain("<upstream-results>")
+          expect(systemText).toContain("Structured output:")
+          expect(systemText).toContain('"winner": "drake"')
+          expect(systemText).toContain('"score": 3')
+        } finally {
+          restore()
+        }
+      },
+    })
+  })
   test("delegated_subagent task populates DAG node with upstream completion context", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

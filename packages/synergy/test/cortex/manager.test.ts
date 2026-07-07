@@ -5,7 +5,6 @@ import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
-import { SessionManager } from "../../src/session/manager"
 import { SessionInbox } from "../../src/session/inbox"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
@@ -37,10 +36,12 @@ async function launchAndCaptureCreatedTask(
 }
 
 async function writeAssistantText(sessionID: string, text: string) {
+  const parentID = Identifier.ascending("message")
   const message = await Session.updateMessage({
     id: Identifier.ascending("message"),
     role: "assistant",
-    parentID: Identifier.ascending("message"),
+    parentID,
+    rootID: parentID,
     mode: "test",
     agent: "developer",
     path: {
@@ -62,20 +63,23 @@ async function writeAssistantText(sessionID: string, text: string) {
     },
     sessionID,
   })
-  await Session.updatePart({
+  const part = await Session.updatePart({
     id: Identifier.ascending("part"),
     messageID: message.id,
     sessionID,
     type: "text",
     text,
   })
+  return { info: message, parts: [part] }
 }
 
 async function writeStructuredToolResult(sessionID: string, input: Record<string, unknown>) {
+  const parentID = Identifier.ascending("message")
   const message = await Session.updateMessage({
     id: Identifier.ascending("message"),
     role: "assistant",
-    parentID: Identifier.ascending("message"),
+    parentID,
+    rootID: parentID,
     mode: "test",
     agent: "developer",
     path: {
@@ -97,7 +101,7 @@ async function writeStructuredToolResult(sessionID: string, input: Record<string
     },
     sessionID,
   })
-  await Session.updatePart({
+  const part = await Session.updatePart({
     id: Identifier.ascending("part"),
     messageID: message.id,
     sessionID,
@@ -116,6 +120,7 @@ async function writeStructuredToolResult(sessionID: string, input: Record<string
       },
     },
   })
+  return { info: message, parts: [part] }
 }
 
 async function waitUntilTerminal(taskID: string) {
@@ -617,7 +622,7 @@ describe.serial("Cortex", () => {
       },
     }
 
-    test("summary mode keeps task.result as trajectory summary", async () => {
+    test("summary mode writes summary TaskOutput", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -625,7 +630,7 @@ describe.serial("Cortex", () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              await writeAssistantText(input.sessionID, "plain answer")
+              return writeAssistantText(input.sessionID, "plain answer")
             },
           )
           try {
@@ -642,8 +647,8 @@ describe.serial("Cortex", () => {
 
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
-            expect(completed?.result).toContain("Execution Trajectory")
-            expect(completed?.outputResult).toBeUndefined()
+            expect(completed?.output?.mode).toBe("summary")
+            expect(completed?.output?.value).toContain("Execution Trajectory")
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -661,7 +666,7 @@ describe.serial("Cortex", () => {
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               expect(input.tools?.[CortexOutput.STRUCTURED_TOOL_ID]).toBe(true)
               expect(input.ephemeralTools?.[0]?.id).toBe(CortexOutput.STRUCTURED_TOOL_ID)
-              await writeStructuredToolResult(input.sessionID, { choice: "drake" })
+              return writeStructuredToolResult(input.sessionID, { value: { choice: "drake" } })
             },
           )
           try {
@@ -679,14 +684,9 @@ describe.serial("Cortex", () => {
 
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
-            expect(completed?.result).toContain("Execution Trajectory")
-            expect(completed?.outputResult).toEqual({
+            expect(completed?.output).toEqual({
               mode: "structured",
-              status: "valid",
-              source: "structured_tool",
-              data: { choice: "drake" },
-              text: "",
-              repairTurns: 0,
+              value: { choice: "drake" },
             })
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
@@ -701,14 +701,17 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          await writeStructuredToolResult(session.id, {
-            template: "kombucha",
-            lines: ["first", "second"],
+          const message = await writeStructuredToolResult(session.id, {
+            value: {
+              template: "kombucha",
+              lines: ["first", "second"],
+            },
           })
 
-          const result = await CortexOutput.resolve(
-            session.id,
-            {
+          const result = await CortexOutput.resolve({
+            sessionID: session.id,
+            rootMessageID: message.info.rootID!,
+            output: {
               mode: "structured",
               schema: {
                 $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -725,47 +728,51 @@ describe.serial("Cortex", () => {
                 },
               },
             },
-            0,
-          )
+          })
 
-          expect(result).toMatchObject({
-            mode: "structured",
-            status: "valid",
-            source: "structured_tool",
-            data: {
-              template: "kombucha",
-              lines: ["first", "second"],
+          expect(result).toEqual({
+            ok: true,
+            output: {
+              mode: "structured",
+              value: {
+                template: "kombucha",
+                lines: ["first", "second"],
+              },
             },
           })
         },
       })
     })
 
-    test("structured resolver reports schema compile errors without throwing", async () => {
+    test("invalid structured schema fails before invoke", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const session = await Session.create({})
-          await writeStructuredToolResult(session.id, { choice: "drake" })
-
-          const result = await CortexOutput.resolve(
-            session.id,
-            {
-              mode: "structured",
-              schema: {
-                $schema: "https://json-schema.org/draft/2020-12/schema",
-                type: "not-a-json-schema-type",
-              },
-            },
-            0,
-          )
-
-          expect(result).toMatchObject({
-            mode: "structured",
-            status: "invalid",
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const invoke = mock(async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+            return writeAssistantText(input.sessionID, "should not run")
           })
-          expect((result as any).validationErrors[0]).toContain("schema:")
+          ;(SessionInvoke.invokeInternal as any) = invoke
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Invalid schema",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: { type: "not-a-json-schema-type" } },
+            })
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("error")
+            expect(completed?.error).toContain("Structured output schema is not valid JSON Schema")
+            expect(invoke).not.toHaveBeenCalled()
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
         },
       })
     })
@@ -778,7 +785,7 @@ describe.serial("Cortex", () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              await writeAssistantText(input.sessionID, '{"choice":"final"}')
+              return writeAssistantText(input.sessionID, '{"choice":"final"}')
             },
           )
           try {
@@ -796,9 +803,7 @@ describe.serial("Cortex", () => {
 
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
-            expect(completed?.outputResult?.mode).toBe("structured")
-            expect((completed?.outputResult as any).source).toBe("final_response")
-            expect((completed?.outputResult as any).data).toEqual({ choice: "final" })
+            expect(completed?.output).toEqual({ mode: "structured", value: { choice: "final" } })
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -817,10 +822,11 @@ describe.serial("Cortex", () => {
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               calls++
               if (calls === 1) {
-                await writeAssistantText(input.sessionID, '{"wrong":true}')
-                return
+                expect(input.tools?.example_business_tool).toBe(true)
+                return writeAssistantText(input.sessionID, '{"wrong":true}')
               }
-              await writeStructuredToolResult(input.sessionID, { choice: "repaired" })
+              expect(input.tools).toEqual(CortexOutput.repairTools())
+              return writeStructuredToolResult(input.sessionID, { value: { choice: "repaired" } })
             },
           )
           try {
@@ -834,13 +840,13 @@ describe.serial("Cortex", () => {
               model: { providerID: "test-provider", modelID: "test-model" },
               notifyParentOnComplete: false,
               output: { mode: "structured", schema: planSchema, maxRepairTurns: 3 },
+              tools: { example_business_tool: true },
             })
 
             const completed = await waitUntilTerminal(task.id)
             expect(calls).toBe(2)
             expect(completed?.status).toBe("completed")
-            expect((completed?.outputResult as any).repairTurns).toBe(1)
-            expect((completed?.outputResult as any).data).toEqual({ choice: "repaired" })
+            expect(completed?.output).toEqual({ mode: "structured", value: { choice: "repaired" } })
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -858,7 +864,7 @@ describe.serial("Cortex", () => {
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               calls++
-              await writeAssistantText(input.sessionID, '{"wrong":true}')
+              return writeAssistantText(input.sessionID, '{"wrong":true}')
             },
           )
           try {
@@ -877,10 +883,8 @@ describe.serial("Cortex", () => {
             const completed = await waitUntilTerminal(task.id)
             expect(calls).toBe(2)
             expect(completed?.status).toBe("error")
-            expect(completed?.result).toBeUndefined()
-            expect(completed?.outputResult?.mode).toBe("structured")
-            expect((completed?.outputResult as any).status).toBe("invalid")
-            expect((completed?.outputResult as any).repairTurns).toBe(1)
+            expect(completed?.output).toBeUndefined()
+            expect(completed?.error).toContain("Structured output validation failed after 1 repair turns")
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -896,7 +900,7 @@ describe.serial("Cortex", () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              await writeAssistantText(input.sessionID, "final prose")
+              return writeAssistantText(input.sessionID, "final prose")
             },
           )
           try {
@@ -914,8 +918,7 @@ describe.serial("Cortex", () => {
 
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
-            expect(completed?.result).toContain("Execution Trajectory")
-            expect(completed?.outputResult).toEqual({ mode: "final_response", text: "final prose" })
+            expect(completed?.output).toEqual({ mode: "final_response", value: "final prose" })
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -971,7 +974,7 @@ describe.serial("Cortex", () => {
           const deliveries: Parameters<typeof SessionInbox.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              await writeAssistantText(input.sessionID, "completed")
+              return writeAssistantText(input.sessionID, "completed")
             },
           )
           ;(SessionInbox.deliver as any) = mock(async (input: Parameters<typeof SessionInbox.deliver>[0]) => {
@@ -1013,7 +1016,7 @@ describe.serial("Cortex", () => {
           const deliverMock = mock(async () => {})
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              await writeAssistantText(input.sessionID, "completed")
+              return writeAssistantText(input.sessionID, "completed")
             },
           )
           ;(SessionInbox.deliver as any) = deliverMock

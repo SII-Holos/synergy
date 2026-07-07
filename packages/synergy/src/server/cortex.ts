@@ -89,7 +89,11 @@ export const CortexRoute = new Hono()
             "application/json": {
               schema: resolver(
                 z.object({
-                  output: z.string(),
+                  taskID: z.string(),
+                  status: CortexTypes.TaskStatus,
+                  rendered: z.string(),
+                  output: CortexTypes.TaskOutput.optional(),
+                  error: z.string().optional(),
                 }),
               ),
             },
@@ -107,8 +111,8 @@ export const CortexRoute = new Hono()
     async (c) => {
       const { taskID } = c.req.valid("param")
       const Cortex = await getCortex()
-      const output = await Cortex.output(taskID)
-      return c.json({ output })
+      const view = Cortex.outputView(taskID)
+      return c.json(view)
     },
   )
   .post(

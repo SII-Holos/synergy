@@ -22,7 +22,7 @@ Skills extend Synergy with specialized knowledge, workflows, and tool integratio
 
 ### Skill file format
 
-Every skill is a `SKILL.md` file with YAML frontmatter:
+Every skill is a `SKILL.md` file (or `Skill.md` — both casings are discovered) with YAML frontmatter. Plugin skills may alternatively supply content via `content.txt` or `content.md` where applicable.
 
 ```markdown
 ---
@@ -51,6 +51,14 @@ Skills are discovered from these directories:
 | Global | `~/.synergy/config/{skill,skills}/**/SKILL.md` |
 | Claude compat (project) | `<project>/.claude/skills/**/SKILL.md` |
 | Claude compat (global) | `~/.claude/skills/**/SKILL.md` |
+| Codex compat (project) | `<project>/.codex/skills/**/SKILL.md` |
+| Codex compat (global) | `~/.codex/skills/**/SKILL.md` |
+| Agents compat (project) | `<project>/.agents/skills/**/SKILL.md` |
+| Agents compat (global) | `~/.agents/skills/**/SKILL.md` |
+| OpenClaw compat (global) | `~/.openclaw/skills/**/SKILL.md` |
+| Legacy project root | `<project>/skills/**/SKILL.md` |
+
+Skill entry files support `SKILL.md` and `Skill.md` (both casings). Plugin skills may supply content via `content.txt` or `content.md` as an alternative to `SKILL.md`.
 
 Example layout:
 ```
@@ -268,7 +276,7 @@ cd my-plugin && bun add some-package
 
 - Plugin `console.log` output appears in the Synergy server process logs (stdout/stderr).
 - If a plugin fails to load, check server startup logs for the error — load failures do not crash the server.
-- After modifying a plugin file, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`.
+- After changing configured plugin specs or plugin package files, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`, `agent`, and `skill`.
 - Runtime entry must export an object descriptor with `id` and `init()`.
 - Worker/process plugins run through the plugin runner; tools and hooks are proxied through the runtime supervisor.
 
@@ -282,12 +290,25 @@ Plugin reload cascades to tool_registry reload.
 
 ---
 
+## Custom Tools (lightweight, no SDK)
+
+For simple custom tools that do not need the full plugin SDK, place TypeScript/JavaScript files in a `tool/` directory:
+
+| Scope | Path pattern |
+|---|---|
+| Project | `<project>/.synergy/tool/*.{ts,js}` |
+| Global | `~/.synergy/config/tool/*.{ts,js}` |
+
+Each file exports one or more tool definitions using the internal tool API. Unlike plugins, these are scanned directly from the tool directories — not configured via `50-plugins.jsonc`.
+
+---
+
 ## Troubleshooting
 
 ### Skills
 
 - **Skill not triggering** — check `description` in frontmatter is comprehensive; description is the ONLY text Synergy uses to decide whether to load the skill; vague descriptions = never loaded
-- **Skill content not loading** — verify the file is named exactly `SKILL.md` (case-sensitive); check it's in a `skill/` or `skills/` directory; try `runtime_reload(target: "skill")`
+- **Skill content not loading** — verify the file is named `SKILL.md` or `Skill.md`; check it's in a recognized skill directory; try `runtime_reload(target: "skill")`
 - **References not found** — reference paths in the skill body are relative to the SKILL.md file's directory; use `references/filename.md` not absolute paths
 
 ### Commands
