@@ -17,7 +17,7 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
 
-const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
+const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
 
 ToolRegistry.register({
   name: "read",

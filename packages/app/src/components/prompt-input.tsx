@@ -466,49 +466,79 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     void togglePlanMode()
   }
 
-  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
-    {
-      id: "context",
-      label: "Context",
-      items: [
-        {
-          id: "files",
-          label: "Add files",
-          description: "Attach files or images",
-          icon: getSemanticIcon("prompt.attach"),
-          onSelect: () => fileInputRef.click(),
-        },
-      ],
-    },
-    {
-      id: "workflow",
-      label: "Workflow",
-      items: [
-        {
-          id: "plan-mode",
-          label: "Plan mode",
-          description: planMode() ? "Planning before execution" : "Ask for an approach first",
-          icon: getSemanticIcon("prompt.plan"),
-          selected: planMode(),
-          ariaDisabled: blueprintModeLocked() || planMode(),
-          title: blueprintModeLocked()
-            ? "Plan Mode is unavailable while a Blueprint is equipped"
-            : planMode()
-              ? "Plan Mode is already enabled"
-              : undefined,
-          tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
-          iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-          labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
-          classList: {
-            "bg-workbench-selected-bg": planMode(),
-            "text-text-base": planMode(),
-            "opacity-60": blueprintModeLocked(),
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
+    const agentSection: PromptAddMenuSection = {
+      id: "agent",
+      label: "Agent",
+      items: local.agent
+        .list()
+        .filter((a) => !a.hidden)
+        .map((agent) => {
+          const visual = getAgentVisual(agent)
+          const disabled = sessionHasMessages() && !!agent.external
+          return {
+            id: `agent-${agent.name}`,
+            label: visual.label,
+            icon: getSemanticIcon("agents.main"),
+            selected: local.agent.current()?.name === agent.name,
+            disabled,
+            tooltip: disabled ? "Create a new session to use this external agent" : undefined,
+            onSelect: () => {
+              if (!disabled) local.agent.set(agent.name)
+            },
+          }
+        }),
+    }
+    return [
+      {
+        id: "context",
+        label: "Context",
+        items: [
+          {
+            id: "files",
+            label: "Add files",
+            description: "Attach files or images",
+            icon: getSemanticIcon("prompt.attach"),
+            onSelect: () => fileInputRef.click(),
           },
-          onSelect: selectPlanModeFromMenu,
-        },
-      ],
-    },
-  ])
+        ],
+      },
+      ...(props.hideAgentSelector || layout.isDesktop() ? [] : [agentSection]),
+      {
+        id: "workflow",
+        label: "Workflow",
+        items: [
+          {
+            id: "plan-mode",
+            label: "Plan mode",
+            description: planMode() ? "Planning before execution" : "Ask for an approach first",
+            icon: getSemanticIcon("prompt.plan"),
+            selected: planMode(),
+            ariaDisabled: blueprintModeLocked() || planMode(),
+            title: blueprintModeLocked()
+              ? "Plan Mode is unavailable while a Blueprint is equipped"
+              : planMode()
+                ? "Plan Mode is already enabled"
+                : undefined,
+            tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
+            iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
+            classList: {
+              "bg-workbench-selected-bg": planMode(),
+              "text-text-base": planMode(),
+              "opacity-60": blueprintModeLocked(),
+            },
+            onSelect: selectPlanModeFromMenu,
+          },
+        ],
+      },
+    ]
+  })
 
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
     if (params.id) return []
@@ -575,10 +605,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
-  })
-  const sessionHasMessages = createMemo(() => {
-    if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
   })
   const cortexRunning = createMemo(() => {
     const id = params.id
@@ -1103,7 +1129,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
-        <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+        <div class="absolute -top-3 right-5 z-20 hidden md:flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
           <QuickActions
             class="relative"
@@ -1147,7 +1173,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <Show when={store.dragging}>
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
-              <Icon name="paperclip" class="size-8" />
+              <Icon name={getSemanticIcon("prompt.attach")} class="size-8" />
               <span class="text-14-regular">Drop supported files, notes, or sessions here</span>
             </div>
           </div>
@@ -1165,7 +1191,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                   <IconButton
                     type="button"
-                    icon="x"
+                    icon={getSemanticIcon("action.close")}
                     variant="ghost"
                     class="h-6 w-6"
                     onClick={() => prompt.context.removeActive()}
@@ -1179,7 +1205,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base text-12-regular text-text-weak hover:bg-surface-raised-base-hover"
                 onClick={() => prompt.context.addActive()}
               >
-                <Icon name="plus" size="small" />
+                <Icon name={getSemanticIcon("action.add")} size="small" />
                 <span>Include active file</span>
               </button>
             </Show>
@@ -1202,7 +1228,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                   <IconButton
                     type="button"
-                    icon="x"
+                    icon={getSemanticIcon("action.close")}
                     variant="ghost"
                     class="h-6 w-6"
                     onClick={() => prompt.context.remove(item.key)}
@@ -1258,66 +1284,72 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="prompt-input-toolbar-chip flex items-center gap-2">
-                  <Icon name="terminal" size="small" class="text-icon-interactive-base" />
+                  <Icon name={getSemanticIcon("prompt.shell")} size="small" class="text-icon-interactive-base" />
                   <span class="text-12-medium text-text-interactive-base">Shell</span>
                   <span class="text-11-regular text-text-subtle">esc to exit</span>
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
-                  <ToolbarSelectorPopover
-                    trigger={
-                      <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
-                        <span class="text-12-medium text-text-base whitespace-nowrap">
-                          {getAgentVisual(local.agent.current()).label}
-                        </span>
-                        <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
-                      </button>
-                    }
-                    title="Select agent"
-                    contentClass="w-52 max-h-80"
-                    placement="top-start"
-                  >
-                    {(close) => (
-                      <List
-                        class="p-1"
-                        items={local.agent.list().filter((a) => !a.hidden)}
-                        key={(x) => x.name}
-                        filterKeys={["name"]}
-                        onSelect={(x) => {
-                          if (!x) return
-                          if (sessionHasMessages() && x.external) return
-                          local.agent.set(x.name)
-                          close()
-                        }}
-                      >
-                        {(agent) => {
-                          const visual = getAgentVisual(agent)
-                          return (
-                            <Tooltip
-                              placement="right"
-                              value={
-                                sessionHasMessages() && agent.external
-                                  ? "Create a new session to use this external agent"
-                                  : undefined
-                              }
-                            >
-                              <div
-                                classList={{
-                                  "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                                  "opacity-45": sessionHasMessages() && !!agent.external,
-                                }}
+                  <div class="hidden md:block">
+                    <ToolbarSelectorPopover
+                      trigger={
+                        <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
+                          <span class="text-12-medium text-text-base whitespace-nowrap">
+                            {getAgentVisual(local.agent.current()).label}
+                          </span>
+                          <Icon
+                            name={getSemanticIcon("navigation.collapse")}
+                            size="small"
+                            class="text-icon-weak shrink-0"
+                          />
+                        </button>
+                      }
+                      title="Select agent"
+                      contentClass="w-52 max-h-80"
+                      placement="top-start"
+                    >
+                      {(close) => (
+                        <List
+                          class="p-1"
+                          items={local.agent.list().filter((a) => !a.hidden)}
+                          key={(x) => x.name}
+                          filterKeys={["name"]}
+                          onSelect={(x) => {
+                            if (!x) return
+                            if (sessionHasMessages() && x.external) return
+                            local.agent.set(x.name)
+                            close()
+                          }}
+                        >
+                          {(agent) => {
+                            const visual = getAgentVisual(agent)
+                            return (
+                              <Tooltip
+                                placement="right"
+                                value={
+                                  sessionHasMessages() && agent.external
+                                    ? "Create a new session to use this external agent"
+                                    : undefined
+                                }
                               >
-                                <div class="min-w-0">
-                                  <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                                >
+                                  <div class="min-w-0">
+                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                  </div>
                                 </div>
-                              </div>
-                            </Tooltip>
-                          )
-                        }}
-                      </List>
-                    )}
-                  </ToolbarSelectorPopover>
+                              </Tooltip>
+                            )
+                          }}
+                        </List>
+                      )}
+                    </ToolbarSelectorPopover>
+                  </div>
                 </Show>
                 <PermissionModeSelector
                   working={working}
@@ -1336,10 +1368,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <span class="relative flex size-4 shrink-0 items-center justify-center">
                         <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
-                          <Icon name="list-checks" size="small" class="text-icon-weak" />
+                          <Icon name={getSemanticIcon("prompt.plan")} size="small" class="text-icon-weak" />
                         </span>
                         <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                          <Icon name="x" size="small" class="text-icon-base" />
+                          <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
                         </span>
                       </span>
                       <span class="prompt-input-compact-label text-12-medium leading-none">Plan</span>
@@ -1367,7 +1399,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Show when={!sdk.connected()}>
               <Tooltip placement="top" value="Connection lost — responses may be delayed">
                 <div class="flex items-center justify-center size-5">
-                  <Icon name="signal" size="small" class="text-icon-warning-base animate-pulse" />
+                  <Icon
+                    name={getSemanticIcon("prompt.signal")}
+                    size="small"
+                    class="text-icon-warning-base animate-pulse"
+                  />
                 </div>
               </Tooltip>
             </Show>
@@ -1397,13 +1433,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <span class="relative flex size-4 shrink-0 items-center justify-center">
                           <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
                             <Icon
-                              name={getSemanticIcon("orchestration.blueprint")}
+                              name={getSemanticIcon("blueprint.main")}
                               class={getBlueprintSlotIconClass(bp().mode)}
                               size="small"
                             />
                           </span>
                           <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                            <Icon name="x" class="text-text-interactive-base" size="small" />
+                            <Icon
+                              name={getSemanticIcon("action.close")}
+                              class="text-text-interactive-base"
+                              size="small"
+                            />
                           </span>
                         </span>
                         <span class="max-w-24 truncate text-11-medium">Loop ready</span>
@@ -1418,13 +1458,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       value={
                         <div class="flex items-center gap-2">
                           <span>Start BlueprintLoop</span>
-                          <Icon name="corner-down-left" size="small" class="text-icon-base" />
+                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
                         </div>
                       }
                     >
                       <IconButton
                         type="submit"
-                        icon="zap"
+                        icon={getSemanticIcon("prompt.blueprintStart")}
                         variant="primary"
                         class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
                       />
@@ -1459,13 +1499,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <span class="relative flex size-4 shrink-0 items-center justify-center">
                           <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
                             <Icon
-                              name={getSemanticIcon("orchestration.blueprint")}
+                              name={getSemanticIcon("blueprint.main")}
                               class={getBlueprintSlotIconClass(bp().mode)}
                               size="small"
                             />
                           </span>
                           <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                            <Icon name="x" class="text-icon-base" size="small" />
+                            <Icon name={getSemanticIcon("action.close")} class="text-icon-base" size="small" />
                           </span>
                         </span>
                         <span
@@ -1490,7 +1530,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Match when={true}>
                         <div class="flex items-center gap-2">
                           <span>Send</span>
-                          <Icon name="corner-down-left" size="small" class="text-icon-base" />
+                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
                         </div>
                       </Match>
                     </Switch>
@@ -1499,7 +1539,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     type="submit"
                     disabled={!canSubmit()}
-                    icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
+                    icon={
+                      working() && !prompt.dirty()
+                        ? getSemanticIcon("action.stop")
+                        : getSemanticIcon("prompt.submitArrow")
+                    }
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />

@@ -8,6 +8,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getScopeLabel } from "@/utils/scope"
 import type { LocalScope } from "@/context/layout"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function DialogScopeEdit(props: { scope: LocalScope }) {
   const dialog = useDialog()
@@ -43,7 +44,7 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
         <div data-slot="dialog-meta-list" aria-label="Project details">
           <div data-slot="dialog-meta-row">
             <span data-slot="dialog-meta-icon" aria-hidden="true">
-              <Icon name="folder" size="small" />
+              <Icon name={getSemanticIcon("workspace.main")} size="small" />
             </span>
             <span data-slot="dialog-meta-label">Worktree</span>
             <code data-slot="dialog-meta-value">{props.scope.worktree}</code>
@@ -51,7 +52,7 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
           {props.scope.directory && props.scope.directory !== props.scope.worktree && (
             <div data-slot="dialog-meta-row">
               <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name="folder" size="small" />
+                <Icon name={getSemanticIcon("workspace.main")} size="small" />
               </span>
               <span data-slot="dialog-meta-label">Directory</span>
               <code data-slot="dialog-meta-value">{props.scope.directory}</code>
@@ -60,7 +61,7 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
           {props.scope.type && (
             <div data-slot="dialog-meta-row">
               <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name="tag" size="small" />
+                <Icon name={getSemanticIcon("notes.tag")} size="small" />
               </span>
               <span data-slot="dialog-meta-label">Type</span>
               <code data-slot="dialog-meta-value">{props.scope.type}</code>
@@ -69,7 +70,7 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
           {props.scope.id && (
             <div data-slot="dialog-meta-row">
               <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name="fingerprint" size="small" />
+                <Icon name={getSemanticIcon("workspace.identity")} size="small" />
               </span>
               <span data-slot="dialog-meta-label">ID</span>
               <code data-slot="dialog-meta-value">{props.scope.id}</code>

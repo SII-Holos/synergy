@@ -60,6 +60,21 @@ export namespace AccountUsage {
     })
   }
 
+  export function normalizeResetAt(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined
+    const timestamp =
+      typeof value === "number"
+        ? value < 10_000_000_000
+          ? value * 1000
+          : value
+        : typeof value === "string" && value.trim()
+          ? new Date(value.trim()).getTime()
+          : undefined
+    if (timestamp === undefined || !Number.isFinite(timestamp) || timestamp <= 0) return undefined
+    const date = new Date(timestamp)
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+  }
+
   export function percentWindow(input: {
     label: string
     usedPercent?: unknown
@@ -70,7 +85,7 @@ export namespace AccountUsage {
     const usedPercent = Number(input.usedPercent)
     if (!Number.isFinite(usedPercent)) return undefined
     const clamped = Math.max(0, Math.min(100, usedPercent))
-    const resetAt = typeof input.resetAt === "string" && input.resetAt ? input.resetAt : undefined
+    const resetAt = normalizeResetAt(input.resetAt)
     return {
       label: input.label,
       usedPercent: clamped,

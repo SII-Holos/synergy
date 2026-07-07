@@ -3,6 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface SessionRowProps {
   session: Session
@@ -48,7 +49,7 @@ function StatusDot(props: SessionRowProps) {
         <div class="size-1.5 rounded-full bg-text-interactive-base" />
       </Show>
       <Show when={!props.isWorking && !props.hasPermission && !props.hasError && !props.hasNotification && isPinned()}>
-        <Icon name="pin" size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak" />
       </Show>
     </div>
   )
@@ -74,7 +75,7 @@ function ActionMenu(props: {
         class="flex items-center justify-center size-6 rounded-md text-icon-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
         onClick={() => setOpen(!open())}
       >
-        <Icon name="ellipsis" size="small" />
+        <Icon name={getSemanticIcon("action.more")} size="small" />
       </button>
       <Show when={open()}>
         <div
@@ -86,7 +87,7 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onTogglePin)}
           >
-            <Icon name="pin" size="small" class="text-icon-weak" />
+            <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak" />
             {props.isPinned ? "Unpin" : "Pin"}
           </button>
           <button
@@ -94,7 +95,7 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onRename)}
           >
-            <Icon name="pencil" size="small" class="text-icon-weak" />
+            <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak" />
             Rename
           </button>
           <button
@@ -102,7 +103,7 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-diff-delete-base hover:bg-text-diff-delete-base/10 transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onArchive)}
           >
-            <Icon name="archive" size="small" />
+            <Icon name={getSemanticIcon("action.archive")} size="small" />
             Archive
           </button>
         </div>

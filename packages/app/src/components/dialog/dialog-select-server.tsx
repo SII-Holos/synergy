@@ -8,6 +8,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type ServerStatus = { healthy: boolean; version?: string }
 
@@ -169,7 +170,13 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
                   error={store.error}
                 />
               </div>
-              <Button type="submit" variant="secondary" icon="plus" size="large" disabled={store.adding}>
+              <Button
+                type="submit"
+                variant="secondary"
+                icon={getSemanticIcon("action.add")}
+                size="large"
+                disabled={store.adding}
+              >
                 {store.adding ? "Checking..." : "Add"}
               </Button>
             </div>

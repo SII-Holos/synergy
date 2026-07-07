@@ -86,7 +86,7 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
           <div data-slot="compaction-card-content">
             <Show when={p().mechanical}>
               <div data-slot="compaction-card-warning">
-                <Icon name="alert-triangle" size="small" />
+                <Icon name={getSemanticIcon("state.warning")} size="small" />
                 <span data-slot="compaction-card-warning-text">
                   This summary was mechanically generated due to context limits. Some detail may be missing.
                 </span>

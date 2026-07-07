@@ -17,6 +17,7 @@ import type { usePrompt } from "@/context/prompt"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -47,11 +48,12 @@ export function PromptDock(props: {
   rollbackActive?: boolean
 }) {
   const nav = useNavigate()
+
   return (
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
+        "relative md:absolute md:inset-x-0 md:bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
         "pt-12": !props.isNewSession(),
       }}
       style={{
@@ -61,7 +63,7 @@ export function PromptDock(props: {
     >
       <div
         classList={{
-          "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
+          "w-full min-w-0 px-3 md:px-6 pointer-events-auto relative": true,
           "md:max-w-[54rem]": !props.showTabs(),
         }}
       >
@@ -112,7 +114,7 @@ export function PromptDock(props: {
                         transition-all duration-150"
                         onClick={() => props.navigate(props.meta().parentID!)}
                       >
-                        <Icon name="arrow-left" size="small" />
+                        <Icon name={getSemanticIcon("navigation.back")} size="small" />
                         <span>Back to parent</span>
                       </button>
                     </Tooltip>
@@ -131,7 +133,7 @@ export function PromptDock(props: {
                           transition-all duration-150"
                           onClick={() => props.navigate(sourceID())}
                         >
-                          <Icon name="git-fork" size="small" />
+                          <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
                           <span>Forked from</span>
                         </button>
                       </Tooltip>
@@ -150,7 +152,7 @@ export function PromptDock(props: {
                         transition-all duration-150"
                         onClick={() => nav(from())}
                       >
-                        <Icon name="arrow-left" size="small" />
+                        <Icon name={getSemanticIcon("navigation.back")} size="small" />
                         <span>Back</span>
                       </button>
                     </div>
@@ -187,7 +189,7 @@ export function PromptDock(props: {
         </Show>
         <Show when={props.isNewSession() && !props.isGlobal}>
           <div class="flex items-center justify-center gap-1.5 pt-3 text-12-regular text-text-subtle pointer-events-none">
-            <Icon name="folder" size="small" class="text-icon-base" />
+            <Icon name={getSemanticIcon("workspace.main")} size="small" class="text-icon-base" />
             <span class="text-text-base">{props.scopeName()}</span>
             <Show when={props.branch()}>
               <span>·</span>
@@ -200,7 +202,7 @@ export function PromptDock(props: {
           </div>
         </Show>
         <Show when={!props.isNewSession()}>
-          <div class="hidden md:block pointer-events-auto">
+          <div class="pointer-events-auto">
             <StatusBar />
           </div>
         </Show>

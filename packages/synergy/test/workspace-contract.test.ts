@@ -45,17 +45,20 @@ describe("SessionTopBar contract", () => {
 })
 
 describe("Workbench surface contract", () => {
+  const layoutPath = path.join(APP_SRC, "pages/layout.tsx")
   const sessionPath = path.join(APP_SRC, "pages/session.tsx")
   const surfacePath = path.join(APP_SRC, "components/session/workbench-surface.tsx")
 
   test("session uses the unified workbench provider and surface", async () => {
-    const src = await fs.readFile(sessionPath, "utf-8")
+    const sessionSrc = await fs.readFile(sessionPath, "utf-8")
+    const layoutSrc = await fs.readFile(layoutPath, "utf-8")
 
-    expect(src).toContain("WorkbenchPanelsProvider")
-    expect(src).toContain('<WorkbenchSurface surface="side" />')
-    expect(src).toContain('<WorkbenchSurface surface="bottom" />')
-    expect(src).not.toContain("WorkspaceRail")
-    expect(src).not.toContain("TerminalPanel")
+    expect(layoutSrc).toContain("WorkbenchPanelsProvider")
+    expect(sessionSrc).not.toContain("WorkbenchPanelsProvider")
+    expect(sessionSrc).toContain('<WorkbenchSurface surface="side" />')
+    expect(sessionSrc).toContain('<WorkbenchSurface surface="bottom" />')
+    expect(sessionSrc).not.toContain("WorkspaceRail")
+    expect(sessionSrc).not.toContain("TerminalPanel")
   })
 
   test("surface content labels come from panel registrations", async () => {

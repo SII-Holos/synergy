@@ -73,7 +73,20 @@ export namespace Storage {
     })
   }
 
-  export async function update<T>(key: string[], fn: (draft: T) => void) {
+  // Streaming part/message writes pass { compact: true } to skip pretty-print
+  // indentation (~30-50% fewer bytes and less serialization on the hottest write
+  // path). Low-frequency, human-inspected files (session info, config) keep the
+  // default indented form. JSON.parse reads either transparently, so no
+  // migration is needed for files previously written indented.
+  export interface WriteOptions {
+    compact?: boolean
+  }
+
+  function serialize(content: unknown, options?: WriteOptions) {
+    return options?.compact ? JSON.stringify(content) : JSON.stringify(content, null, 2)
+  }
+
+  export async function update<T>(key: string[], fn: (draft: T) => void, options?: WriteOptions) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
     return measureStorage("update", key, async () =>
@@ -81,7 +94,7 @@ export namespace Storage {
         using _ = await Lock.write(target)
         const content = await Bun.file(target).json()
         fn(content)
-        const serialized = JSON.stringify(content, null, 2)
+        const serialized = serialize(content, options)
         await writeJsonAtomic(target, serialized)
         PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
         return content as T
@@ -89,13 +102,13 @@ export namespace Storage {
     )
   }
 
-  export async function write<T>(key: string[], content: T) {
+  export async function write<T>(key: string[], content: T, options?: WriteOptions) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
     return measureStorage("write", key, async () =>
       withErrorHandling(async () => {
         using _ = await Lock.write(target)
-        const serialized = JSON.stringify(content, null, 2)
+        const serialized = serialize(content, options)
         await writeJsonAtomic(target, serialized)
         PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
       }),

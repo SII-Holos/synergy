@@ -5,6 +5,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { SettingsDialog } from "@/components/settings"
 import { QuickSwitcherList } from "@/components/model-manager"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export const ModelSelectorPopover: Component<{
   provider?: string
@@ -56,7 +57,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
       action={
         <Button
           class="h-7 -my-1 text-14-medium"
-          icon="settings"
+          icon={getSemanticIcon("settings.models")}
           tabIndex={-1}
           onClick={() => {
             dialog.show(() => <SettingsDialog initialTab="models" />)

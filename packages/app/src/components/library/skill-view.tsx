@@ -5,6 +5,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
@@ -233,7 +234,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
           <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
             <Popover.Trigger as="button" class="library-control-pill">
               <span>{filterLabel()}</span>
-              <Icon name="chevron-down" size="small" class="opacity-60" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
             </Popover.Trigger>
             <Popover.Portal>
               <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
@@ -319,7 +320,10 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
               class={`${libraryActionButtonClass} ${importing() ? "pointer-events-none text-text-weaker" : ""}`}
               disabled={importing()}
             >
-              <Show when={importing()} fallback={<Icon name="download" size="small" class="opacity-70" />}>
+              <Show
+                when={importing()}
+                fallback={<Icon name={getSemanticIcon("action.download")} size="small" class="opacity-70" />}
+              >
                 <Spinner class="size-3" />
               </Show>
               <span>Import</span>
@@ -336,7 +340,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                         fileInputRef.click()
                       }}
                     >
-                      <Icon name="folder-plus" size="small" class="text-icon-weak shrink-0" />
+                      <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak shrink-0" />
                       <div class="min-w-0">
                         <div class="text-13-regular text-text-base">Upload ZIP</div>
                         <div class="text-11-regular text-text-weaker">Import from a local .zip file</div>
@@ -347,7 +351,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                       class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
                       onClick={() => setImportMode("url")}
                     >
-                      <Icon name="globe" size="small" class="text-icon-weak shrink-0" />
+                      <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak shrink-0" />
                       <div class="min-w-0">
                         <div class="text-13-regular text-text-base">From URL</div>
                         <div class="text-11-regular text-text-weaker">Download and import a .zip URL</div>
@@ -417,7 +421,10 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
             onClick={reloadSkills}
             disabled={reloading()}
           >
-            <Show when={reloading()} fallback={<Icon name="refresh-ccw" size="small" class="opacity-70" />}>
+            <Show
+              when={reloading()}
+              fallback={<Icon name={getSemanticIcon("action.refresh")} size="small" class="opacity-70" />}
+            >
               <Spinner class="size-3" />
             </Show>
             <span>Reload</span>
@@ -437,12 +444,12 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
               class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
               onClick={() => setDiagnosticsExpanded((prev) => !prev)}
             >
-              <Icon name="shield-alert" size="small" class="text-icon-warning-base shrink-0" />
+              <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base shrink-0" />
               <span class="flex-1 text-left">
                 {diagnostics().length} skill{diagnostics().length === 1 ? "" : "s"} skipped during load
               </span>
               <Icon
-                name="chevron-right"
+                name={getSemanticIcon("navigation.expand")}
                 size="small"
                 class="shrink-0 text-text-weaker transition-transform duration-200"
                 classList={{ "rotate-90": diagnosticsExpanded() }}
@@ -468,7 +475,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
           when={filtered().length > 0}
           fallback={
             <AppPanel.Empty
-              icon="sparkles"
+              icon={getSemanticIcon("command.rmslop")}
               title={props.search ? `No skills match "${props.search}"` : "No skills loaded"}
               description="Skills are loaded from SKILL.md files in .synergy/skill/ directories. Use Reload to rescan."
             />
@@ -517,7 +524,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
             title={`Open details for ${props.skill.name}`}
             aria-label={`Open details for ${props.skill.name}`}
           >
-            <Icon name="arrow-up-right" size="small" />
+            <Icon name={getSemanticIcon("action.open")} size="small" />
           </button>
         </div>
 
@@ -528,7 +535,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
         <div class="mt-auto flex flex-col gap-2.5 pt-1">
           <Show when={displayLocation()}>
             <div class={`flex items-center gap-2 px-3 py-2.5 ${libraryInsetClass}`} title={props.skill.location}>
-              <Icon name="file-text" size="small" class="shrink-0 text-icon-weak" />
+              <Icon name={getSemanticIcon("settings.commands")} size="small" class="shrink-0 text-icon-weak" />
               <span class="min-w-0 truncate text-10-regular text-text-weaker">{displayLocation()}</span>
             </div>
           </Show>

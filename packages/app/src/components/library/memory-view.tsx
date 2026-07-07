@@ -2,6 +2,7 @@ import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
@@ -225,7 +226,7 @@ export function MemoryView(props: {
             <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
               <Popover.Trigger as="button" class="library-control-pill">
                 <span>{filterLabel()}</span>
-                <Icon name="chevron-down" size="small" class="opacity-60" />
+                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
@@ -271,14 +272,14 @@ export function MemoryView(props: {
           <div class="library-toolbar-right">
             <Show when={sorted().length > 0}>
               <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
-                <Icon name="square-check" size="small" class="opacity-70" />
+                <Icon name={getSemanticIcon("notes.select")} size="small" class="opacity-70" />
                 <span>Select</span>
               </button>
             </Show>
             <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
               <Popover.Trigger as="button" class={libraryActionButtonClass}>
                 <span>{memorySortLabels[sort()]}</span>
-                <Icon name="chevron-down" size="small" class="opacity-60" />
+                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content class={libraryMenuClass}>
@@ -316,7 +317,7 @@ export function MemoryView(props: {
           when={sorted().length > 0}
           fallback={
             <AppPanel.Empty
-              icon="brain"
+              icon={getSemanticIcon("memory.main")}
               title={categoryFilter().size > 0 ? "No memories match the filter" : "No memories yet"}
               description="Memories are created when sessions compact. They capture knowledge the agent learns over time."
             />
@@ -427,7 +428,7 @@ function MemoryCard(props: {
                 class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
-                <Icon name="x" size="small" />
+                <Icon name={getSemanticIcon("action.close")} size="small" />
               </button>
             </Show>
           </div>
@@ -469,7 +470,7 @@ function MemoryCard(props: {
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
-              <Icon name="chevron-down" size="small" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
             </span>
           </div>
         </Show>

@@ -4,6 +4,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaActivityEntry } from "@ericsanchezok/synergy-sdk/client"
 import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shared"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type AgendaActivityGroup = {
   agendaID: string
@@ -79,7 +80,7 @@ export function ActivityView(props: {
             when={grouped().length > 0}
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
-                <Icon name="clock" size="large" class="text-icon-weak" />
+                <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak" />
                 <span class="text-12-regular text-text-weaker">{props.error ?? "No history found"}</span>
               </div>
             }
@@ -132,7 +133,7 @@ function ActivityGroupCard(props: {
         }}
       >
         <Icon
-          name="chevron-right"
+          name={getSemanticIcon("navigation.expand")}
           size="small"
           class={`shrink-0 text-icon-weak transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
         />

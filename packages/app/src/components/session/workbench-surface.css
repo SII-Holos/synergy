@@ -311,3 +311,14 @@
     transition: none;
   }
 }
+
+/* Mobile side workspace overlay */
+@media (max-width: 767px) {
+  .mobile-workbench-overlay .workbench-surface {
+    width: 100% !important;
+  }
+
+  .mobile-workbench-overlay .workbench-surface [data-component="resize-handle"] {
+    display: none;
+  }
+}

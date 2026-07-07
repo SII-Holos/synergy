@@ -10,6 +10,7 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useParams } from "@solidjs/router"
 import type { Session, SessionExportMode } from "@ericsanchezok/synergy-sdk/client"
 import "./dialog-session-export.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number" || Number.isNaN(bytes)) return "—"
@@ -97,7 +98,7 @@ export function DialogSessionExport() {
           {(session) => (
             <section class="session-export-summary" aria-label="Session summary">
               <div class="session-export-summary-title">
-                <Icon name="message-square" size="small" class="session-export-summary-icon" />
+                <Icon name={getSemanticIcon("session.default")} size="small" class="session-export-summary-icon" />
                 <span>{session().title || "Untitled session"}</span>
               </div>
               <div class="session-export-meta">
@@ -153,7 +154,7 @@ export function DialogSessionExport() {
           type="button"
           variant="primary"
           size="large"
-          icon="download"
+          icon={getSemanticIcon("action.download")}
           disabled={exporting()}
           onClick={handleExport}
         >

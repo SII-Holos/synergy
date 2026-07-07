@@ -306,14 +306,17 @@ export namespace SessionNav {
             icon?: { url?: string; color?: string }
             directory?: string
             worktree?: string
-            time?: { archived?: number }
+            time?: { created?: number; archived?: number }
           }
         | undefined
       if (sid !== "home") {
         scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
       }
       if (scopeInfo?.time?.archived) continue
-      const latestActivityAt = activeEntries.length > 0 ? Math.max(...activeEntries.map((e) => e.lastActivityAt)) : 0
+      const latestActivityAt =
+        activeEntries.length > 0
+          ? Math.max(...activeEntries.map((e) => e.lastActivityAt))
+          : (scopeInfo?.time?.created ?? 0)
       results.push({
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",

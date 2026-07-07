@@ -1,7 +1,9 @@
 import { createResource, For, Show } from "solid-js"
+import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Panel } from "@/components/panel"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type DiagnosticsSummary = {
   generatedAt?: string
@@ -49,7 +51,7 @@ export function DiagnosticsPanel() {
         <Panel.HeaderRow>
           <Panel.Title>Diagnostics</Panel.Title>
           <Panel.Actions>
-            <Panel.Action icon="refresh-ccw" title="Refresh" onClick={() => refetch()} />
+            <Panel.Action icon={getSemanticIcon("action.refresh")} title="Refresh" onClick={() => refetch()} />
           </Panel.Actions>
         </Panel.HeaderRow>
       </Panel.Header>
@@ -106,7 +108,7 @@ function RuntimeLock(props: { summary?: DiagnosticsSummary }) {
   const lock = () => props.summary?.lock?.lock
   const inspection = () => props.summary?.lock?.inspection
   return (
-    <Section title="Runtime Lock" icon="server">
+    <Section title="Runtime Lock" icon={getSemanticIcon("providers.main")}>
       <Show
         when={lock()}
         fallback={<div class="text-12-regular text-text-weaker px-0.5 py-1">No runtime lock present</div>}
@@ -134,7 +136,7 @@ function RuntimeLock(props: { summary?: DiagnosticsSummary }) {
 function RecentErrors(props: { summary?: DiagnosticsSummary }) {
   const errors = () => props.summary?.traces?.recentErrors ?? []
   return (
-    <Section title="Recent Errors" icon="shield-alert">
+    <Section title="Recent Errors" icon={getSemanticIcon("state.warning")}>
       <Show when={errors().length > 0} fallback={<div class="text-12-regular text-text-weaker">No recent errors</div>}>
         <div class="flex flex-col gap-2">
           <For each={errors().slice(0, 5)}>
@@ -162,7 +164,7 @@ function RecentErrors(props: { summary?: DiagnosticsSummary }) {
 function PendingSessions(props: { summary?: DiagnosticsSummary }) {
   const sessions = () => props.summary?.sessions?.pendingReply ?? []
   return (
-    <Section title="Pending Sessions" icon="clock">
+    <Section title="Pending Sessions" icon={getSemanticIcon("settings.timeouts")}>
       <Show
         when={sessions().length > 0}
         fallback={<div class="text-12-regular text-text-weaker">No pending replies</div>}
@@ -171,7 +173,7 @@ function PendingSessions(props: { summary?: DiagnosticsSummary }) {
           <For each={sessions().slice(0, 5)}>
             {(session) => (
               <div class="flex items-center gap-2 rounded-lg bg-surface-inset-base/60 p-2.5">
-                <Icon name="message-square" size="small" class="text-icon-weak shrink-0" />
+                <Icon name={getSemanticIcon("session.default")} size="small" class="text-icon-weak shrink-0" />
                 <div class="min-w-0 flex-1">
                   <div class="text-12-medium text-text-strong truncate">{session.sessionID ?? "session"}</div>
                   <div class="text-11-regular text-text-weaker">{formatTime(session.updated)}</div>
@@ -187,7 +189,7 @@ function PendingSessions(props: { summary?: DiagnosticsSummary }) {
 
 function Paths(props: { summary?: DiagnosticsSummary }) {
   return (
-    <Section title="Files" icon="file-text">
+    <Section title="Files" icon={getSemanticIcon("settings.configFiles")}>
       <div class="flex flex-col gap-2">
         <Show when={props.summary?.logs?.dev}>
           <PathLine label="Dev log" value={props.summary!.logs!.dev!} />
@@ -203,11 +205,11 @@ function Paths(props: { summary?: DiagnosticsSummary }) {
   )
 }
 
-function Section(props: { title: string; icon: string; children: any }) {
+function Section(props: { title: string; icon: IconName; children: any }) {
   return (
     <div class="rounded-lg border border-border-weaker-base bg-surface-base p-3.5">
       <div class="flex items-center gap-2 mb-3">
-        <Icon name={props.icon as any} size="small" class="text-icon-weak" />
+        <Icon name={props.icon} size="small" class="text-icon-weak" />
         <span class="text-12-medium text-text-strong">{props.title}</span>
       </div>
       {props.children}

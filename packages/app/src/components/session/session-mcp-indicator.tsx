@@ -15,7 +15,7 @@ export function SessionMcpIndicator() {
   return (
     <Show when={stats().total > 0}>
       <StatusBarIndicator
-        icon={getSemanticIcon("connection.mcp")}
+        icon={getSemanticIcon("mcp.main")}
         value={stats().enabled}
         onClick={() => dialog.show(() => <DialogSelectMcp />)}
         iconClass={stats().failed ? "text-icon-critical-base" : undefined}

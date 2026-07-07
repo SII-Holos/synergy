@@ -1,11 +1,15 @@
 import { AppPanel } from "@/components/app-panel"
 import { PerformanceDashboard } from "./PerformanceDashboard"
+import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
 import "./performance-panel.css"
 
 export function PerformancePanel() {
+  const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   return (
     <AppPanel.Root class="performance-workbench">
       <AppPanel.Content>
+        <WorkspaceMobileHeader onClose={onCloseWorkspace} />
         <AppPanel.Header class="performance-header">
           <div class="performance-header-inner">
             <AppPanel.HeaderRow>

@@ -124,9 +124,6 @@ describe("app boot shell", () => {
       'class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger"',
     )
     expect(sessionPage).toContain(
-      'class="synergy-workbench-canvas flex h-full items-center justify-center bg-background-stronger"',
-    )
-    expect(sessionPage).toContain(
       'class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger"',
     )
   })

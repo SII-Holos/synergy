@@ -2,6 +2,7 @@ import type { JSX, ParentProps } from "solid-js"
 import { Show } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 function Root(props: ParentProps) {
   return <div class="flex flex-col h-full">{props.children}</div>
@@ -56,7 +57,7 @@ function Search(props: {
 }) {
   return (
     <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
-      <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+      <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak shrink-0" />
       <input
         type="text"
         placeholder={props.placeholder ?? "Search..."}
@@ -70,7 +71,7 @@ function Search(props: {
           class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
           onClick={() => props.onInput("")}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       </Show>
       {props.trailing}

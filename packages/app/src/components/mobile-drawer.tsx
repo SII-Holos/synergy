@@ -7,6 +7,7 @@ import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
@@ -16,6 +17,7 @@ import { PaginationBar } from "@/components/scopes/pagination-bar"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -50,11 +52,11 @@ export function MobileDrawer() {
         />
         {/* Drawer panel */}
         <div
-          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl"
+          class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
           {/* Header */}
-          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
+          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img src={holosLogoPath(theme.mode())} alt="Holos" class="size-6 shrink-0" />
               <span class="text-14-medium text-text-strong">Synergy</span>
@@ -64,7 +66,7 @@ export function MobileDrawer() {
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
-              <Icon name="x" size="normal" />
+              <Icon name={getSemanticIcon("action.close")} size="normal" />
             </button>
           </div>
 
@@ -103,12 +105,22 @@ export function MobileDrawer() {
   )
 }
 
-const DRAWER_TOOLS = [
+interface DrawerTool {
+  id: string
+  label: string
+  icon: string
+  href?: string
+  panelId?: string
+}
+
+const DRAWER_TOOLS: DrawerTool[] = [
   { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
   { id: "library", label: "Library", icon: "book-open", href: "/library" },
   { id: "performance", label: "Performance", icon: "radar", href: "/performance" },
   { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
-] as const
+  { id: "notes", label: "Notes", icon: "notebook-pen", panelId: "notes" },
+  { id: "browser", label: "Browser", icon: "globe", panelId: "browser" },
+]
 
 function ScopeListView(props: {
   currentDir: string | undefined
@@ -120,6 +132,8 @@ function ScopeListView(props: {
   const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const location = useLocation()
+  const params = useParams()
+  const workbench = useWorkbenchPanels()
 
   const scopes = createMemo(() => {
     const homePath = globalSync.data.paths?.home
@@ -146,7 +160,7 @@ function ScopeListView(props: {
         }}
         onClick={props.onNavigateHome}
       >
-        <Icon name="home" size="normal" class="shrink-0" />
+        <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
         <span class="text-14-medium">Home</span>
       </button>
 
@@ -175,7 +189,7 @@ function ScopeListView(props: {
               }}
               onClick={() => props.onSelectScope(scope)}
             >
-              <Icon name="folder" size="normal" class="shrink-0" />
+              <Icon name={getSemanticIcon("workspace.main")} size="normal" class="shrink-0" />
               <span
                 classList={{
                   "text-14-medium truncate": true,
@@ -185,7 +199,7 @@ function ScopeListView(props: {
               >
                 {getScopeLabel(scope)}
               </span>
-              <Icon name="chevron-right" size="small" class="ml-auto shrink-0 text-icon-weak" />
+              <Icon name={getSemanticIcon("navigation.expand")} size="small" class="ml-auto shrink-0 text-icon-weak" />
             </button>
           )
         }}
@@ -198,27 +212,48 @@ function ScopeListView(props: {
       <div class="px-4 pb-1.5">
         <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
       </div>
-      <div class="grid grid-cols-4 gap-1 px-3 pb-2">
+      <div class="grid grid-cols-3 gap-1 px-3 pb-2">
         <For each={DRAWER_TOOLS}>
-          {(tool) => (
-            <button
-              type="button"
-              classList={{
-                "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                "bg-surface-raised-base-hover text-text-strong":
-                  tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href,
-                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                  tool.id === "plugins" ? !location.pathname.startsWith("/plugins") : location.pathname !== tool.href,
-              }}
-              onClick={() => {
-                navigate(tool.href)
-                props.onClose()
-              }}
-            >
-              <Icon name={tool.icon} size="normal" />
-              <span class="text-[10px] font-medium leading-none">{tool.label}</span>
-            </button>
-          )}
+          {(tool) => {
+            const hasSession = createMemo(() => !!params.id)
+            const isDisabled = createMemo(() => tool.panelId === "browser" && !hasSession())
+            const isActive = createMemo(() => {
+              if (isDisabled()) return false
+              if (tool.panelId) {
+                const side = workbench.surface("side")
+                return side.opened() && side.activeTab()?.panelId === tool.panelId
+              }
+              if (tool.id === "plugins") return location.pathname.startsWith(tool.href ?? "")
+              return location.pathname === tool.href
+            })
+
+            return (
+              <button
+                type="button"
+                disabled={isDisabled()}
+                classList={{
+                  "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
+                  "bg-surface-raised-base-hover text-text-strong": isActive(),
+                  "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                    !isActive() && !isDisabled(),
+                  "opacity-50 cursor-not-allowed": isDisabled(),
+                }}
+                onClick={() => {
+                  if (isDisabled()) return
+                  if (tool.panelId) {
+                    void workbench.openPanel(tool.panelId, { reuseExisting: true })
+                    props.onClose()
+                    return
+                  }
+                  navigate(tool.href!)
+                  props.onClose()
+                }}
+              >
+                <Icon name={tool.icon} size="normal" />
+                <span class="text-[10px] font-medium leading-none">{tool.label}</span>
+              </button>
+            )
+          }}
         </For>
       </div>
     </div>
@@ -315,7 +350,7 @@ function SessionListDrawerView(props: {
           class="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onBack}
         >
-          <Icon name="arrow-left" size="small" />
+          <Icon name={getSemanticIcon("navigation.back")} size="small" />
           <span class="text-12-medium">Projects</span>
         </button>
         <span class="flex-1" />
@@ -328,7 +363,7 @@ function SessionListDrawerView(props: {
         class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-strong hover:border-border-base hover:bg-surface-raised-base-hover transition-all"
         onClick={props.onNewSession}
       >
-        <Icon name="plus" size="small" />
+        <Icon name={getSemanticIcon("action.add")} size="small" />
         <span>New session</span>
       </button>
 

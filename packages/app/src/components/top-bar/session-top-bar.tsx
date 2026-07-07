@@ -181,84 +181,137 @@ export function SessionTopBar() {
     })
   }
 
-  return (
-    <div class="stb-root">
-      <div class="stb-left">
-        <Show when={!isGlobal()}>
-          <Icon name="folder" size="normal" class="stb-folder" />
-          <span class="stb-slash">/</span>
-        </Show>
-        {/* Model selector */}
-        <Show when={sessionMeta().canSelectModel}>
-          <Show
-            when={!isCurrentExternalModelLocked()}
-            fallback={
-              <Tooltip placement="bottom" value="Model is locked for this external agent after the session starts">
-                <button type="button" class="stb-selector-btn stb-locked">
-                  <span class="stb-selector-label">{local.model.current()?.name ?? "Model locked"}</span>
-                </button>
-              </Tooltip>
-            }
-          >
-            <ModelSelectorPopover>
-              <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
-                <button type="button" class="stb-selector-btn">
-                  <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
-                  <Icon name="chevron-down" size="normal" class="stb-chevron" />
-                </button>
-              </TooltipKeybind>
-            </ModelSelectorPopover>
-          </Show>
-        </Show>
-
-        {/* Variant cycle */}
-        <Show when={local.model.variant.list().length > 0}>
-          <TooltipKeybind placement="bottom" title="Thinking effort" keybind={command.keybind("model.variant.cycle")}>
-            <button
-              type="button"
-              class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
-              onClick={() => local.model.variant.cycle()}
-            >
-              <span class="stb-variant-label">{local.model.variant.current() ?? "Default"}</span>
+  const ModelSelectorButton = () => (
+    <Show when={sessionMeta().canSelectModel}>
+      <Show
+        when={!isCurrentExternalModelLocked()}
+        fallback={
+          <Tooltip placement="bottom" value="Model is locked for this external agent after the session starts">
+            <button type="button" class="stb-selector-btn stb-locked">
+              <span class="stb-selector-label">{local.model.current()?.name ?? "Model locked"}</span>
+            </button>
+          </Tooltip>
+        }
+      >
+        <ModelSelectorPopover>
+          <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
+            <button type="button" class="stb-selector-btn">
+              <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
+              <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
             </button>
           </TooltipKeybind>
-        </Show>
+        </ModelSelectorPopover>
+      </Show>
+    </Show>
+  )
+
+  const VariantSelectorButton = () => (
+    <Show when={local.model.variant.list().length > 0}>
+      <TooltipKeybind placement="bottom" title="Thinking effort" keybind={command.keybind("model.variant.cycle")}>
+        <button
+          type="button"
+          class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
+          onClick={() => local.model.variant.cycle()}
+        >
+          <span class="stb-variant-label">{local.model.variant.current() ?? "Default"}</span>
+        </button>
+      </TooltipKeybind>
+    </Show>
+  )
+
+  return (
+    <div class="stb-root">
+      {/* Mobile layout */}
+      <div class="md:hidden flex w-full items-center justify-between pointer-events-auto">
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label="Open navigation"
+            onClick={() => layout.mobileSidebar.toggle()}
+          >
+            <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
+          </button>
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label="Open tools"
+            onClick={() => layout.rightSidebar.toggle()}
+          >
+            <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
+          </button>
+        </div>
+        <div class="stb-center flex min-w-0 items-center justify-center">
+          <ModelSelectorButton />
+        </div>
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label="New session"
+            onClick={() => navigate(`/${params.dir}/session`)}
+          >
+            <Icon name={getSemanticIcon("action.add")} size="normal" />
+          </button>
+          <Show when={!!params.id && !isGlobal()}>
+            <SessionActionMenu
+              isWorktree={isWorktreeSession}
+              worktreeDisabled={worktreeDisabled}
+              onRename={showRenameDialog}
+              onWorktreeToggle={toggleWorktree}
+              onExport={() => dialog.show(() => <DialogSessionExport />)}
+              onArchive={archiveSession}
+            />
+          </Show>
+        </div>
       </div>
-      <div class="stb-right">
-        <Show when={!!params.id && !isGlobal()}>
-          <SessionActionMenu
-            isWorktree={isWorktreeSession}
-            worktreeDisabled={worktreeDisabled}
-            onRename={showRenameDialog}
-            onWorktreeToggle={toggleWorktree}
-            onExport={() => dialog.show(() => <DialogSessionExport />)}
-            onArchive={archiveSession}
-          />
-        </Show>
-        <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
-          <button
-            type="button"
-            class="stb-icon-btn"
-            classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
-            aria-label={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"}
-            aria-pressed={bottomSurface().opened()}
-            onClick={() => bottomSurface().toggle()}
-          >
-            <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
-          </button>
-        </Tooltip>
-        <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
-          <button
-            type="button"
-            class="stb-icon-btn"
-            classList={{ "stb-icon-btn--active": sideSurface().opened() }}
-            aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
-            aria-pressed={sideSurface().opened()}
-            onClick={() => sideSurface().toggle()}
-          >
-            <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
-          </button>
-        </Tooltip>
+
+      {/* Desktop layout */}
+      <div class="hidden md:flex w-full items-center justify-between pointer-events-auto">
+        <div class="stb-left">
+          <Show when={!isGlobal()}>
+            <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
+            <span class="stb-slash">/</span>
+          </Show>
+          <ModelSelectorButton />
+          <VariantSelectorButton />
+        </div>
+        <div class="stb-right">
+          <Show when={!!params.id && !isGlobal()}>
+            <SessionActionMenu
+              isWorktree={isWorktreeSession}
+              worktreeDisabled={worktreeDisabled}
+              onRename={showRenameDialog}
+              onWorktreeToggle={toggleWorktree}
+              onExport={() => dialog.show(() => <DialogSessionExport />)}
+              onArchive={archiveSession}
+            />
+          </Show>
+          <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
+            <button
+              type="button"
+              class="stb-icon-btn"
+              classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
+              aria-label={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"}
+              aria-pressed={bottomSurface().opened()}
+              onClick={() => bottomSurface().toggle()}
+            >
+              <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
+            </button>
+          </Tooltip>
+          <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
+            <button
+              type="button"
+              class="stb-icon-btn"
+              classList={{ "stb-icon-btn--active": sideSurface().opened() }}
+              aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
+              aria-pressed={sideSurface().opened()}
+              onClick={() => sideSurface().toggle()}
+            >
+              <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+            </button>
+          </Tooltip>
+        </div>
       </div>
     </div>
   )

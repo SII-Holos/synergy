@@ -192,7 +192,7 @@ export function WorktreeTransitionContent(props: {
             if (!loading()) props.onClose()
           }}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       </div>
       <div class="flex-1 overflow-auto px-6 py-4">
