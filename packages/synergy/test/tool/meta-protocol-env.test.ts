@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
+import {
+  SynergyLinkBash,
+  SynergyLinkProcess,
+  SynergyLinkSession,
+  SynergyLinkIdentity,
+} from "@ericsanchezok/synergy-link-protocol"
 
 describe("Synergy Link identity", () => {
   test("resolves omitted and blank input as local", () => {
@@ -28,5 +33,52 @@ describe("Synergy Link identity", () => {
   test("requireLinkID rejects local aliases and invalid formats", () => {
     expect(() => SynergyLinkIdentity.requireLinkID(":local")).toThrow(SynergyLinkIdentity.InvalidLinkIDError)
     expect(() => SynergyLinkIdentity.requireLinkID("random_string")).toThrow('must start with "link_"')
+  })
+})
+
+describe("Synergy Link protocol strict payloads", () => {
+  test("rejects unknown fields inside bash payloads", () => {
+    const result = SynergyLinkBash.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "bash",
+      action: "execute",
+      sessionID: "session_test",
+      payload: {
+        command: "echo ok",
+        description: "Echo ok",
+        envID: "env_legacy",
+      },
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  test("rejects unknown fields inside process payloads", () => {
+    const result = SynergyLinkProcess.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "process",
+      action: "list",
+      sessionID: "session_test",
+      payload: { action: "list", envID: "env_legacy" },
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  test("rejects unknown fields inside session payloads", () => {
+    const result = SynergyLinkSession.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "session",
+      action: "open",
+      payload: { action: "open", envID: "env_legacy" },
+    })
+
+    expect(result.success).toBe(false)
   })
 })

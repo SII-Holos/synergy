@@ -10,18 +10,24 @@ export namespace SynergyLinkSession {
   export type Status = z.infer<typeof Status>
 
   export const ExecutePayload = z.discriminatedUnion("action", [
-    z.object({
-      action: z.literal("open"),
-      label: z.string().optional(),
-    }),
-    z.object({
-      action: z.literal("close"),
-      sessionID: SynergyLinkIdentity.SessionID,
-    }),
-    z.object({
-      action: z.literal("heartbeat"),
-      sessionID: SynergyLinkIdentity.SessionID,
-    }),
+    z
+      .object({
+        action: z.literal("open"),
+        label: z.string().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("close"),
+        sessionID: SynergyLinkIdentity.SessionID,
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("heartbeat"),
+        sessionID: SynergyLinkIdentity.SessionID,
+      })
+      .strict(),
   ])
   export type ExecutePayload = z.infer<typeof ExecutePayload>
 

@@ -245,6 +245,42 @@ describe("EnforcementGate shell classification", () => {
   })
 })
 
+describe("EnforcementGate Synergy Link classification", () => {
+  test("bash with linkID or deprecated envID gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { command: "echo remote", linkID: "link_test" },
+      { command: "echo remote", envID: "link_test" },
+    ]) {
+      const result = gate.classify("bash", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
+  })
+
+  test("process with linkID or deprecated envID gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { action: "list", linkID: "link_test" },
+      { action: "list", envID: "link_test" },
+    ]) {
+      const result = gate.classify("process", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
+  })
+})
+
 // ------------------------------------------------------------------
 // 2b. isDestructive boundary correctness
 // ------------------------------------------------------------------

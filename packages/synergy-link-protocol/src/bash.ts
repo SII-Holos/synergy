@@ -3,13 +3,15 @@ import { SynergyLinkEnvelope } from "./envelope"
 import { SynergyLinkIdentity } from "./identity"
 
 export namespace SynergyLinkBash {
-  export const ExecutePayload = z.object({
-    command: z.string(),
-    description: z.string(),
-    workdir: z.string().optional(),
-    background: z.boolean().optional(),
-    yieldSeconds: z.number().optional(),
-  })
+  export const ExecutePayload = z
+    .object({
+      command: z.string(),
+      description: z.string(),
+      workdir: z.string().optional(),
+      background: z.boolean().optional(),
+      yieldSeconds: z.number().optional(),
+    })
+    .strict()
   export type ExecutePayload = z.infer<typeof ExecutePayload>
 
   export const ResultMetadata = z.object({

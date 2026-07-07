@@ -438,6 +438,10 @@ function isValidSynergyLinkID(linkID: unknown): boolean {
   return typeof linkID === "string" && linkID.startsWith("link_") && linkID.length > 5
 }
 
+function effectiveSynergyLinkID(args: Record<string, any>): unknown {
+  return args.linkID ?? args.envID
+}
+
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
   for (const rule of rules) {
     if (rule.permission === cap.class) return rule
@@ -648,8 +652,10 @@ export namespace EnforcementGate {
 
         // If a valid remote linkID is supplied, execution runs on the remote host,
         // not the local machine. Add a separate remote-execute capability so
-        // profiles can distinguish local vs remote shell execution.
-        if (args.linkID && isValidSynergyLinkID(args.linkID)) {
+        // profiles can distinguish local vs remote shell execution. Deprecated
+        // envID is accepted by the tool layer as a linkID alias, so it must be
+        // classified through the same remote-execute boundary.
+        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }
 
@@ -861,7 +867,7 @@ export namespace EnforcementGate {
         } else {
           caps.push({ class: "file_read", nonBypassable: false })
         }
-        if (args.linkID && isValidSynergyLinkID(args.linkID)) {
+        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }
         return { capabilities: caps }

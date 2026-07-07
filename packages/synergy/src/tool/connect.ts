@@ -106,6 +106,21 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         )
       }
 
+      if (opened.metadata.status !== "opened") {
+        SynergyLinkExecution.clearSession(linkID)
+        return {
+          title: opened.title,
+          metadata: {
+            action: "open",
+            linkID,
+            targetAgentID: params.targetAgentID,
+            sessionID: opened.metadata.sessionID,
+            status: opened.metadata.status,
+          },
+          output: opened.output,
+        }
+      }
+
       const sessionID = opened.metadata.sessionID
       if (!sessionID) {
         throw new Error(`Connection open for link ${linkID} did not return a session ID.`)

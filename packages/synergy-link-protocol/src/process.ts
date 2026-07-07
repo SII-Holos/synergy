@@ -31,41 +31,55 @@ export namespace SynergyLinkProcess {
   export type ProcessInfo = z.infer<typeof ProcessInfo>
 
   export const ExecutePayload = z.discriminatedUnion("action", [
-    z.object({ action: z.literal("list") }),
-    z.object({
-      action: z.literal("poll"),
-      processId: SynergyLinkIdentity.ProcessID,
-      block: z.boolean().optional(),
-      timeout: z.number().optional(),
-    }),
-    z.object({
-      action: z.literal("log"),
-      processId: SynergyLinkIdentity.ProcessID,
-      offset: z.number().optional(),
-      limit: z.number().optional(),
-    }),
-    z.object({
-      action: z.literal("write"),
-      processId: SynergyLinkIdentity.ProcessID,
-      data: z.string(),
-    }),
-    z.object({
-      action: z.literal("send-keys"),
-      processId: SynergyLinkIdentity.ProcessID,
-      keys: z.array(z.string()),
-    }),
-    z.object({
-      action: z.literal("kill"),
-      processId: SynergyLinkIdentity.ProcessID,
-    }),
-    z.object({
-      action: z.literal("clear"),
-      processId: SynergyLinkIdentity.ProcessID,
-    }),
-    z.object({
-      action: z.literal("remove"),
-      processId: SynergyLinkIdentity.ProcessID,
-    }),
+    z.object({ action: z.literal("list") }).strict(),
+    z
+      .object({
+        action: z.literal("poll"),
+        processId: SynergyLinkIdentity.ProcessID,
+        block: z.boolean().optional(),
+        timeout: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("log"),
+        processId: SynergyLinkIdentity.ProcessID,
+        offset: z.number().optional(),
+        limit: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("write"),
+        processId: SynergyLinkIdentity.ProcessID,
+        data: z.string(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("send-keys"),
+        processId: SynergyLinkIdentity.ProcessID,
+        keys: z.array(z.string()),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("kill"),
+        processId: SynergyLinkIdentity.ProcessID,
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("clear"),
+        processId: SynergyLinkIdentity.ProcessID,
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("remove"),
+        processId: SynergyLinkIdentity.ProcessID,
+      })
+      .strict(),
   ])
   export type ExecutePayload = z.infer<typeof ExecutePayload>
 
