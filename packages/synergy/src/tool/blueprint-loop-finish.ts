@@ -72,8 +72,8 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
     }
 
     // Pre-check loop status for terminal and idempotent states
-    const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
-    const currentStatus = loop.status
+    let loop = await BlueprintLoopStore.get(scopeID, params.loopID)
+    let currentStatus = loop.status
     const isExecutionSession = ctx.sessionID === loop.sessionID
     const isAuditSession = ctx.sessionID === loop.auditSessionID
 
@@ -127,14 +127,38 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
     }
 
     if (currentStatus === "auditing" && params.status === "auditing") {
-      return {
-        title: `Loop ${params.loopID} → already auditing`,
-        output: `BlueprintLoop ${params.loopID} is already being audited.`,
-        metadata: {
-          loopID: params.loopID,
-          status: "auditing",
-        },
+      if (!loop.auditTaskID) {
+        return {
+          title: `Loop ${params.loopID} → already auditing`,
+          output: `BlueprintLoop ${params.loopID} is already being audited.`,
+          metadata: {
+            loopID: params.loopID,
+            status: "auditing",
+          },
+        }
       }
+
+      const { Cortex } = await import("../cortex")
+      const auditTask = Cortex.get(loop.auditTaskID)
+      if (auditTask && (auditTask.status === "queued" || auditTask.status === "running")) {
+        return {
+          title: `Loop ${params.loopID} → already auditing`,
+          output: `BlueprintLoop ${params.loopID} is already being audited.`,
+          metadata: {
+            loopID: params.loopID,
+            status: "auditing",
+            auditTaskID: loop.auditTaskID,
+          },
+        }
+      }
+
+      await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
+        status: "running",
+        auditSessionID: null,
+        auditTaskID: null,
+      })
+      loop = await BlueprintLoopStore.get(scopeID, params.loopID)
+      currentStatus = loop.status
     }
     let auditSessionID: string | undefined
 
@@ -163,6 +187,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
         status: "auditing",
         auditSessionID,
+        auditTaskID: task.id,
       })
     } else if (params.status === "failed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "failed" })
