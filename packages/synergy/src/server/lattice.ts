@@ -68,7 +68,7 @@ export const LatticeRoute = new Hono()
     describeRoute({
       summary: "Get session Lattice run",
       description: "Read the session's single Lattice run (or null).",
-      operationId: "lattice.session.get",
+      operationId: "lattice.session.getRun",
       responses: {
         200: { description: "Lattice run or null", content: { "application/json": { schema: resolver(RunOrNull) } } },
         ...errors(400),

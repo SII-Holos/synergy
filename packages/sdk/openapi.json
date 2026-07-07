@@ -12413,7 +12413,7 @@
     },
     "/lattice/session/{id}": {
       "get": {
-        "operationId": "lattice.session.get",
+        "operationId": "lattice.session.getRun",
         "parameters": [
           {
             "in": "query",
@@ -12473,7 +12473,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.session.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.session.getRun({\n  ...\n})"
           }
         ]
       }

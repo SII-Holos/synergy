@@ -216,6 +216,8 @@ export namespace Server {
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
       pathname.startsWith("/blueprint/") ||
+      pathname === "/lattice" ||
+      pathname.startsWith("/lattice/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||

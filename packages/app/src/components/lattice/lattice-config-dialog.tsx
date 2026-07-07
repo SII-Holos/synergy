@@ -19,7 +19,7 @@ export interface LatticeConfigSDK {
   client: {
     lattice: {
       session: {
-        get: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
+        getRun: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
       }
     }
   }
@@ -56,7 +56,7 @@ export function LatticeConfigDialog(props: {
   onMount(async () => {
     if (!props.sessionID) return
     try {
-      const result = await props.sdk.client.lattice.session.get({ id: props.sessionID })
+      const result = await props.sdk.client.lattice.session.getRun({ id: props.sessionID })
       const run = result.data ?? null
       setExisting(run)
       if (run) {

@@ -9,7 +9,7 @@ export interface LatticePanelSDK {
   client: {
     lattice: {
       session: {
-        get: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
+        getRun: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
         mode: (input: {
           id: string
           latticeModeInput: { enabled: boolean; mode?: "auto" | "collaborative"; action?: "continue" | "restart" }
@@ -53,7 +53,7 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
     const sessionID = props.sessionID
     if (!sessionID) return
     void props.sdk.client.lattice.session
-      .get({ id: sessionID })
+      .getRun({ id: sessionID })
       .then((r) => setRun(r.data ?? null))
       .catch(() => setRun(null))
     const unsub = props.sdk.event.on("lattice.run.updated", (event) => {

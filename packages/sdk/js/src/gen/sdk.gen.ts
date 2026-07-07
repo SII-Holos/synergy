@@ -214,6 +214,8 @@ import type {
   LatticeRunGetResponses,
   LatticeRunListErrors,
   LatticeRunListResponses,
+  LatticeSessionGetRunErrors,
+  LatticeSessionGetRunResponses,
   LatticeSessionModeErrors,
   LatticeSessionModeResponses,
   LibraryExperienceApplyRewardErrors,
@@ -2729,6 +2731,42 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get session Lattice run
+   *
+   * Read the session's single Lattice run (or null).
+   */
+  public getRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      LatticeSessionGetRunResponses,
+      LatticeSessionGetRunErrors,
+      ThrowOnError
+    >({
+      url: "/lattice/session/{id}",
+      ...options,
+      ...params,
     })
   }
 

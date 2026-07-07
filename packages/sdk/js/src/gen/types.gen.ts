@@ -12172,7 +12172,7 @@ export type LatticeSessionModeResponses = {
 
 export type LatticeSessionModeResponse = LatticeSessionModeResponses[keyof LatticeSessionModeResponses]
 
-export type LatticeSessionGetData = {
+export type LatticeSessionGetRunData = {
   body?: never
   path: {
     /**
@@ -12187,23 +12187,23 @@ export type LatticeSessionGetData = {
   url: "/lattice/session/{id}"
 }
 
-export type LatticeSessionGetErrors = {
+export type LatticeSessionGetRunErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type LatticeSessionGetError = LatticeSessionGetErrors[keyof LatticeSessionGetErrors]
+export type LatticeSessionGetRunError = LatticeSessionGetRunErrors[keyof LatticeSessionGetRunErrors]
 
-export type LatticeSessionGetResponses = {
+export type LatticeSessionGetRunResponses = {
   /**
    * Lattice run or null
    */
   200: LatticeRun | null
 }
 
-export type LatticeSessionGetResponse = LatticeSessionGetResponses[keyof LatticeSessionGetResponses]
+export type LatticeSessionGetRunResponse = LatticeSessionGetRunResponses[keyof LatticeSessionGetRunResponses]
 
 export type LatticeRunListData = {
   body?: never
