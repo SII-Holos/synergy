@@ -599,18 +599,18 @@ export namespace SessionInvoke {
           }
           case "lightloop":
             systemParts.push(`<light-loop-context>
-You are in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
+You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
 
 Task: ${session.workflow.taskDescription}
 
-Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
+Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
 - Have you produced all requested deliverables, artifacts, or changes?
 - Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
 - Are there any remaining gaps, edge cases, or follow-up work implied by the task?
 
 If the task is NOT fully complete, continue working now.
 If the task IS fully complete and verified, call loop_stop().
-Do not stop early: the user expects thorough completion, not a best-effort attempt.
+Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
 </light-loop-context>`)
             break
         }

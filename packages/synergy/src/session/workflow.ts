@@ -55,6 +55,25 @@ export namespace SessionWorkflowService {
     throw new Error(`Lattice-owned BlueprintLoops cannot start while the ${workflow.kind} workflow is active.`)
   }
 
+  export async function prepareBlueprintLoopBinding(
+    sessionID: string,
+    source: BlueprintLoopSource,
+  ): Promise<Session.Info> {
+    const session = await Session.get(sessionID)
+    const workflow = session.workflow
+    if (source === "user") {
+      if (!workflow) return session
+      if (workflow.kind === "plan" || workflow.kind === "lightloop") {
+        SessionManager.assertIdle(sessionID)
+        return setNone(sessionID)
+      }
+      throw new Error(`User BlueprintLoops cannot start while the ${workflow.kind} workflow is active.`)
+    }
+
+    await assertBlueprintLoopAllowed(session, source)
+    return session
+  }
+
   export async function set(sessionID: string, input: SetInput): Promise<Session.Info> {
     if (input.kind === "none") return setNone(sessionID)
     if (input.kind === "plan") return enablePlan(sessionID)

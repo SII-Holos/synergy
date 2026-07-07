@@ -100,8 +100,7 @@ If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${
 
   export async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
     const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loopID)
-    const session = await Session.get(sessionID)
-    await SessionWorkflowService.assertBlueprintLoopAllowed(session, loop.source)
+    await SessionWorkflowService.prepareBlueprintLoopBinding(sessionID, loop.source)
     await Session.update(sessionID, (draft) => {
       draft.blueprint = { ...draft.blueprint, loopID, loopRole }
     })
@@ -189,8 +188,7 @@ If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${
   export async function start(scopeID: string, loopID: string, userPrompt?: string): Promise<Info> {
     const normalized = normalizeStartUserPrompt(userPrompt)
     const before = await BlueprintLoopStore.get(scopeID, loopID)
-    const session = await Session.get(before.sessionID)
-    await SessionWorkflowService.assertBlueprintLoopAllowed(session, before.source)
+    await SessionWorkflowService.prepareBlueprintLoopBinding(before.sessionID, before.source)
     const loop = await BlueprintLoopStore.updateStatus(scopeID, loopID, {
       status: "running",
       userPrompt: normalized ?? null,

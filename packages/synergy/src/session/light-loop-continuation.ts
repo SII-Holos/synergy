@@ -29,7 +29,14 @@ async function deliverContinuation(sessionID: string, taskDescription: string): 
           sessionID,
           messageID: "",
           type: "text",
-          text: `Task: ${taskDescription}\n\nAssess whether the task is fully complete. If not, continue working. If yes, call loop_stop().`,
+          text: `Task: ${taskDescription}
+
+Review the task against the current work:
+- Are all requested deliverables complete?
+- Is the result verified with appropriate evidence?
+- Are there unresolved errors, missing edge cases, or implied follow-up steps?
+
+If anything remains, continue working now. If the task is complete and verified, call loop_stop() with a concise summary. Do not claim completion without evidence.`,
           synthetic: true,
         },
       ],

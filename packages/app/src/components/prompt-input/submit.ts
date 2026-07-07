@@ -28,7 +28,6 @@ import {
   formatSessionPreview,
   formatSessionReference,
   inlineLength,
-  inlineText,
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
@@ -36,6 +35,8 @@ import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
 import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
+import { buildLightLoopTaskDescription } from "./light-loop-task"
+import { resolvePromptSubmitIntent } from "./submit-intent"
 import {
   SessionStartProgressDialog,
   type SessionStartProgress,
@@ -57,7 +58,7 @@ type PromptSubmitInput = {
   clearPendingPlan: () => void
   pendingLattice: Accessor<{ mode: "auto" | "collaborative"; maxModelCalls: number } | null>
   clearPendingLattice: () => void
-  pendingLightLoop: Accessor<{ taskDescription: string } | null>
+  pendingLightLoop: Accessor<boolean>
   clearPendingLightLoop: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
@@ -169,14 +170,54 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     })
 
     const blueprintSlot = input.localArmedLoop()
-    if (
-      !blueprintSlot &&
-      text.trim().length === 0 &&
-      attachments.length === 0 &&
-      notes.length === 0 &&
-      sessions.length === 0
-    ) {
-      if (input.working()) input.abort()
+    const submitIntent = resolvePromptSubmitIntent({
+      text,
+      working: input.working(),
+      hasBlueprintSlot: !!blueprintSlot,
+    })
+    if (submitIntent === "abort") {
+      input.abort()
+      return
+    }
+    if (submitIntent === "blocked") {
+      if (input.pendingLightLoop()) {
+        showToast({
+          type: "warning",
+          title: "Describe the Light Loop task",
+          description: "Write the task first; attachments and references can only add context.",
+        })
+        return
+      }
+      const hasContextOnlyInput =
+        attachments.length > 0 ||
+        notes.length > 0 ||
+        sessions.length > 0 ||
+        currentContext.items.length > 0 ||
+        currentPrompt.some((part) => part.type === "file") ||
+        (!!input.activeFile() && currentContext.activeTab)
+      if (hasContextOnlyInput) {
+        showToast({
+          type: "warning",
+          title: "Add a message",
+          description: "Attachments and references need a text prompt.",
+        })
+      }
+      return
+    }
+    if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
+      showToast({
+        type: "warning",
+        title: "Use a normal message",
+        description: "Light Loop starts from the next text prompt, not shell mode.",
+      })
+      return
+    }
+    if (input.pendingLightLoop() && !blueprintSlot && text.trimStart().startsWith("/")) {
+      showToast({
+        type: "warning",
+        title: "Use a normal message",
+        description: "Light Loop starts from the next text prompt, not a slash command.",
+      })
       return
     }
 
@@ -205,8 +246,29 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (armedPlan) input.clearPendingPlan()
     const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
-    const armedLightLoop = isNewSession ? input.pendingLightLoop() : null
-    if (armedLightLoop) input.clearPendingLightLoop()
+    const armedLightLoop = input.pendingLightLoop()
+    const fileAttachmentsForTask = currentPrompt.filter((part): part is FileAttachmentPart => part.type === "file")
+    const armedLightLoopTaskDescription = armedLightLoop
+      ? buildLightLoopTaskDescription({
+          text,
+          uploads: attachments,
+          notes,
+          sessions,
+          fileAttachments: fileAttachmentsForTask,
+          contextItems: currentContext.items,
+          activeFile: input.activeFile(),
+          activeTabIncluded: currentContext.activeTab,
+        })
+      : undefined
+    if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
+      showToast({
+        type: "warning",
+        title: "Describe the Light Loop task",
+        description: "Write the task first; attachments and references can only add context.",
+      })
+      return
+    }
+    if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
     const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
 
     let sessionScopeKey = currentScopeKey
@@ -286,16 +348,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => session)
     }
     if (!session) return
-    if (blueprintSlot && session.workflow?.kind === "plan") {
+    if (blueprintSlot && (session.workflow?.kind === "plan" || session.workflow?.kind === "lightloop")) {
       const sessionID = session.id
       const fallbackSession = session
+      const workflowName = session.workflow.kind === "plan" ? "Plan" : "Light Loop"
       session = await client.workflow.session
         .set({ id: sessionID, workflowSetInput: { kind: "none" } })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
-            title: "Failed to exit Plan",
+            title: `Failed to exit ${workflowName}`,
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -356,15 +419,19 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
+    let enabledLightLoopForSubmit: { sessionID: string } | undefined
+    if (!blueprintSlot && armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
       const sessionID = session.id
       const fallbackSession = session
       session = await client.workflow.session
         .set({
           id: sessionID,
-          workflowSetInput: { kind: "lightloop", taskDescription: armedLightLoop.taskDescription },
+          workflowSetInput: { kind: "lightloop", taskDescription: armedLightLoopTaskDescription! },
         })
-        .then((x) => x.data ?? fallbackSession)
+        .then((x) => {
+          enabledLightLoopForSubmit = { sessionID }
+          return x.data ?? fallbackSession
+        })
         .catch(async (err) => {
           showToast({
             type: "error",
@@ -411,6 +478,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (!createdSessionForSubmit) return
       await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
       navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+    }
+
+    const rollbackLightLoopForSubmit = async () => {
+      if (!enabledLightLoopForSubmit) return
+      await client.workflow.session
+        .set({
+          id: enabledLightLoopForSubmit.sessionID,
+          workflowSetInput: { kind: "none" },
+        })
+        .catch(() => undefined)
     }
 
     if (isNewSession) updateStartProgress(workspaceSelection, "prompt")
@@ -761,6 +838,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       .then((result) => {
         closeStartProgress()
+        if (armedLightLoop) input.clearPendingLightLoop()
         if (result.data?.status === "queued" && optimisticAdded) {
           removeOptimisticMessage()
           optimisticAdded = false
@@ -773,8 +851,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
         }
       })
-      .catch((err) => {
+      .catch(async (err) => {
         closeStartProgress()
+        await rollbackLightLoopForSubmit()
         showToast({
           type: "error",
           title: "Failed to send prompt",

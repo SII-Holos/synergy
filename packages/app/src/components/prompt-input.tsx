@@ -74,6 +74,7 @@ import { usePromptAttachments } from "@/components/prompt-input/attachments-hook
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
+import { canSubmitPrompt } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import {
@@ -197,13 +198,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     maxModelCalls: number
   } | null>(null)
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
-  const [pendingLightLoopDesc, setPendingLightLoopDesc] = createSignal<string | undefined>(undefined)
-  const storedLightLoop = createMemo(() => (params.id ? activeWorkflow()?.kind === "lightloop" : pendingLightLoop()))
+  const storedLightLoop = createMemo(() =>
+    params.id ? activeWorkflow()?.kind === "lightloop" || pendingLightLoop() : pendingLightLoop(),
+  )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
   const lightLoopTaskDesc = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : pendingLightLoopDesc()
+    return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : undefined
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
@@ -227,7 +229,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           setPendingPlan(false)
           setPendingLattice(null)
           setPendingLightLoop(false)
-          setPendingLightLoopDesc(undefined)
         }
       },
     ),
@@ -493,8 +494,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
     })
   })
+  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | undefined>(() => {
+    const workflow = activeWorkflow()?.kind
+    if (workflow) return workflow
+    if (pendingPlan()) return "plan"
+    if (pendingLightLoop()) return "lightloop"
+    if (pendingLattice()) return "lattice"
+  })
 
-  const canSubmit = createMemo(() => prompt.dirty() || working() || !!localArmedLoop())
+  const promptText = createMemo(() => inlineText(prompt.current()))
+  const canSubmit = createMemo(() =>
+    canSubmitPrompt({
+      text: promptText(),
+      working: working(),
+      hasBlueprintSlot: !!localArmedLoop(),
+    }),
+  )
+  const submitStopsSession = createMemo(() => working() && !promptText().trim())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
   createEffect(
@@ -558,7 +574,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (next) {
         setPendingLattice(null)
         setPendingLightLoop(false)
-        setPendingLightLoopDesc(undefined)
       }
       return true
     }
@@ -641,7 +656,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setPendingLattice({ mode: config.mode, maxModelCalls: config.maxModelCalls })
       setPendingPlan(false)
       setPendingLightLoop(false)
-      setPendingLightLoopDesc(undefined)
       return
     }
     await sdk.client.workflow.session.set({
@@ -692,10 +706,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     void togglePlan()
   }
 
-  const setLightLoop = async (active: boolean, taskDescription?: string) => {
-    if (!params.id) {
+  const setLightLoop = async (active: boolean) => {
+    const activeBackendLightLoop = activeWorkflow()?.kind === "lightloop"
+    if (!params.id || !activeBackendLightLoop) {
       setPendingLightLoop(active)
-      setPendingLightLoopDesc(active ? taskDescription : undefined)
       if (active) {
         setPendingPlan(false)
         setPendingLattice(null)
@@ -705,8 +719,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     try {
       await sdk.client.workflow.session.set({
         id: params.id,
-        workflowSetInput: active ? { kind: "lightloop", taskDescription: taskDescription ?? "" } : { kind: "none" },
+        workflowSetInput: { kind: "none" },
       })
+      setPendingLightLoop(false)
       return true
     } catch (err) {
       showToast({
@@ -723,9 +738,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       event?.preventDefault()
       return
     }
-    const desc = window.prompt("Task description:")?.trim()
-    if (!desc) return
-    void setLightLoop(true, desc)
+    void setLightLoop(true)
   }
 
   const cancelLightLoop = async () => {
@@ -783,7 +796,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             id: "light-loop",
             label: "Light Loop",
             description: lightLoopActive()
-              ? (lightLoopTaskDesc() ?? "Auto-continuing")
+              ? (lightLoopTaskDesc() ?? "Next message starts the loop")
               : "Auto-continue until task is done",
             icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
@@ -1241,6 +1254,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sessionAttachments,
       localArmedLoop,
       activeLoopID: () => info()?.blueprint?.loopID,
+      working,
+      workflowKind: armedWorkflowKind,
+      clearPendingWorkflows: () => {
+        setPendingPlan(false)
+        setPendingLightLoop(false)
+      },
       setLocalArmedLoop,
       setStore,
     })
@@ -1452,11 +1471,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearPendingPlan: () => setPendingPlan(false),
     pendingLattice,
     clearPendingLattice: () => setPendingLattice(null),
-    pendingLightLoop: () =>
-      pendingLightLoop() && pendingLightLoopDesc() ? { taskDescription: pendingLightLoopDesc()! } : null,
+    pendingLightLoop,
     clearPendingLightLoop: () => {
       setPendingLightLoop(false)
-      setPendingLightLoopDesc(undefined)
     },
     localArmedLoop,
     setLocalArmedLoop,
@@ -1900,7 +1917,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   inactive={!canSubmit()}
                   value={
                     <Switch>
-                      <Match when={working() && !prompt.dirty()}>
+                      <Match when={submitStopsSession()}>
                         <div class="flex items-center gap-2">
                           <span>Stop</span>
                           <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
@@ -1918,11 +1935,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     type="submit"
                     disabled={!canSubmit()}
-                    icon={
-                      working() && !prompt.dirty()
-                        ? getSemanticIcon("action.stop")
-                        : getSemanticIcon("prompt.submitArrow")
-                    }
+                    icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />

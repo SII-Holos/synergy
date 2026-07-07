@@ -5,6 +5,7 @@ import { LatticeStore } from "../../src/lattice/store"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionManager } from "../../src/session/manager"
 import { SessionWorkflowService } from "../../src/session/workflow"
 import { tmpdir } from "../fixture/fixture"
 
@@ -116,6 +117,67 @@ describe("BlueprintLoop workflow source gates", () => {
       })
 
       expect(loop.source).toBe("user")
+    })
+  })
+
+  test("user loops clear idle Plan workflow when binding", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enablePlan(session.id)
+      const loop = await BlueprintLoopStore.create({
+        noteID: "note_test",
+        title: "Manual Loop",
+        sessionID: session.id,
+      })
+
+      await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
+
+      const updated = await Session.get(session.id)
+      expect(updated.workflow).toBeUndefined()
+      expect(updated.blueprint?.loopID).toBe(loop.id)
+    })
+  })
+
+  test("user loops clear idle Light Loop workflow when starting", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enableLightloop(session.id, "Finish this task")
+      const loop = await BlueprintLoopStore.create({
+        noteID: "note_test",
+        title: "Manual Loop",
+        sessionID: session.id,
+      })
+
+      const started = await BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)
+
+      const updated = await Session.get(session.id)
+      expect(started.status).toBe("running")
+      expect(updated.workflow).toBeUndefined()
+      expect(updated.blueprint?.loopID).toBe(loop.id)
+    })
+  })
+
+  test("user loops cannot clear Plan workflow while session is running", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enablePlan(session.id)
+      const loop = await BlueprintLoopStore.create({
+        noteID: "note_test",
+        title: "Manual Loop",
+        sessionID: session.id,
+      })
+      SessionManager.registerRuntime(session.id)
+      SessionManager.acquire(session.id)
+
+      try {
+        await expect(BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")).rejects.toThrow()
+        const updated = await Session.get(session.id)
+        expect(updated.workflow).toEqual({ kind: "plan" })
+        expect(updated.blueprint?.loopID).toBeUndefined()
+      } finally {
+        await SessionManager.release(session.id)
+        SessionManager.unregisterRuntime(session.id)
+      }
     })
   })
 
