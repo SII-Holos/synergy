@@ -302,13 +302,21 @@ export namespace LSP {
         continue
       }
 
-      await reapForCapacity(s.clients, server.id)
-      const task = schedule(server, root, root + server.id)
-      s.spawning.set(root + server.id, task)
+      // Register the spawn placeholder synchronously (no await between the
+      // `spawning.get` check above and this `set`), otherwise two concurrent
+      // getClients for the same (root, server) could both miss the in-flight
+      // entry and spawn duplicate servers. The capacity reap is awaited inside
+      // the task instead of before it.
+      const key = root + server.id
+      const task = (async () => {
+        await reapForCapacity(s.clients, server.id)
+        return schedule(server, root, key)
+      })()
+      s.spawning.set(key, task)
 
       task.finally(() => {
-        if (s.spawning.get(root + server.id) === task) {
-          s.spawning.delete(root + server.id)
+        if (s.spawning.get(key) === task) {
+          s.spawning.delete(key)
         }
       })
 

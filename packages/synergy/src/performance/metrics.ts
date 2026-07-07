@@ -115,26 +115,33 @@ export namespace PerformanceMetrics {
     }
   }
 
+  // Runs on the highest-frequency metrics (llm.stream.output_chars, etc.), so
+  // avoid stringifying the whole ~16-field object per call: join the scalar
+  // identity fields and only serialize the small `labels` object. The scalar
+  // fields (metric name, enums, ULIDs, numbers) never contain spaces, and
+  // `labels` is last, so a space delimiter cannot make two distinct field sets
+  // collide. Aggregation's win would otherwise be partly eaten by per-call
+  // JSON.stringify.
   function aggregateKey(input: Parameters<typeof record>[0]) {
-    return JSON.stringify({
-      name: input.name,
-      unit: input.unit,
-      module: input.module,
-      source: input.source,
-      labels: input.labels,
-      traceId: input.traceId,
-      spanId: input.spanId,
-      parentSpanId: input.parentSpanId,
-      scopeID: input.scopeID,
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      callID: input.callID,
-      rid: input.rid,
-      processId: input.processId,
-      pid: input.pid,
-      tool: input.tool,
-      sampleRate: input.sampleRate,
-    })
+    return [
+      input.name,
+      input.unit,
+      input.module,
+      input.source,
+      input.traceId,
+      input.spanId,
+      input.parentSpanId,
+      input.scopeID,
+      input.sessionID,
+      input.messageID,
+      input.callID,
+      input.rid,
+      input.processId,
+      input.pid,
+      input.tool,
+      input.sampleRate,
+      input.labels ? JSON.stringify(input.labels) : "",
+    ].join(" ")
   }
 
   export function percentile(values: number[], p: number) {

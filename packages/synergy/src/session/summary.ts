@@ -23,11 +23,24 @@ import { Agent } from "@/agent/agent"
 import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
+import { withTimeout } from "@/util/timeout"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
   const active = new Map<string, { promise: Promise<void>; next?: { sessionID: string; messageID: string } }>()
+
+  // Each summary LLM call is bounded so a stalled provider can never hang the
+  // coalescing loop forever. AbortSignal.timeout aborts the request; the
+  // per-run timeout below is a belt-and-suspenders guarantee that `active`
+  // always clears even if some other await (or an SDK deadlock the abort
+  // signal cannot interrupt) never settles.
+  const SUMMARY_LLM_TIMEOUT_MS = 60_000
+  const DEFAULT_SUMMARY_RUN_TIMEOUT_MS = 120_000
+  function summaryRunTimeoutMs() {
+    const env = Number.parseInt(process.env.SYNERGY_SUMMARY_TIMEOUT_MS ?? "", 10)
+    return Number.isFinite(env) && env > 0 ? env : DEFAULT_SUMMARY_RUN_TIMEOUT_MS
+  }
 
   export const summarize = fn(
     z.object({
@@ -55,9 +68,9 @@ export namespace SessionSummary {
         // loop. If it did, `active` would keep a rejected entry that later
         // summarize() calls attach `next` to but nothing ever drains —
         // permanently wedging summarization for the session.
-        await summarizeNow(current).catch((error) =>
-          log.error("summarize failed", { sessionID: input.sessionID, error }),
-        )
+        await withTimeout(summarizeNow(current), summaryRunTimeoutMs(), {
+          message: "summarize timed out",
+        }).catch((error) => log.error("summarize failed", { sessionID: input.sessionID, error }))
         const state = active.get(input.sessionID)
         current = state?.next
         if (state) state.next = undefined
@@ -198,7 +211,7 @@ export namespace SessionSummary {
             content: `The following is the text to summarize:\n<text>\n${textPart.text ?? ""}\n</text>`,
           },
         ],
-        abort: new AbortController().signal,
+        abort: AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS),
         sessionID: userMsg.sessionID,
         system: [],
         retries: 3,
@@ -238,7 +251,7 @@ export namespace SessionSummary {
             content: `Summarize the above conversation according to your system prompts.`,
           },
         ],
-        abort: new AbortController().signal,
+        abort: AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS),
         sessionID: userMsg.sessionID,
         system: [],
         retries: 3,

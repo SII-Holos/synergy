@@ -203,11 +203,10 @@ export namespace PromptBudgeter {
   }
 
   function estimateKey(modelID: string, value: unknown) {
-    const hasher = new Bun.CryptoHasher("sha256")
-    hasher.update(modelID)
-    hasher.update("\0")
-    hasher.update(JSON.stringify(value))
-    return hasher.digest("hex")
+    // A cache key needs a fast non-cryptographic hash, not SHA-256. Bun.hash
+    // (wyhash) is ~10x faster; collisions are irrelevant at this cache size and
+    // would only yield a slightly-off token estimate that calibration corrects.
+    return `${modelID}\0${Bun.hash(JSON.stringify(value))}`
   }
 
   export async function decide(

@@ -164,8 +164,9 @@ export namespace SessionMessageCache {
   }
 
   function addSize(sessionID: string, delta: number) {
-    if (!sizes.has(sessionID)) return
-    sizes.set(sessionID, Math.max(0, (sizes.get(sessionID) ?? 0) + delta))
+    const current = sizes.get(sessionID)
+    if (current === undefined) return
+    sizes.set(sessionID, Math.max(0, current + delta))
     totalBytes = Math.max(0, totalBytes + delta)
   }
 

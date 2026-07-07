@@ -257,4 +257,119 @@ describe("SessionSummary", () => {
       },
     })
   })
+
+  test("a hung summarize run times out and does not wedge the session", async () => {
+    const previousTimeout = process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+    process.env.SYNERGY_SUMMARY_TIMEOUT_MS = "100"
+    await using tmp = await tmpdir({ git: true })
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Summary hang" })
+          const user = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+          })) as MessageV2.User
+          const assistant = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: user.id,
+            rootID: user.id,
+            modelID: "kimi-k2-thinking",
+            providerID: "moonshotai-cn",
+            time: { created: Date.now() },
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })) as MessageV2.Assistant
+          const file = path.join(tmp.path, "file.txt")
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "step-start",
+            snapshot: "from_tree",
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "step-finish",
+            reason: "tool-calls",
+            snapshot: "to_tree",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "patch",
+            hash: "from_tree",
+            files: [file],
+          })
+
+          const diff = SnapshotSchema.fromPatch({
+            file: "file.txt",
+            additions: 1,
+            deletions: 0,
+            binary: false,
+            patch: "diff --git a/file.txt b/file.txt\n@@ -0,0 +1 @@\n+content\n",
+            afterBytes: 8,
+          })
+          let calls = 0
+          const diffSummary = mock(async () => {
+            calls++
+            // First run hangs forever; the per-run timeout must unblock the
+            // coalescing loop so `active` clears and later runs still execute.
+            if (calls === 1) return new Promise<never>(() => {})
+            return [diff]
+          })
+          ;(Snapshot.diffSummary as any) = diffSummary
+          ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
+            id: modelID,
+            providerID,
+            name: "Test Model",
+            limit: { context: 100_000, output: 8_192 },
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            capabilities: {
+              toolcall: true,
+              attachment: false,
+              reasoning: false,
+              temperature: true,
+              input: { text: true, image: false, audio: false, video: false },
+              output: { text: true, image: false, audio: false, video: false },
+            },
+            api: { npm: "@ai-sdk/openai", id: modelID },
+            options: {},
+          }))
+
+          // First run hangs internally; summarize() must still settle (via the
+          // per-run timeout) rather than block forever.
+          await SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
+          // Session is not wedged: a subsequent run executes and persists.
+          await SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
+
+          expect(calls).toBeGreaterThanOrEqual(2)
+          const messages = await Session.messages({ sessionID: session.id })
+          const storedUser = messages.find((message) => message.info.id === user.id)?.info as MessageV2.User | undefined
+          expect(storedUser?.summary?.diffs).toEqual([diff])
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (previousTimeout === undefined) delete process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+      else process.env.SYNERGY_SUMMARY_TIMEOUT_MS = previousTimeout
+    }
+  })
 })
