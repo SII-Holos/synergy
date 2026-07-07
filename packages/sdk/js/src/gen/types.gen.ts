@@ -2976,6 +2976,27 @@ export type RuntimeReloadTarget =
   | "tool_registry"
   | "all"
 
+export type RuntimeReloadFailure = {
+  target: RuntimeReloadTarget
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  recoverable?: boolean
+}
+
+export type RuntimeReloadDiagnostic = {
+  target: RuntimeReloadTarget
+  severity: "error" | "warning" | "info"
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  source?: string
+}
+
 export type RuntimeReloadResult = {
   success: boolean
   requested: Array<RuntimeReloadTarget>
@@ -2985,6 +3006,9 @@ export type RuntimeReloadResult = {
   restartRequired: Array<string>
   liveApplied: Array<string>
   warnings: Array<string>
+  failed: Array<RuntimeReloadTarget>
+  failures: Array<RuntimeReloadFailure>
+  diagnostics: Array<RuntimeReloadDiagnostic>
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -4367,6 +4391,9 @@ export type SkillList = {
     path: string
     name: string
     message: string
+    severity?: "error" | "warning" | "info"
+    code?: string
+    source?: "builtin" | "plugin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
   }>
 }
 
@@ -10312,7 +10339,7 @@ export type SkillReloadResponses = {
   /**
    * Skills reloaded successfully
    */
-  200: boolean
+  200: RuntimeReloadResult
 }
 
 export type SkillReloadResponse = SkillReloadResponses[keyof SkillReloadResponses]

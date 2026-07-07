@@ -82,7 +82,7 @@ export const WriteTool = Tool.define("write", {
     }
 
     if (runtimeReload) {
-      output += `\nRuntime reload applied\n<runtime_reload>\ntargets=${runtimeReload.requested.join(",")}\nexecuted=${runtimeReload.executed.join(",")}\n</runtime_reload>\n`
+      output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}\n`
     }
     if (builtinSourceWarning) {
       output += `\n${builtinSourceWarning}\n`
