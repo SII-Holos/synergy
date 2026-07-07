@@ -203,7 +203,13 @@ export const Info = z
         .object({
           loopID: z.string().optional(),
           loopRole: z.enum(["execution", "audit"]).optional(),
-          planMode: z.boolean().optional(),
+        })
+        .optional(),
+      planMode: z.boolean().optional(),
+      lightLoop: z
+        .object({
+          active: z.boolean(),
+          taskDescription: z.string(),
         })
         .optional(),
       lattice: z

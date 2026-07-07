@@ -19,7 +19,7 @@ describe("LatticeRunService", () => {
     await withScope(async () => {
       const session = await Session.create({})
       await Session.update(session.id, (draft) => {
-        draft.blueprint = { planMode: true }
+        draft.planMode = true
       })
       const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
       expect(run.status).toBe("active")
@@ -27,7 +27,7 @@ describe("LatticeRunService", () => {
       const after = await Session.get(session.id)
       expect(after.lattice?.runID).toBe(run.id)
       expect(after.lattice?.mode).toBe("auto")
-      expect(after.blueprint?.planMode).toBe(false)
+      expect(after.planMode).toBe(false)
     })
   })
 

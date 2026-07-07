@@ -864,7 +864,7 @@ export namespace ToolResolver {
 
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
-    if (session?.blueprint?.planMode || session?.blueprint?.loopID || session?.lattice) {
+    if (session?.planMode || session?.blueprint?.loopID || session?.lattice) {
       result.add("note")
     }
     if (session?.interaction?.source === "chronicler") {
@@ -956,6 +956,18 @@ export namespace ToolResolver {
           SessionModePolicy.unavailable({
             toolName: def.id,
             reason: "blueprint_loop_required",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (def.id === "loop_stop" && !input.session?.lightLoop?.active) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "light_loop_required",
             session: input.session,
           }),
         )

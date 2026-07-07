@@ -22,7 +22,7 @@ async function createSession(input?: { planMode?: boolean }) {
   const session = await Session.create({})
   if (input?.planMode) {
     await Session.update(session.id, (draft) => {
-      draft.blueprint = { planMode: true }
+      draft.planMode = true
     })
   }
   return session

@@ -35,7 +35,7 @@ export namespace LatticeRunService {
         mode: run.mode,
         firstBlueprintStarted: run.firstBlueprintStarted,
       }
-      draft.blueprint = { ...draft.blueprint, planMode: false }
+      draft.planMode = false
     })
   }
 

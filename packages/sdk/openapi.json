@@ -12354,6 +12354,96 @@
         ]
       }
     },
+    "/blueprint/session/{id}/light-loop": {
+      "put": {
+        "operationId": "lightLoop.session.toggleLightLoop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle Light Loop",
+        "description": "Enable or disable Light Loop on a session.",
+        "responses": {
+          "200": {
+            "description": "Updated session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "description": "Enable or disable Light Loop",
+                    "type": "boolean"
+                  },
+                  "taskDescription": {
+                    "description": "Task description, required when enabling",
+                    "type": "string"
+                  }
+                },
+                "required": ["active"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lightLoop.session.toggleLightLoop({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/lattice/session/{id}/mode": {
       "put": {
         "operationId": "lattice.session.mode",
@@ -25228,11 +25318,23 @@
               "loopRole": {
                 "type": "string",
                 "enum": ["execution", "audit"]
-              },
-              "planMode": {
-                "type": "boolean"
               }
             }
+          },
+          "planMode": {
+            "type": "boolean"
+          },
+          "lightLoop": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "type": "boolean"
+              },
+              "taskDescription": {
+                "type": "string"
+              }
+            },
+            "required": ["active", "taskDescription"]
           },
           "lattice": {
             "type": "object",

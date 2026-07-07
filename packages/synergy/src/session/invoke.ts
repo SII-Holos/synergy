@@ -70,7 +70,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
-import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
+import { WorkflowModeUserWrapper } from "./workflow-mode-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
 
@@ -584,7 +584,7 @@ export namespace SessionInvoke {
 
         // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
         const sessionBlueprint = session?.blueprint
-        if (sessionBlueprint?.planMode) {
+        if (session?.planMode) {
           systemParts.push(PLAN_MODE.trim())
           if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
           if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
@@ -628,6 +628,24 @@ export namespace SessionInvoke {
           if (latticeRun && latticeRun.status === "active") {
             systemParts.push(LatticePrompt.build(session, latticeRun))
           }
+        }
+
+        // Layer 2.65: Semi-static — Light Loop context
+        if (session?.lightLoop?.active) {
+          systemParts.push(`<light-loop-context>
+You are in Light Loop mode. The user has set a task that you must complete fully before stopping.
+
+Task: ${session.lightLoop.taskDescription}
+
+Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
+- Have you produced all requested deliverables, artifacts, or changes?
+- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
+- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
+
+If the task is NOT fully complete, continue working now.
+If the task IS fully complete and verified, call loop_stop().
+Do not stop early — the user expects thorough completion, not a best-effort attempt.
+</light-loop-context>`)
         }
 
         // Layer 3: Dynamic — memory/experience context (varies per step)
@@ -675,7 +693,7 @@ export namespace SessionInvoke {
             )
           }
         }
-        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+        const modelSessionMessages = WorkflowModeUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,

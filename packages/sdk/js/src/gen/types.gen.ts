@@ -3360,7 +3360,11 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    planMode?: boolean
+  }
+  planMode?: boolean
+  lightLoop?: {
+    active: boolean
+    taskDescription: string
   }
   lattice?: {
     runID: string
@@ -12204,6 +12208,54 @@ export type BlueprintSessionPlanModeResponses = {
 
 export type BlueprintSessionPlanModeResponse =
   BlueprintSessionPlanModeResponses[keyof BlueprintSessionPlanModeResponses]
+
+export type LightLoopSessionToggleLightLoopData = {
+  body?: {
+    /**
+     * Enable or disable Light Loop
+     */
+    active: boolean
+    /**
+     * Task description, required when enabling
+     */
+    taskDescription?: string
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/blueprint/session/{id}/light-loop"
+}
+
+export type LightLoopSessionToggleLightLoopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type LightLoopSessionToggleLightLoopError =
+  LightLoopSessionToggleLightLoopErrors[keyof LightLoopSessionToggleLightLoopErrors]
+
+export type LightLoopSessionToggleLightLoopResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type LightLoopSessionToggleLightLoopResponse =
+  LightLoopSessionToggleLightLoopResponses[keyof LightLoopSessionToggleLightLoopResponses]
 
 export type LatticeSessionModeData = {
   body?: LatticeModeInput
