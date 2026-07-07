@@ -250,7 +250,7 @@ export function Markdown(
   createEffect(() => {
     if (local.streaming) return
     const rendered = html()
-    if (!isCurrentMarkdownRender(rendered, local.text)) return
+    if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
     endStream()
     container.innerHTML = rendered.html
     const cleanup = enhanceMarkdown(container)
