@@ -18,6 +18,16 @@ The validation blockers from audit were resolved:
 Commands run from `packages/synergy` unless noted:
 
 ```bash
+bun run quality:quick
+```
+
+Result:
+
+```text
+format:check, lint, typecheck, monorepo:check, and package:check passed
+```
+
+```bash
 bun test test/session/kvcache-measurement.test.ts
 ```
 
