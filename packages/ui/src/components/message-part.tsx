@@ -53,6 +53,7 @@ import { isToolCardHidden } from "./tool-result-presentation"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
+import { renderableTextPartMarkdownText } from "./text-part-render"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -2031,10 +2032,13 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     completed: isCompleted,
   })
 
+  const renderedText = () =>
+    renderableTextPartMarkdownText({ completed: isCompleted(), source: displayText(), typed: typedText() })
+
   return (
-    <Show when={typedText()}>
+    <Show when={renderedText()}>
       <div data-component="text-part">
-        <Markdown text={typedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
+        <Markdown text={renderedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
       </div>
     </Show>
   )
@@ -2062,10 +2066,13 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
     completed: isCompleted,
   })
 
+  const renderedText = () =>
+    renderableTextPartMarkdownText({ completed: isCompleted(), source: text(), typed: typedText() })
+
   return (
-    <Show when={typedText()}>
+    <Show when={renderedText()}>
       <div data-component="reasoning-part">
-        <Markdown text={typedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
+        <Markdown text={renderedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
       </div>
     </Show>
   )
