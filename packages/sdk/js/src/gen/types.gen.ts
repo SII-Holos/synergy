@@ -1427,6 +1427,31 @@ export type ProviderCatalogConfig = {
   offlineCache?: boolean
 }
 
+export type QuickSwitcherModelConfig = {
+  /**
+   * Provider id for the quick switcher model preference
+   */
+  providerID: string
+  /**
+   * Model id for the quick switcher model preference
+   */
+  modelID: string
+  /**
+   * Whether to force-add or force-remove the model from the quick switcher
+   */
+  state: "add" | "remove"
+}
+
+/**
+ * Quick switcher model visibility preferences
+ */
+export type QuickSwitcherConfig = {
+  /**
+   * Per-model quick switcher visibility preferences
+   */
+  models?: Array<QuickSwitcherModelConfig>
+}
+
 export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -2586,6 +2611,7 @@ export type Config = {
   role_variant?: {
     [key: string]: string
   }
+  quick_switcher?: QuickSwitcherConfig
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
    */
@@ -5915,6 +5941,7 @@ export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
     info: Session
+    navEntry?: SessionNavEntry
   }
 }
 

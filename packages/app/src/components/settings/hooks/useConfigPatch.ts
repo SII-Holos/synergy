@@ -57,6 +57,13 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
   if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
     patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
   }
+
+  const cleanedQuickSwitcher = state.models.quick_switcher.filter(
+    (item) => item.providerID && item.modelID && (item.state === "add" || item.state === "remove"),
+  )
+  if (JSON.stringify(cleanedQuickSwitcher) !== JSON.stringify(cfg.quick_switcher?.models ?? [])) {
+    patch.quick_switcher = { models: cleanedQuickSwitcher }
+  }
 }
 
 function buildProviderPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {

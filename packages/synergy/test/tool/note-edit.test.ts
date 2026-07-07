@@ -53,6 +53,7 @@ describe("note_edit anchored operations", () => {
         const result = await execute({
           id: note.id,
           baseVersion: note.version,
+          freshen: "never",
           ops: [
             {
               action: "replaceBlock",
@@ -908,6 +909,80 @@ describe("note_edit anchored operations", () => {
         expect(result.metadata.operationResults[0].semantic.replacementText).toBe("new")
         expect(result.metadata.operationResults[0].checks.noop).toBe(false)
         expect(result.output).toContain("Operation 1 replaceBlock: applied")
+        expect(noteText(current.content)).toContain("old")
+      },
+    })
+  })
+
+  test("safe freshen replays unique replaceText after stale version", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Freshen replaceText",
+          content: { type: "doc", content: [paragraph("first target"), paragraph("tail")] },
+        })
+        const block = NoteDocument.listBlocks(note.content).find((item) => item.text.trim() === "first target")!
+        await NoteStore.update(scope.id, note.id, {
+          expectedVersion: note.version,
+          content: { type: "doc", content: [paragraph("intro"), ...(note.content.content ?? [])] },
+        })
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceText",
+              blockId: block.id,
+              expectedHash: block.hash,
+              find: "target",
+              replacement: "updated",
+            },
+          ],
+        })
+
+        const current = await NoteStore.get(scope.id, note.id)
+        expect(result.metadata.freshened).toBe(true)
+        expect(noteText(current.content)).toContain("first updated")
+        expect(noteText(current.content)).toContain("intro")
+      },
+    })
+  })
+
+  test("safe freshen refuses unsafe stale replaceBlock without writing", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Unsafe freshen",
+          content: { type: "doc", content: [paragraph("old")] },
+        })
+        const block = NoteDocument.listBlocks(note.content)[0]
+        await NoteStore.update(scope.id, note.id, { expectedVersion: note.version })
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          ops: [
+            {
+              action: "replaceBlock",
+              blockId: block.id,
+              expectedHash: block.hash,
+              content: { format: "text", text: "new" },
+            },
+          ],
+        })
+
+        const current = await NoteStore.get(scope.id, note.id)
+        expect(result.metadata.errorCode).toBe("VERSION_MISMATCH")
         expect(noteText(current.content)).toContain("old")
       },
     })
