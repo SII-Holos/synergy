@@ -7,9 +7,9 @@ import { LatticeStore } from "./store"
 
 /**
  * LatticeBridge translates BlueprintLoop terminal events into Pathway/phase
- * transitions for the owning Lattice run. It only acts on loops carrying
- * `orchestration.kind === "lattice"` and only while the run is active; a paused
- * or cancelled run records nothing.
+ * transitions for the owning Lattice run. It only acts on loops with
+ * `source === "lattice"` and only while the run is active; a paused or
+ * cancelled run records nothing.
  */
 export namespace LatticeBridge {
   const log = Log.create({ service: "lattice.bridge" })
@@ -38,9 +38,9 @@ export namespace LatticeBridge {
     sessionID: string
     status: string
     error?: string
-    orchestration?: { kind: "lattice"; runID: string }
+    source: "user" | "lattice"
   }): Promise<void> {
-    if (loop.orchestration?.kind !== "lattice") return
+    if (loop.source !== "lattice") return
     if (loop.status !== "completed" && loop.status !== "failed" && loop.status !== "cancelled") return
 
     const run = await LatticeStore.getOrUndefined(loop.scopeID, loop.sessionID)

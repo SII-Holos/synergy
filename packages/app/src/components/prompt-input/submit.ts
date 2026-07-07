@@ -53,8 +53,8 @@ type PromptSubmitInput = {
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
-  pendingPlanMode: Accessor<boolean>
-  clearPendingPlanMode: () => void
+  pendingPlan: Accessor<boolean>
+  clearPendingPlan: () => void
   pendingLattice: Accessor<{ mode: "auto" | "collaborative"; maxModelCalls: number } | null>
   clearPendingLattice: () => void
   pendingLightLoop: Accessor<{ taskDescription: string } | null>
@@ -201,8 +201,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const isNewSession = !params.id
     // Capture (and disarm) workflow state armed on the new-session composer
     // before navigation can reset it; applied once the session exists.
-    const armedPlanMode = isNewSession && input.pendingPlanMode()
-    if (armedPlanMode) input.clearPendingPlanMode()
+    const armedPlan = isNewSession && input.pendingPlan()
+    if (armedPlan) input.clearPendingPlan()
     const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
     const armedLightLoop = isNewSession ? input.pendingLightLoop() : null
@@ -286,16 +286,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => session)
     }
     if (!session) return
-    if (blueprintSlot && session.planMode) {
+    if (blueprintSlot && session.workflow?.kind === "plan") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.blueprint.session
-        .planMode({ id: sessionID, planMode: false })
+      session = await client.workflow.session
+        .set({ id: sessionID, workflowSetInput: { kind: "none" } })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
-            title: "Failed to exit Plan Mode",
+            title: "Failed to exit Plan",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -307,16 +307,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (!blueprintSlot && armedPlanMode && !armedLattice && !armedLightLoop && !session.planMode) {
+    if (!blueprintSlot && armedPlan && !armedLattice && !armedLightLoop && session.workflow?.kind !== "plan") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.blueprint.session
-        .planMode({ id: sessionID, planMode: true })
+      session = await client.workflow.session
+        .set({ id: sessionID, workflowSetInput: { kind: "plan" } })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
-            title: "Failed to toggle Plan Mode",
+            title: "Failed to toggle Plan",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -328,22 +328,19 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (armedLattice && !session.lattice) {
+    if (armedLattice && session.workflow?.kind !== "lattice") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.lattice.session
-        .mode({
+      session = await client.workflow.session
+        .set({
           id: sessionID,
-          latticeModeInput: {
-            enabled: true,
+          workflowSetInput: {
+            kind: "lattice",
             mode: armedLattice.mode,
-            max_model_calls: armedLattice.maxModelCalls,
+            maxModelCalls: armedLattice.maxModelCalls,
           },
         })
-        .then(async () => {
-          await sync.session.sync(sessionID).catch(() => undefined)
-          return sync.session.get(sessionID) ?? fallbackSession
-        })
+        .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
@@ -359,14 +356,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (armedLightLoop && !armedLattice && !session.lightLoop?.active) {
+    if (armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.blueprint.session
-        .toggleLightLoop({
+      session = await client.workflow.session
+        .set({
           id: sessionID,
-          active: true,
-          taskDescription: armedLightLoop.taskDescription,
+          workflowSetInput: { kind: "lightloop", taskDescription: armedLightLoop.taskDescription },
         })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
@@ -392,9 +388,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const agent = currentAgent.name
     const variant = selectedVariant
-    const optimisticPlanModeMetadata =
-      !blueprintSlot && activeSession.planMode === true ? { planModeRequest: true } : undefined
-
     const clearInput = () => {
       prompt.resetDraft()
       input.setStore("mode", "normal")
@@ -695,7 +688,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       : []
 
     const userMessageMetadata = {
-      ...optimisticPlanModeMetadata,
       promptDraft: draftSnapshot,
     }
 

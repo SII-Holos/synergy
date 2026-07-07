@@ -24,7 +24,7 @@ function gate(session: Partial<SessionInfo>): ContinuationKernel.Gate {
 }
 
 describe("LightLoopContinuationPolicy", () => {
-  test("handle returns true and delivers continuation when lightLoop is active", async () => {
+  test("handle returns true and delivers continuation when Light Loop workflow is active", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
       deliveries.push(input)
@@ -32,7 +32,7 @@ describe("LightLoopContinuationPolicy", () => {
 
     const g = gate({
       id: "ses_light_loop",
-      lightLoop: { active: true, taskDescription: "Write unit tests" },
+      workflow: { kind: "lightloop", taskDescription: "Write unit tests" },
     })
 
     const handled = await LightLoopContinuationPolicy.handle(g)
@@ -55,7 +55,7 @@ describe("LightLoopContinuationPolicy", () => {
     }
   })
 
-  test("handle returns false when lightLoop.active is false", async () => {
+  test("handle returns false when another workflow is active", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
       deliveries.push(input)
@@ -63,7 +63,7 @@ describe("LightLoopContinuationPolicy", () => {
 
     const g = gate({
       id: "ses_not_active",
-      lightLoop: { active: false, taskDescription: "Write unit tests" },
+      workflow: { kind: "plan" },
     })
 
     const handled = await LightLoopContinuationPolicy.handle(g)
@@ -72,7 +72,7 @@ describe("LightLoopContinuationPolicy", () => {
     expect(deliveries).toHaveLength(0)
   })
 
-  test("handle returns false when lightLoop is undefined", async () => {
+  test("handle returns false when no workflow is active", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
       deliveries.push(input)
@@ -96,7 +96,7 @@ describe("LightLoopContinuationPolicy", () => {
 
     const g = gate({
       id: "ses_delivery",
-      lightLoop: { active: true, taskDescription: "Refactor the login flow" },
+      workflow: { kind: "lightloop", taskDescription: "Refactor the login flow" },
     })
 
     await LightLoopContinuationPolicy.handle(g)

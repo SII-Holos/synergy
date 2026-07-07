@@ -36,18 +36,18 @@ function ctx(sessionID: string): Tool.Context {
 function sessionWithLightLoop(active: boolean, taskDescription = "Test task") {
   return {
     id: "ses_test_loop",
-    lightLoop: { active, taskDescription },
-  } as Session.Info
+    workflow: active ? { kind: "lightloop", taskDescription } : { kind: "plan" },
+  } as unknown as Session.Info
 }
 
 function sessionWithoutLightLoop() {
   return {
     id: "ses_test_no_loop",
-  } as Session.Info
+  } as unknown as Session.Info
 }
 
 describe("loop_stop", () => {
-  test("succeeds when lightLoop is active and clears it", async () => {
+  test("succeeds when Light Loop workflow is active and clears it", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -59,7 +59,7 @@ describe("loop_stop", () => {
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           const draft = { ...session }
           fn(draft)
-          if (draft.lightLoop === undefined) updateCleared = true
+          if (draft.workflow === undefined) updateCleared = true
         })
 
         let updatePartCall: any = null
@@ -106,7 +106,7 @@ describe("loop_stop", () => {
     })
   })
 
-  test("throws when session has no lightLoop", async () => {
+  test("throws when session has no Light Loop workflow", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -115,12 +115,14 @@ describe("loop_stop", () => {
         ;(Session.get as any) = mock(async () => session)
 
         const tool = await LoopStopTool.init()
-        await expect(tool.execute({}, ctx("ses_test_no_loop"))).rejects.toThrow("No active light loop on this session")
+        await expect(tool.execute({}, ctx("ses_test_no_loop"))).rejects.toThrow(
+          "No active Light Loop workflow on this session",
+        )
       },
     })
   })
 
-  test("throws when lightLoop.active is false", async () => {
+  test("throws when another workflow is active", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -129,7 +131,9 @@ describe("loop_stop", () => {
         ;(Session.get as any) = mock(async () => session)
 
         const tool = await LoopStopTool.init()
-        await expect(tool.execute({}, ctx("ses_test_loop"))).rejects.toThrow("No active light loop on this session")
+        await expect(tool.execute({}, ctx("ses_test_loop"))).rejects.toThrow(
+          "No active Light Loop workflow on this session",
+        )
       },
     })
   })

@@ -86,7 +86,7 @@ Tool audit icons are a quiet exception rail, not a status badge on every tool ca
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 
-Special user-message renderers must preserve authorship semantics. Plan Mode user requests are user-authored prompts and should keep the right-aligned bubble treatment, while Blueprint control messages are orchestration events and should render as quiet centered event cards instead of pretending to be user speech.
+Special user-message renderers must preserve authorship semantics. Plan workflow user requests are user-authored prompts and should keep the right-aligned bubble treatment, while Blueprint control messages are orchestration events and should render as quiet centered event cards instead of pretending to be user speech.
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
 

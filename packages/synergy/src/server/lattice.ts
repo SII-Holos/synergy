@@ -1,68 +1,17 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
-import z from "zod"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
-import { Storage } from "../storage/storage"
 import { LatticeStore } from "../lattice/store"
 import { LatticeRunService } from "../lattice/run-service"
 import { LatticeError } from "../lattice"
 import { LatticeTypes } from "../lattice/types"
-
-const ModeInput = z
-  .object({
-    enabled: z.boolean().meta({ description: "Enable or disable Lattice mode for the session" }),
-    mode: z.enum(["auto", "collaborative"]).optional().meta({ description: "Lattice mode (default auto)" }),
-    max_model_calls: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .meta({ description: "Model-call budget (0 = unlimited). Not Pathway steps." }),
-    goal: z.string().optional().meta({ description: "High-level goal for the run" }),
-    action: z.enum(["continue", "restart"]).optional().meta({ description: "Resume a paused run or restart it" }),
-  })
-  .meta({ ref: "LatticeModeInput" })
+import { SessionWorkflowService } from "../session/workflow"
+import z from "zod"
 
 const RunOrNull = LatticeTypes.Run.nullable()
 
 export const LatticeRoute = new Hono()
-  .put(
-    "/session/:id/mode",
-    describeRoute({
-      summary: "Toggle Lattice mode",
-      description: "Enable (create/continue/restart) or disable (pause) Lattice mode on a session.",
-      operationId: "lattice.session.mode",
-      responses: {
-        200: { description: "Lattice run or null", content: { "application/json": { schema: resolver(RunOrNull) } } },
-        ...errors(400, 404),
-      },
-    }),
-    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
-    validator("json", ModeInput),
-    async (c) => {
-      try {
-        const sessionID = c.req.valid("param").id
-        const body = c.req.valid("json")
-        if (body.enabled) {
-          const run = await LatticeRunService.enable({
-            sessionID,
-            mode: body.mode ?? "auto",
-            maxModelCalls: body.max_model_calls,
-            goal: body.goal,
-            action: body.action,
-          })
-          return c.json(run)
-        }
-        const run = await LatticeRunService.disable(sessionID)
-        return c.json(run ?? null)
-      } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
-    },
-  )
   .get(
     "/session/:id",
     describeRoute({
@@ -202,6 +151,7 @@ export const LatticeRoute = new Hono()
     async (c) => {
       try {
         const run = await LatticeRunService.cancel(c.req.valid("param").id)
+        await SessionWorkflowService.clearIfLattice(run.sessionID)
         return c.json(run)
       } catch (err: any) {
         if (err instanceof LatticeError.NotFound)
