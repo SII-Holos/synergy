@@ -95,7 +95,7 @@ export namespace ExternalAgentProcessor {
               }
             }
             textPart.text += event.text
-            await Session.updatePart({ part: textPart, delta: event.text })
+            await Session.updatePartDelta(textPart, event.text)
             break
           }
 
@@ -111,7 +111,7 @@ export namespace ExternalAgentProcessor {
               }
             }
             reasoningPart.text += event.text
-            await Session.updatePart({ part: reasoningPart, delta: event.text })
+            await Session.updatePartDelta(reasoningPart, event.text)
             break
           }
 

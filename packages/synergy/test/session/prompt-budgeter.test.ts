@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, test } from "bun:test"
 import { PromptBudgeter } from "../../src/session/prompt-budgeter"
 import type { Provider } from "../../src/provider/provider"
+import { Token } from "../../src/util/token"
+
+const originalEstimateModelJSON = Token.estimateModelJSON
+
+afterEach(() => {
+  ;(Token.estimateModelJSON as any) = originalEstimateModelJSON
+})
 
 function createModel(limit: Provider.Model["limit"]): Provider.Model {
   return {
@@ -86,5 +93,27 @@ describe("prompt-budgeter decision", () => {
     })
     expect(large.measure.total).toBeGreaterThan(small.measure.total)
     expect(large.budget.usable).toBe(small.budget.usable)
+  })
+
+  test("reuses cached message estimates across repeated decisions", async () => {
+    const model = createModel({ context: 100_000, output: 8_192 })
+    const unique = crypto.randomUUID()
+    const plan: PromptBudgeter.PromptPlan = {
+      system: [`system ${unique}`],
+      messages: [
+        { role: "user", content: `first ${unique}` },
+        { role: "assistant", content: `second ${unique}` },
+      ],
+      toolDefinitions: [],
+    }
+    const estimate = mock(async (_modelID: string, value: unknown) => JSON.stringify(value).length)
+    ;(Token.estimateModelJSON as any) = estimate
+
+    await PromptBudgeter.decide(plan, model.limit, model.id)
+    const firstCallCount = estimate.mock.calls.length
+    expect(firstCallCount).toBeGreaterThan(0)
+
+    await PromptBudgeter.decide(plan, model.limit, model.id)
+    expect(estimate.mock.calls).toHaveLength(firstCallCount)
   })
 })

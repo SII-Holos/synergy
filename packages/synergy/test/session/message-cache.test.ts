@@ -73,4 +73,35 @@ describe("SessionMessageCache", () => {
     SessionMessageCache.upsertMessage(SID, { id: "msg_1", sessionID: SID, role: "user" } as any)
     expect(SessionMessageCache.get(SID)).toBeUndefined()
   })
+
+  test("evicts the least-recently-used session when over the byte budget", () => {
+    const A = "ses_evict_a"
+    const B = "ses_evict_b"
+    const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+    // Tiny budget so a single populated session already approaches it.
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "300"
+    try {
+      const big = (sid: string): MessageV2.WithParts => ({
+        info: { id: "msg_1", sessionID: sid, role: "user" } as any,
+        parts: [{ id: "prt_1", sessionID: sid, messageID: "msg_1", type: "text", text: "x".repeat(250) } as any],
+      })
+      SessionMessageCache.enable(A)
+      SessionMessageCache.enable(B)
+      SessionMessageCache.set(A, [big(A)])
+      expect(SessionMessageCache.get(A)).toBeDefined()
+      // Populating B pushes total over budget; A is the LRU and must be evicted,
+      // while B (just written) is protected and stays resident.
+      SessionMessageCache.set(B, [big(B)])
+      expect(SessionMessageCache.get(B)).toBeDefined()
+      expect(SessionMessageCache.get(A)).toBeUndefined()
+      // A is still active, so a fresh read repopulates it transparently.
+      SessionMessageCache.set(A, [big(A)])
+      expect(SessionMessageCache.get(A)).toBeDefined()
+    } finally {
+      SessionMessageCache.disable(A)
+      SessionMessageCache.disable(B)
+      if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+      else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
+    }
+  })
 })

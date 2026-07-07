@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
@@ -52,6 +53,36 @@ async function trySymlink(target: string, link: string, type: "file" | "dir") {
 function isSymlinkPrivilegeError(error: unknown) {
   const code = (error as { code?: unknown })?.code
   return code === "EPERM" || code === "EACCES" || code === "UNKNOWN"
+}
+
+async function withGitCommandLog<T>(fn: (logPath: string) => Promise<T>) {
+  const realGit = Bun.which("git")
+  if (!realGit) throw new Error("git is required for snapshot tests")
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-git-shim-"))
+  const shim = path.join(dir, "git")
+  const logPath = path.join(dir, "commands.log")
+  await Bun.write(
+    shim,
+    ["#!/usr/bin/env bash", 'printf \'%s\\n\' "$*" >> "$GIT_COMMAND_LOG"', 'exec "$REAL_GIT" "$@"', ""].join("\n"),
+  )
+  await fs.chmod(shim, 0o755)
+  const previousPath = process.env.PATH
+  const previousRealGit = process.env.REAL_GIT
+  const previousLog = process.env.GIT_COMMAND_LOG
+  process.env.PATH = `${dir}${path.delimiter}${previousPath ?? ""}`
+  process.env.REAL_GIT = realGit
+  process.env.GIT_COMMAND_LOG = logPath
+  try {
+    return await fn(logPath)
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH
+    else process.env.PATH = previousPath
+    if (previousRealGit === undefined) delete process.env.REAL_GIT
+    else process.env.REAL_GIT = previousRealGit
+    if (previousLog === undefined) delete process.env.GIT_COMMAND_LOG
+    else process.env.GIT_COMMAND_LOG = previousLog
+    await fs.rm(dir, { recursive: true, force: true })
+  }
 }
 
 describe.serial("snapshot", () => {
@@ -651,6 +682,35 @@ describe.serial("snapshot", () => {
         const hash3 = await Snapshot.track(tmp.extra.sessionID)
         expect(hash3).toBe(hash1!)
       },
+    })
+  })
+
+  test("snapshot refresh keeps the shadow index and diffSummary uses bounded git commands", async () => {
+    await using tmp = await bootstrap()
+    await withGitCommandLog(async (logPath) => {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const before = await Snapshot.track(tmp.extra.sessionID)
+          expect(before).toBeTruthy()
+
+          await Bun.write(`${tmp.path}/a.txt`, "changed a")
+          await Bun.write(`${tmp.path}/c.txt`, "new c")
+          const after = await Snapshot.track(tmp.extra.sessionID)
+          expect(after).toBeTruthy()
+
+          const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
+          expect(diffs.map((diff) => diff.file).sort()).toEqual(["a.txt", "c.txt"])
+
+          const commands = (await Bun.file(logPath).text()).split("\n").filter(Boolean)
+          expect(commands.some((command) => command.includes("rm -r --cached") && command.endsWith(" ."))).toBe(false)
+          expect(
+            commands.filter((command) => command.includes(" diff ") && command.includes(" --numstat -p ")),
+          ).toHaveLength(1)
+          expect(commands.filter((command) => command.includes(" cat-file --batch-check="))).toHaveLength(1)
+          expect(commands.some((command) => command.includes(" cat-file -s "))).toBe(false)
+        },
+      })
     })
   })
 

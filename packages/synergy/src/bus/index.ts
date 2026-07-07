@@ -74,19 +74,22 @@ export namespace Bus {
       type: def.type,
     })
     const pending: Promise<void>[] = []
+    const dispatch = (sub: Subscription) => {
+      const task = Promise.resolve()
+        .then(() => sub(payload))
+        .catch((err) => {
+          log.error("subscriber threw during publish", {
+            type: def.type,
+            error: err,
+          })
+        })
+      if (def.streaming) task.catch(() => {})
+      else pending.push(task)
+    }
     for (const key of [def.type, "*"]) {
       const match = state().subscriptions.get(key)
       for (const sub of match ?? []) {
-        pending.push(
-          Promise.resolve()
-            .then(() => sub(payload))
-            .catch((err) => {
-              log.error("subscriber threw during publish", {
-                type: def.type,
-                error: err,
-              })
-            }),
-        )
+        dispatch(sub)
       }
     }
     GlobalBus.emit("event", {
@@ -96,6 +99,7 @@ export namespace Bus {
       directory: ScopeContext.current.scope.type === "home" ? "home" : ScopeContext.current.scope.directory,
       payload,
     })
+    if (def.streaming) return
     await Promise.all(pending)
   }
 
