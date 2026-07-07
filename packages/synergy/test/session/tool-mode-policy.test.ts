@@ -3,7 +3,7 @@ import { EnforcementGate } from "../../src/enforcement/gate"
 import { SessionModePolicy } from "../../src/session/tool-mode-policy"
 
 const planSession = {
-  blueprint: { planMode: true },
+  planMode: true,
 } as any
 
 async function bashDiagnostic(command: string) {

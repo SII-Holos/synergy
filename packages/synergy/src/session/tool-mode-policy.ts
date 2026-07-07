@@ -62,8 +62,8 @@ export namespace SessionModePolicy {
 
   const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
 
-  export function isPlanMode(session?: Pick<SessionInfo, "blueprint">) {
-    return session?.blueprint?.planMode === true
+  export function isPlanMode(session?: Pick<SessionInfo, "planMode">) {
+    return session?.planMode === true
   }
 
   export function isLattice(session?: Pick<SessionInfo, "lattice">) {
@@ -72,7 +72,7 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "blueprint" | "lattice">
+    session?: Pick<SessionInfo, "planMode" | "lattice">
   }): ToolDiagnostic | undefined {
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
@@ -96,7 +96,7 @@ export namespace SessionModePolicy {
   export function evaluateCall(input: {
     toolName: string
     args: Record<string, any>
-    session?: Pick<SessionInfo, "blueprint">
+    session?: Pick<SessionInfo, "planMode">
     capabilities: Capability[]
   }): ToolDiagnostic | undefined {
     if (!isPlanMode(input.session)) return undefined
@@ -108,8 +108,14 @@ export namespace SessionModePolicy {
 
   export function unavailable(input: {
     toolName: string
-    reason: "deferred" | "permission" | "user_disabled" | "audit_only" | "blueprint_loop_required"
-    session?: Pick<SessionInfo, "blueprint">
+    reason:
+      | "deferred"
+      | "permission"
+      | "user_disabled"
+      | "audit_only"
+      | "blueprint_loop_required"
+      | "light_loop_required"
+    session?: Pick<SessionInfo, "planMode" | "blueprint">
     metadata?: Record<string, unknown>
   }): ToolDiagnostic {
     if (input.reason === "permission") {
@@ -148,6 +154,16 @@ export namespace SessionModePolicy {
         toolName: input.toolName,
         mode: isPlanMode(input.session) ? "plan" : undefined,
         message: `The "${input.toolName}" tool requires an active BlueprintLoop session.`,
+        metadata: input.metadata,
+      }
+    }
+
+    if (input.reason === "light_loop_required") {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        mode: isPlanMode(input.session) ? "plan" : undefined,
+        message: `The "${input.toolName}" tool requires an active Light Loop session.`,
         metadata: input.metadata,
       }
     }

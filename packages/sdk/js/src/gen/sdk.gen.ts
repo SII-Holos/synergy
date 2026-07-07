@@ -240,6 +240,8 @@ import type {
   LibrarySearchResponses,
   LibraryStatsErrors,
   LibraryStatsResponses,
+  LightLoopSessionToggleLightLoopErrors,
+  LightLoopSessionToggleLightLoopResponses,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -2691,6 +2693,51 @@ export class Session extends HeyApiClient {
       ThrowOnError
     >({
       url: "/blueprint/session/{id}/plan-mode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Toggle Light Loop
+   *
+   * Enable or disable Light Loop on a session.
+   */
+  public toggleLightLoop<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      active?: boolean
+      taskDescription?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "active" },
+            { in: "body", key: "taskDescription" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      LightLoopSessionToggleLightLoopResponses,
+      LightLoopSessionToggleLightLoopErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/session/{id}/light-loop",
       ...options,
       ...params,
       headers: {
@@ -7715,6 +7762,10 @@ export class Blueprint extends HeyApiClient {
   session = new Session({ client: this.client })
 }
 
+export class LightLoop extends HeyApiClient {
+  session = new Session({ client: this.client })
+}
+
 export class Run extends HeyApiClient {
   /**
    * List Lattice runs
@@ -9776,6 +9827,8 @@ export class SynergyClient extends HeyApiClient {
   note = new Note({ client: this.client })
 
   blueprint = new Blueprint({ client: this.client })
+
+  lightLoop = new LightLoop({ client: this.client })
 
   lattice = new Lattice({ client: this.client })
 

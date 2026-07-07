@@ -8,7 +8,12 @@ export namespace PlanModeUserWrapper {
   export const METADATA_VERSION = "planModeWrapperVersion"
   export const VERSION = 1
 
-  const CONTROL_SOURCES = new Set(["blueprint_loop_start", "blueprint_loop_continuation", "blueprint_loop_restart"])
+  const CONTROL_SOURCES = new Set([
+    "blueprint_loop_start",
+    "blueprint_loop_continuation",
+    "blueprint_loop_restart",
+    "light_loop_continuation",
+  ])
 
   type PromptBuilder = (query: string) => string
 
@@ -28,7 +33,7 @@ export namespace PlanModeUserWrapper {
   }
 
   export function metadataForUserMessage(input: {
-    session?: Pick<SessionInfo, "blueprint">
+    session?: Pick<SessionInfo, "planMode">
     metadata?: Record<string, any>
     noReply?: boolean
     agentName: string
@@ -50,7 +55,7 @@ export namespace PlanModeUserWrapper {
 
   export function projectMessages(input: {
     messages: MessageV2.WithParts[]
-    session?: Pick<SessionInfo, "blueprint">
+    session?: Pick<SessionInfo, "planMode">
     agent: { name: string }
   }): MessageV2.WithParts[] {
     if (!SessionModePolicy.isPlanMode(input.session)) return input.messages

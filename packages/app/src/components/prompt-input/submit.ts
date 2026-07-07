@@ -279,7 +279,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => session)
     }
     if (!session) return
-    if (blueprintSlot && session.blueprint?.planMode) {
+    if (blueprintSlot && session.planMode) {
       const sessionID = session.id
       const fallbackSession = session
       session = await client.blueprint.session
@@ -300,7 +300,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (!blueprintSlot && input.planMode() && !session.blueprint?.planMode) {
+    if (!blueprintSlot && input.planMode() && !session.planMode) {
       const sessionID = session.id
       const fallbackSession = session
       session = await client.blueprint.session
@@ -361,7 +361,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const agent = currentAgent.name
     const variant = selectedVariant
     const optimisticPlanModeMetadata =
-      !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
+      !blueprintSlot && activeSession.planMode === true ? { planModeRequest: true } : undefined
 
     const clearInput = () => {
       prompt.resetDraft()

@@ -350,8 +350,81 @@ export const BlueprintRoute = new Hono()
       try {
         const id = c.req.valid("param").id
         const { planMode } = c.req.valid("json")
+
+        if (planMode) {
+          let existing: any
+          try {
+            existing = await Session.get(id)
+          } catch (err) {
+            if (err instanceof Storage.NotFoundError) return c.json({ message: `Session not found: ${id}` }, 404)
+            throw err
+          }
+          if (existing.lightLoop?.active) {
+            return c.json({ message: "Cannot enable Plan Mode while Light Loop is active" }, 400)
+          }
+        }
+
         const session = await Session.update(id, (draft) => {
-          draft.blueprint = { ...draft.blueprint, planMode }
+          draft.planMode = planMode
+        })
+        return c.json(session)
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .put(
+    "/session/:id/light-loop",
+    describeRoute({
+      summary: "Toggle Light Loop",
+      description: "Enable or disable Light Loop on a session.",
+      operationId: "lightLoop.session.toggleLightLoop",
+      responses: {
+        200: {
+          description: "Updated session",
+          content: { "application/json": { schema: resolver(Session.Info) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
+    validator(
+      "json",
+      z.object({
+        active: z.boolean().meta({ description: "Enable or disable Light Loop" }),
+        taskDescription: z.string().optional().meta({ description: "Task description, required when enabling" }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const id = c.req.valid("param").id
+        const { active, taskDescription } = c.req.valid("json")
+
+        if (active && !taskDescription) {
+          return c.json({ message: "taskDescription is required when enabling light loop" }, 400)
+        }
+
+        let existing: any
+        try {
+          existing = await Session.get(id)
+        } catch (err) {
+          if (err instanceof Storage.NotFoundError) return c.json({ message: `Session not found: ${id}` }, 404)
+          throw err
+        }
+
+        if (active && existing.planMode) {
+          return c.json({ message: "Cannot enable light loop while Plan Mode is active" }, 400)
+        }
+
+        if (active && existing.blueprint?.loopID) {
+          return c.json({ message: "Cannot enable light loop while a BlueprintLoop is active" }, 400)
+        }
+
+        const session = await Session.update(id, (draft) => {
+          draft.lightLoop = active ? { active: true, taskDescription: taskDescription! } : undefined
         })
         return c.json(session)
       } catch (err: any) {

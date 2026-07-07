@@ -3,8 +3,8 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { PlanModeUserWrapper } from "../../src/session/plan-mode-user-wrapper"
 
 const sessionID = "session_test"
-const planSession = { blueprint: { planMode: true } } as any
-const normalSession = { blueprint: { planMode: false } } as any
+const planSession = { planMode: true } as any
+const normalSession = { planMode: false } as any
 
 function userMessage(id: string, text: string, metadata?: Record<string, any>): MessageV2.WithParts {
   return {

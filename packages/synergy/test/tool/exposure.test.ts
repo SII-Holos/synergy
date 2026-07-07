@@ -363,7 +363,7 @@ describe("tool exposure", () => {
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.planMode = true
         })
 
         const ids = await definitionIDs(await Session.get(session.id))
@@ -386,7 +386,7 @@ describe("tool exposure", () => {
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.planMode = true
         })
         const denyBash: Agent.Info = {
           ...allowAllAgent,
@@ -414,7 +414,7 @@ describe("tool exposure", () => {
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.planMode = true
         })
         const executions = new Map<string, Promise<any>>()
         const processor = {

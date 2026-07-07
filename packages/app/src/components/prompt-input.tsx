@@ -129,8 +129,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     mode: "auto" | "collaborative"
     maxModelCalls: number
   } | null>(null)
-  const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
+  const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
+  const [pendingLightLoopDesc, setPendingLightLoopDesc] = createSignal<string | undefined>(undefined)
+  const storedLightLoop = createMemo(() => (params.id ? (info()?.lightLoop?.active ?? false) : pendingLightLoop()))
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
+  const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
+  const lightLoopTaskDesc = createMemo(() =>
+    params.id ? (info()?.lightLoop?.taskDescription ?? undefined) : pendingLightLoopDesc(),
+  )
+  const storedPlanMode = createMemo(() => (params.id ? (info()?.planMode ?? false) : pendingPlanMode()))
   const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
@@ -148,6 +155,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (id) {
           setPendingPlanMode(false)
           setPendingLattice(null)
+          setPendingLightLoop(false)
+          setPendingLightLoopDesc(undefined)
         }
       },
     ),
@@ -529,6 +538,40 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     void togglePlanMode()
   }
 
+  const setLightLoop = async (active: boolean, taskDescription?: string) => {
+    if (!params.id) {
+      setPendingLightLoop(active)
+      if (taskDescription) setPendingLightLoopDesc(taskDescription)
+      return true
+    }
+    try {
+      await sdk.client.blueprint.session.toggleLightLoop({
+        id: params.id,
+        active,
+        taskDescription,
+      })
+      return true
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to toggle Light Loop",
+        description: err instanceof Error ? err.message : "Unknown error",
+      })
+      return false
+    }
+  }
+
+  const toggleLightLoop = async () => {
+    if (blueprintModeLocked()) return
+    if (lightLoopActive()) {
+      await setLightLoop(false)
+      return
+    }
+    const desc = window.prompt("Task description:")?.trim()
+    if (!desc) return
+    await setLightLoop(true, desc)
+  }
+
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
     return (sync.data.message[params.id] ?? []).length > 0
@@ -619,6 +662,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               "opacity-60": blueprintModeLocked() || planMode(),
             },
             onSelect: openLatticeDialog,
+          },
+          {
+            id: "light-loop",
+            label: "Light Loop",
+            description: lightLoopActive()
+              ? (lightLoopTaskDesc() ?? "Auto-continuing")
+              : "Auto-continue until task is done",
+            icon: getSemanticIcon("prompt.loop"),
+            selected: lightLoopActive(),
+            ariaDisabled: blueprintModeLocked() || planMode() || lightLoopActive() || latticeActive(),
+            title: blueprintModeLocked()
+              ? "Light Loop is unavailable while a Blueprint is equipped"
+              : planMode()
+                ? "Light Loop is unavailable while Plan Mode is active"
+                : latticeActive()
+                  ? "Light Loop is unavailable while Lattice is active"
+                  : lightLoopActive()
+                    ? "Light Loop is already enabled"
+                    : undefined,
+            iconClass: lightLoopActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak"
+                : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": lightLoopActive(),
+              "opacity-60": blueprintModeLocked() || planMode() || latticeActive(),
+            },
+            onSelect: toggleLightLoop,
           },
         ],
       },
