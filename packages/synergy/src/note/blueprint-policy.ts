@@ -30,11 +30,12 @@ export namespace NoteBlueprintPolicy {
 
   export function evaluateWrite(input: {
     planMode: boolean
+    latticeActive: boolean
     action: WriteAction
     existingKind?: Kind
     requestedKind?: Kind
   }): Decision {
-    if (input.planMode) return { allowed: true }
+    if (input.planMode || input.latticeActive) return { allowed: true }
     const touchesBlueprint = input.existingKind === "blueprint" || input.requestedKind === "blueprint"
     if (!touchesBlueprint) return { allowed: true }
     return {
