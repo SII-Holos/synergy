@@ -1,10 +1,10 @@
 import { Show, createMemo, createEffect, createSignal, onCleanup, untrack } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
 import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { subagentFooterSessionStatus } from "./subagent-session-footer-model"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
@@ -56,8 +56,7 @@ export function SubagentSessionFooter(props: {
   parentSessionID?: string
 }) {
   const sync = useSync()
-  const params = useParams()
-  const navigate = useNavigate()
+  const navigateToSession = useNavigateToSession()
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? outputPreview(props.cortex.output)))
@@ -143,7 +142,7 @@ export function SubagentSessionFooter(props: {
               <button
                 type="button"
                 class="workbench-control-surface workbench-control-surface-hover inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base px-3 text-12-medium text-text-weak transition-all duration-150 hover:text-text-base active:scale-[0.97]"
-                onClick={() => navigate(`/${params.dir}/session/${untrack(parentSessionID)}`)}
+                onClick={() => navigateToSession(untrack(parentSessionID))}
               >
                 <Icon name={getSemanticIcon("navigation.back")} size="small" />
                 <span class="hidden sm:inline">Parent</span>

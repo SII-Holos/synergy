@@ -2,12 +2,14 @@ import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { Info, StatusInfo } from "./types"
+import { SessionNavEntry } from "./nav"
 
 export const SessionEvent = {
   Updated: BusEvent.define(
     "session.updated",
     z.object({
       info: Info,
+      navEntry: SessionNavEntry.optional(),
     }),
   ),
   Deleted: BusEvent.define(

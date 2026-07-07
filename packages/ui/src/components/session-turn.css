@@ -221,6 +221,7 @@
   [data-component="provider-prelude"] {
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     min-height: 22px;
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-regular);
@@ -239,12 +240,17 @@
     background: var(--border-base);
   }
 
+  [data-component="provider-prelude"][data-variant="completed"]::before {
+    background: var(--text-subtle);
+  }
+
   [data-slot="provider-prelude-separator"] {
     margin-inline: 6px;
     color: var(--text-subtle);
   }
 
-  [data-slot="provider-prelude-time"] {
+  [data-slot="provider-prelude-time"],
+  [data-slot="provider-prelude-stat"] {
     color: var(--text-subtle);
     font-size: var(--font-size-x-small);
     font-variant-numeric: tabular-nums;

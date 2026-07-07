@@ -85,6 +85,24 @@ describe("navUpdateFromSession", () => {
     })
   })
 
+  test("uses the authoritative nav entry activity when provided", () => {
+    const u = navUpdateFromSession(
+      {
+        id: "s1",
+        title: "Running update",
+        time: { updated: 9999 },
+      },
+      entry({ id: "s1", lastActivityAt: 1234 }),
+    )
+
+    expect(u.lastActivityAt).toBe(1234)
+    expect(u.title).toBe("Running update")
+  })
+
+  test("falls back to time.updated for new session events without navEntry", () => {
+    expect(navUpdateFromSession({ id: "new", time: { updated: 9999 } }).lastActivityAt).toBe(9999)
+  })
+
   test("marks archived when time.archived is set", () => {
     expect(navUpdateFromSession({ id: "s1", time: { archived: 999 } }).archived).toBe(true)
   })
@@ -109,8 +127,27 @@ describe("applySessionToNavList", () => {
     expect(updated.title).toBe("new")
     expect(updated.pinned).toBe(7)
     expect(updated.lastActivityAt).toBe(99)
-    // updating lastActivityAt in place is enough — orderNavEntries reorders at read
     expect(orderNavEntries(r.list.items).map((e) => e.id)).toEqual(["a", "b"])
+  })
+
+  test("keeps running session order when authoritative nav activity is stable", () => {
+    const l = list([
+      entry({ id: "running", title: "old", lastActivityAt: 1 }),
+      entry({ id: "other", lastActivityAt: 5 }),
+    ])
+    const r = applySessionToNavList(
+      l,
+      navUpdateFromSession(
+        { id: "running", title: "still running", time: { updated: 99 } },
+        entry({ id: "running", lastActivityAt: 1 }),
+      ),
+    )
+
+    expect(r.applied).toBe(true)
+    const updated = r.list.items.find((e) => e.id === "running")!
+    expect(updated.title).toBe("still running")
+    expect(updated.lastActivityAt).toBe(1)
+    expect(orderNavEntries(r.list.items).map((e) => e.id)).toEqual(["other", "running"])
   })
 
   test("removes an archived entry and decrements total", () => {
