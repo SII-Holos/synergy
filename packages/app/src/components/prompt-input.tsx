@@ -33,6 +33,9 @@ import {
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { LatticeConfigDialog } from "@/components/lattice/lattice-config-dialog"
+import { LatticePanel } from "@/components/lattice/lattice-panel"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -92,6 +95,7 @@ function sanitizePromptHistory(value: unknown) {
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
+  const latticeDialog = useDialog()
   const globalSync = useGlobalSync()
   const sync = useSync()
   const input = useInput()
@@ -457,6 +461,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     await setPlanMode(!storedPlanMode())
   }
 
+  const latticeActive = createMemo(() => (params.id ? !!info()?.lattice : false))
+
+  const openLatticeDialog = (event?: Event) => {
+    if (!params.id || blueprintModeLocked()) {
+      event?.preventDefault()
+      return
+    }
+    latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id!} />)
+  }
+
   const selectPlanModeFromMenu = (event?: Event) => {
     if (blueprintModeLocked()) {
       event?.preventDefault()
@@ -490,21 +504,43 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           description: planMode() ? "Planning before execution" : "Ask for an approach first",
           icon: getSemanticIcon("prompt.plan"),
           selected: planMode(),
-          ariaDisabled: blueprintModeLocked() || planMode(),
+          ariaDisabled: blueprintModeLocked() || planMode() || latticeActive(),
           title: blueprintModeLocked()
             ? "Plan Mode is unavailable while a Blueprint is equipped"
-            : planMode()
-              ? "Plan Mode is already enabled"
-              : undefined,
+            : latticeActive()
+              ? "Plan Mode is unavailable while Lattice is active"
+              : planMode()
+                ? "Plan Mode is already enabled"
+                : undefined,
           tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
           iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
           labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
           classList: {
             "bg-workbench-selected-bg": planMode(),
             "text-text-base": planMode(),
-            "opacity-60": blueprintModeLocked(),
+            "opacity-60": blueprintModeLocked() || latticeActive(),
           },
           onSelect: selectPlanModeFromMenu,
+        },
+        {
+          id: "lattice-mode",
+          label: "Lattice",
+          description: latticeActive() ? "Recursive Blueprint run active" : "Run a goal as a recursive Blueprint",
+          icon: getSemanticIcon("prompt.plan"),
+          selected: latticeActive(),
+          ariaDisabled: !params.id || blueprintModeLocked(),
+          title: !params.id
+            ? "Open a session to use Lattice"
+            : blueprintModeLocked()
+              ? "Lattice is unavailable while a Blueprint is equipped"
+              : undefined,
+          iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+          classList: {
+            "bg-workbench-selected-bg": latticeActive(),
+            "text-text-base": latticeActive(),
+            "opacity-60": !params.id || blueprintModeLocked(),
+          },
+          onSelect: openLatticeDialog,
         },
       ],
     },
@@ -1113,6 +1149,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             commands={command.options}
           />
         </div>
+      </Show>
+      <Show when={params.id}>
+        <LatticePanel sdk={sdk as any} sessionID={params.id!} />
       </Show>
       <Show when={store.popover}>
         <PromptPopover
