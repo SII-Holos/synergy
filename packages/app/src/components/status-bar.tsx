@@ -584,7 +584,10 @@ export function StatusBar() {
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
   const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
-  const branch = createMemo(() => workspaceField(session(), "branch") || sync.data.vcs?.branch)
+  const branch = createMemo(() => {
+    if (isWorktree()) return workspaceField(session(), "branch")
+    return workspaceField(session(), "branch") || sync.data.vcs?.branch
+  })
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
   const retryMessage = createMemo(() => {
