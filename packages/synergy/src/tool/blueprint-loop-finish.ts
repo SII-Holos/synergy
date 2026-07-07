@@ -40,6 +40,25 @@ function completionNotificationText(input: { loopID: string; summary?: string; u
     .join("\n")
 }
 
+/**
+ * When the loop is owned by a Lattice run, completion must NOT stop with a
+ * user-facing summary. Instead it kicks off the Lattice result_analysis phase:
+ * analyse this step's outcome, update the Pathway, and keep advancing.
+ */
+function latticeCompletionText(input: { loopID: string; runID: string; summary?: string; userPrompt?: string }) {
+  return [
+    `BlueprintLoop ${input.loopID} passed supervisor audit and is now complete.`,
+    input.summary ? `Audit summary: ${input.summary}` : "",
+    input.userPrompt ? `Start user instruction: ${input.userPrompt}` : "",
+    "",
+    `This Blueprint is a step of Lattice run ${input.runID}. You are now in the result_analysis phase.`,
+    `Call pathway_read to confirm the current phase and step, then record this step's result on the Pathway with pathway_patch (result summary, and any forward recovery step if follow-up work emerged).`,
+    `Do not stop to write a user-facing wrap-up; continue advancing the Lattice Pathway. Do not call blueprint_loop_finish or blueprint_loop_restart for this loop again.`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
   description: DESCRIPTION,
   parameters,
@@ -152,6 +171,16 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
       await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)
     } else if (params.status === "completed") {
+      const orchestration = loop.orchestration
+      const isLattice = orchestration?.kind === "lattice"
+      const completionText = isLattice
+        ? latticeCompletionText({
+            loopID: loop.id,
+            runID: orchestration.runID,
+            summary: params.summary,
+            userPrompt: loop.userPrompt,
+          })
+        : completionNotificationText({ loopID: loop.id, summary: params.summary, userPrompt: loop.userPrompt })
       const completionMail: SessionManager.SessionMail.User = {
         type: "user",
         ...(loop.executionAgent ? { agent: loop.executionAgent } : {}),
@@ -162,7 +191,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
             sessionID: loop.sessionID,
             messageID: Identifier.ascending("message"),
             type: "text",
-            text: completionNotificationText({ loopID: loop.id, summary: params.summary, userPrompt: loop.userPrompt }),
+            text: completionText,
           },
         ],
         metadata: {
@@ -172,13 +201,25 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
           noteID: loop.noteID,
           title: loop.title,
           status: "completed",
+          ...(isLattice ? { latticeRunID: orchestration.runID } : {}),
           ...(params.summary ? { summary: params.summary } : {}),
           ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
         },
       }
-      await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
-      await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
-      await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      // For Lattice loops advance the loop status FIRST so the Lattice bridge
+      // (a bus subscriber, awaited by publish) moves the run to result_analysis
+      // before the execution session is woken; otherwise the woken turn could
+      // still observe blueprint_execution. Non-Lattice loops keep the original
+      // deliver-then-complete ordering.
+      if (isLattice) {
+        await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
+        await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+        await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
+      } else {
+        await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
+        await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
+        await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      }
       const { Cortex } = await import("../cortex")
       await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)
