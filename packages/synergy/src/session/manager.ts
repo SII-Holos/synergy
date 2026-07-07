@@ -98,8 +98,8 @@ export namespace SessionManager {
     return indexed.scopeID
   }
 
-  const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
-  const IDLE_TTL_MS = 30 * 60 * 1000
+  const IDLE_SWEEP_INTERVAL_MS = 60 * 1000
+  const IDLE_TTL_MS = 2 * 60 * 1000
 
   const sweepTimer = setInterval(() => {
     const now = Date.now()
@@ -114,6 +114,7 @@ export namespace SessionManager {
       if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
       runtimes.delete(sessionID)
       log.info("swept idle runtime", { sessionID })
+      Bun.gc(true)
     }
   }, IDLE_SWEEP_INTERVAL_MS)
   sweepTimer.unref()
@@ -208,6 +209,7 @@ export namespace SessionManager {
     if (!runtime) return
     runtimes.delete(sessionID)
     log.info("unregistered runtime", { sessionID })
+    Bun.gc(true)
   }
 
   export function getRuntime(sessionID: string): SessionRuntime | undefined {
@@ -323,6 +325,14 @@ export namespace SessionManager {
 
   export function listRunningRuntimes(): SessionRuntime[] {
     return Array.from(runtimes.values()).filter((e) => e.abort)
+  }
+
+  export function runtimeStats() {
+    const all = runtimes.size
+    const running = Array.from(runtimes.values()).filter((e) => e.abort).length
+    const idle = all - running
+    const memory = process.memoryUsage()
+    return { total: all, running, idle, memory }
   }
 
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {

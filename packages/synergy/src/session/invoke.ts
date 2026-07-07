@@ -184,6 +184,17 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    const memStart = process.memoryUsage()
+    log.info("loop started", {
+      sessionID,
+      step: 0,
+      memory: {
+        rss: memStart.rss(),
+        heapUsed: memStart.heapUsed,
+        external: memStart.external,
+        arrayBuffers: memStart.arrayBuffers,
+      },
+    })
     ContinuationKernel.init()
     LatticeBridge.init()
     SessionManager.registerRuntime(sessionID)

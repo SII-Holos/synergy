@@ -160,14 +160,24 @@ export namespace ExternalAgentProcessor {
                 },
               })
             } else {
+              const rawOutput: string = event.result ?? bufferedOutput
+              const TOOL_OUTPUT_MAX_CHARS = 100 * 1024
+              const truncated = rawOutput.length > TOOL_OUTPUT_MAX_CHARS
+              const metadata = truncated
+                ? {
+                    truncated: true,
+                    originalBytes: Buffer.byteLength(rawOutput, "utf8"),
+                    keptBytes: TOOL_OUTPUT_MAX_CHARS,
+                  }
+                : {}
               await Session.updatePart({
                 ...part,
                 state: {
                   status: "completed",
                   input: part.state.status === "running" ? part.state.input : {},
-                  output: event.result ?? bufferedOutput,
+                  output: truncated ? rawOutput.slice(0, TOOL_OUTPUT_MAX_CHARS) : rawOutput,
                   title: part.tool,
-                  metadata: {},
+                  metadata,
                   time: { start: startTime, end: Date.now() },
                 },
               })

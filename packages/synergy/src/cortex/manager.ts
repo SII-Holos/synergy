@@ -29,7 +29,7 @@ export namespace Cortex {
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
 
-  const CLEANUP_DELAY_MS = 20 * 60 * 1000
+  const CLEANUP_DELAY_MS = 2 * 60 * 1000
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -423,8 +423,10 @@ export namespace Cortex {
     }
 
     task.completedAt = Date.now()
-    if (error) task.error = error
+    if (error) task.error = error.length > 4_000 ? error.slice(0, 2_000) + "…" + error.slice(-2_000) : error
     if (output) task.output = output
+    // Drop retained progress data on terminal to free memory immediately
+    if (task.progress) task.progress.recentTools = []
     tasks.set(taskID, task)
 
     setTaskStatus(taskID, status)
@@ -479,6 +481,9 @@ export namespace Cortex {
 
     void cleanupChildWorktree(task)
 
+    // Release child session runtime immediately on terminal status (#317)
+    SessionManager.unregisterRuntime(task.sessionID)
+
     setTimeout(() => {
       const task = tasks.get(taskID)
       if (task) {
@@ -489,12 +494,9 @@ export namespace Cortex {
 
     setTimeout(
       () => {
-        void (async () => {
-          tasks.delete(taskID)
-          acquiredTasks.delete(taskID)
-          SessionManager.unregisterRuntime(task.sessionID)
-          log.info("task cleaned up", { taskID })
-        })()
+        tasks.delete(taskID)
+        acquiredTasks.delete(taskID)
+        log.info("task cleaned up", { taskID })
       },
       CLEANUP_DELAY_MS + 5 * 60 * 1000,
     )

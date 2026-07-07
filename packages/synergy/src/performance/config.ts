@@ -34,6 +34,7 @@ export namespace PerformanceConfig {
       jsonlMirrorEnabled?: boolean
       maxSqliteBytes?: number
       walCheckpointIntervalMs?: number
+      storageOperationSampleRate?: number
     }
     thresholds?: Record<string, number | undefined>
   }

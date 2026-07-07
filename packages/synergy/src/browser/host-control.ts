@@ -259,7 +259,7 @@ export namespace BrowserHostControl {
     return connection
   }
 
-  export function detach(owner: BrowserOwner.Info, connection: HostConnection): void {
+  export async function detach(owner: BrowserOwner.Info, connection: HostConnection): Promise<void> {
     const key = BrowserOwner.key(owner)
     if (connection.pageId) {
       const pages = pageHosts.get(key)
@@ -284,6 +284,8 @@ export namespace BrowserHostControl {
         code: "browser_host_disconnected",
         message: "Browser Host disconnected.",
       })
+      // Dispose browser session when all hosts detach (#317)
+      void import("./runtime").then((m) => m.BrowserRuntime.disposeSession(owner)).catch(() => {})
     }
   }
 

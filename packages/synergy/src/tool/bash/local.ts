@@ -474,8 +474,19 @@ export const LocalBashBackend: BashBackend = {
 
     function abortHandler() {
       aborted = true
-      cleanupAllTimers()
-      void kill()
+      // Allow a 500ms grace period for subprocess cleanup before forceful kill (#317)
+      setTimeout(() => {
+        cleanupAllTimers()
+        void kill()
+        // Wait up to 2s for process to settle, then ensure cleanup completes
+        setTimeout(() => {
+          if (exited) {
+            resolveChildFinished("exited")
+          } else {
+            resolveChildFinished("error")
+          }
+        }, 2000)
+      }, 500)
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })

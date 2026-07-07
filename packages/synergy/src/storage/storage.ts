@@ -173,20 +173,26 @@ export namespace Storage {
       throw error
     } finally {
       const durationMs = performance.now() - start
-      PerformanceMetrics.record({
-        name: "storage.operation.duration",
-        value: durationMs,
-        unit: "ms",
-        module: "storage",
-        labels: { operation, keyPrefix: key[0] ?? "root", status },
-      })
-      PerformanceMetrics.record({
-        name: "storage.operation.count",
-        value: 1,
-        unit: "count",
-        module: "storage",
-        labels: { operation, status },
-      })
+      // Sample storage metrics at 5% by default to avoid ~582K writes/hr (#343)
+      const SAMPLE_RATE = 0.05
+      const SLOW_THRESHOLD_MS = 100
+      const shouldSample = status === "error" || durationMs > SLOW_THRESHOLD_MS || Math.random() < SAMPLE_RATE
+      if (shouldSample) {
+        PerformanceMetrics.record({
+          name: "storage.operation.duration",
+          value: durationMs,
+          unit: "ms",
+          module: "storage",
+          labels: { operation, keyPrefix: key[0] ?? "root", status },
+        })
+        PerformanceMetrics.record({
+          name: "storage.operation.count",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { operation, status },
+        })
+      }
       if (status === "error") {
         PerformanceMetrics.record({
           name: "storage.operation.error",
