@@ -11,11 +11,23 @@ export const FileSearchTool = Tool.define("file_search", {
     query: z
       .string()
       .describe(
-        "Fuzzy filename, directory name, module name, path fragment, code symbol, or literal content snippet to search for",
+        "Fuzzy filename, directory name, module name, path fragment, code symbol, or exact literal content snippet to search for",
       ),
-    limit: z.coerce.number().int().min(1).max(100).optional().describe("Maximum total results across all search modes"),
-    include: z.string().optional().describe("Optional comma-separated glob patterns to include"),
-    exclude: z.string().optional().describe("Optional comma-separated glob patterns to exclude"),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Maximum total merged results across path, content, and symbol matches; defaults to 50"),
+    include: z
+      .string()
+      .optional()
+      .describe("Optional comma-separated glob patterns to include for path and content search"),
+    exclude: z
+      .string()
+      .optional()
+      .describe("Optional comma-separated glob patterns to exclude from path and content search"),
   }),
   async execute(params, ctx) {
     await ctx.ask({
