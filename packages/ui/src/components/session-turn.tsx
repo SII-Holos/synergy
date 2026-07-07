@@ -706,16 +706,11 @@ export function SessionTurn(
     if (!parts) return ""
     const texts: string[] = []
     for (const part of parts) {
-      if (part.type === "text") {
-        const textPart = part as TextPart
-        if (textPart.synthetic || textPart.origin === "system") continue
-        const text = textPart.text?.trim()
-        if (text) texts.push(text)
-      } else if (part.type === "reasoning") {
-        const reasoningPart = part as ReasoningPart
-        const text = reasoningPart.text?.trim()
-        if (text) texts.push(text)
-      }
+      if (part.type !== "text") continue
+      const textPart = part as TextPart
+      if (textPart.synthetic || textPart.origin === "system") continue
+      const text = textPart.text?.trim()
+      if (text) texts.push(text)
     }
     return texts.join("\n\n")
   })
