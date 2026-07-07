@@ -51,6 +51,8 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraAcceptTool } from "./agora-accept"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
+import { OpenAIImageGenTool } from "./openai-image-gen"
+import { OpenAIImageEditTool } from "./openai-image-edit"
 
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
@@ -81,6 +83,7 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
 import { ExpandToolsTool } from "./expand-tools"
 import { WorktreeEnterTool } from "./worktree-enter"
@@ -328,9 +331,9 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.current()
+    await Config.current()
 
-    return [
+    const builtin: Tool.Info[] = [
       ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
@@ -431,8 +434,15 @@ export namespace ToolRegistry {
       BrowserEvalTool,
       BrowserViewTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...custom,
     ]
+
+    const codexAccess = await CodexProvider.resolveToken({
+      allowMissing: true,
+      refreshIfExpiring: false,
+    }).catch(() => undefined)
+    if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
+
+    return [...builtin, ...custom]
   }
 
   export async function ids() {
