@@ -42,6 +42,7 @@ import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
+import { AgentsPanel } from "./panels/AgentsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
 import { UsagePanel } from "./panels/UsagePanel"
@@ -111,6 +112,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
     const res = await globalSDK.client.app.agentModelRoles()
     return (res.data ?? []) as ModelRoleSummary[]
+  })
+
+  const [agents, { refetch: refetchAgents }] = createResource(async () => {
+    const res = await globalSDK.client.app.agents()
+    return res.data ?? []
   })
 
   const providerModels = createMemo(() => {
@@ -218,7 +224,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries()])
+    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries(), refetchAgents()])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -492,6 +498,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
               setSettings("roleVariant", roleId, variant || (undefined as unknown as string))
             }
             onConnectProvider={() => setActiveTab("providers")}
+          />
+        )
+      case "agents":
+        return (
+          <AgentsPanel
+            value={settings.agents}
+            availableAgents={agents() ?? []}
+            onChange={(value) => setSettings("agents", value)}
           />
         )
       case "providers":

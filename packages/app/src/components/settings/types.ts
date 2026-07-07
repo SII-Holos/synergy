@@ -59,6 +59,7 @@ export const UI_DEFAULTS = {
   toolOverrides: "" as string,
   watcherIgnore: "" as string,
   logLevel: "" as string,
+  defaultAgent: "synergy" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -210,6 +211,10 @@ export type ModelsStore = {
   creative_model: string
 }
 
+export type AgentsStore = {
+  defaultAgent: string
+}
+
 export type PluginsStore = {
   entries: PluginEntry[]
 }
@@ -260,6 +265,7 @@ export type RuntimeStore = {
 export type SettingsState = {
   general: GeneralStore
   models: ModelsStore
+  agents: AgentsStore
   providers: ProvidersStore
   plugins: PluginsStore
   mcps: McpsStore
@@ -290,6 +296,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       thinking_model: MODEL_DEFAULTS.thinking_model,
       long_context_model: MODEL_DEFAULTS.long_context_model,
       creative_model: MODEL_DEFAULTS.creative_model,
+    },
+    agents: {
+      defaultAgent: UI_DEFAULTS.defaultAgent,
     },
     providers: {
       enabledProviders: "",

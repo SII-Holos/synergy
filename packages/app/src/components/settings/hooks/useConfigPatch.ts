@@ -14,6 +14,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
   buildGeneralPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)
+  buildAgentPatch(cfg, state, patch)
   buildProviderPatch(cfg, state, patch)
   buildPluginPatch(cfg, state, patch)
   buildMcpPatch(cfg, state, originalMcps, patch)
@@ -56,6 +57,13 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
   }
   if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
     patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
+  }
+}
+
+function buildAgentPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const defaultAgent = state.agents.defaultAgent.trim()
+  if (defaultAgent !== (cfg.default_agent ?? UI_DEFAULTS.defaultAgent)) {
+    patch.default_agent = defaultAgent === UI_DEFAULTS.defaultAgent ? undefined : defaultAgent
   }
 }
 
