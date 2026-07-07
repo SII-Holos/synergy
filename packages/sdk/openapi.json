@@ -23491,6 +23491,10 @@
                 "description": "Enable the batch tool",
                 "type": "boolean"
               },
+              "coauthor_reminder": {
+                "description": "Include the git commit Co-authored-by footer reminder in agent prompts",
+                "type": "boolean"
+              },
               "openTelemetry": {
                 "description": "Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)",
                 "type": "boolean"
