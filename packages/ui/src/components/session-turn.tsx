@@ -37,7 +37,7 @@ import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
-import { CopyIconButton } from "./clipboard"
+import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
@@ -728,6 +728,12 @@ export function SessionTurn(
     const minutes = date.getMinutes().toString().padStart(2, "0")
     return `${hours}:${minutes}`
   })
+  const copyController = createCopyController({
+    text: markdownText,
+    copyLabel: "Copy Markdown",
+    copiedLabel: "Copied!",
+    failureDescription: "Unable to copy the message.",
+  })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
   )
@@ -965,12 +971,21 @@ export function SessionTurn(
                               <Show keyed when={assistantTimestamp()}>
                                 {(value) => <span data-slot="assistant-message-time">{value}</span>}
                               </Show>
-                              <CopyIconButton
-                                text={markdownText}
-                                copyLabel="Copy Markdown"
-                                copiedLabel="Copied!"
-                                failureDescription="Unable to copy the message."
-                              />
+                              <button
+                                type="button"
+                                data-slot="assistant-message-copy"
+                                data-copy-state={copyController.state()}
+                                aria-label={copyController.tooltip()}
+                                disabled={copyController.disabled()}
+                                onClick={() => void copyController.copy()}
+                              >
+                                <Icon
+                                  name={
+                                    copyController.copied() ? getSemanticIcon("state.success") : copyController.icon()
+                                  }
+                                  size="small"
+                                />
+                              </button>
                             </div>
                           </div>
                         </Show>
