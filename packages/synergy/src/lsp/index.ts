@@ -73,10 +73,23 @@ export namespace LSP {
   // beyond the timeout. Reaping is transparent — getClients re-spawns on the
   // next request. Disabled with SYNERGY_DISABLE_LSP_REAP.
   const lastUsedAt = new WeakMap<LSPClient.Info, number>()
+  const worktreeClients = new WeakSet<LSPClient.Info>()
   const LSP_IDLE_MS = 30 * 60 * 1000
+  const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
   const LSP_SWEEP_MS = 5 * 60 * 1000
+  const LSP_MAX_CLIENTS_PER_SERVER = Math.max(
+    1,
+    Number.parseInt(process.env.SYNERGY_LSP_MAX_CLIENTS_PER_SERVER ?? "2", 10) || 2,
+  )
+  // A capacity eviction only targets clients idle at least this long, so a
+  // client actively serving a concurrent session is never shut down mid-request.
+  const LSP_CAPACITY_REAP_MIN_IDLE_MS = 30 * 1000
   function touchClient(client: LSPClient.Info) {
     lastUsedAt.set(client, Date.now())
+  }
+
+  function clientIdleMs(client: LSPClient.Info) {
+    return worktreeClients.has(client) ? LSP_WORKTREE_IDLE_MS : LSP_IDLE_MS
   }
 
   const state = ScopedState.create(
@@ -143,15 +156,8 @@ export namespace LSP {
         : setInterval(() => {
             const now = Date.now()
             for (const client of [...clients]) {
-              if (now - (lastUsedAt.get(client) ?? now) < LSP_IDLE_MS) continue
-              const idx = clients.indexOf(client)
-              if (idx !== -1) clients.splice(idx, 1)
-              const pid = client.pid
-              log.info("reaping idle LSP client", { serverID: client.serverID, root: client.root })
-              void client
-                .shutdown()
-                .then(() => (pid ? LSPPid.untrack(pid) : undefined))
-                .catch((error) => log.warn("failed to shut down idle LSP client", { error }))
+              if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
+              void reapClient(clients, client, "idle")
             }
           }, LSP_SWEEP_MS)
       sweeper?.unref()
@@ -257,6 +263,7 @@ export namespace LSP {
       }
 
       s.clients.push(client)
+      if (ScopeContext.current.workspace?.type === "git_worktree") worktreeClients.add(client)
       touchClient(client)
       if (handle.process.pid) {
         LSPPid.track(handle.process.pid)
@@ -295,12 +302,21 @@ export namespace LSP {
         continue
       }
 
-      const task = schedule(server, root, root + server.id)
-      s.spawning.set(root + server.id, task)
+      // Register the spawn placeholder synchronously (no await between the
+      // `spawning.get` check above and this `set`), otherwise two concurrent
+      // getClients for the same (root, server) could both miss the in-flight
+      // entry and spawn duplicate servers. The capacity reap is awaited inside
+      // the task instead of before it.
+      const key = root + server.id
+      const task = (async () => {
+        await reapForCapacity(s.clients, server.id)
+        return schedule(server, root, key)
+      })()
+      s.spawning.set(key, task)
 
       task.finally(() => {
-        if (s.spawning.get(root + server.id) === task) {
-          s.spawning.delete(root + server.id)
+        if (s.spawning.get(key) === task) {
+          s.spawning.delete(key)
         }
       })
 
@@ -313,6 +329,32 @@ export namespace LSP {
 
     for (const client of result) touchClient(client)
     return result
+  }
+
+  async function reapForCapacity(clients: LSPClient.Info[], serverID: string) {
+    const matches = clients.filter((client) => client.serverID === serverID)
+    if (matches.length < LSP_MAX_CLIENTS_PER_SERVER) return
+    const now = Date.now()
+    const oldest = matches.toSorted((a, b) => (lastUsedAt.get(a) ?? 0) - (lastUsedAt.get(b) ?? 0))[0]
+    // Only evict a client that has been idle past the grace window. touchClient
+    // stamps a client on every getClients/run, so a recently-stamped client is
+    // likely serving an in-flight request on another concurrent session —
+    // shutting it down mid-request would fail that request. When every client is
+    // hot, tolerate briefly exceeding the cap instead; the idle sweeper reclaims
+    // them once they cool down.
+    if (!oldest || now - (lastUsedAt.get(oldest) ?? 0) < LSP_CAPACITY_REAP_MIN_IDLE_MS) return
+    await reapClient(clients, oldest, "capacity")
+  }
+
+  async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
+    const idx = clients.indexOf(client)
+    if (idx !== -1) clients.splice(idx, 1)
+    const pid = client.pid
+    log.info("reaping LSP client", { serverID: client.serverID, root: client.root, reason })
+    await client
+      .shutdown()
+      .then(() => (pid ? LSPPid.untrack(pid) : undefined))
+      .catch((error) => log.warn("failed to shut down LSP client", { error, reason }))
   }
 
   export async function hasClients(file: string) {

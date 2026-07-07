@@ -16,6 +16,7 @@ export namespace Snapshot {
   // never settles, so the whole collection is raced against this deadline.
   const SNAPSHOT_HARD_TIMEOUT_MS = SNAPSHOT_TIMEOUT_MS + 5_000
   const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
+  const CANDIDATE_STATE_CONCURRENCY = 32
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -120,18 +121,25 @@ export namespace Snapshot {
     cwd: string,
     env?: Record<string, string>,
     signal?: AbortSignal,
+    stdin?: string,
   ): Promise<{ exitCode: number; text: string; stderr: string }> {
     if (signal?.aborted) return abortedGitResult()
     const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
-    let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined
+    let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
     try {
       proc = Bun.spawn(args, {
         cwd,
+        stdin: stdin === undefined ? "ignore" : "pipe",
         stdout: "pipe",
         stderr: "pipe",
         env: env ? { ...process.env, ...env } : process.env,
         signal: childSignal.signal,
       })
+      if (stdin !== undefined) {
+        if (!proc.stdin) throw new Error("git subprocess stdin pipe unavailable")
+        proc.stdin.write(stdin)
+        proc.stdin.end()
+      }
       const stdout = new Response(proc.stdout).text()
       const stderr = new Response(proc.stderr).text().catch(() => "")
       const [text, stderrText, exitCode] = await withTimeout(
@@ -182,8 +190,16 @@ export namespace Snapshot {
         undefined,
         signal,
       )
+      await gitSpawn(
+        ["git", "--git-dir", git, "config", "core.quotepath", "false"],
+        ScopeContext.current.directory,
+        undefined,
+        signal,
+      )
       log.info("initialized")
     }
+    // ensureExclude runs inside refreshIndex (which every snapshot path funnels
+    // through), so it need not be repeated here.
     const addResult = await refreshIndex(sessionID, signal)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
@@ -426,11 +442,13 @@ export namespace Snapshot {
   ): Promise<FileDiff[]> {
     const git = gitdir(sessionID)
     const result: FileDiff[] = []
-    const numstat = await gitSpawn(
+    const diff = await gitSpawn(
       [
         "git",
         "-c",
         "core.autocrlf=false",
+        "-c",
+        "core.quotepath=false",
         "--git-dir",
         git,
         "--work-tree",
@@ -439,6 +457,7 @@ export namespace Snapshot {
         "--no-ext-diff",
         "--no-renames",
         "--numstat",
+        "-p",
         from,
         to,
         "--",
@@ -448,41 +467,27 @@ export namespace Snapshot {
       undefined,
       signal,
     )
-    if (numstat.exitCode !== 0) {
-      log.warn("failed to get diff summary", { from, to, exitCode: numstat.exitCode, stderr: numstat.stderr })
+    if (diff.exitCode !== 0) {
+      log.warn("failed to get diff summary", { from, to, exitCode: diff.exitCode, stderr: diff.stderr })
       return result
     }
-    for (const line of numstat.text.split("\n")) {
-      if (!line) continue
-      const [additions, deletions, file] = line.split("\t")
+
+    const parsed = parseNumstatPatch(diff.text)
+    const sizes = await objectSizes(
+      git,
+      parsed.stats.flatMap((stat) => [
+        { tree: from, file: stat.file },
+        { tree: to, file: stat.file },
+      ]),
+      signal,
+    )
+    for (let index = 0; index < parsed.stats.length; index++) {
+      const stat = parsed.stats[index]
+      const { additions, deletions, file } = stat
       const isBinaryFile = additions === "-" && deletions === "-"
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
-      const patch = isBinaryFile
-        ? ""
-        : (
-            await gitSpawn(
-              [
-                "git",
-                "-c",
-                "core.autocrlf=false",
-                "--git-dir",
-                git,
-                "--work-tree",
-                ScopeContext.current.directory,
-                "diff",
-                "--no-ext-diff",
-                "--no-renames",
-                from,
-                to,
-                "--",
-                file,
-              ],
-              ScopeContext.current.directory,
-              undefined,
-              signal,
-            )
-          ).text
+      const patch = isBinaryFile ? "" : (parsed.patches[index] ?? "")
       result.push(
         SnapshotSchema.fromPatch({
           file,
@@ -490,8 +495,8 @@ export namespace Snapshot {
           deletions: Number.isFinite(deleted) ? deleted : 0,
           binary: isBinaryFile,
           patch,
-          beforeBytes: await objectSize(git, from, file, signal),
-          afterBytes: await objectSize(git, to, file, signal),
+          beforeBytes: sizes.get(objectSizeKey(from, file)),
+          afterBytes: sizes.get(objectSizeKey(to, file)),
         }),
       )
     }
@@ -501,23 +506,72 @@ export namespace Snapshot {
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
     const git = gitdir(sessionID)
     const cwd = ScopeContext.current.directory
-    const rm = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", cwd, "rm", "-r", "--cached", "--ignore-unmatch", "-f", "."],
-      cwd,
-      undefined,
-      signal,
-    )
-    if (rm.exitCode !== 0) return false
+    await ensureExclude(git)
 
-    const files = await includedFiles(cwd, signal)
-    if (files === undefined) return false
-    if (files.length === 0) return true
+    const changed = await changedFiles(git, cwd, signal)
+    if (changed === undefined) return false
+    if (changed.length === 0) return true
+
+    const addable: string[] = []
+    const removable: string[] = []
+    // Classify candidates with bounded-concurrency lstat rather than a serial
+    // await-per-file loop, so the (one-time) first-track scan over a large repo
+    // doesn't stall the event loop or exhaust file descriptors.
+    const states = await mapWithConcurrency(changed, CANDIDATE_STATE_CONCURRENCY, (rel) => candidateState(cwd, rel))
+    for (let i = 0; i < changed.length; i++) {
+      // "missing" (deleted from the work tree) is staged for removal via the
+      // `git add --all` below, so it belongs with the addable pathspec.
+      if (states[i] === "remove") removable.push(changed[i])
+      else addable.push(changed[i])
+    }
+
+    if (removable.length > 0) {
+      const pathspec = path.join(git, "synergy-remove-pathspec")
+      await fs.writeFile(pathspec, removable.join("\0") + "\0")
+      try {
+        const rm = await gitSpawn(
+          [
+            "git",
+            "--git-dir",
+            git,
+            "--work-tree",
+            cwd,
+            "rm",
+            "--cached",
+            "--ignore-unmatch",
+            "-r",
+            "--pathspec-from-file",
+            pathspec,
+            "--pathspec-file-nul",
+          ],
+          cwd,
+          undefined,
+          signal,
+        )
+        if (rm.exitCode !== 0) return false
+      } finally {
+        await fs.unlink(pathspec).catch(() => undefined)
+      }
+    }
+
+    if (addable.length === 0) return true
 
     const pathspec = path.join(git, "synergy-pathspec")
-    await fs.writeFile(pathspec, files.join("\0") + "\0")
+    await fs.writeFile(pathspec, addable.join("\0") + "\0")
     try {
       const add = await gitSpawn(
-        ["git", "--git-dir", git, "--work-tree", cwd, "add", "--pathspec-from-file", pathspec, "--pathspec-file-nul"],
+        [
+          "git",
+          "--git-dir",
+          git,
+          "--work-tree",
+          cwd,
+          "add",
+          "--all",
+          "--pathspec-from-file",
+          pathspec,
+          "--pathspec-file-nul",
+        ],
         cwd,
         undefined,
         signal,
@@ -528,23 +582,66 @@ export namespace Snapshot {
     }
   }
 
-  async function includedFiles(cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
-    const listing = await gitSpawn(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd, undefined, signal)
-    if (listing.exitCode !== 0) {
-      log.warn("ls-files failed", { cwd, exitCode: listing.exitCode, stderr: listing.stderr })
+  // Only the files that actually changed since the shadow index was last
+  // refreshed. This must not depend on HEAD: the shadow repo only ever
+  // `write-tree`s and never commits, so its HEAD is unborn and `git status`
+  // would report every indexed file as a staged addition — forcing a full
+  // rescan every step. `diff-files` (work tree vs. index) plus
+  // `ls-files --others` (new untracked) give the true delta independent of
+  // HEAD. A worktree rename surfaces as a delete of the old path (diff-files)
+  // plus a new untracked path (ls-files), which is exactly what the index
+  // update needs, so no explicit rename handling is required. With `-z`,
+  // paths are emitted verbatim (no quoting), so core.quotepath is irrelevant.
+  async function changedFiles(git: string, cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
+    const modified = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", cwd, "diff-files", "--name-only", "-z"],
+      cwd,
+      undefined,
+      signal,
+    )
+    if (modified.exitCode !== 0) {
+      log.warn("diff-files failed", { cwd, exitCode: modified.exitCode, stderr: modified.stderr })
       return undefined
     }
-    const files: string[] = []
-    for (const raw of listing.text.split("\0")) {
-      const rel = raw.trim()
-      if (!rel || excludePath(rel)) continue
-      const absolute = path.join(cwd, rel)
-      const stat = await fs.lstat(absolute).catch(() => undefined)
-      if (!stat?.isFile() && !stat?.isSymbolicLink()) continue
-      if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) continue
-      files.push(rel.replaceAll("\\", "/"))
+    const untracked = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", cwd, "ls-files", "--others", "--exclude-standard", "-z"],
+      cwd,
+      undefined,
+      signal,
+    )
+    if (untracked.exitCode !== 0) {
+      log.warn("ls-files failed", { cwd, exitCode: untracked.exitCode, stderr: untracked.stderr })
+      return undefined
     }
-    return files
+    const files = new Set<string>()
+    for (const raw of [...modified.text.split("\0"), ...untracked.text.split("\0")]) {
+      const rel = raw.trim()
+      if (rel) files.add(rel.replaceAll("\\", "/"))
+    }
+    return [...files]
+  }
+
+  async function candidateState(cwd: string, rel: string): Promise<"add" | "remove" | "missing"> {
+    if (excludePath(rel)) return "remove"
+    const absolute = path.join(cwd, rel)
+    const stat = await fs.lstat(absolute).catch(() => undefined)
+    if (!stat) return "missing"
+    if (!stat.isFile() && !stat.isSymbolicLink()) return "remove"
+    if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) return "remove"
+    return "add"
+  }
+
+  async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const result: R[] = new Array(items.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next++
+        result[index] = await fn(items[index])
+      }
+    })
+    await Promise.all(workers)
+    return result
   }
 
   function excludePath(rel: string): boolean {
@@ -554,25 +651,81 @@ export namespace Snapshot {
     return EXCLUDED_EXTENSIONS.has(path.extname(normalized).toLowerCase())
   }
 
+  async function ensureExclude(git: string) {
+    const info = path.join(git, "info")
+    await fs.mkdir(info, { recursive: true })
+    const body = [
+      "# Synergy snapshot exclusions",
+      ...[...EXCLUDED_DIRS].sort().map((dir) => `${dir}/`),
+      ...[...EXCLUDED_EXTENSIONS].sort().map((extension) => `*${extension}`),
+      "",
+    ].join("\n")
+    const file = path.join(info, "exclude")
+    const current = await fs.readFile(file, "utf8").catch(() => undefined)
+    if (current !== body) await fs.writeFile(file, body)
+  }
+
   function absoluteWorktreePath(rel: string): string {
     return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
   }
 
-  async function objectSize(
+  function parseNumstatPatch(text: string): {
+    stats: Array<{ additions: string; deletions: string; file: string }>
+    patches: string[]
+  } {
+    const marker = "\n\ndiff --git "
+    const markerIndex = text.indexOf(marker)
+    const numstatText = markerIndex === -1 ? text : text.slice(0, markerIndex)
+    const patchText = markerIndex === -1 ? "" : text.slice(markerIndex + 2)
+    return {
+      stats: numstatText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [additions, deletions, file] = line.split("\t")
+          return { additions, deletions, file }
+        }),
+      patches: splitPatches(patchText),
+    }
+  }
+
+  function splitPatches(text: string) {
+    if (!text.trim()) return []
+    return text
+      .split(/^diff --git /m)
+      .filter(Boolean)
+      .map((patch) => `diff --git ${patch}`)
+  }
+
+  function objectSizeKey(tree: string, file: string) {
+    return `${tree}:${file}`
+  }
+
+  async function objectSizes(
     git: string,
-    tree: string,
-    file: string,
+    objects: Array<{ tree: string; file: string }>,
     signal?: AbortSignal,
-  ): Promise<number | undefined> {
-    const result = await gitSpawn(
-      ["git", "--git-dir", git, "cat-file", "-s", `${tree}:${file}`],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>()
+    if (objects.length === 0) return result
+    const input = objects.map((object) => objectSizeKey(object.tree, object.file)).join("\n") + "\n"
+    const batch = await gitSpawn(
+      ["git", "--git-dir", git, "cat-file", "--batch-check=%(objectsize)"],
       ScopeContext.current.directory,
       undefined,
       signal,
+      input,
     )
-    if (result.exitCode !== 0) return undefined
-    const parsed = Number.parseInt(result.text.trim(), 10)
-    return Number.isFinite(parsed) ? parsed : undefined
+    if (batch.exitCode !== 0) return result
+    const lines = batch.text.split("\n")
+    for (let index = 0; index < objects.length; index++) {
+      const line = lines[index]?.trim() ?? ""
+      if (!/^\d+$/.test(line)) continue
+      const parsed = Number.parseInt(line, 10)
+      if (Number.isFinite(parsed)) result.set(objectSizeKey(objects[index].tree, objects[index].file), parsed)
+    }
+    return result
   }
 
   function gitdir(sessionID: string) {
