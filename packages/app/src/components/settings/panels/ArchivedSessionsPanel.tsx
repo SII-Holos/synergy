@@ -5,7 +5,8 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
-import { deleteArchivedSessionConfirm } from "@/components/dialog/confirm-copy"
+import { deleteArchivedSessionConfirm, restoreArchivedSessionConfirm } from "@/components/dialog/confirm-copy"
+import { SelectionCheckbox } from "@/components/library/shared"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
@@ -15,6 +16,7 @@ import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/cli
 type ArchivedSessionItem = NonNullable<GlobalSessionSearchResponse["data"]>[number]
 type SortBy = "archived" | "scope"
 type SortDir = "asc" | "desc"
+type BatchAction = "restore" | "delete"
 
 const PAGE_LIMIT = 50
 
@@ -47,14 +49,23 @@ export function ArchivedSessionsPanel() {
   const [items, setItems] = createSignal<ArchivedSessionItem[]>([])
   const [total, setTotal] = createSignal(0)
   const [loading, setLoading] = createSignal(false)
-  const [deletingID, setDeletingID] = createSignal<string | undefined>()
+  const [busyID, setBusyID] = createSignal<string | undefined>()
+  const [batchBusy, setBatchBusy] = createSignal<BatchAction | undefined>()
+  const [selectedIDs, setSelectedIDs] = createSignal<Set<string>>(new Set())
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
+  const selectedItems = createMemo(() => {
+    const ids = selectedIDs()
+    return items().filter((item) => ids.has(item.id))
+  })
+  const allVisibleSelected = createMemo(() => items().length > 0 && items().every((item) => selectedIDs().has(item.id)))
+  const selectedCount = createMemo(() => selectedIDs().size)
   const hasNextPage = createMemo(() => offset() + items().length < total())
   const pageLabel = createMemo(() => {
     if (total() === 0) return "0 archived sessions"
     return `${offset() + 1}-${offset() + items().length} of ${total()}`
   })
+  const busy = createMemo(() => loading() || !!busyID() || !!batchBusy())
 
   async function load(nextOffset = offset()) {
     if (!globalSDK.connected()) return
@@ -70,12 +81,16 @@ export function ArchivedSessionsPanel() {
         sortDir: sortDir(),
       })
       const body = result.data
-      setItems(body?.data ?? [])
+      const nextItems = body?.data ?? []
+      setItems(nextItems)
       setTotal(body?.total ?? 0)
       setOffset(body?.offset ?? nextOffset)
+      const visibleIDs = new Set(nextItems.map((item) => item.id))
+      setSelectedIDs((prev) => new Set([...prev].filter((id) => visibleIDs.has(id))))
     } catch (error) {
       setItems([])
       setTotal(0)
+      setSelectedIDs(new Set<string>())
       showToast({
         type: "error",
         title: "Archived sessions failed to load",
@@ -102,21 +117,98 @@ export function ArchivedSessionsPanel() {
     void load(0)
   }
 
-  async function deleteSession(item: ArchivedSessionItem) {
-    setDeletingID(item.id)
+  function toggleSelected(item: ArchivedSessionItem) {
+    setSelectedIDs((prev) => {
+      const next = new Set(prev)
+      if (next.has(item.id)) next.delete(item.id)
+      else next.add(item.id)
+      return next
+    })
+  }
+
+  function toggleSelectVisible() {
+    if (allVisibleSelected()) {
+      setSelectedIDs(new Set<string>())
+      return
+    }
+    setSelectedIDs(new Set(items().map((item) => item.id)))
+  }
+
+  async function restoreSessions(targets: ArchivedSessionItem[]) {
+    if (targets.length === 0) return
+    if (targets.length === 1) setBusyID(targets[0]!.id)
+    else setBatchBusy("restore")
     try {
-      await globalSDK.client.session.delete({ sessionID: item.id, directory: sessionDirectory(item) })
-      showToast({ type: "success", title: "Archived session deleted", description: item.title || "Untitled session" })
+      await Promise.all(
+        targets.map((item) =>
+          globalSDK.client.session.update({
+            sessionID: item.id,
+            directory: sessionDirectory(item),
+            time: { archived: 0 },
+          }),
+        ),
+      )
+      showToast({
+        type: "success",
+        title: targets.length === 1 ? "Archived session restored" : "Archived sessions restored",
+        description:
+          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions restored`,
+      })
+      setSelectedIDs(new Set<string>())
       await load(offset())
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: targets.length === 1 ? "Archived session failed to restore" : "Archived sessions failed to restore",
+        description: errorMessage(error, "Try again."),
+      })
     } finally {
-      setDeletingID(undefined)
+      setBusyID(undefined)
+      setBatchBusy(undefined)
     }
   }
 
-  function confirmDelete(item: ArchivedSessionItem) {
+  async function deleteSessions(targets: ArchivedSessionItem[]) {
+    if (targets.length === 0) return
+    if (targets.length === 1) setBusyID(targets[0]!.id)
+    else setBatchBusy("delete")
+    try {
+      await Promise.all(
+        targets.map((item) =>
+          globalSDK.client.session.delete({ sessionID: item.id, directory: sessionDirectory(item) }),
+        ),
+      )
+      showToast({
+        type: "success",
+        title: targets.length === 1 ? "Archived session deleted" : "Archived sessions deleted",
+        description:
+          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions deleted`,
+      })
+      setSelectedIDs(new Set<string>())
+      await load(offset())
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: targets.length === 1 ? "Archived session failed to delete" : "Archived sessions failed to delete",
+        description: errorMessage(error, "Try again."),
+      })
+    } finally {
+      setBusyID(undefined)
+      setBatchBusy(undefined)
+    }
+  }
+
+  function confirmRestore(targets: ArchivedSessionItem[]) {
     confirm.show({
-      ...deleteArchivedSessionConfirm(item.title),
-      onConfirm: () => deleteSession(item),
+      ...restoreArchivedSessionConfirm(targets.length, targets[0]?.title),
+      onConfirm: () => restoreSessions(targets),
+    })
+  }
+
+  function confirmDelete(targets: ArchivedSessionItem[]) {
+    confirm.show({
+      ...deleteArchivedSessionConfirm(targets.length, targets[0]?.title),
+      onConfirm: () => deleteSessions(targets),
     })
   }
 
@@ -128,11 +220,11 @@ export function ArchivedSessionsPanel() {
   return (
     <SettingsPage
       title="Archived Sessions"
-      description="Browse and permanently delete archived sessions across projects."
+      description="Browse, restore, and permanently delete archived sessions across projects."
     >
       <SettingsSection
         title="Archive browser"
-        description="Search by title, sort by project or archive time, and delete sessions that are no longer needed."
+        description="Search by title, sort by project or archive time, restore sessions, or delete sessions that are no longer needed."
       >
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -168,7 +260,7 @@ export function ArchivedSessionsPanel() {
                 variant="ghost"
                 size="small"
                 icon={getSemanticIcon("action.refresh")}
-                disabled={loading()}
+                disabled={busy()}
                 onClick={() => void load(offset())}
               >
                 Refresh
@@ -176,9 +268,43 @@ export function ArchivedSessionsPanel() {
             </div>
           </div>
 
+          <div class="flex flex-col gap-2 rounded-xl border border-border-weaker-base bg-surface-base/50 px-3 py-2 md:flex-row md:items-center md:justify-between">
+            <button
+              type="button"
+              class="flex items-center gap-2 text-left text-12-medium text-text-base disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={items().length === 0 || busy()}
+              onClick={toggleSelectVisible}
+            >
+              <SelectionCheckbox selected={allVisibleSelected()} />
+              <span>{selectedCount() > 0 ? `${selectedCount()} selected` : "Select visible"}</span>
+            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="small"
+                icon={getSemanticIcon("action.restore")}
+                disabled={selectedCount() === 0 || busy()}
+                onClick={() => confirmRestore(selectedItems())}
+              >
+                {batchBusy() === "restore" ? "Restoring..." : "Restore selected"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="small"
+                icon={getSemanticIcon("action.remove")}
+                disabled={selectedCount() === 0 || busy()}
+                onClick={() => confirmDelete(selectedItems())}
+              >
+                {batchBusy() === "delete" ? "Deleting..." : "Delete selected"}
+              </Button>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between text-11-regular text-text-weak">
             <span>{pageLabel()}</span>
-            <span>Permanent deletion cannot be undone.</span>
+            <span>Restore keeps data; permanent deletion cannot be undone.</span>
           </div>
 
           <SettingsEntityList
@@ -189,40 +315,67 @@ export function ArchivedSessionsPanel() {
           >
             <div class="flex flex-col overflow-hidden rounded-xl border border-border-weaker-base bg-surface-base/50">
               <For each={items()}>
-                {(item) => (
-                  <div class="flex flex-col gap-3 border-b border-border-weaker-base px-3 py-3 last:border-b-0 md:flex-row md:items-center md:justify-between">
-                    <div class="min-w-0 flex items-start gap-3">
-                      <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-base text-icon-weak">
-                        <Icon name={getSemanticIcon("session.archive")} size="small" />
-                      </div>
-                      <div class="min-w-0">
-                        <div class="truncate text-13-medium text-text-base">{item.title || "Untitled session"}</div>
-                        <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-11-regular text-text-weak">
-                          <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
-                          <span>Archived {relativeTime(item.time.archived ?? item.time.updated)}</span>
-                          <span title={formatArchivedAt(item.time.archived)}>
-                            {formatArchivedAt(item.time.archived)}
-                          </span>
+                {(item) => {
+                  const selected = () => selectedIDs().has(item.id)
+                  return (
+                    <div
+                      class="flex flex-col gap-3 border-b border-border-weaker-base px-3 py-3 last:border-b-0 md:flex-row md:items-center md:justify-between"
+                      classList={{ "workbench-selected-surface": selected() }}
+                    >
+                      <div class="min-w-0 flex items-start gap-3">
+                        <button
+                          type="button"
+                          class="mt-0.5 shrink-0"
+                          aria-label={`${selected() ? "Deselect" : "Select"} ${item.title || "Untitled session"}`}
+                          disabled={busy()}
+                          onClick={() => toggleSelected(item)}
+                        >
+                          <SelectionCheckbox selected={selected()} />
+                        </button>
+                        <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-base text-icon-weak">
+                          <Icon name={getSemanticIcon("session.archive")} size="small" />
                         </div>
-                        <Show when={item.lastExchange?.user}>
-                          <div class="mt-1 line-clamp-1 text-11-regular text-text-weaker">
-                            You: {item.lastExchange!.user}
+                        <div class="min-w-0">
+                          <div class="truncate text-13-medium text-text-base">{item.title || "Untitled session"}</div>
+                          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-11-regular text-text-weak">
+                            <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
+                            <span>Archived {relativeTime(item.time.archived ?? item.time.updated)}</span>
+                            <span title={formatArchivedAt(item.time.archived)}>
+                              {formatArchivedAt(item.time.archived)}
+                            </span>
                           </div>
-                        </Show>
+                          <Show when={item.lastExchange?.user}>
+                            <div class="mt-1 line-clamp-1 text-11-regular text-text-weaker">
+                              You: {item.lastExchange!.user}
+                            </div>
+                          </Show>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="small"
+                          icon={getSemanticIcon("action.restore")}
+                          disabled={busy()}
+                          onClick={() => confirmRestore([item])}
+                        >
+                          {busyID() === item.id ? "Restoring..." : "Restore"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="small"
+                          icon={getSemanticIcon("action.remove")}
+                          disabled={busy()}
+                          onClick={() => confirmDelete([item])}
+                        >
+                          {busyID() === item.id ? "Deleting..." : "Delete permanently"}
+                        </Button>
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="small"
-                      icon={getSemanticIcon("action.remove")}
-                      disabled={deletingID() === item.id}
-                      onClick={() => confirmDelete(item)}
-                    >
-                      {deletingID() === item.id ? "Deleting..." : "Delete permanently"}
-                    </Button>
-                  </div>
-                )}
+                  )
+                }}
               </For>
             </div>
           </SettingsEntityList>
@@ -232,7 +385,7 @@ export function ArchivedSessionsPanel() {
               type="button"
               variant="ghost"
               size="small"
-              disabled={loading() || offset() === 0}
+              disabled={busy() || offset() === 0}
               onClick={() => void load(Math.max(0, offset() - PAGE_LIMIT))}
             >
               Previous
@@ -241,7 +394,7 @@ export function ArchivedSessionsPanel() {
               type="button"
               variant="ghost"
               size="small"
-              disabled={loading() || !hasNextPage()}
+              disabled={busy() || !hasNextPage()}
               onClick={() => void load(offset() + PAGE_LIMIT)}
             >
               Next

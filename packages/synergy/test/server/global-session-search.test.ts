@@ -254,6 +254,52 @@ describe("GET /global/session", () => {
     })
   })
 
+  test("removes restored sessions from archived-only results", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Restore Archived" })
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = 100
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+
+        const archivedBefore = await app.request("/global/session?archived=only&search=Restore")
+        const archivedBeforeBody = await archivedBefore.json()
+        expect(archivedBeforeBody.data.map((s: any) => s.id)).toEqual([session!.id])
+
+        const restored = await app.request(`/session/${session!.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ time: { archived: 0 } }),
+        })
+        expect(restored.status).toBe(200)
+
+        const archivedAfter = await app.request("/global/session?archived=only&search=Restore")
+        const archivedAfterBody = await archivedAfter.json()
+        expect(archivedAfterBody.total).toBe(0)
+        expect(archivedAfterBody.data.map((s: any) => s.id)).not.toContain(session!.id)
+
+        const activeAfter = await app.request("/global/session?search=Restore")
+        const activeAfterBody = await activeAfter.json()
+        expect(activeAfterBody.data.map((s: any) => s.id)).toContain(session!.id)
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+
   test("sorts archived sessions by archive time and scope", async () => {
     await using tmpA = await tmpdir({ git: true })
     await using tmpB = await tmpdir({ git: true })
