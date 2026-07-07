@@ -404,4 +404,36 @@
       display: none;
     }
   }
+
+  /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
+  [data-slot="assistant-message-meta"] {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-height: 18px;
+    color: var(--text-weak);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-x-small);
+    font-weight: var(--font-weight-regular);
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+
+  [data-slot="assistant-message-time"] {
+    color: var(--text-weak);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Reveal the footer when any part of the turn is hovered */
+  [data-slot="session-turn-message-container"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="session-turn-content"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="assistant-message-meta"]:hover {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }

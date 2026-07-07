@@ -719,6 +719,15 @@ export function SessionTurn(
     }
     return texts.join("\n\n")
   })
+
+  const assistantTimestamp = createMemo(() => {
+    const last = lastAssistantMessage()
+    if (!last?.time.completed) return undefined
+    const date = new Date(last.time.completed)
+    const hours = date.getHours().toString().padStart(2, "0")
+    const minutes = date.getMinutes().toString().padStart(2, "0")
+    return `${hours}:${minutes}`
+  })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
   )
@@ -952,12 +961,17 @@ export function SessionTurn(
                         </Show>
                         <Show when={!working() && markdownText()}>
                           <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
-                            <CopyIconButton
-                              text={markdownText}
-                              copyLabel="Copy as Markdown"
-                              copiedLabel="Copied!"
-                              failureDescription="Unable to copy the message."
-                            />
+                            <div data-slot="assistant-message-meta">
+                              <Show keyed when={assistantTimestamp()}>
+                                {(value) => <span data-slot="assistant-message-time">{value}</span>}
+                              </Show>
+                              <CopyIconButton
+                                text={markdownText}
+                                copyLabel="Copy Markdown"
+                                copiedLabel="Copied!"
+                                failureDescription="Unable to copy the message."
+                              />
+                            </div>
                           </div>
                         </Show>
                       </div>
