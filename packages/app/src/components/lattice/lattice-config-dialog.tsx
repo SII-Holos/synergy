@@ -6,23 +6,20 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { LatticeRun } from "@ericsanchezok/synergy-sdk/client"
 
-type LatticeMode = "auto" | "collaborative"
+export type LatticeMode = "auto" | "collaborative"
 
-export interface LatticeSDKLike {
+export interface LatticeEnableConfig {
+  mode: LatticeMode
+  maxModelCalls: number
+  goal?: string
+  action?: "continue" | "restart"
+}
+
+export interface LatticeConfigSDK {
   client: {
     lattice: {
       session: {
         get: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
-        mode: (input: {
-          id: string
-          latticeModeInput: {
-            enabled: boolean
-            mode?: LatticeMode
-            max_model_calls?: number
-            goal?: string
-            action?: "continue" | "restart"
-          }
-        }) => Promise<{ data?: LatticeRun | null }>
       }
     }
   }
@@ -42,16 +39,22 @@ function statusLine(run: LatticeRun): string {
   return `${run.status}${reason} · ${run.phase} · ${run.mode}`
 }
 
-export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: string }) {
+export function LatticeConfigDialog(props: {
+  sdk: LatticeConfigSDK
+  /** Existing session id, or undefined for the new-session composer (deferred enable). */
+  sessionID?: string
+  onEnable: (config: LatticeEnableConfig) => Promise<void> | void
+}) {
   const dialog = useDialog()
   const [existing, setExisting] = createSignal<LatticeRun | null>(null)
-  const [loading, setLoading] = createSignal(true)
+  const [loading, setLoading] = createSignal(!!props.sessionID)
   const [mode, setMode] = createSignal<LatticeMode>("auto")
   const [budget, setBudget] = createSignal("0")
   const [goal, setGoal] = createSignal("")
   const [saving, setSaving] = createSignal(false)
 
   onMount(async () => {
+    if (!props.sessionID) return
     try {
       const result = await props.sdk.client.lattice.session.get({ id: props.sessionID })
       const run = result.data ?? null
@@ -76,20 +79,13 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
     setSaving(true)
     try {
       const parsedBudget = Math.max(0, Math.floor(Number(budget()) || 0))
-      await props.sdk.client.lattice.session.mode({
-        id: props.sessionID,
-        latticeModeInput: {
-          enabled: true,
-          mode: mode(),
-          max_model_calls: parsedBudget,
-          goal: goal().trim() || undefined,
-          action,
-        },
-      })
-      showToast({
-        type: "info",
-        title: "Lattice enabled",
-        description: `${mode()} · budget ${parsedBudget || "unlimited"}`,
+      await props.onEnable({
+        mode: mode(),
+        maxModelCalls: parsedBudget,
+        // On a new session the first message becomes the goal, so only send an
+        // explicit goal when configuring an existing session.
+        goal: props.sessionID ? goal().trim() || undefined : undefined,
+        action,
       })
       dialog.close()
     } catch (err) {
@@ -110,6 +106,10 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
           Lattice runs your goal as a recursive Blueprint: it plans an ordered Pathway and executes each step as a
           BlueprintLoop. Auto keeps advancing on its own; Collaborative pauses after each Blueprint for your review.
         </p>
+
+        <Show when={!props.sessionID}>
+          <p class="text-11-regular text-text-weak">Your next message will be used as the goal for this run.</p>
+        </Show>
 
         <Show when={!loading() && existing()}>
           {(run) => (
@@ -152,7 +152,7 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
 
         <TextField label="Model-call budget (0 = unlimited)" type="number" value={budget()} onChange={setBudget} />
 
-        <Show when={!existing()}>
+        <Show when={!!props.sessionID && !existing()}>
           <TextField
             label="Goal (optional)"
             type="text"
@@ -175,7 +175,7 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
           </Show>
           <Show when={!existing()}>
             <Button variant="primary" onClick={() => void submit()} disabled={saving() || loading()}>
-              Enable Lattice
+              {props.sessionID ? "Enable Lattice" : "Arm Lattice for this message"}
             </Button>
           </Show>
         </div>

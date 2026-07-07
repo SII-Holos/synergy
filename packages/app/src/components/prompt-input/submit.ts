@@ -54,6 +54,8 @@ type PromptSubmitInput = {
   activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
   planMode: Accessor<boolean>
+  pendingLattice: Accessor<{ mode: "auto" | "collaborative"; maxModelCalls: number } | null>
+  clearPendingLattice: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
@@ -194,6 +196,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const projectDirectory = sdk.directory
     const currentScopeKey = sdk.scopeKey
     const isNewSession = !params.id
+    // Capture (and disarm) any Lattice config armed on the new-session composer
+    // before navigation can reset it; applied once the session exists.
+    const armedLattice = input.pendingLattice()
+    if (armedLattice) input.clearPendingLattice()
     const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
 
     let sessionScopeKey = currentScopeKey
@@ -304,6 +310,37 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           showToast({
             type: "error",
             title: "Failed to toggle Plan Mode",
+            description: errorMessage(err),
+          })
+          if (createdSessionForSubmit) {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+            navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+          }
+          closeStartProgress()
+          return undefined
+        })
+      if (!session) return
+    }
+    if (armedLattice && !session.lattice) {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.lattice.session
+        .mode({
+          id: sessionID,
+          latticeModeInput: {
+            enabled: true,
+            mode: armedLattice.mode,
+            max_model_calls: armedLattice.maxModelCalls,
+          },
+        })
+        .then(async () => {
+          await sync.session.sync(sessionID).catch(() => undefined)
+          return sync.session.get(sessionID) ?? fallbackSession
+        })
+        .catch(async (err) => {
+          showToast({
+            type: "error",
+            title: "Failed to enable Lattice",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {

@@ -34,7 +34,7 @@ import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { LatticeConfigDialog } from "@/components/lattice/lattice-config-dialog"
+import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { LatticePanel } from "@/components/lattice/lattice-panel"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
@@ -125,6 +125,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
+  const [pendingLattice, setPendingLattice] = createSignal<{
+    mode: "auto" | "collaborative"
+    maxModelCalls: number
+  } | null>(null)
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
@@ -141,7 +145,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     on(
       () => params.id,
       (id) => {
-        if (id) setPendingPlanMode(false)
+        if (id) {
+          setPendingPlanMode(false)
+          setPendingLattice(null)
+        }
       },
     ),
   )
@@ -461,14 +468,36 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     await setPlanMode(!storedPlanMode())
   }
 
-  const latticeActive = createMemo(() => (params.id ? !!info()?.lattice : false))
+  // Lattice is active when the current session already has a run, or — on the
+  // new-session composer, mirroring Plan Mode — when a config is armed for the
+  // first message. The armed config is applied on submit once the session exists.
+  const latticeActive = createMemo(() => (params.id ? !!info()?.lattice : !!pendingLattice()))
+
+  const enableLattice = async (config: LatticeEnableConfig) => {
+    if (!params.id) {
+      // Defer: arm the config; submit applies it after the session is created.
+      setPendingLattice({ mode: config.mode, maxModelCalls: config.maxModelCalls })
+      setPendingPlanMode(false)
+      return
+    }
+    await sdk.client.lattice.session.mode({
+      id: params.id,
+      latticeModeInput: {
+        enabled: true,
+        mode: config.mode,
+        max_model_calls: config.maxModelCalls,
+        goal: config.goal,
+        action: config.action,
+      },
+    })
+  }
 
   const openLatticeDialog = (event?: Event) => {
-    if (!params.id || blueprintModeLocked()) {
+    if (blueprintModeLocked()) {
       event?.preventDefault()
       return
     }
-    latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id!} />)
+    latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
   }
 
   const selectPlanModeFromMenu = (event?: Event) => {
@@ -554,20 +583,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           {
             id: "lattice-mode",
             label: "Lattice",
-            description: latticeActive() ? "Recursive Blueprint run active" : "Run a goal as a recursive Blueprint",
+            description: latticeActive() ? "Recursive Blueprint run armed" : "Run a goal as a recursive Blueprint",
             icon: getSemanticIcon("prompt.plan"),
             selected: latticeActive(),
-            ariaDisabled: !params.id || blueprintModeLocked(),
-            title: !params.id
-              ? "Open a session to use Lattice"
-              : blueprintModeLocked()
-                ? "Lattice is unavailable while a Blueprint is equipped"
+            ariaDisabled: blueprintModeLocked() || planMode(),
+            title: blueprintModeLocked()
+              ? "Lattice is unavailable while a Blueprint is equipped"
+              : planMode()
+                ? "Lattice is unavailable while Plan Mode is active"
                 : undefined,
             iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": latticeActive(),
               "text-text-base": latticeActive(),
-              "opacity-60": !params.id || blueprintModeLocked(),
+              "opacity-60": blueprintModeLocked() || planMode(),
             },
             onSelect: openLatticeDialog,
           },
@@ -1128,6 +1157,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     activeFile,
     selectedControlProfile,
     planMode,
+    pendingLattice,
+    clearPendingLattice: () => setPendingLattice(null),
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
