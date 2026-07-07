@@ -5,7 +5,7 @@ import { MODEL_ROLES } from "../types"
 
 const domains: ConfigDomainSummary[] = [
   domain("general", ["snapshot", "theme", "username"]),
-  domain("models", ["model", "mini_model"]),
+  domain("models", ["model", "mini_model", "quick_switcher"]),
   domain("permissions", ["permission", "controlProfile", "sandbox", "smartAllow"]),
 ]
 
@@ -28,6 +28,12 @@ describe("settings save routing", () => {
 
   test("throws when a patch field has no save strategy", () => {
     expect(() => strategyForPatch({ unknownField: true })).toThrow("does not define a save strategy")
+  })
+
+  test("routes quick switcher patches through background save", () => {
+    const grouped = groupPatchByDomain({ quick_switcher: { models: [] } }, domains)
+    expect(grouped.get("models")).toEqual({ quick_switcher: { models: [] } })
+    expect(strategyForPatch({ quick_switcher: { models: [] } })).toEqual(["background"])
   })
 
   test("routes model role patches through explicit save", () => {

@@ -334,6 +334,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   long_context_model: "explicit",
   creative_model: "explicit",
   role_variant: "explicit",
+  quick_switcher: "background",
   enabled_providers: "background",
   disabled_providers: "background",
   embedding: "explicit",

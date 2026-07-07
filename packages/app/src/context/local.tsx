@@ -300,9 +300,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const recommendedSet = createMemo(() => new Set(recommended().map(keyOf)))
 
+      const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
+
       const quickSwitcherPreferenceMap = createMemo(() => {
         const map = new Map<string, "add" | "remove">()
-        for (const item of store.quickSwitcher) {
+        for (const item of quickSwitcherPreferences()) {
           map.set(keyOf(item), item.state)
         }
         return map
@@ -373,28 +375,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return recommendedSet().has(key)
       }
 
-      function updateQuickSwitcherPreference(model: ModelKey, included: boolean) {
-        const recommendedByDefault = recommendedSet().has(keyOf(model))
-        const nextState = included === recommendedByDefault ? undefined : included ? "add" : "remove"
-        const index = store.quickSwitcher.findIndex(
-          (item) => item.providerID === model.providerID && item.modelID === model.modelID,
-        )
-
-        if (!nextState) {
-          if (index >= 0) {
-            setStore("quickSwitcher", (items) => items.filter((_, itemIndex) => itemIndex !== index))
-          }
-          return
-        }
-
-        if (index >= 0) {
-          setStore("quickSwitcher", index, { ...store.quickSwitcher[index], state: nextState })
-          return
-        }
-
-        setStore("quickSwitcher", store.quickSwitcher.length, { ...model, state: nextState })
-      }
-
       const quickSwitcherOnly = createMemo(() =>
         all().filter((item) => inQuickSwitcher({ providerID: item.provider.id, modelID: item.id })),
       )
@@ -430,6 +410,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         recent,
         all,
         quickSwitcher,
+        quickSwitcherPreferences,
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
@@ -437,7 +418,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             // to fallbackModel() keeps a concrete value when the caller clears.
             const resolved = model ?? fallbackModel()
             if (resolved) setDraft("model", intentKey(), resolved)
-            if (model) updateQuickSwitcherPreference(model, true)
             if (options?.recent && model) {
               const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
               if (uniq.length > 5) uniq.pop()
@@ -455,9 +435,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         },
         inQuickSwitcher,
-        setQuickSwitcher(model: ModelKey, included: boolean) {
-          updateQuickSwitcherPreference(model, included)
-        },
         isRecommended(model: ModelKey) {
           return recommendedSet().has(keyOf(model))
         },

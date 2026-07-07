@@ -199,6 +199,12 @@ export type GeneralStore = {
   sendShortcut: SendShortcut
 }
 
+export type QuickSwitcherPreference = {
+  providerID: string
+  modelID: string
+  state: "add" | "remove"
+}
+
 export type ModelsStore = {
   model: string
   nano_model: string
@@ -208,6 +214,7 @@ export type ModelsStore = {
   thinking_model: string
   long_context_model: string
   creative_model: string
+  quick_switcher: QuickSwitcherPreference[]
 }
 
 export type PluginsStore = {
@@ -290,6 +297,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       thinking_model: MODEL_DEFAULTS.thinking_model,
       long_context_model: MODEL_DEFAULTS.long_context_model,
       creative_model: MODEL_DEFAULTS.creative_model,
+      quick_switcher: [],
     },
     providers: {
       enabledProviders: "",
