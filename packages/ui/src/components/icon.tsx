@@ -448,10 +448,12 @@ export type IconName = keyof typeof icons | string
 export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
   name: IconName
   size?: "small" | "normal" | "large"
+  /** Override the icon color (applied as inline fill / stroke via `color`). */
+  color?: string
 }
 
 export function Icon(props: IconProps) {
-  const [local, others] = splitProps(props, ["name", "size", "class", "classList"])
+  const [local, others] = splitProps(props, ["name", "size", "class", "classList", "color"])
 
   // Check registry for a plugin-contributed icon with actual SVG markup
   const entry = () => getIcon(local.name)
@@ -461,7 +463,11 @@ export function Icon(props: IconProps) {
   const Component = () => icons[local.name as keyof typeof icons]
 
   return (
-    <div data-component="icon" data-size={local.size || "normal"}>
+    <div
+      data-component="icon"
+      data-size={local.size || "normal"}
+      style={local.color ? { color: local.color } : undefined}
+    >
       {(() => {
         const svg = pluginSvg()
         if (svg) {
