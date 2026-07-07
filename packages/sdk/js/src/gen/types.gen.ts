@@ -7197,6 +7197,18 @@ export type GlobalSessionSearchData = {
      * Include archived sessions (default: false)
      */
     includeArchived?: string
+    /**
+     * Archived session filter. Defaults to exclude; supersedes includeArchived.
+     */
+    archived?: "exclude" | "include" | "only"
+    /**
+     * Sort sessions by timestamp or scope label
+     */
+    sortBy?: "updated" | "created" | "archived" | "scope"
+    /**
+     * Sort direction
+     */
+    sortDir?: "asc" | "desc"
   }
   url: "/global/session"
 }

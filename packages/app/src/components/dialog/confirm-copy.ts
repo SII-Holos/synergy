@@ -108,6 +108,32 @@ export function deleteArchivedNoteConfirm(count: number): ConfirmCopy {
   }
 }
 
+export function restoreArchivedSessionConfirm(count: number, title?: string): ConfirmCopy {
+  return {
+    title: count === 1 ? "Restore archived session?" : `Restore ${count} archived sessions?`,
+    description:
+      count === 1
+        ? `${quoted(title, "Untitled session")} will be moved back to active session lists.`
+        : `These ${count} sessions will be moved back to active session lists.`,
+    confirmLabel: count === 1 ? "Restore" : `Restore ${count}`,
+    cancelLabel: "Cancel",
+    tone: "neutral",
+  }
+}
+
+export function deleteArchivedSessionConfirm(count: number, title?: string): ConfirmCopy {
+  return {
+    title: count === 1 ? "Delete archived session?" : `Delete ${count} archived sessions?`,
+    description:
+      count === 1
+        ? `Delete ${quoted(title, "Untitled session")} permanently? This removes the session, messages, history, and associated data. This cannot be undone.`
+        : `Delete these ${count} archived sessions permanently? This removes their messages, history, and associated data. This cannot be undone.`,
+    confirmLabel: count === 1 ? "Delete permanently" : `Delete ${count} permanently`,
+    cancelLabel: "Cancel",
+    tone: "danger",
+  }
+}
+
 export function overwriteImportConfirm(conflictCount: number): ConfirmCopy {
   return {
     title: `Overwrite ${conflictCount} conflicting ${plural(conflictCount, "key")}?`,

@@ -42,6 +42,7 @@ export const SemanticIconToken = {
   "session.background": "calendar-days",
   "session.inbox": "inbox",
   "session.rewind": "undo-dot",
+  "session.archive": "message-square-more",
 
   // Product domains
   "blueprint.main": "clipboard-list",

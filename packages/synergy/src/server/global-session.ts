@@ -34,6 +34,9 @@ const GlobalSessionItem = z.object({
 })
 
 type GlobalSessionItem = z.infer<typeof GlobalSessionItem>
+type ArchivedFilter = "exclude" | "include" | "only"
+type SessionSortBy = "updated" | "created" | "archived" | "scope"
+type SortDir = "asc" | "desc"
 
 async function readScopeInfo(scopeID: string): Promise<z.infer<typeof Scope.Info> | undefined> {
   if (scopeID === "home") return undefined
@@ -59,6 +62,22 @@ function parseBool(raw: string | undefined, defaultVal: boolean): boolean {
   if (raw === "true" || raw === "1") return true
   if (raw === "false" || raw === "0") return false
   return defaultVal
+}
+
+function resolveArchivedFilter(query: { archived?: ArchivedFilter; includeArchived?: string }): ArchivedFilter {
+  if (query.archived) return query.archived
+  return parseBool(query.includeArchived, false) ? "include" : "exclude"
+}
+
+function compareNumber(a: number | undefined, b: number | undefined, dir: SortDir) {
+  const left = a ?? 0
+  const right = b ?? 0
+  return dir === "asc" ? left - right : right - left
+}
+
+function scopeSortLabel(scopeID: string, scopeInfo: ScopeInfo | undefined) {
+  if (scopeID === "home") return "Home"
+  return scopeInfo?.name || scopeInfo?.directory || scopeID
 }
 
 export const GlobalSessionRoute = new Hono().get(
@@ -95,6 +114,15 @@ export const GlobalSessionRoute = new Hono().get(
       scopeID: z.string().optional().meta({ description: "Filter to a single scope" }),
       parentOnly: z.string().optional().meta({ description: "Only top-level sessions (default: true)" }),
       includeArchived: z.string().optional().meta({ description: "Include archived sessions (default: false)" }),
+      archived: z
+        .enum(["exclude", "include", "only"])
+        .optional()
+        .meta({ description: "Archived session filter. Defaults to exclude; supersedes includeArchived." }),
+      sortBy: z
+        .enum(["updated", "created", "archived", "scope"])
+        .default("updated")
+        .meta({ description: "Sort sessions by timestamp or scope label" }),
+      sortDir: z.enum(["asc", "desc"]).default("desc").meta({ description: "Sort direction" }),
     }),
   ),
   async (c) => {
@@ -103,7 +131,7 @@ export const GlobalSessionRoute = new Hono().get(
 
     // Parse booleans manually: z.coerce.boolean() converts "false" -> true
     const parentOnly = parseBool(query.parentOnly, true)
-    const includeArchived = parseBool(query.includeArchived, false)
+    const archivedFilter = resolveArchivedFilter(query)
 
     // Validate offset: negative => 400
     if (raw.offset !== undefined) {
@@ -125,87 +153,94 @@ export const GlobalSessionRoute = new Hono().get(
       scopeIDs = ["home", ...projects.map((p) => p.id)]
     }
 
+    const scopeInfoCache = new Map<string, z.infer<typeof Scope.Info> | undefined>()
+    await Promise.all(
+      scopeIDs.map(async (sid) => {
+        scopeInfoCache.set(sid, await readScopeInfo(sid))
+      }),
+    )
+
     // Collect all page index entries across scopes
-    type Entry = { entry: Session.PageIndex["entries"][number]; scopeID: string }
+    type Entry = { entry: Session.PageIndex["entries"][number]; scopeID: string; info: SessionInfo | undefined }
     const allEntries: Entry[] = []
 
     for (const scopeID of scopeIDs) {
       const index = await Session.readPageIndex(scopeID)
       for (const entry of index.entries) {
-        if (!includeArchived && entry.archived) continue
+        if (archivedFilter === "exclude" && entry.archived) continue
+        if (archivedFilter === "only" && !entry.archived) continue
         if (parentOnly && entry.parentID) continue
-        allEntries.push({ entry, scopeID })
+        const info = await Storage.read<SessionInfo>(StoragePath.sessionInfo(asScopeID(scopeID), asSessionID(entry.id)))
+        allEntries.push({ entry, scopeID, info })
       }
     }
 
-    // Sort by updated desc, tiebreak created desc
-    allEntries.sort((a, b) => {
-      const ud = b.entry.updated - a.entry.updated
-      if (ud !== 0) return ud
-      return b.entry.created - a.entry.created
-    })
-
-    // Search filter: read session infos to check title
-    let total = allEntries.length
-    let pageEntries: Entry[] = allEntries
-
+    let pageEntries = allEntries
     if (query.search) {
       const term = query.search.toLowerCase()
-      const withInfos: Array<{ entry: Entry["entry"]; scopeID: string; info: SessionInfo }> = []
-      for (const { entry, scopeID } of allEntries) {
-        const info = await Storage.read<SessionInfo>(StoragePath.sessionInfo(asScopeID(scopeID), asSessionID(entry.id)))
-        if (info && info.scope && info.title.toLowerCase().includes(term)) {
-          withInfos.push({ entry, scopeID, info })
-        }
-      }
-      total = withInfos.length
-      pageEntries = withInfos.map(({ entry, scopeID }) => ({ entry, scopeID }))
+      pageEntries = pageEntries.filter(({ info }) => info?.scope && info.title.toLowerCase().includes(term))
     }
+
+    pageEntries.sort((a, b) => {
+      let result = 0
+      switch (query.sortBy as SessionSortBy) {
+        case "created":
+          result = compareNumber(a.entry.created, b.entry.created, query.sortDir as SortDir)
+          break
+        case "archived":
+          result = compareNumber(a.info?.time.archived, b.info?.time.archived, query.sortDir as SortDir)
+          break
+        case "scope": {
+          const aScope = scopeSortLabel(a.scopeID, scopeInfoCache.get(a.scopeID))
+          const bScope = scopeSortLabel(b.scopeID, scopeInfoCache.get(b.scopeID))
+          result = query.sortDir === "asc" ? aScope.localeCompare(bScope) : bScope.localeCompare(aScope)
+          break
+        }
+        case "updated":
+          result = compareNumber(a.entry.updated, b.entry.updated, query.sortDir as SortDir)
+          break
+      }
+      if (result !== 0) return result
+      const updated = compareNumber(a.entry.updated, b.entry.updated, "desc")
+      if (updated !== 0) return updated
+      return compareNumber(a.entry.created, b.entry.created, "desc")
+    })
+
+    const total = pageEntries.length
 
     // Paginate
     const offset = query.offset ?? 0
     const slice = pageEntries.slice(offset, offset + limit)
 
-    // Read session infos and build response
-    const scopeInfoCache = new Map<string, z.infer<typeof Scope.Info> | undefined>()
-    const scopeIDsInSlice = [...new Set(slice.map((e) => e.scopeID))]
-    await Promise.all(
-      scopeIDsInSlice.map(async (sid) => {
-        scopeInfoCache.set(sid, await readScopeInfo(sid))
-      }),
-    )
+    // Build response
+    const data: GlobalSessionItem[] = slice.map(({ entry, scopeID, info }) => {
+      const scopeInfo = scopeInfoCache.get(scopeID)
+      const scope: Scope =
+        scopeID === "home"
+          ? Scope.home()
+          : {
+              type: "project" as const,
+              id: scopeID,
+              directory: scopeInfo?.directory ?? "",
+              worktree: scopeInfo?.worktree ?? "",
+              sandboxes: scopeInfo?.sandboxes ?? [],
+              time: scopeInfo?.time ?? { created: 0, updated: 0 },
+            }
 
-    const data: GlobalSessionItem[] = await Promise.all(
-      slice.map(async ({ entry, scopeID }) => {
-        const info = await Storage.read<SessionInfo>(StoragePath.sessionInfo(asScopeID(scopeID), asSessionID(entry.id)))
-        const scopeInfo = scopeInfoCache.get(scopeID)
-        const scope: Scope =
-          scopeID === "home"
-            ? Scope.home()
-            : {
-                type: "project" as const,
-                id: scopeID,
-                directory: scopeInfo?.directory ?? "",
-                worktree: scopeInfo?.worktree ?? "",
-                sandboxes: scopeInfo?.sandboxes ?? [],
-                time: scopeInfo?.time ?? { created: 0, updated: 0 },
-              }
-
-        return {
-          id: entry.id,
-          title: info?.title ?? "",
-          scope: buildScopeField(scope, scopeInfo),
-          time: {
-            created: entry.created,
-            updated: entry.updated,
-            ...(info?.time?.archived ? { archived: info.time.archived } : {}),
-          },
-          pinned: entry.pinned || undefined,
-          parentID: entry.parentID || undefined,
-          lastExchange: info?.lastExchange,
-        }
-      }),
-    )
+      return {
+        id: entry.id,
+        title: info?.title ?? "",
+        scope: buildScopeField(scope, scopeInfo),
+        time: {
+          created: entry.created,
+          updated: entry.updated,
+          ...(info?.time?.archived ? { archived: info.time.archived } : {}),
+        },
+        pinned: entry.pinned || undefined,
+        parentID: entry.parentID || undefined,
+        lastExchange: info?.lastExchange,
+      }
+    })
 
     return c.json({ data, total, offset, limit })
   },
