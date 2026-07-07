@@ -210,7 +210,7 @@ export function SelectionCheckbox(props: { selected: boolean }) {
       }}
     >
       <Show when={props.selected}>
-        <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" />
+        <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" color="inherit" />
       </Show>
     </div>
   )
