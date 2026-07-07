@@ -37,6 +37,7 @@ function anchoredReplace(
     id: note.id,
     baseVersion: note.version,
     baseDocHash: NoteDocument.hash(note.content),
+    freshen: "safe" as const,
     dryRun: false,
     ops: [
       {
