@@ -53,9 +53,12 @@ type PromptSubmitInput = {
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
-  planMode: Accessor<boolean>
+  pendingPlanMode: Accessor<boolean>
+  clearPendingPlanMode: () => void
   pendingLattice: Accessor<{ mode: "auto" | "collaborative"; maxModelCalls: number } | null>
   clearPendingLattice: () => void
+  pendingLightLoop: Accessor<{ taskDescription: string } | null>
+  clearPendingLightLoop: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
@@ -196,10 +199,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const projectDirectory = sdk.directory
     const currentScopeKey = sdk.scopeKey
     const isNewSession = !params.id
-    // Capture (and disarm) any Lattice config armed on the new-session composer
+    // Capture (and disarm) workflow state armed on the new-session composer
     // before navigation can reset it; applied once the session exists.
-    const armedLattice = input.pendingLattice()
+    const armedPlanMode = isNewSession && input.pendingPlanMode()
+    if (armedPlanMode) input.clearPendingPlanMode()
+    const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
+    const armedLightLoop = isNewSession ? input.pendingLightLoop() : null
+    if (armedLightLoop) input.clearPendingLightLoop()
     const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
 
     let sessionScopeKey = currentScopeKey
@@ -300,7 +307,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (!blueprintSlot && input.planMode() && !session.planMode) {
+    if (!blueprintSlot && armedPlanMode && !armedLattice && !armedLightLoop && !session.planMode) {
       const sessionID = session.id
       const fallbackSession = session
       session = await client.blueprint.session
@@ -341,6 +348,31 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           showToast({
             type: "error",
             title: "Failed to enable Lattice",
+            description: errorMessage(err),
+          })
+          if (createdSessionForSubmit) {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+            navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+          }
+          closeStartProgress()
+          return undefined
+        })
+      if (!session) return
+    }
+    if (armedLightLoop && !armedLattice && !session.lightLoop?.active) {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.blueprint.session
+        .toggleLightLoop({
+          id: sessionID,
+          active: true,
+          taskDescription: armedLightLoop.taskDescription,
+        })
+        .then((x) => x.data ?? fallbackSession)
+        .catch(async (err) => {
+          showToast({
+            type: "error",
+            title: "Failed to enable Light Loop",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
