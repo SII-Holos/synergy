@@ -104,48 +104,51 @@ export namespace SynergyLinkStore {
   }
 
   export function statePath(): string {
-    return path.join(root(), "state.json")
+    return statePathForRoot(root())
   }
 
   export function migrationLogPath(): string {
-    return path.join(root(), "migrations.json")
+    return migrationLogPathForRoot(root())
   }
 
   export function ownerRegistryPath(): string {
-    return path.join(root(), "owner.json")
+    return ownerRegistryPathForRoot(root())
   }
 
   export function logsPath(): string {
-    return path.join(root(), "logs", "runtime.log")
+    return logsPathForRoot(root())
   }
 
   export function controlSocketPath(): string {
-    return path.join(root(), "control.sock")
+    return controlSocketPathForRoot(root())
   }
 
-  export async function ensureRoot(): Promise<void> {
-    await mkdir(root(), { recursive: true })
-    await mkdir(path.dirname(logsPath()), { recursive: true })
-    await mkdir(path.dirname(controlSocketPath()), { recursive: true })
+  export async function ensureRoot(rootPath = root()): Promise<void> {
+    await mkdir(rootPath, { recursive: true })
+    await mkdir(path.dirname(logsPathForRoot(rootPath)), { recursive: true })
+    await mkdir(path.dirname(controlSocketPathForRoot(rootPath)), { recursive: true })
   }
 
   export async function loadState(): Promise<SynergyLinkState> {
+    const rootPath = root()
     try {
-      const parsed = JSON.parse(await readFile(statePath(), "utf8")) as Partial<SynergyLinkState>
-      return hydrateState(parsed)
+      const parsed = JSON.parse(await readFile(statePathForRoot(rootPath), "utf8")) as Partial<SynergyLinkState>
+      return hydrateState(parsed, rootPath)
     } catch {
-      return hydrateState(undefined)
+      return hydrateState(undefined, rootPath)
     }
   }
 
   export async function saveState(state: SynergyLinkState): Promise<void> {
-    await ensureRoot()
-    await writeFile(statePath(), JSON.stringify(hydrateState(state), null, 2) + "\n")
+    const rootPath = root()
+    await ensureRoot(rootPath)
+    await writeFile(statePathForRoot(rootPath), JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n")
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {
+    const rootPath = root()
     try {
-      const parsed = JSON.parse(await readFile(migrationLogPath(), "utf8")) as Record<string, unknown>
+      const parsed = JSON.parse(await readFile(migrationLogPathForRoot(rootPath), "utf8")) as Record<string, unknown>
       return Object.fromEntries(
         Object.entries(parsed).filter(
           (entry): entry is [string, number] => typeof entry[0] === "string" && typeof entry[1] === "number",
@@ -157,8 +160,9 @@ export namespace SynergyLinkStore {
   }
 
   export async function saveMigrationLog(log: Record<string, number>): Promise<void> {
-    await ensureRoot()
-    await writeFile(migrationLogPath(), JSON.stringify(log, null, 2) + "\n")
+    const rootPath = root()
+    await ensureRoot(rootPath)
+    await writeFile(migrationLogPathForRoot(rootPath), JSON.stringify(log, null, 2) + "\n")
   }
 
   export function hydrateStateForMigration(parsed: unknown): SynergyLinkState {
@@ -166,7 +170,30 @@ export namespace SynergyLinkStore {
   }
 }
 
-function hydrateState(parsed: Partial<SynergyLinkState> | undefined): SynergyLinkState {
+function statePathForRoot(rootPath: string): string {
+  return path.join(rootPath, "state.json")
+}
+
+function migrationLogPathForRoot(rootPath: string): string {
+  return path.join(rootPath, "migrations.json")
+}
+
+function ownerRegistryPathForRoot(rootPath: string): string {
+  return path.join(rootPath, "owner.json")
+}
+
+function logsPathForRoot(rootPath: string): string {
+  return path.join(rootPath, "logs", "runtime.log")
+}
+
+function controlSocketPathForRoot(rootPath: string): string {
+  return path.join(rootPath, "control.sock")
+}
+
+function hydrateState(
+  parsed: Partial<SynergyLinkState> | undefined,
+  rootPath = SynergyLinkStore.root(),
+): SynergyLinkState {
   return {
     linkID: parsed?.linkID,
     hostSessionID: parsed?.hostSessionID,
@@ -194,7 +221,7 @@ function hydrateState(parsed: Partial<SynergyLinkState> | undefined): SynergyLin
       lastExitAt: typeof parsed?.service?.lastExitAt === "number" ? parsed.service.lastExitAt : undefined,
     },
     logs: {
-      filePath: parsed?.logs?.filePath || DEFAULT_STATE.logs.filePath || SynergyLinkStore.logsPath(),
+      filePath: parsed?.logs?.filePath || DEFAULT_STATE.logs.filePath || logsPathForRoot(rootPath),
     },
   }
 }
