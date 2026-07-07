@@ -125,6 +125,7 @@ function models(overrides: Partial<ModelsStore> = {}): ModelsStore {
     thinking_model: "",
     long_context_model: "",
     creative_model: "",
+    quick_switcher: [],
     ...overrides,
   }
 }

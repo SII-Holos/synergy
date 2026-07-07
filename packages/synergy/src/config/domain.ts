@@ -61,6 +61,7 @@ export namespace ConfigDomain {
       "creative_model",
       "vision_model",
       "role_variant",
+      "quick_switcher",
     ]),
     def("providers", "20-providers.jsonc", "Providers", [
       "provider",

@@ -12,6 +12,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
@@ -85,6 +86,10 @@ export type SessionTurnTimelineVisualKind =
   | "compaction"
 
 const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
+export type TurnCompletionStats = {
+  duration: string
+  segments: string[]
+}
 
 export function providerPreludeElapsedLabel(started: number | undefined, now: number): string | undefined {
   if (started == null) return undefined
@@ -99,6 +104,62 @@ export function providerPreludeElapsedLabel(started: number | undefined, now: nu
 
   if (hours > 0) return `${hours}:${mm}:${ss}`
   return `${mm}:${ss}`
+}
+
+export function formatTurnTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`
+  if (value >= 10_000) return `${Number((value / 1_000).toFixed(1))}k`
+  return value.toLocaleString()
+}
+
+export function formatTurnCost(value: number): string | undefined {
+  if (value <= 0) return undefined
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(value)
+}
+
+export function turnCompletionStats(messages: readonly AssistantMessage[]): TurnCompletionStats | undefined {
+  const completed = messages.filter((message) => message.time.completed != null)
+  if (completed.length === 0 || completed.length !== messages.length) return undefined
+
+  const firstStarted = completed.reduce<number | undefined>((earliest, message) => {
+    if (message.time.created == null) return earliest
+    if (earliest == null || message.time.created < earliest) return message.time.created
+    return earliest
+  }, undefined)
+  const lastCompleted = completed.reduce<number | undefined>((latest, message) => {
+    if (message.time.completed == null) return latest
+    if (latest == null || message.time.completed > latest) return message.time.completed
+    return latest
+  }, undefined)
+  const duration = lastCompleted == null ? undefined : providerPreludeElapsedLabel(firstStarted, lastCompleted)
+  if (!duration) return undefined
+
+  const totals = completed.reduce(
+    (sum, message) => {
+      const tokens = message.tokens
+      if (tokens) {
+        sum.input += ModelLimit.actualInput(tokens)
+        sum.output += tokens.output
+        sum.reasoning += tokens.reasoning
+      }
+      sum.cost += message.cost ?? 0
+      return sum
+    },
+    { input: 0, output: 0, reasoning: 0, cost: 0 },
+  )
+
+  const segments: string[] = []
+  if (totals.input > 0) segments.push(`${formatTurnTokenCount(totals.input)} input`)
+  if (totals.output > 0) segments.push(`${formatTurnTokenCount(totals.output)} output`)
+  if (totals.reasoning > 0) segments.push(`${formatTurnTokenCount(totals.reasoning)} reasoning`)
+  const cost = formatTurnCost(totals.cost)
+  if (cost) segments.push(cost)
+
+  return { duration, segments }
 }
 
 function visibleAttachmentParts(files: AttachmentPart[] | undefined): AttachmentPart[] {
@@ -456,9 +517,20 @@ function TimelineDisplay(props: {
   return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
 }
 
-function ProviderPrelude(props: { text: string; elapsed?: string }) {
+function ProviderPrelude(props: {
+  text: string
+  elapsed?: string
+  segments?: readonly string[]
+  variant?: "running" | "completed"
+}) {
   return (
-    <div data-component="provider-prelude" role="status" aria-live="polite" aria-label={props.text}>
+    <div
+      data-component="provider-prelude"
+      data-variant={props.variant ?? "running"}
+      role="status"
+      aria-live="polite"
+      aria-label={props.text}
+    >
       <span data-slot="provider-prelude-text">{props.text}</span>
       <Show when={props.elapsed}>
         {(elapsed) => (
@@ -472,6 +544,16 @@ function ProviderPrelude(props: { text: string; elapsed?: string }) {
           </>
         )}
       </Show>
+      <For each={props.segments ?? []}>
+        {(segment) => (
+          <>
+            <span data-slot="provider-prelude-separator" aria-hidden="true">
+              ·
+            </span>
+            <span data-slot="provider-prelude-stat">{segment}</span>
+          </>
+        )}
+      </For>
     </div>
   )
 }
@@ -749,6 +831,10 @@ export function SessionTurn(
           latestAssistantTimelineItems: latestAssistantTimelineItems(),
         }),
   )
+  const completedTurnStats = createMemo(() => {
+    if (working() || hasCompactionEvent() || error()) return undefined
+    return turnCompletionStats(assistantMessages())
+  })
 
   createEffect(() => {
     if (!showProviderPrelude()) {
@@ -846,7 +932,14 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
+                    <Show
+                      when={
+                        hasTimelineItems() ||
+                        showProviderPrelude() ||
+                        completedTurnStats() ||
+                        (!working() && hasDiffs())
+                      }
+                    >
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItemKeys()}>
                           {(key, index) => {
@@ -891,6 +984,18 @@ export function SessionTurn(
                               elapsed={providerPreludeElapsed()}
                             />
                           </div>
+                        </Show>
+                        <Show when={completedTurnStats()}>
+                          {(stats) => (
+                            <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
+                              <ProviderPrelude
+                                text="Completed"
+                                elapsed={stats().duration}
+                                segments={stats().segments}
+                                variant="completed"
+                              />
+                            </div>
+                          )}
                         </Show>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion

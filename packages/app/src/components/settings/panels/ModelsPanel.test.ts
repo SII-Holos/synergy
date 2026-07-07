@@ -32,7 +32,8 @@ describe("Models panel UI contract", () => {
     expect(modelsPanel).not.toContain("onManageModels")
     expect(modelsPanel).not.toContain(">Manage models<")
     expect(modelManager).toContain("setQuickSwitcher")
-    expect(modelManager).toContain('Persist.global("model"')
+    expect(modelManager).toContain("onQuickSwitcherChange")
+    expect(modelManager).not.toContain('Persist.global("model"')
   })
 
   test("quick-switcher management rows are static rows with labeled switches", () => {
