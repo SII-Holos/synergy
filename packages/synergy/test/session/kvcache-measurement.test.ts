@@ -3,15 +3,26 @@ import type { ModelMessage } from "ai"
 import type { Provider } from "../../src/provider/provider"
 import { LLM } from "../../src/session/llm"
 
-function createModel(provider: "openai" | "anthropic" = "openai"): Provider.Model {
-  return {
-    id: provider === "openai" ? "openai/gpt-5" : "anthropic/claude-3-5-sonnet",
-    providerID: provider,
-    api: {
-      id: provider === "openai" ? "gpt-5" : "claude-3-5-sonnet-20241022",
-      url: provider === "openai" ? "https://api.openai.com" : "https://api.anthropic.com",
-      npm: provider === "openai" ? "@ai-sdk/openai" : "@ai-sdk/anthropic",
+function createModel(provider: "openai" | "anthropic" | "deepseek" = "openai"): Provider.Model {
+  const model = {
+    openai: {
+      id: "openai/gpt-5",
+      api: { id: "gpt-5", url: "https://api.openai.com", npm: "@ai-sdk/openai" },
     },
+    anthropic: {
+      id: "anthropic/claude-3-5-sonnet",
+      api: { id: "claude-3-5-sonnet-20241022", url: "https://api.anthropic.com", npm: "@ai-sdk/anthropic" },
+    },
+    deepseek: {
+      id: "deepseek/deepseek-v4-flash",
+      api: { id: "deepseek-v4-flash", url: "https://api.deepseek.com", npm: "@ai-sdk/openai-compatible" },
+    },
+  }[provider]
+
+  return {
+    id: model.id,
+    providerID: provider,
+    api: model.api,
     name: provider,
     capabilities: {
       temperature: true,
@@ -57,6 +68,15 @@ function openAIMessages(turn: "a" | "b") {
   })
 }
 
+function deepSeekMessages(turn: "a" | "b") {
+  return LLM.promptMessages({
+    model: createModel("deepseek"),
+    system: stableSystem,
+    lateSystem: lateSystem(turn),
+    messages: history,
+  })
+}
+
 describe("KV-cache measurement prompt-shape harness", () => {
   test("production OpenAI-style layout preserves stable prefix through reusable history", () => {
     const first = openAIMessages("a")
@@ -80,6 +100,19 @@ describe("KV-cache measurement prompt-shape harness", () => {
     expect(String(late?.content)).toContain("<runtime-context>")
     expect(String(late?.content)).toContain("MEMORY: recalled item a")
     expect(String(late?.content)).toContain("ENV: time a")
+  })
+
+  test("production DeepSeek layout preserves stable prefix through reusable history", () => {
+    const first = deepSeekMessages("a")
+    const second = deepSeekMessages("b")
+    const stablePrefix = serialize([
+      ...stableSystem.map((content) => ({ role: "system", content })),
+      ...history,
+    ] as ModelMessage[])
+
+    expect(first.map((message) => message.role)).toEqual(["system", "system", "system", "user", "assistant", "user"])
+    expect(commonPrefixLength(serialize(first), serialize(second))).toBeGreaterThanOrEqual(stablePrefix.length - 1)
+    expect(String(first.at(-1)?.content)).toContain("<runtime-context>")
   })
 
   test("production layout keeps tool-call history before volatile advisory context", () => {

@@ -165,7 +165,7 @@ DeepSeek/openai-compatible routes may expose OpenAI-like cache hit/miss metadata
 
 Target policy:
 
-- Use the OpenAI-style layout only for providers/models with an explicit capability flag or known-compatible SDK behavior.
+- Use the OpenAI-style layout for DeepSeek and other providers/models only when they have an explicit capability flag or known-compatible SDK behavior.
 - Continue to read hit/miss metadata as today.
 - Do not send OpenAI-specific retention/cache-key fields to generic openai-compatible providers unless capability metadata says it is safe.
 - Measurement harness should include DeepSeek if configured, because the user indicated DeepSeek is available.
@@ -211,7 +211,8 @@ Initial derivation can be conservative:
 
 - OpenAI/OpenAI-Codex/Azure: `openai-prefix`, cache key true, retention only if verified with SDK.
 - Anthropic/Claude: `anthropic-explicit`, TTL true, diagnostics opt-in true for direct Anthropic only.
-- DeepSeek/openai-compatible: `openai-compatible-prefix`, but late context and special options false unless verified.
+- DeepSeek: `openai-compatible-prefix`, late context true after live verification, special options false.
+- Other openai-compatible providers: `openai-compatible-prefix`, but late context and special options false unless verified.
 - Unknown providers: `none`.
 
 ### 4.2 OpenAI options
@@ -400,7 +401,8 @@ Test cases:
 - OpenAI retention option is emitted only when capability and config are set.
 - Anthropic TTL option is emitted only on Anthropic-compatible routes.
 - Diagnostics beta metadata is opt-in.
-- DeepSeek/openai-compatible still requests usage metadata and does not receive unsupported options by default.
+- DeepSeek still requests usage metadata and uses the late advisory context layout, without unsupported OpenAI-specific options.
+- Generic openai-compatible providers still request usage metadata where supported and do not receive unsupported options by default.
 
 ### 7.3 Correctness tests
 

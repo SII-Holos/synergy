@@ -83,6 +83,26 @@ describe("LLM.promptMessages", () => {
     expect(String(messages[4].content)).toContain("volatile time")
   })
 
+  test("renders late advisory context after history for DeepSeek cache layout", () => {
+    const messages = LLM.promptMessages({
+      model: createModelWith({
+        providerID: "deepseek",
+        api: { npm: "@ai-sdk/openai-compatible", id: "deepseek-v4-flash" },
+      } as any),
+      system: ["agent prompt", "permission context"],
+      lateSystem: ["memory changes", "volatile time"],
+      messages: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "second" },
+      ],
+    })
+
+    expect(messages.map((message) => message.role)).toEqual(["system", "system", "user", "assistant", "user"])
+    expect(String(messages[4].content)).toContain("<runtime-context>")
+    expect(String(messages[4].content)).toContain("memory changes")
+    expect(String(messages[4].content)).toContain("volatile time")
+  })
+
   test("preserves reusable OpenAI history prefix when late advisory context changes across turns", () => {
     const stableSystem = ["agent prompt", "project instructions", "permission context"]
     const history = [

@@ -180,6 +180,7 @@ export namespace LLM {
     return (
       model.providerID === "openai" ||
       model.providerID === "openai-codex" ||
+      model.providerID === "deepseek" ||
       model.api.npm === "@ai-sdk/openai" ||
       model.api.npm === "@ai-sdk/azure"
     )
