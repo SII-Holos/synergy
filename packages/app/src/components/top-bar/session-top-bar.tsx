@@ -230,7 +230,7 @@ export function SessionTopBar() {
             aria-label="Open navigation"
             onClick={() => layout.mobileSidebar.toggle()}
           >
-            <Icon name="panel-left-open" size="normal" />
+            <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
           </button>
           <button
             type="button"
@@ -238,7 +238,7 @@ export function SessionTopBar() {
             aria-label="Open tools"
             onClick={() => layout.rightSidebar.toggle()}
           >
-            <Icon name="layout-grid" size="normal" />
+            <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
           </button>
         </div>
         <div class="stb-center flex min-w-0 items-center justify-center">
@@ -251,7 +251,7 @@ export function SessionTopBar() {
             aria-label="New session"
             onClick={() => navigate(`/${params.dir}/session`)}
           >
-            <Icon name="plus" size="normal" />
+            <Icon name={getSemanticIcon("action.add")} size="normal" />
           </button>
           <Show when={!!params.id && !isGlobal()}>
             <SessionActionMenu

@@ -1,6 +1,7 @@
 import { Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLayout } from "@/context/layout"
 
 const DRAWER_TOOLS = [
@@ -46,7 +47,7 @@ export function MobileToolsDrawer() {
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
-              <Icon name="x" size="normal" />
+              <Icon name={getSemanticIcon("action.close")} size="normal" />
             </button>
           </div>
 

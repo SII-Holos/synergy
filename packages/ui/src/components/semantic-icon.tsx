@@ -105,6 +105,7 @@ export const SemanticIconToken = {
   "app.bottomSpace": "panel-bottom",
   "app.statusBar": "panel-bottom-dashed",
   "app.statusBar.toggle": "panel-bottom-open",
+  "app.toolsDrawer": "layout-grid",
   "product.update": "download",
   "product.update.install": "rotate-cw",
   "window.minimize": "minus",

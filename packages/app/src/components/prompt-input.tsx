@@ -484,7 +484,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           return {
             id: `agent-${agent.name}`,
             label: visual.label,
-            icon: getSemanticIcon("settings.agents"),
+            icon: getSemanticIcon("agents.main"),
             selected: local.agent.current()?.name === agent.name,
             disabled,
             tooltip: disabled ? "Create a new session to use this external agent" : undefined,
@@ -1332,12 +1332,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                     ? "Create a new session to use this external agent"
                                     : undefined
                                 }
-                              >
-                                <div
-                                  classList={{
-                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                                    "opacity-45": sessionHasMessages() && !!agent.external,
-                                  }}
                               >
                                 <div
                                   classList={{

@@ -63,7 +63,7 @@ export function PromptDock(props: {
     >
       <div
         classList={{
-          "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
+          "w-full min-w-0 px-3 md:px-6 pointer-events-auto relative": true,
           "md:max-w-[54rem]": !props.showTabs(),
         }}
       >

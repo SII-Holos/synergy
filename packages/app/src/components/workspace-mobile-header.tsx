@@ -1,4 +1,5 @@
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface WorkspaceMobileHeaderProps {
   onClose: () => void
@@ -14,7 +15,7 @@ export function WorkspaceMobileHeader(props: WorkspaceMobileHeaderProps) {
         aria-label="Close workspace"
         onClick={props.onClose}
       >
-        <Icon name="x" size="normal" />
+        <Icon name={getSemanticIcon("action.close")} size="normal" />
       </button>
     </div>
   )
