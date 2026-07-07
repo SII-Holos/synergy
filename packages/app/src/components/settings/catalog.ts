@@ -36,6 +36,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "observability",
   "import",
   "config-files",
+  "archived-sessions",
 ] as const
 
 export type BuiltinSettingsId = (typeof BUILTIN_SETTINGS_IDS)[number]
@@ -281,6 +282,15 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "path",
     "jsonc",
   ]),
+  section(
+    "archived-sessions",
+    "Archived Sessions",
+    "System",
+    30,
+    "session.archive",
+    "Browse and permanently delete archived sessions.",
+    ["archive", "archived", "session", "delete", "history", "project"],
+  ),
 ]
 
 function section(
