@@ -861,14 +861,40 @@ describe("ShellSafety GitHub CLI PR taxonomy", () => {
     expect(ShellSafety.classifyBashRisk("gh pr create --title fix --body body")).toBe("shell_remote_publish")
   })
 
+  test("gh pr comment and review are remote publish (communication)", () => {
+    expect(ShellSafety.classifyBashRisk("gh pr comment 123 --body note")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("gh pr review 123 --approve")).toBe("shell_remote_publish")
+  })
+
+  test("gh pr edit and ready remain remote writes", () => {
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr ready 123")).toBe("shell_remote_write")
+  })
+
   test("gh pr merge and close are destructive", () => {
     expect(ShellSafety.classifyBashRisk("gh pr merge 123 --squash")).toBe("shell_destructive")
     expect(ShellSafety.classifyBashRisk("gh pr close 123")).toBe("shell_destructive")
   })
+})
 
-  test("gh pr edit and comment remain generic remote writes", () => {
-    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated")).toBe("shell_remote_write")
-    expect(ShellSafety.classifyBashRisk("gh pr comment 123 --body note")).toBe("shell_remote_write")
+describe("ShellSafety GitHub CLI issue taxonomy", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("gh issue view and list are shell_read", () => {
+    expect(ShellSafety.classifyBashRisk("gh issue view 382")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh issue list")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh issue status")).toBe("shell_read")
+  })
+
+  test("gh issue create and comment are remote publish (communication)", () => {
+    expect(ShellSafety.classifyBashRisk("gh issue create --title bug --body body")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("gh issue comment 382 --body fixed")).toBe("shell_remote_publish")
+  })
+
+  test("gh issue edit, close, and reopen remain remote writes", () => {
+    expect(ShellSafety.classifyBashRisk("gh issue edit 382 --title updated")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh issue close 382")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh issue reopen 382")).toBe("shell_remote_write")
   })
 })
 
