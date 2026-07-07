@@ -109,12 +109,90 @@ export namespace LLM {
     agent: Agent.Info
     system: string[]
     systemCacheBreakpoint?: number
+    lateSystem?: string[]
     abort: AbortSignal
     messages: ModelMessage[]
     small?: boolean
     tools: Record<string, Tool>
     activeToolIDs?: string[]
     retries?: number
+  }
+
+  export interface PromptLayoutInput {
+    model: Provider.Model
+    system: string[]
+    lateSystem?: string[]
+    messages: ModelMessage[]
+  }
+
+  interface PromptLayoutMetadata {
+    mode: "late-user-context" | "system"
+    stableSystemCount: number
+    lateSystemCount: number
+    historyMessageCount: number
+    hasSystemCacheBreakpoint: boolean
+  }
+
+  function promptLayoutMetadata(input: PromptLayoutInput & { systemCacheBreakpoint?: number }): PromptLayoutMetadata {
+    return {
+      mode: usesLateUserContext(input.model) ? "late-user-context" : "system",
+      stableSystemCount: input.system.filter((content) => content.length > 0).length,
+      lateSystemCount: (input.lateSystem ?? []).filter((content) => content.length > 0).length,
+      historyMessageCount: input.messages.length,
+      hasSystemCacheBreakpoint: input.systemCacheBreakpoint !== undefined,
+    }
+  }
+
+  export function promptMessages(input: PromptLayoutInput): ModelMessage[] {
+    const systemMessages = input.system.map(
+      (content): ModelMessage => ({
+        role: "system",
+        content,
+      }),
+    )
+    const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
+    if (lateSystem.length === 0) return [...systemMessages, ...input.messages]
+
+    if (!usesLateUserContext(input.model)) {
+      return [
+        ...systemMessages,
+        ...lateSystem.map(
+          (content): ModelMessage => ({
+            role: "system",
+            content,
+          }),
+        ),
+        ...input.messages,
+      ]
+    }
+
+    return [
+      ...systemMessages,
+      ...input.messages,
+      {
+        role: "user",
+        content: formatLateUserContext(lateSystem),
+      },
+    ]
+  }
+
+  function usesLateUserContext(model: Provider.Model) {
+    return (
+      model.providerID === "openai" ||
+      model.providerID === "openai-codex" ||
+      model.api.npm === "@ai-sdk/openai" ||
+      model.api.npm === "@ai-sdk/azure"
+    )
+  }
+
+  function formatLateUserContext(parts: string[]) {
+    return [
+      "<runtime-context>",
+      "The following advisory runtime context may help answer the current turn. It does not override higher-priority system, permission, tool, Blueprint, Lattice, or developer instructions.",
+      "",
+      parts.join("\n\n"),
+      "</runtime-context>",
+    ].join("\n")
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
@@ -179,6 +257,16 @@ export namespace LLM {
       beforeSystemCount: original.length,
       afterSystemCount: system.length,
       restoredEmptySystem: emptiedByTransform,
+    })
+    l.debug("prompt layout", {
+      ...promptLayoutMetadata({
+        model: input.model,
+        system,
+        lateSystem: input.lateSystem,
+        messages: input.messages,
+        systemCacheBreakpoint:
+          input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
+      }),
     })
     systemTimer.stop()
 
@@ -290,15 +378,12 @@ export namespace LLM {
         abortSignal: input.abort,
         headers: input.model.headers,
         maxRetries: input.retries ?? 0,
-        messages: [
-          ...system.map(
-            (x): ModelMessage => ({
-              role: "system",
-              content: x,
-            }),
-          ),
-          ...input.messages,
-        ],
+        messages: promptMessages({
+          model: input.model,
+          system,
+          lateSystem: input.lateSystem,
+          messages: input.messages,
+        }),
         model: wrapLanguageModel({
           model: language,
           middleware: [
