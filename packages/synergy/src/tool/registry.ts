@@ -111,6 +111,7 @@ import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
 import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
+import { BrowserHealthTool } from "./browser-health"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -433,6 +434,7 @@ export namespace ToolRegistry {
       BrowserActionTool,
       BrowserEvalTool,
       BrowserViewTool,
+      BrowserHealthTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
     ]
 
