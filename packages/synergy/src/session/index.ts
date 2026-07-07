@@ -286,7 +286,7 @@ export namespace Session {
   const lastPublish = new Map<string, { key: string; at: number }>()
   const PUBLISH_DEDUP_THROTTLE_MS = 1000
 
-  async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
+  async function publishInfo(event: typeof SessionEvent.Updated, session: Info, navEntry?: SessionNavEntry) {
     const info = await withRuntimeInfo(session)
     const key = publishCompareKey(info)
     const now = Date.now()
@@ -304,7 +304,7 @@ export namespace Session {
     }
     if (info.time.archived) lastPublish.delete(session.id)
     else lastPublish.set(session.id, { key, at: now })
-    Bus.publish(event, { info })
+    Bus.publish(event, { info, navEntry })
   }
 
   export async function create(input?: {
@@ -385,7 +385,7 @@ export namespace Session {
     await writeEndpointIndex(result)
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
     if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
-    await SessionNav.upsertNavEntry(toNavEntry(result))
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
 
     if (result.agenda) {
       await Storage.write(StoragePath.agendaSession(result.agenda.itemID, result.id), {
@@ -397,7 +397,7 @@ export namespace Session {
     SessionManager.registerRuntime(result.id)
     Scope.touch(scope.id)
 
-    await publishInfo(SessionEvent.Updated, result)
+    await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
   }
 
@@ -591,8 +591,8 @@ export namespace Session {
       draft.completionNotice.unread = false
     })
 
-    await SessionNav.upsertNavEntry(toNavEntry(result))
-    await publishInfo(SessionEvent.Updated, result)
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
+    await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
   }
 
@@ -617,7 +617,7 @@ export namespace Session {
     if (result.parentID) {
       await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     }
-    await SessionNav.upsertNavEntry(toNavEntry(result), {
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
       preserveActivityAt: before.pendingReply === true && result.pendingReply === true,
     })
 
@@ -636,7 +636,7 @@ export namespace Session {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
-    await publishInfo(SessionEvent.Updated, result)
+    await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
   }
 

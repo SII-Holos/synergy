@@ -508,8 +508,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     onMount(() => {
       const unsub = globalSdk.event.listen((e) => {
         if ((e.details as { type?: string })?.type !== "session.updated") return
-        const info = (e.details as { properties?: { info?: { scope?: { id?: string; directory?: string } } } })
-          ?.properties?.info
+        const properties = (
+          e.details as {
+            properties?: {
+              info?: { scope?: { id?: string; directory?: string } }
+              navEntry?: NavEntry
+            }
+          }
+        )?.properties
+        const info = properties?.info
         const scope = info?.scope
         if (!scope) return
 
@@ -517,7 +524,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         // this session immediately (title/pin/activity/archive), so the sidebar
         // doesn't lag the debounced refetch. The refetch below still runs as the
         // authority for ordering, new entries, and project aggregates.
-        const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0])
+        const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
