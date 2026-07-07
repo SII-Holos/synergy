@@ -36,6 +36,7 @@ import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@
 import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import { buildLightLoopTaskDescription } from "./light-loop-task"
+import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
 import { resolvePromptSubmitIntent } from "./submit-intent"
 import {
   SessionStartProgressDialog,
@@ -66,6 +67,7 @@ type PromptSubmitInput = {
   store: PromptInputStore
   setStore: SetStoreFunction<PromptInputStore>
   addToHistory: (prompt: Prompt, mode: PromptInputMode) => void
+  frontendCommands: Accessor<SlashUiCommand[]>
   working: Accessor<boolean>
   abort: () => void
   editor: () => HTMLDivElement
@@ -168,6 +170,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       prompt: currentPrompt,
       context: currentContext,
     })
+    const slashIntent = resolveSlashCommandIntent({
+      text,
+      backendCommands: sync.data.command,
+      uiCommands: input.frontendCommands(),
+    })
 
     const blueprintSlot = input.localArmedLoop()
     const submitIntent = resolvePromptSubmitIntent({
@@ -212,11 +219,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       return
     }
-    if (input.pendingLightLoop() && !blueprintSlot && text.trimStart().startsWith("/")) {
+    const pendingLightLoopSlashBlock =
+      input.pendingLightLoop() && !blueprintSlot ? getPendingLightLoopSlashBlock(slashIntent) : undefined
+    if (pendingLightLoopSlashBlock) {
       showToast({
         type: "warning",
-        title: "Use a normal message",
-        description: "Light Loop starts from the next text prompt, not a slash command.",
+        title: pendingLightLoopSlashBlock.title,
+        description: pendingLightLoopSlashBlock.description,
       })
       return
     }
@@ -563,39 +572,36 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    if (text.startsWith("/")) {
-      const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
-      const customCommand = sync.data.command.find((c) => c.name === commandName)
-      if (customCommand) {
-        clearInput()
-        sendSessionCommand({
-          client,
-          sessionID: activeSession.id,
-          command: commandName,
-          arguments: args.join(" "),
-          agent,
-          model,
-          variant,
-          attachments,
-          notes,
-          sessions,
+    if (slashIntent.kind === "backend-prompt" || slashIntent.kind === "backend-action") {
+      clearInput()
+      sendSessionCommand({
+        client,
+        sessionID: activeSession.id,
+        command: slashIntent.command,
+        arguments: slashIntent.arguments,
+        agent,
+        model,
+        variant,
+        attachments,
+        notes,
+        sessions,
+      })
+        .then(() => {
+          closeStartProgress()
+          if (armedLightLoop) input.clearPendingLightLoop()
         })
-          .then(() => {
-            closeStartProgress()
+        .catch(async (err) => {
+          closeStartProgress()
+          await rollbackLightLoopForSubmit()
+          showToast({
+            type: "error",
+            title: "Failed to send command",
+            description: errorMessage(err),
           })
-          .catch((err) => {
-            closeStartProgress()
-            showToast({
-              type: "error",
-              title: "Failed to send command",
-              description: errorMessage(err),
-            })
-            rollbackCreatedSession()
-            restoreInput()
-          })
-        return
-      }
+          rollbackCreatedSession()
+          restoreInput()
+        })
+      return
     }
 
     const toAbsolutePath = (path: string) =>

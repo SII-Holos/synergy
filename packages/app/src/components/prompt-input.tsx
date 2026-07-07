@@ -1481,6 +1481,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     store,
     setStore,
     addToHistory,
+    frontendCommands: () => command.options,
     working,
     abort,
     editor: () => editorRef,
