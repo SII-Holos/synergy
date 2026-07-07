@@ -34,7 +34,7 @@ import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
 import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
-import { createCopyController } from "./clipboard"
+import { CopyIconButton, createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
 import { Checkbox } from "./checkbox"
@@ -1504,7 +1504,39 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
     emptyParts,
     { equals: same },
   )
-  return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
+
+  const markdownText = createMemo(() => {
+    const texts: string[] = []
+    for (const part of props.parts) {
+      if (part.type === "text") {
+        const textPart = part as TextPart
+        if (textPart.synthetic || textPart.origin === "system") continue
+        const text = textPart.text?.trim()
+        if (text) texts.push(text)
+      } else if (part.type === "reasoning") {
+        const reasoningPart = part as ReasoningPart
+        const text = reasoningPart.text?.trim()
+        if (text) texts.push(text)
+      }
+    }
+    return texts.join("\n\n")
+  })
+
+  return (
+    <div data-component="assistant-message">
+      <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
+      <Show when={markdownText()}>
+        <div data-slot="assistant-message-copy">
+          <CopyIconButton
+            text={markdownText}
+            copyLabel="Copy as Markdown"
+            copiedLabel="Copied!"
+            failureDescription="Unable to copy the message."
+          />
+        </div>
+      </Show>
+    </div>
+  )
 }
 
 const SEARCH_REFLECTION_MARKER = "[Search failure reflection]"
