@@ -42,6 +42,7 @@ export const SemanticIconToken = {
   "session.background": "calendar-days",
   "session.inbox": "inbox",
   "session.rewind": "undo-dot",
+  "session.archive": "message-square-more",
 
   // Product domains
   "blueprint.main": "clipboard-list",
@@ -123,13 +124,15 @@ export const SemanticIconToken = {
   // Prompt composer and command entry
   "prompt.attach": "paperclip",
   "prompt.plan": "list-checks",
-  "prompt.lattice": "orbit",
+  "prompt.lattice": "waypoints",
+  "prompt.lightLoop": "repeat",
   "prompt.shell": "file-terminal",
   "prompt.signal": "signal",
   "prompt.submit": "corner-down-left",
   "prompt.send": "send",
   "prompt.submitArrow": "arrow-up",
   "prompt.blueprintStart": "circle-play",
+  "prompt.blueprintEquip": "clipboard-check",
 
   // Quick actions and runtime commands
   "command.undo": "undo-2",
@@ -161,6 +164,7 @@ export const SemanticIconToken = {
   "action.refresh": "refresh-ccw",
   "action.restore": "refresh-ccw-dot",
   "action.view": "eye",
+  "action.hide": "eye-off",
   "action.stop": "circle-stop",
   "account.create": "user-plus",
   "account.import": "key-round",

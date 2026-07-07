@@ -26,8 +26,7 @@ export const LatticeContinuationPolicy: ContinuationKernel.Policy = {
   id: "lattice",
   priority: 50,
   async handle(gate) {
-    const lattice = gate.session.lattice
-    if (!lattice) return false
+    if (gate.session.workflow?.kind !== "lattice") return false
 
     const run = await LatticeStore.getOrUndefined(gate.scopeID, gate.sessionID)
     if (!run || run.status !== "active") return false

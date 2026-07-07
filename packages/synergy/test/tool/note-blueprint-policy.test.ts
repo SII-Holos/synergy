@@ -18,11 +18,14 @@ function ctx(sessionID: string): Tool.Context {
   }
 }
 
-async function createSession(input?: { planMode?: boolean }) {
+async function createSession(input?: { workflow?: "plan" | "lattice" }) {
   const session = await Session.create({})
-  if (input?.planMode) {
+  if (input?.workflow) {
     await Session.update(session.id, (draft) => {
-      draft.blueprint = { planMode: true }
+      draft.workflow =
+        input.workflow === "plan"
+          ? { kind: "plan" }
+          : { kind: "lattice", runID: "ltr_test", mode: "auto", firstBlueprintStarted: false }
     })
   }
   return session
@@ -51,7 +54,7 @@ function anchoredReplace(
 }
 
 describe("note Blueprint write policy", () => {
-  test("blocks Blueprint creation outside Plan Mode while allowing ordinary notes", async () => {
+  test("blocks Blueprint creation outside Plan or Lattice while allowing ordinary notes", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -70,8 +73,8 @@ describe("note Blueprint write policy", () => {
           ctx(session.id),
         )
 
-        expect(blocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
-        expect(blocked.output).toContain("not in Plan Mode")
+        expect(blocked.metadata.reason).toBe("non_plan_blueprint_write")
+        expect(blocked.output).toContain("not in Plan or Lattice")
         expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(0)
 
         const implicitByDescription = await write.execute(
@@ -84,7 +87,7 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(implicitByDescription.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(implicitByDescription.metadata.reason).toBe("non_plan_blueprint_write")
 
         const implicitByDefaultAgent = await write.execute(
           {
@@ -96,7 +99,7 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(implicitByDefaultAgent.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(implicitByDefaultAgent.metadata.reason).toBe("non_plan_blueprint_write")
         expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(0)
 
         const created = await write.execute(
@@ -139,7 +142,7 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(convertBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(convertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
         const implicitConvertBlocked = await write.execute(
           {
@@ -151,7 +154,7 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(implicitConvertBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(implicitConvertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
         expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(1)
         const stored = await NoteStore.get(ScopeContext.current.scope.id, noteID)
@@ -161,7 +164,7 @@ describe("note Blueprint write policy", () => {
     })
   })
 
-  test("blocks updating and editing existing Blueprints outside Plan Mode", async () => {
+  test("blocks updating and editing existing Blueprints outside Plan or Lattice", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -185,7 +188,7 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(writeBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(writeBlocked.metadata.reason).toBe("non_plan_blueprint_write")
         expect(writeBlocked.output).toContain("Blueprint notes are read-only")
 
         const appendBlocked = await write.execute(
@@ -197,10 +200,10 @@ describe("note Blueprint write policy", () => {
           },
           ctx(session.id),
         )
-        expect(appendBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(appendBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
         const editBlocked = await edit.execute(anchoredReplace(blueprint, "Edited"), ctx(session.id))
-        expect(editBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
+        expect(editBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
         const stored = await NoteStore.get(ScopeContext.current.scope.id, blueprint.id)
         expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Original")
@@ -208,12 +211,12 @@ describe("note Blueprint write policy", () => {
     })
   })
 
-  test("allows Blueprint creation and edits in Plan Mode", async () => {
+  test("allows Blueprint creation and edits in Plan", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const session = await createSession({ planMode: true })
+        const session = await createSession({ workflow: "plan" })
         const write = await NoteWriteTool.init()
         const edit = await NoteEditTool.init()
 
@@ -250,6 +253,30 @@ describe("note Blueprint write policy", () => {
         const stored = await NoteStore.get(ScopeContext.current.scope.id, id)
         expect(stored.kind).toBe("blueprint")
         expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Edited")
+      },
+    })
+  })
+
+  test("allows Blueprint creation and edits in Lattice", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await createSession({ workflow: "lattice" })
+        const write = await NoteWriteTool.init()
+
+        const created = await write.execute(
+          {
+            mode: "create",
+            title: "Lattice Blueprint",
+            content: "Initial",
+            kind: "blueprint",
+            scope: "current",
+          },
+          ctx(session.id),
+        )
+
+        expect(created.metadata.kind).toBe("blueprint")
       },
     })
   })

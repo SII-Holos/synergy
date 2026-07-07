@@ -30,7 +30,7 @@ export interface SessionVisualStore {
     parentID?: string
     category?: string
     workspace?: { type?: string }
-    blueprint?: { loopID?: string; loopRole?: "execution" | "audit"; planMode?: boolean }
+    blueprint?: { loopID?: string; loopRole?: "execution" | "audit" }
   }[]
 }
 

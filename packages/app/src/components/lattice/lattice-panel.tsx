@@ -7,13 +7,22 @@ import type { LatticeRun, LatticeStep } from "@ericsanchezok/synergy-sdk/client"
 export interface LatticePanelSDK {
   event: { on: (type: string, cb: (event: { properties: { run: LatticeRun } }) => void) => () => void }
   client: {
+    workflow: {
+      session: {
+        set: (input: {
+          id: string
+          workflowSetInput: {
+            kind: "none" | "plan" | "lightloop" | "lattice"
+            mode?: "auto" | "collaborative"
+            maxModelCalls?: number
+            action?: "continue" | "restart"
+          }
+        }) => Promise<{ data?: unknown }>
+      }
+    }
     lattice: {
       session: {
         getRun: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
-        mode: (input: {
-          id: string
-          latticeModeInput: { enabled: boolean; mode?: "auto" | "collaborative"; action?: "continue" | "restart" }
-        }) => Promise<{ data?: LatticeRun | null }>
       }
       run: {
         continue: (input: {
@@ -99,11 +108,18 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
   }
 
   const doResume = async () => {
+    const r = run()
+    if (!r) return
     setBusy(true)
     try {
-      await props.sdk.client.lattice.session.mode({
+      await props.sdk.client.workflow.session.set({
         id: props.sessionID,
-        latticeModeInput: { enabled: true, action: "continue" },
+        workflowSetInput: {
+          kind: "lattice",
+          mode: r.mode,
+          maxModelCalls: r.maxModelCalls,
+          action: "continue",
+        },
       })
     } catch (err) {
       showToast({ type: "error", title: "Resume failed", description: err instanceof Error ? err.message : "Unknown" })

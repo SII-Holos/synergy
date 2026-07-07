@@ -150,6 +150,9 @@ export namespace ContinuationKernel {
     const { BlueprintContinuationPolicy } =
       require("./blueprint-continuation") as typeof import("./blueprint-continuation")
     register(BlueprintContinuationPolicy)
+    const { LightLoopContinuationPolicy } =
+      require("./light-loop-continuation") as typeof import("./light-loop-continuation")
+    register(LightLoopContinuationPolicy)
     const { LatticeContinuationPolicy } = require("../lattice/policy") as typeof import("../lattice/policy")
     register(LatticeContinuationPolicy)
   }

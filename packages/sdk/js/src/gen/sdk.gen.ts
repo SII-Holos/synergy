@@ -96,8 +96,6 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
-  BlueprintSessionPlanModeErrors,
-  BlueprintSessionPlanModeResponses,
   ChannelAppResetResponses,
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
@@ -203,7 +201,6 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
-  LatticeModeInput,
   LatticeRunCancelErrors,
   LatticeRunCancelResponses,
   LatticeRunContinueErrors,
@@ -216,8 +213,6 @@ import type {
   LatticeRunListResponses,
   LatticeSessionGetRunErrors,
   LatticeSessionGetRunResponses,
-  LatticeSessionModeErrors,
-  LatticeSessionModeResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
   LibraryExperienceGetErrors,
@@ -468,6 +463,9 @@ import type {
   ToolListErrors,
   ToolListResponses,
   VcsGetResponses,
+  WorkflowSessionSetErrors,
+  WorkflowSessionSetResponses,
+  WorkflowSetInput,
   WorkspaceFilesChildrenResponses,
   WorkspaceFilesReadResponses,
   WorkspaceFilesSearchResponses,
@@ -1443,6 +1441,9 @@ export class Session extends HeyApiClient {
       scopeID?: string
       parentOnly?: string
       includeArchived?: string
+      archived?: "exclude" | "include" | "only"
+      sortBy?: "updated" | "created" | "archived" | "scope"
+      sortDir?: "asc" | "desc"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1457,6 +1458,9 @@ export class Session extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
+            { in: "query", key: "archived" },
+            { in: "query", key: "sortBy" },
+            { in: "query", key: "sortDir" },
           ],
         },
       ],
@@ -2653,88 +2657,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Toggle Plan Mode
-   *
-   * Enable or disable Plan Mode on a session.
-   */
-  public planMode<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      planMode?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "planMode" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<
-      BlueprintSessionPlanModeResponses,
-      BlueprintSessionPlanModeErrors,
-      ThrowOnError
-    >({
-      url: "/blueprint/session/{id}/plan-mode",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Toggle Lattice mode
-   *
-   * Enable (create/continue/restart) or disable (pause) Lattice mode on a session.
-   */
-  public mode<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      latticeModeInput?: LatticeModeInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "latticeModeInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<LatticeSessionModeResponses, LatticeSessionModeErrors, ThrowOnError>({
-      url: "/lattice/session/{id}/mode",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
    * Get session Lattice run
    *
    * Read the session's single Lattice run (or null).
@@ -2767,6 +2689,45 @@ export class Session extends HeyApiClient {
       url: "/lattice/session/{id}",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Set session workflow
+   *
+   * Enable or clear the mutually exclusive session workflow.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      workflowSetInput?: WorkflowSetInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "workflowSetInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<WorkflowSessionSetResponses, WorkflowSessionSetErrors, ThrowOnError>({
+      url: "/workflow/session/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -7705,8 +7666,6 @@ export class Loop extends HeyApiClient {
 
 export class Blueprint extends HeyApiClient {
   loop = new Loop({ client: this.client })
-
-  session = new Session({ client: this.client })
 }
 
 export class Run extends HeyApiClient {
@@ -7874,6 +7833,10 @@ export class Lattice extends HeyApiClient {
   session = new Session({ client: this.client })
 
   run = new Run({ client: this.client })
+}
+
+export class Workflow extends HeyApiClient {
+  session = new Session({ client: this.client })
 }
 
 export class Asset extends HeyApiClient {
@@ -9772,6 +9735,8 @@ export class SynergyClient extends HeyApiClient {
   blueprint = new Blueprint({ client: this.client })
 
   lattice = new Lattice({ client: this.client })
+
+  workflow = new Workflow({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

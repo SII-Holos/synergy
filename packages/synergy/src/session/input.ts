@@ -16,7 +16,7 @@ import { fileURLToPath } from "bun"
 import { ConfigMarkdown } from "@/config/markdown"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "@/tool/tool"
-import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
+import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 
 const log = Log.create({ service: "session.input" })
 
@@ -165,13 +165,13 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     }
   }
   const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
-  const planModeMetadata = PlanModeUserWrapper.metadataForUserMessage({
+  const workflowMetadata = WorkflowUserWrapper.metadataForUserMessage({
     session,
     metadata: input.metadata,
     noReply: input.noReply,
     agentName: agent.name,
   })
-  const externalMetadata = PlanModeUserWrapper.stripReservedMetadata(input.metadata)
+  const externalMetadata = WorkflowUserWrapper.stripReservedMetadata(input.metadata)
   const messageID = input.messageID ?? Identifier.ascending("message")
   const origin = MessageV2.originFromMetadata(input.metadata)
   const isRoot = input.noReply !== true
@@ -200,7 +200,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     // isRoot/visible/origin carry scheduling & rendering; no noReply/guided flags.
     metadata: {
       ...externalMetadata,
-      ...planModeMetadata,
+      ...workflowMetadata,
     },
   }
 

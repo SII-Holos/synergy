@@ -5,9 +5,9 @@ import { Scope } from "../../src/scope"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { LatticeContinuationPolicy } from "../../src/lattice/policy"
-import { LatticeRunService } from "../../src/lattice/run-service"
 import { LatticeMachine } from "../../src/lattice/machine"
 import { LatticeStore } from "../../src/lattice/store"
+import { SessionWorkflowService } from "../../src/session/workflow"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -41,7 +41,7 @@ describe("LatticeContinuationPolicy", () => {
   test("delivers a continuation in initial_planning", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       const deliveries: any[] = []
       ;(SessionManager.deliver as any) = mock(async (input: any) => {
         deliveries.push(input)
@@ -56,7 +56,7 @@ describe("LatticeContinuationPolicy", () => {
   test("does not fire during collaborative blueprint_review", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "collaborative" })
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" })
       const scopeID = ScopeContext.current.scope.id
       await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "a" }] })
       await LatticeMachine.patch(scopeID, session.id, { bindCurrentBlueprint: { noteID: "note_a" } })
@@ -74,8 +74,8 @@ describe("LatticeContinuationPolicy", () => {
   test("does not fire when the run is paused", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
-      // Manually pause but keep session.lattice for the gate.
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      // Manually pause but keep session.workflow for the gate.
       await LatticeMachine.pause(ScopeContext.current.scope.id, session.id, "user_exit")
       const deliver = mock(async () => {})
       ;(SessionManager.deliver as any) = deliver
@@ -87,7 +87,7 @@ describe("LatticeContinuationPolicy", () => {
   test("pauses the run when the model-call budget is exhausted", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "auto", maxModelCalls: 1 })
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto", maxModelCalls: 1 })
       const scopeID = ScopeContext.current.scope.id
       await LatticeStore.update(scopeID, session.id, (draft) => {
         draft.modelCallCount = 1
@@ -106,7 +106,7 @@ describe("LatticeContinuationPolicy", () => {
   test("auto blueprint_execution starts the current step's loop", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       const scopeID = ScopeContext.current.scope.id
       await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "a" }] })
       await LatticeMachine.patch(scopeID, session.id, { bindCurrentBlueprint: { noteID: "note_a" } })

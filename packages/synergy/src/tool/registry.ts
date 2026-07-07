@@ -29,6 +29,7 @@ import { NoteEditTool } from "./note-edit"
 import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
+import { LoopStopTool } from "./loop-stop"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayPatchTool } from "./pathway-patch"
@@ -384,6 +385,7 @@ export namespace ToolRegistry {
       NoteEditTool,
       NoteDeleteTool,
       BlueprintLoopFinishTool,
+      LoopStopTool,
       BlueprintLoopRestartTool,
       PathwayReadTool,
       PathwayPatchTool,

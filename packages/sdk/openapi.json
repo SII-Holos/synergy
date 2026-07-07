@@ -1654,6 +1654,35 @@
               "type": "string"
             },
             "description": "Include archived sessions (default: false)"
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "type": "string",
+              "enum": ["exclude", "include", "only"]
+            },
+            "description": "Archived session filter. Defaults to exclude; supersedes includeArchived."
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "default": "updated",
+              "type": "string",
+              "enum": ["updated", "created", "archived", "scope"]
+            },
+            "description": "Sort sessions by timestamp or scope label"
+          },
+          {
+            "in": "query",
+            "name": "sortDir",
+            "schema": {
+              "default": "desc",
+              "type": "string",
+              "enum": ["asc", "desc"]
+            },
+            "description": "Sort direction"
           }
         ],
         "x-codeSamples": [
@@ -12239,178 +12268,6 @@
         ]
       }
     },
-    "/blueprint/session/{id}/plan-mode": {
-      "put": {
-        "operationId": "blueprint.session.planMode",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Toggle Plan Mode",
-        "description": "Enable or disable Plan Mode on a session.",
-        "responses": {
-          "200": {
-            "description": "Updated session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "planMode": {
-                    "description": "Enable or disable Plan Mode",
-                    "type": "boolean"
-                  }
-                },
-                "required": ["planMode"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.session.planMode({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/lattice/session/{id}/mode": {
-      "put": {
-        "operationId": "lattice.session.mode",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Toggle Lattice mode",
-        "description": "Enable (create/continue/restart) or disable (pause) Lattice mode on a session.",
-        "responses": {
-          "200": {
-            "description": "Lattice run or null",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/LatticeRun"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LatticeModeInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.session.mode({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/lattice/session/{id}": {
       "get": {
         "operationId": "lattice.session.getRun",
@@ -12823,6 +12680,85 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow/session/{id}": {
+      "put": {
+        "operationId": "workflow.session.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Set session workflow",
+        "description": "Enable or clear the mutually exclusive session workflow.",
+        "responses": {
+          "200": {
+            "description": "Updated session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowSetInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflow.session.set({\n  ...\n})"
           }
         ]
       }
@@ -25016,6 +24952,53 @@
         "required": ["type", "path", "scopeID"],
         "additionalProperties": {}
       },
+      "SessionWorkflowInfo": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "plan"
+              }
+            },
+            "required": ["kind"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "lightloop"
+              },
+              "taskDescription": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "taskDescription"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "lattice"
+              },
+              "runID": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["auto", "collaborative"]
+              },
+              "firstBlueprintStarted": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "runID", "mode"]
+          }
+        ]
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -25199,27 +25182,11 @@
               "loopRole": {
                 "type": "string",
                 "enum": ["execution", "audit"]
-              },
-              "planMode": {
-                "type": "boolean"
               }
             }
           },
-          "lattice": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string"
-              },
-              "mode": {
-                "type": "string",
-                "enum": ["auto", "collaborative"]
-              },
-              "firstBlueprintStarted": {
-                "type": "boolean"
-              }
-            },
-            "required": ["runID", "mode"]
+          "workflow": {
+            "$ref": "#/components/schemas/SessionWorkflowInfo"
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
@@ -29880,19 +29847,10 @@
           "loopIndex": {
             "type": "number"
           },
-          "orchestration": {
-            "description": "External orchestrator that owns this loop's lifecycle (e.g. Lattice)",
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "lattice"
-              },
-              "runID": {
-                "type": "string"
-              }
-            },
-            "required": ["kind", "runID"]
+          "source": {
+            "description": "Owner that created and drives this loop lifecycle",
+            "type": "string",
+            "enum": ["user", "lattice"]
           },
           "audit": {
             "type": "object",
@@ -29940,7 +29898,7 @@
             "required": ["providerID", "modelID"]
           }
         },
-        "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "time"]
+        "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "source", "time"]
       },
       "BlueprintLoopCreateInput": {
         "type": "object",
@@ -30201,36 +30159,6 @@
         },
         "required": ["id", "scopeID", "sessionID", "mode", "status", "phase", "time"]
       },
-      "LatticeModeInput": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "description": "Enable or disable Lattice mode for the session",
-            "type": "boolean"
-          },
-          "mode": {
-            "description": "Lattice mode (default auto)",
-            "type": "string",
-            "enum": ["auto", "collaborative"]
-          },
-          "max_model_calls": {
-            "description": "Model-call budget (0 = unlimited). Not Pathway steps.",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "goal": {
-            "description": "High-level goal for the run",
-            "type": "string"
-          },
-          "action": {
-            "description": "Resume a paused run or restart it",
-            "type": "string",
-            "enum": ["continue", "restart"]
-          }
-        },
-        "required": ["enabled"]
-      },
       "LatticeEvent": {
         "type": "object",
         "properties": {
@@ -30306,6 +30234,74 @@
           }
         },
         "required": ["id", "runID", "scopeID", "sessionID", "kind", "time"]
+      },
+      "WorkflowSetInput": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": ["kind"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "plan"
+              }
+            },
+            "required": ["kind"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "lightloop"
+              },
+              "taskDescription": {
+                "description": "Task description for Light Loop",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "taskDescription"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "lattice"
+              },
+              "mode": {
+                "description": "Lattice mode",
+                "type": "string",
+                "enum": ["auto", "collaborative"]
+              },
+              "maxModelCalls": {
+                "description": "Model-call budget; 0 means unlimited",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "goal": {
+                "description": "High-level goal for the Lattice run",
+                "type": "string"
+              },
+              "action": {
+                "description": "Resume a paused run or restart it",
+                "type": "string",
+                "enum": ["continue", "restart"]
+              }
+            },
+            "required": ["kind", "mode"]
+          }
+        ]
       },
       "AssetInfo": {
         "type": "object",

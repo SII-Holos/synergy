@@ -123,6 +123,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   note_list: entry("knowledge.note"),
   note_read: entry("knowledge.note"),
   blueprint_loop_finish: entry("orchestration.task", { stateful: true }),
+  loop_stop: entry("orchestration.task", { stateful: true }),
   blueprint_loop_restart: entry("orchestration.task", { stateful: true }),
   skill: entry("knowledge.skill"),
 

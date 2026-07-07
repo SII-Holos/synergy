@@ -1,5 +1,6 @@
 import type { ControlProfileId } from "@/context/input"
 import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
+import type { JSX } from "solid-js"
 
 export type DroppedSessionData = {
   id: string
@@ -51,6 +52,7 @@ export interface PromptInputProps {
   onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
   onNewSessionWorkspaceSelectionReset?: () => void
   hideAgentSelector?: boolean
+  onPriorityControlChange?: (control: JSX.Element | undefined) => void
 }
 
 export interface SlashCommand {
