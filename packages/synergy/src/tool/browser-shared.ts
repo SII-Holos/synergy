@@ -10,6 +10,7 @@ import { BrowserHostControl } from "../browser/host-control"
 import type { CDPHandle } from "../browser/cdp"
 import type { BrowserKeyInput, BrowserMouseInput } from "../browser/input"
 import { BrowserSnapshot } from "../browser/snapshot"
+import { BrowserStorage } from "../browser/storage"
 
 export class BrowserPageNotFoundError extends Error {
   constructor(pageID?: string) {
@@ -33,7 +34,13 @@ export namespace BrowserToolHelper {
 
   export async function getPage(owner: BrowserOwner.Info, pageID?: string): Promise<BrowserTab> {
     const hostPage = controlBackedPageFor(owner, pageID)
-    if (hostPage) return hostPage
+    if (hostPage) {
+      // Lightweight heartbeat: verify the host connection is still ready
+      if (!BrowserHostControl.isReady(owner, hostPage.id)) {
+        throw new BrowserPageNotFoundError(hostPage.id)
+      }
+      return hostPage
+    }
 
     const session = await getOrCreateSession(owner)
     if (pageID) {
@@ -184,9 +191,55 @@ function controlBackedPageFor(owner: BrowserOwner.Info, pageID?: string): Browse
 
 function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
   const annotations: BrowserAnnotation[] = []
+  let restored = false
 
   function state(): BrowserControl.SessionState {
     return BrowserHostControl.sessionState(owner) ?? { page: null }
+  }
+
+  async function persistAnnotations() {
+    const stored = annotations.map((a) => ({
+      id: a.id,
+      pageURL: a.pageURL,
+      pageID: a.pageID,
+      ref: a.ref,
+      element: a.element,
+      comment: a.comment,
+      styleFeedback: a.styleFeedback,
+      resolved: a.resolved,
+      createdAt: a.createdAt,
+    }))
+    const page = state().page
+    BrowserStorage.save(owner, {
+      page: page ? { id: page.id, url: page.url, title: page.title, lastActiveAt: page.lastActiveAt } : null,
+      timestamp: Date.now(),
+      annotations: stored,
+    }).catch(() => {})
+  }
+
+  async function restoreAnnotations() {
+    if (restored) return
+    restored = true
+    try {
+      const data = await BrowserStorage.load(owner)
+      if (data?.annotations) {
+        for (const stored of data.annotations) {
+          annotations.push({
+            id: stored.id,
+            pageURL: stored.pageURL,
+            pageID: stored.pageID,
+            ref: stored.ref,
+            element: stored.element,
+            comment: stored.comment,
+            styleFeedback: stored.styleFeedback,
+            resolved: stored.resolved,
+            createdAt: stored.createdAt,
+          })
+        }
+      }
+    } catch {
+      /* storage load is best-effort */
+    }
   }
 
   return {
@@ -221,16 +274,19 @@ function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
         createdAt: Date.now(),
       }
       annotations.push(annotation)
+      persistAnnotations()
       return annotation
     },
     removeAnnotation(id: string) {
       const index = annotations.findIndex((item) => item.id === id)
       if (index === -1) return false
       annotations.splice(index, 1)
+      persistAnnotations()
       return true
     },
     clearAnnotations() {
       annotations.length = 0
+      persistAnnotations()
     },
     formatAnnotationsForContext() {
       return ""
@@ -241,8 +297,11 @@ function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
     async notifyPageNavigated() {},
     async notifyAgentActivity() {},
     async notifyControlChanged() {},
-    async save() {},
+    async save() {
+      await persistAnnotations()
+    },
     async restore() {
+      await restoreAnnotations()
       return true
     },
     async dispose() {},

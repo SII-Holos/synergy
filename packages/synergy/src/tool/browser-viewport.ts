@@ -63,6 +63,8 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
         height: config.height,
         deviceScaleFactor: config.deviceScaleFactor,
       })
+      // Wait briefly for the page to stabilize after viewport resize
+      await tab.waitFor({ type: "load" }, 2000).catch(() => {})
       return {
         title: "Viewport set",
         output: `Viewport set to ${config.width}x${config.height}${config.mobile ? " (mobile)" : ""}`,

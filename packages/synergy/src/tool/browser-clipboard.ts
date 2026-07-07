@@ -34,7 +34,6 @@ export const BrowserClipboardTool = Tool.define<typeof parameters, BrowserClipbo
         const page = tab.page
 
         if (params.action === "read") {
-          // Uses Playwright grantPermissions + page.evaluate for clipboard read
           if (page) {
             const result = await BrowserClipboard.readViaPage(page)
             return {
@@ -43,10 +42,20 @@ export const BrowserClipboardTool = Tool.define<typeof parameters, BrowserClipbo
               metadata: { action: "read", pageId: tab.id, hasText: result.ok },
             }
           }
-          return {
-            title: `Clipboard read (tab: ${tab.id})`,
-            output: "(no page available)",
-            metadata: { action: "read", pageId: tab.id, hasText: false },
+          // Workspace fallback: read via browser_eval
+          try {
+            const text = await tab.evaluate("navigator.clipboard.readText()")
+            return {
+              title: `Clipboard read (tab: ${tab.id})`,
+              output: String(text ?? ""),
+              metadata: { action: "read", pageId: tab.id, hasText: typeof text === "string" && text.length > 0 },
+            }
+          } catch {
+            return {
+              title: `Clipboard read failed (tab: ${tab.id})`,
+              output: "(clipboard read failed — permission may be denied)",
+              metadata: { action: "read", pageId: tab.id, hasText: false },
+            }
           }
         }
 
@@ -67,10 +76,25 @@ export const BrowserClipboardTool = Tool.define<typeof parameters, BrowserClipbo
             },
           }
         }
-        return {
-          title: `Clipboard write failed (tab: ${tab.id})`,
-          output: "(no page available)",
-          metadata: { action: "write", pageId: tab.id, ok: false, byteLength: 0 },
+        // Workspace fallback: write via browser_eval
+        try {
+          await tab.evaluate(`navigator.clipboard.writeText(${JSON.stringify(params.text)})`)
+          return {
+            title: `Clipboard write (tab: ${tab.id})`,
+            output: `Copied ${Buffer.byteLength(params.text, "utf-8")} bytes to clipboard.`,
+            metadata: {
+              action: "write",
+              pageId: tab.id,
+              ok: true,
+              byteLength: Buffer.byteLength(params.text, "utf-8"),
+            },
+          }
+        } catch {
+          return {
+            title: `Clipboard write failed (tab: ${tab.id})`,
+            output: "(clipboard write failed — permission may be denied)",
+            metadata: { action: "write", pageId: tab.id, ok: false, byteLength: 0 },
+          }
         }
       },
     )

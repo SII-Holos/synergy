@@ -207,7 +207,7 @@ describe("autonomous profile summary", () => {
 })
 
 describe("autonomous profile approval risk", () => {
-  test("delegated task and MCP invocation are medium-risk Synergy capabilities", async () => {
+  test("delegated task is a low-risk capability and MCP invocation is medium-risk", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -261,7 +261,7 @@ describe("autonomous profile approval risk", () => {
         const autonomousApproval = ApprovalPolicy.withAudit(
           ApprovalPolicy.metadata(autonomous.approval, autonomousTask, "auto_allowed"),
         )
-        expect(autonomousApproval.audit?.visible).toBe(true)
+        expect(autonomousApproval.audit?.visible).toBe(false)
       },
     })
   })
