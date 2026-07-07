@@ -132,6 +132,7 @@ export const SemanticIconToken = {
   "prompt.send": "send",
   "prompt.submitArrow": "arrow-up",
   "prompt.blueprintStart": "circle-play",
+  "prompt.blueprintEquip": "clipboard-check",
 
   // Quick actions and runtime commands
   "command.undo": "undo-2",
@@ -163,6 +164,7 @@ export const SemanticIconToken = {
   "action.refresh": "refresh-ccw",
   "action.restore": "refresh-ccw-dot",
   "action.view": "eye",
+  "action.hide": "eye-off",
   "action.stop": "circle-stop",
   "account.create": "user-plus",
   "account.import": "key-round",

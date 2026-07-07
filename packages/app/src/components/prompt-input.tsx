@@ -83,6 +83,14 @@ import {
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
+import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
+import {
+  createPlanBlueprintOfferFromPart,
+  emptyPlanBlueprintOfferState,
+  reducePlanBlueprintOfferState,
+  shouldDisplayPlanBlueprintOffer,
+  type PlanBlueprintOfferEvent,
+} from "@/components/prompt-input/plan-blueprint-offer-model"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -183,6 +191,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlan, setPendingPlan] = createSignal(false)
+  const [planBlueprintOfferState, setPlanBlueprintOfferState] = createSignal(emptyPlanBlueprintOfferState)
   const [pendingLattice, setPendingLattice] = createSignal<{
     mode: "auto" | "collaborative"
     maxModelCalls: number
@@ -198,6 +207,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
+  const updatePlanBlueprintOffer = (event: PlanBlueprintOfferEvent) => {
+    setPlanBlueprintOfferState((state) => reducePlanBlueprintOfferState(state, event))
+  }
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -361,6 +373,36 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     applySessionLoopEvent(event.properties.loop)
   })
   onCleanup(unsubBlueprintLoopUpdated)
+
+  const seenPlanBlueprintOfferKeys = new Set<string>()
+  const unsubPlanBlueprintOffer = sdk.event.on("message.part.updated", (event) => {
+    const sessionID = params.id
+    if (!sessionID) return
+
+    const offer = createPlanBlueprintOfferFromPart({
+      part: event.properties.part,
+      sessionID,
+      workflowKind: info()?.workflow?.kind,
+      muted: planBlueprintOfferState().muted,
+      seenKeys: seenPlanBlueprintOfferKeys,
+    })
+    if (!offer) return
+
+    seenPlanBlueprintOfferKeys.add(offer.key)
+    updatePlanBlueprintOffer({ type: "captured", offer })
+  })
+  onCleanup(unsubPlanBlueprintOffer)
+
+  createEffect(
+    on(
+      () => info()?.workflow?.kind,
+      (kind) => {
+        if (kind === "plan") return
+        seenPlanBlueprintOfferKeys.clear()
+        updatePlanBlueprintOffer({ type: "plan_exited" })
+      },
+    ),
+  )
 
   const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
@@ -539,6 +581,53 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const togglePlan = async () => {
     if (blueprintModeLocked() || latticeActive() || lightLoopActive()) return
     await setPlan(!storedPlan())
+  }
+
+  const equipPlanBlueprintOffer = async () => {
+    const offer = untrack(() => planBlueprintOfferState().offer)
+    const sessionID = params.id
+    if (!offer || !sessionID) return
+    if (working()) {
+      showToast({
+        type: "warning",
+        title: "Session is running",
+        description: "Wait for the current response before equipping this Blueprint.",
+      })
+      return
+    }
+    if (blueprintModeLocked()) {
+      showToast({
+        type: "warning",
+        title: "Blueprint slot occupied",
+        description: "Unequip the current Blueprint before equipping another one.",
+      })
+      return
+    }
+
+    try {
+      await sdk.client.workflow.session.set({
+        id: sessionID,
+        workflowSetInput: { kind: "none" },
+      })
+      setLocalArmedLoop({
+        type: "pending",
+        noteID: offer.noteID,
+        title: offer.title,
+        runMode: "current",
+      })
+      updatePlanBlueprintOffer({ type: "equipped", key: offer.key })
+      showToast({
+        type: "info",
+        title: "Blueprint equipped",
+        description: "Send when you are ready to start it.",
+      })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to equip Blueprint",
+        description: err instanceof Error ? err.message : "Request failed",
+      })
+    }
   }
 
   // Lattice is active when the current session already has a run, or — on the
@@ -829,6 +918,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
     ),
   )
+
+  const visiblePlanBlueprintOffer = createMemo(() => {
+    if (
+      !shouldDisplayPlanBlueprintOffer({
+        state: planBlueprintOfferState(),
+        workflowKind: info()?.workflow?.kind,
+        sessionStatus: status(),
+        slotOccupied: blueprintModeLocked(),
+        currentScopeID: info()?.scope.id,
+      })
+    ) {
+      return null
+    }
+    return planBlueprintOfferState().offer
+  })
+
+  createEffect(() => {
+    const offer = visiblePlanBlueprintOffer()
+    if (!offer) {
+      props.onPriorityControlChange?.(undefined)
+      return
+    }
+
+    props.onPriorityControlChange?.(
+      <PlanBlueprintOfferControl
+        offer={offer}
+        onEquip={equipPlanBlueprintOffer}
+        onDismiss={() => updatePlanBlueprintOffer({ type: "dismissed", key: offer.key })}
+        onMute={() => updatePlanBlueprintOffer({ type: "muted" })}
+      />,
+    )
+  })
+  onCleanup(() => props.onPriorityControlChange?.(undefined))
 
   const selectedControlProfile = createMemo<ControlProfileId>(() => {
     const configured = params.id
