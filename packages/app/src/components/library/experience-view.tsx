@@ -4,6 +4,7 @@ import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -414,7 +415,7 @@ export function ExperienceView(props: {
               <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
                 <Popover.Trigger as="button" class="library-control-pill">
                   <span>{filterLabel()}</span>
-                  <Icon name="chevron-down" size="small" class="opacity-60" />
+                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
                   <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
@@ -474,14 +475,14 @@ export function ExperienceView(props: {
             <div class="library-toolbar-right">
               <Show when={displayedItems().length > 0}>
                 <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
-                  <Icon name="square-check" size="small" class="opacity-70" />
+                  <Icon name={getSemanticIcon("notes.select")} size="small" class="opacity-70" />
                   <span>Select</span>
                 </button>
               </Show>
               <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
                 <Popover.Trigger as="button" class={libraryActionButtonClass}>
                   <span>{experienceSortLabels[sort()]}</span>
-                  <Icon name="chevron-down" size="small" class="opacity-60" />
+                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
                   <Popover.Content class={libraryMenuClass}>
@@ -521,7 +522,7 @@ export function ExperienceView(props: {
             when={!pageError() || displayedItems().length > 0 || props.isSearching}
             fallback={
               <AppPanel.Empty
-                icon="brain"
+                icon={getSemanticIcon("state.error")}
                 title="Failed to load experiences"
                 description="Try refreshing the panel to load the latest experience records."
               />
@@ -531,7 +532,7 @@ export function ExperienceView(props: {
               when={!empty()}
               fallback={
                 <AppPanel.Empty
-                  icon="brain"
+                  icon={getSemanticIcon("experience.main")}
                   title="No experiences yet"
                   description="Experiences are recorded as you work with the agent and capture behavioral patterns."
                 />
@@ -770,7 +771,7 @@ function ExperienceCard(props: {
                 disabled={copyExperience.disabled()}
               >
                 <Show when={copyExperience.copied()} fallback={<Icon name={copyExperience.icon()} size="small" />}>
-                  <Icon name="check" size="small" class="text-icon-success-base" />
+                  <Icon name={getSemanticIcon("state.success")} size="small" class="text-icon-success-base" />
                 </Show>
               </button>
               <button
@@ -778,7 +779,7 @@ function ExperienceCard(props: {
                 class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
-                <Icon name="x" size="small" />
+                <Icon name={getSemanticIcon("action.close")} size="small" />
               </button>
             </Show>
           </div>
@@ -921,7 +922,7 @@ function ExperienceCard(props: {
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
-              <Icon name="chevron-down" size="small" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
             </span>
           </div>
         </Show>
@@ -996,7 +997,7 @@ function CollapsibleSection(props: { label: string; expanded: boolean; onToggle:
             "rotate-90": props.expanded,
           }}
         >
-          <Icon name="chevron-right" size="small" />
+          <Icon name={getSemanticIcon("navigation.expand")} size="small" />
         </span>
       </button>
       <Show when={props.expanded}>

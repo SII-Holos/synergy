@@ -16,6 +16,7 @@ import { PaginationBar } from "@/components/scopes/pagination-bar"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -64,7 +65,7 @@ export function MobileDrawer() {
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
-              <Icon name="x" size="normal" />
+              <Icon name={getSemanticIcon("action.close")} size="normal" />
             </button>
           </div>
 
@@ -146,7 +147,7 @@ function ScopeListView(props: {
         }}
         onClick={props.onNavigateHome}
       >
-        <Icon name="home" size="normal" class="shrink-0" />
+        <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
         <span class="text-14-medium">Home</span>
       </button>
 
@@ -175,7 +176,7 @@ function ScopeListView(props: {
               }}
               onClick={() => props.onSelectScope(scope)}
             >
-              <Icon name="folder" size="normal" class="shrink-0" />
+              <Icon name={getSemanticIcon("workspace.main")} size="normal" class="shrink-0" />
               <span
                 classList={{
                   "text-14-medium truncate": true,
@@ -185,7 +186,7 @@ function ScopeListView(props: {
               >
                 {getScopeLabel(scope)}
               </span>
-              <Icon name="chevron-right" size="small" class="ml-auto shrink-0 text-icon-weak" />
+              <Icon name={getSemanticIcon("navigation.expand")} size="small" class="ml-auto shrink-0 text-icon-weak" />
             </button>
           )
         }}
@@ -315,7 +316,7 @@ function SessionListDrawerView(props: {
           class="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onBack}
         >
-          <Icon name="arrow-left" size="small" />
+          <Icon name={getSemanticIcon("navigation.back")} size="small" />
           <span class="text-12-medium">Projects</span>
         </button>
         <span class="flex-1" />
@@ -328,7 +329,7 @@ function SessionListDrawerView(props: {
         class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-strong hover:border-border-base hover:bg-surface-raised-base-hover transition-all"
         onClick={props.onNewSession}
       >
-        <Icon name="plus" size="small" />
+        <Icon name={getSemanticIcon("action.add")} size="small" />
         <span>New session</span>
       </button>
 

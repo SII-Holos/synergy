@@ -117,7 +117,7 @@ function HolosIconButton() {
       trigger={
         <Tooltip placement="top" value={label()}>
           <button type="button" classList={iconButtonClass()}>
-            <Icon name={getSemanticIcon("connection.holos")} size="small" class="translate-y-px" />
+            <Icon name={getSemanticIcon("holos.main")} size="small" class="translate-y-px" />
             <div
               classList={{
                 ...statusDotClass(dot()),

@@ -5,6 +5,7 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useSDK } from "@/context/sdk"
 import "./wake-indicator.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface Props {
   sessionID: string
@@ -162,7 +163,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
                 data-expanded={open() ? "true" : "false"}
                 aria-label={`定时唤醒，${agenda()?.count ?? 0} 项待唤醒，点击查看详情`}
               >
-                <Icon name="clock" size="small" />
+                <Icon name={getSemanticIcon("agenda.main")} size="small" />
                 <Show when={(agenda()?.count ?? 0) > 0}>
                   <span class="session-agenda-wake-badge">{agenda()?.count}</span>
                 </Show>
@@ -173,7 +174,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
           <div class="session-agenda-wake-panel-body">
             <div class="session-agenda-wake-panel-header">
               <div class="session-agenda-wake-panel-title">
-                <Icon name="clock" size="small" />
+                <Icon name={getSemanticIcon("agenda.main")} size="small" />
                 <span>定时唤醒</span>
               </div>
               <div class="session-agenda-wake-panel-description">

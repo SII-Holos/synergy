@@ -143,7 +143,13 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             />
           </div>
           <Show when={state.draft || state.status !== "idle"}>
-            <IconButton type="button" icon="circle-x" variant="ghost" aria-label="Clear search" onClick={clearDraft} />
+            <IconButton
+              type="button"
+              icon={getSemanticIcon("action.clear")}
+              variant="ghost"
+              aria-label="Clear search"
+              onClick={clearDraft}
+            />
           </Show>
           <Button
             type="submit"

@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
 import "./dag-graph.css"
+import { getSemanticIcon } from "./semantic-icon"
 
 export interface DagNode {
   id: string
@@ -659,7 +660,7 @@ export function DagGraph(props: {
                         props.onOpenSession?.(node.session_id!)
                       }}
                     >
-                      <Icon name="log-in" size="small" />
+                      <Icon name={getSemanticIcon("action.open")} size="small" />
                       Open session
                     </button>
                   ) : null}
@@ -673,7 +674,7 @@ export function DagGraph(props: {
                       closeNodeInspector()
                     }}
                   >
-                    <Icon name="x" size="small" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </div>
                 <div data-slot="dag-node-preview-title">{node.content}</div>

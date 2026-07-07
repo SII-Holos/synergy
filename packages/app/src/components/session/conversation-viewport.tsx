@@ -2,6 +2,7 @@ import type { JSX } from "solid-js"
 import { Show } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function ConversationViewport(props: {
   scrolledUp: boolean
@@ -26,7 +27,7 @@ export function ConversationViewport(props: {
           style={{ animation: "scroll-btn-enter 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
         >
           <IconButton
-            icon="chevron-down"
+            icon={getSemanticIcon("navigation.collapse")}
             variant="primary"
             size="large"
             class="rounded-full! size-10 hover:scale-105 active:scale-95 transition-transform"

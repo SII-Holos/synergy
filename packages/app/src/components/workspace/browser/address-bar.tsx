@@ -108,7 +108,7 @@ export function AddressBar(props: AddressBarProps) {
     <div class="browser-address-bar flex h-10 shrink-0 items-center gap-2 border-b px-2">
       <div class="browser-nav-group flex shrink-0 items-center gap-0.5">
         <IconButton
-          icon={getSemanticIcon("browser.back")}
+          icon={getSemanticIcon("navigation.back")}
           variant="ghost"
           title="Back"
           class="browser-nav-button"
@@ -116,7 +116,7 @@ export function AddressBar(props: AddressBarProps) {
           onClick={() => props.onHistory("back")}
         />
         <IconButton
-          icon={getSemanticIcon("browser.forward")}
+          icon={getSemanticIcon("navigation.forward")}
           variant="ghost"
           title="Forward"
           class="browser-nav-button"
@@ -124,7 +124,7 @@ export function AddressBar(props: AddressBarProps) {
           onClick={() => props.onHistory("forward")}
         />
         <IconButton
-          icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
+          icon={props.isLoading() ? getSemanticIcon("action.stop") : getSemanticIcon("action.refresh")}
           variant="ghost"
           title={props.isLoading() ? "Stop" : "Reload"}
           class="browser-nav-button"

@@ -12,6 +12,7 @@ import { Code } from "@ericsanchezok/synergy-ui/code"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import type { AssistantMessage, Message, Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface SessionContextTabProps {
   messages: () => Message[]
@@ -289,7 +290,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
               </div>
               <div class="flex items-center gap-3">
                 <div class="shrink-0 text-12-regular text-text-weak">{time(msgProps.message.time.created)}</div>
-                <Icon name="chevron-right" size="small" class="shrink-0 text-text-weak" />
+                <Icon name={getSemanticIcon("navigation.expand")} size="small" class="shrink-0 text-text-weak" />
               </div>
             </div>
           </Accordion.Trigger>

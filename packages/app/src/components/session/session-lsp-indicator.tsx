@@ -18,7 +18,7 @@ export function SessionLspIndicator() {
   return (
     <Show when={stats().total > 0}>
       <StatusBarIndicator
-        icon={getSemanticIcon("connection.lsp")}
+        icon={getSemanticIcon("lsp.main")}
         value={stats().connected}
         tooltip={tooltipContent()}
         iconClass={stats().hasError ? "text-icon-critical-base" : undefined}

@@ -93,7 +93,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     argsKeys: ["scope", "mode"],
   },
   blueprint: {
-    icon: getSemanticIcon("orchestration.blueprint"),
+    icon: getSemanticIcon("blueprint.main"),
     label: "Blueprint",
     subtitleKeys: ["title", "loopID", "id"],
     argsKeys: ["status"],

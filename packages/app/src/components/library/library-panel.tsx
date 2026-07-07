@@ -13,6 +13,7 @@ import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
 import "./library-panel.css"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function LibraryPanel() {
   const sdk = useGlobalSDK()
@@ -107,7 +108,7 @@ export function LibraryPanel() {
               <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
               <Show when={showSearch()}>
                 <div class="library-search-field">
-                  <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+                  <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak shrink-0" />
                   <input
                     type="text"
                     placeholder={
@@ -128,7 +129,7 @@ export function LibraryPanel() {
                       class="library-icon-button"
                       onClick={() => onSearchInput("")}
                     >
-                      <Icon name="x" size="small" />
+                      <Icon name={getSemanticIcon("action.close")} size="small" />
                     </button>
                   </Show>
                 </div>

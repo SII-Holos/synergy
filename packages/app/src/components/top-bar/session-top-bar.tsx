@@ -185,7 +185,7 @@ export function SessionTopBar() {
     <div class="stb-root">
       <div class="stb-left">
         <Show when={!isGlobal()}>
-          <Icon name="folder" size="normal" class="stb-folder" />
+          <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
           <span class="stb-slash">/</span>
         </Show>
         {/* Model selector */}
@@ -204,7 +204,7 @@ export function SessionTopBar() {
               <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
                 <button type="button" class="stb-selector-btn">
                   <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
-                  <Icon name="chevron-down" size="normal" class="stb-chevron" />
+                  <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
                 </button>
               </TooltipKeybind>
             </ModelSelectorPopover>
