@@ -236,12 +236,12 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   ),
   section(
     "timeouts",
-    "Timeouts",
+    "Agents",
     "Runtime",
     30,
     "settings.timeouts",
-    "Agent, provider, and tool timeout controls.",
-    ["timeout", "provider", "tool", "coauthor", "commit", "git", "prompt"],
+    "Agent prompt behavior, provider timeouts, and tool timeout controls.",
+    ["agent", "timeout", "provider", "tool", "coauthor", "commit", "git", "prompt"],
     ["runtime"],
   ),
   section(
@@ -355,6 +355,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   question: "background",
   compaction: "auto",
   timeout: "background",
+  experimental: "background",
   watcher: "background",
   formatter: "explicit",
   lsp: "explicit",

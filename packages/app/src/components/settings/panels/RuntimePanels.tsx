@@ -108,7 +108,7 @@ export function TimeoutsPanel(props: {
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
 }) {
   return (
-    <SettingsPage title="Timeouts" description="Agent, provider, and tool timeout controls.">
+    <SettingsPage title="Agents" description="Agent prompt behavior, provider timeouts, and tool timeout controls.">
       <SettingsSection title="Agent">
         <SettingRow
           title="Co-author Reminder"
