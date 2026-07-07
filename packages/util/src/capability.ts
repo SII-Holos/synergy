@@ -395,6 +395,7 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "shell_remote_execute",
   "shell_remote_publish",
   "shell_remote_write",
+  "shell_destructive",
   "shell_hardline",
   "file_external_read",
   "file_external_write",
