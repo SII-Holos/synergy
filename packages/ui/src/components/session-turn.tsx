@@ -37,6 +37,7 @@ import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
+import { CopyIconButton } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
@@ -697,6 +698,27 @@ export function SessionTurn(
     const lastTool = items.findLastIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
     return { firstReasoning, lastReasoning, firstTool, lastTool }
   })
+
+  const markdownText = createMemo(() => {
+    const last = lastAssistantMessage()
+    if (!last) return ""
+    const parts = data.store.part[last.id]
+    if (!parts) return ""
+    const texts: string[] = []
+    for (const part of parts) {
+      if (part.type === "text") {
+        const textPart = part as TextPart
+        if (textPart.synthetic || textPart.origin === "system") continue
+        const text = textPart.text?.trim()
+        if (text) texts.push(text)
+      } else if (part.type === "reasoning") {
+        const reasoningPart = part as ReasoningPart
+        const text = reasoningPart.text?.trim()
+        if (text) texts.push(text)
+      }
+    }
+    return texts.join("\n\n")
+  })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
   )
@@ -927,6 +949,16 @@ export function SessionTurn(
                               Show more changes ({(msg().summary?.diffs?.length ?? 0) - store.diffLimit})
                             </Button>
                           </Show>
+                        </Show>
+                        <Show when={!working() && markdownText()}>
+                          <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
+                            <CopyIconButton
+                              text={markdownText}
+                              copyLabel="Copy as Markdown"
+                              copiedLabel="Copied!"
+                              failureDescription="Unable to copy the message."
+                            />
+                          </div>
                         </Show>
                       </div>
                     </Show>
