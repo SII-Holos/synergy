@@ -184,15 +184,15 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    const memStart = process.memoryUsage()
+    const mem = process.memoryUsage()
     log.info("loop started", {
       sessionID,
       step: 0,
       memory: {
-        rss: memStart.rss(),
-        heapUsed: memStart.heapUsed,
-        external: memStart.external,
-        arrayBuffers: memStart.arrayBuffers,
+        rss: mem.rss,
+        heapUsed: mem.heapUsed,
+        external: mem.external,
+        arrayBuffers: mem.arrayBuffers,
       },
     })
     ContinuationKernel.init()
