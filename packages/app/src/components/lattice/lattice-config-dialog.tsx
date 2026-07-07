@@ -86,7 +86,11 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
           action,
         },
       })
-      showToast({ type: "info", title: "Lattice enabled", description: `${mode()} · budget ${parsedBudget || "unlimited"}` })
+      showToast({
+        type: "info",
+        title: "Lattice enabled",
+        description: `${mode()} · budget ${parsedBudget || "unlimited"}`,
+      })
       dialog.close()
     } catch (err) {
       showToast({
@@ -146,12 +150,7 @@ export function LatticeConfigDialog(props: { sdk: LatticeSDKLike; sessionID: str
           </div>
         </div>
 
-        <TextField
-          label="Model-call budget (0 = unlimited)"
-          type="number"
-          value={budget()}
-          onChange={setBudget}
-        />
+        <TextField label="Model-call budget (0 = unlimited)" type="number" value={budget()} onChange={setBudget} />
 
         <Show when={!existing()}>
           <TextField

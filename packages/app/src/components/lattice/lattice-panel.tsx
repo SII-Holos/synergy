@@ -88,7 +88,11 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
       })
       setReviewPrompt("")
     } catch (err) {
-      showToast({ type: "error", title: "Continue failed", description: err instanceof Error ? err.message : "Unknown" })
+      showToast({
+        type: "error",
+        title: "Continue failed",
+        description: err instanceof Error ? err.message : "Unknown",
+      })
     } finally {
       setBusy(false)
     }

@@ -20,7 +20,12 @@ async function runningRun(scopeID: string) {
   await LatticeStore.reset({ sessionID: session.id, mode: "auto" })
   await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "a" }] })
   await LatticeMachine.patch(scopeID, session.id, { bindCurrentBlueprint: { noteID: "note_a" } })
-  const run = await LatticeMachine.onLoopStarted(scopeID, session.id, (await LatticeStore.get(scopeID, session.id)).currentStepID!, "bll_a")
+  const run = await LatticeMachine.onLoopStarted(
+    scopeID,
+    session.id,
+    (await LatticeStore.get(scopeID, session.id)).currentStepID!,
+    "bll_a",
+  )
   return { session, run }
 }
 

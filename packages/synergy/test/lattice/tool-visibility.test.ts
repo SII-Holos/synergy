@@ -22,7 +22,9 @@ describe("Lattice tool visibility", () => {
   })
 
   test("question always visible in collaborative mode", () => {
-    expect(SessionModePolicy.visibility({ toolName: "question", session: lattice("collaborative", true) })).toBeUndefined()
+    expect(
+      SessionModePolicy.visibility({ toolName: "question", session: lattice("collaborative", true) }),
+    ).toBeUndefined()
   })
 
   test("non-lattice, non-pathway tools are unaffected", () => {
