@@ -571,10 +571,10 @@ async function runParallel(plan: DevPlan): Promise<number> {
     if (plan.openUrl) openExternal(plan.openUrl)
     if (children.length === 0) return 0
     const firstExit = await Promise.race(children.map((child) => child.exited))
-    cleanup()
+    await cleanup()
     return firstExit
   } catch (error) {
-    cleanup()
+    await cleanup()
     throw error
   }
 }
