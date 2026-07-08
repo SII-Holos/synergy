@@ -28,7 +28,8 @@ export namespace Cortex {
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
 
-  const CLEANUP_DELAY_MS = 20 * 60 * 1000
+  const PROMPT_COMPACT_DELAY_MS = 30 * 1000
+  const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -193,6 +194,7 @@ export namespace Cortex {
     }
 
     tasks.set(taskID, task)
+    SessionManager.registerChildRuntime(session.id)
 
     if (task.visibility !== "hidden") {
       Bus.publish(Event.TaskCreated, { task })
@@ -481,22 +483,20 @@ export namespace Cortex {
     setTimeout(() => {
       const task = tasks.get(taskID)
       if (task) {
-        task.prompt = ""
-        log.info("task prompt evicted", { taskID })
+        task.prompt = truncate(task.prompt, 4096)
+        task.progress = undefined
+        log.info("task compacted", { taskID })
       }
-    }, CLEANUP_DELAY_MS)
+    }, PROMPT_COMPACT_DELAY_MS)
 
-    setTimeout(
-      () => {
-        void (async () => {
-          tasks.delete(taskID)
-          acquiredTasks.delete(taskID)
-          SessionManager.unregisterRuntime(task.sessionID)
-          log.info("task cleaned up", { taskID })
-        })()
-      },
-      CLEANUP_DELAY_MS + 5 * 60 * 1000,
-    )
+    setTimeout(() => {
+      void (async () => {
+        tasks.delete(taskID)
+        acquiredTasks.delete(taskID)
+        SessionManager.unregisterRuntime(task.sessionID)
+        log.info("task cleaned up", { taskID })
+      })()
+    }, TASK_CLEANUP_DELAY_MS)
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {

@@ -477,6 +477,12 @@ export const LocalBashBackend = {
       aborted = true
       cleanupAllTimers()
       void kill()
+      setTimeout(() => {
+        if (!exited && regProc) {
+          regProc.exited = true
+          ProcessRegistry.markExited(regProc, -1, "SIGKILL")
+        }
+      }, 30_000)
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
