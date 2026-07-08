@@ -244,11 +244,11 @@ describe("SessionInvoke workspace execution context", () => {
     let worktreeID: string | undefined
     let worktreePath = ""
     let assistantPath: MessageV2.Assistant["path"] | undefined
-    let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       onProcess: async (input, assistant) => {
         assistantPath = assistant.path
-        systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -266,9 +266,9 @@ describe("SessionInvoke workspace execution context", () => {
       await SessionInvoke.loop.force(sessionID)
 
       expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
-      expect(systemPrompt).toContain(`Working directory: ${worktreePath}`)
-      expect(systemPrompt).toContain(`Workspace path: ${worktreePath}`)
-      expect(systemPrompt).toContain(`Original checkout: ${tmp.path}`)
+      expect(lateSystemPrompt).toContain(`Working directory: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Workspace path: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Original checkout: ${tmp.path}`)
     } finally {
       restore()
       SessionManager.unregisterRuntime(sessionID)
