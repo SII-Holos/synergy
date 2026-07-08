@@ -7,6 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
+import { detectDetachedDaemonRisk, LocalBashBackend } from "../../src/tool/bash/local"
 
 const ctx = {
   sessionID: "test",
@@ -139,6 +140,28 @@ describe("tool.bash", () => {
       expect(right.metadata.exit).toBe(0)
       expect(left.output).toContain("left")
       expect(right.output).toContain("right")
+    })
+  })
+
+  test("detects detached daemon launch patterns without flagging normal command chaining", () => {
+    expect(detectDetachedDaemonRisk("tmux new-session -d -s app 'npm run dev'")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("nohup npm run dev > server.log 2>&1 &")?.kind).toBe("nohup")
+    expect(detectDetachedDaemonRisk("setsid python worker.py")?.kind).toBe("setsid")
+    expect(detectDetachedDaemonRisk("python worker.py &")?.kind).toBe("shell_background")
+    expect(detectDetachedDaemonRisk("echo first && echo second")).toBeUndefined()
+  })
+
+  test("blocks detached daemon launch patterns before spawning locally", async () => {
+    await withProjectScope(async () => {
+      await expect(
+        LocalBashBackend.execute(
+          {
+            command: "nohup echo hi > daemon.log 2>&1 &",
+            description: "Launch detached daemon",
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("Blocked detached daemon launch pattern")
     })
   })
 
