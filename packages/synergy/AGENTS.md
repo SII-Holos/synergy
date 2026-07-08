@@ -40,7 +40,9 @@ Do not bypass pre-push hooks. If a hook check fails, fix the root cause rather t
 
 ## Architecture
 
-- **Control profiles**: `src/control-profile/` owns user-facing access profile semantics; `src/enforcement/` owns capability classification and gate decisions; `src/permission/smart-allow.ts` owns high-confidence false-positive adjudication without raw secret disclosure; `src/sandbox/` owns OS enforcement only. Keep these layers separate and avoid reintroducing tool-local boundary checks. `full_access` must remain silent allow-all inside the permission system, while `autonomous` must never ask and must auto-deny anything it cannot safely allow.
+- **Control profiles**: `src/control-profile/` owns user-facing access profile semantics; `src/enforcement/` owns capability classification and gate decisions; `src/permission/smart-allow.ts` owns high-confidence false-positive adjudication without raw secret disclosure; `src/sandbox/` owns OS enforcement only. Keep these layers separate and avoid reintroducing tool-local boundary checks. `full_access` must remain silent allow-all inside the permission system. `guarded` is the interactive profile and may ask. `autonomous` must never ask; anything outside its policy is denied with a clear diagnostic.
+
+- **Permission first principles**: ordinary external reads are allowed, including non-sensitive reads from a worktree session's original checkout. Sensitive paths such as credentials, secrets, auth stores, and explicit secret candidates remain protected. Worktree isolation blocks writes, modifications, and execution outside the active worktree unless the active profile explicitly allows them; under `autonomous`, a worktree session may read ordinary original-checkout files but must not write to, modify, or run commands from the original checkout. Configured skill/plugin skill roots are trusted runtime areas: read, write, and execution inside those roots are allowed, and only escapes from those roots should be treated as ordinary external access.
 
 - **Tools**: Implement `Tool.Info` interface with `execute()` method
 - **Context**: Pass `sessionID` in tool context, use `App.provide()` for DI
