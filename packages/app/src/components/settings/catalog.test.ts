@@ -43,13 +43,10 @@ describe("settings catalog", () => {
     }
   })
 
-  test("agents config domain has a focused default agent settings page", () => {
-    expect(BUILTIN_SETTINGS_IDS).toContain("agents")
+  test("agents domain config is reachable yet not a standalone settings page", () => {
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("agents")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("commands")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("instructions")
-    const agents = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "agents")!
-    expect(agents.domainIds).toEqual(["agents"])
-    expect(agents.rowLabels).toContain("Default Agent")
     expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("commands"))).toBe(false)
   })
 
@@ -57,8 +54,8 @@ describe("settings catalog", () => {
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
     expect(general.keywords).toContain("toast")
     expect(general.rowLabels).toContain("Product Updates")
-    const agents = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "agents")!
-    expect(agents.keywords).toContain("primary")
+    const timeouts = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "timeouts")!
+    expect(timeouts.keywords).toContain("agent")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
   })
