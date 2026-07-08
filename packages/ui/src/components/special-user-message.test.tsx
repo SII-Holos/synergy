@@ -76,15 +76,15 @@ function renderSpecial(message: UserMessage, parts: PartType[] = []) {
 }
 
 describe("special user messages", () => {
-  test("renders Plan Mode requests as right-side user bubbles", async () => {
-    const root = renderSpecial(userMessage({ planModeRequest: true }), [textPart("Create a Blueprint")])
+  test("renders Plan requests as right-side user bubbles", async () => {
+    const root = renderSpecial(userMessage({ workflow: "plan" }), [textPart("Create a Blueprint")])
     await Promise.resolve()
 
     const wrapper = root.querySelector('[data-component="special-user-message"]')
     const user = root.querySelector('[data-component="user-message"]')
 
     expect(wrapper?.getAttribute("data-layout")).toBe("user-bubble")
-    expect(root.querySelector('[data-slot="special-message-badge"]')?.textContent).toBe("Plan mode")
+    expect(root.querySelector('[data-slot="special-message-badge"]')?.textContent).toBe("Plan")
     expect(user?.getAttribute("data-variant")).toBe("turn-bubble")
     expect(user?.textContent).toContain("Create a Blueprint")
   })

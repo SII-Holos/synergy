@@ -1,4 +1,4 @@
-Performs precise anchored edits to note content. Blueprint notes are editable only in Plan Mode. Outside Plan Mode, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables.
+Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables.
 
 Always read first:
 - Call note_read({ ids:[...], format:"blocks" }) before editing.

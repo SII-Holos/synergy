@@ -11,9 +11,9 @@ import { LatticeStore } from "./store"
 import { LatticeTypes } from "./types"
 
 /**
- * Orchestrates the session-facing Lattice lifecycle: enabling/pausing the mode,
- * keeping session metadata in sync, cancelling loops on exit, and the
- * collaborative Continue / cancel actions.
+ * Orchestrates the Lattice run lifecycle. Session workflow projection is owned
+ * by SessionWorkflowService; this service only mutates Lattice run state and
+ * lattice-owned BlueprintLoops.
  */
 export namespace LatticeRunService {
   export type EnableInput = {
@@ -28,29 +28,12 @@ export namespace LatticeRunService {
     return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
   }
 
-  async function writeSessionLattice(run: LatticeTypes.Run): Promise<void> {
-    await Session.update(run.sessionID, (draft) => {
-      draft.lattice = {
-        runID: run.id,
-        mode: run.mode,
-        firstBlueprintStarted: run.firstBlueprintStarted,
-      }
-      draft.planMode = false
-    })
-  }
-
-  async function clearSessionLattice(sessionID: string): Promise<void> {
-    await Session.update(sessionID, (draft) => {
-      draft.lattice = undefined
-    })
-  }
-
-  async function assertNoForeignLoop(session: Session.Info): Promise<void> {
+  export async function assertNoForeignLoop(session: Session.Info): Promise<void> {
     const loopID = session.blueprint?.loopID
     if (!loopID) return
     const scopeID = ScopeContext.current.scope.id
     const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => undefined)
-    if (loop && activeLoopStatus(loop.status) && loop.orchestration?.kind !== "lattice") {
+    if (loop && activeLoopStatus(loop.status) && loop.source !== "lattice") {
       throw new Error(`Session ${session.id} has an active BlueprintLoop; finish or cancel it before enabling Lattice.`)
     }
   }
@@ -59,7 +42,7 @@ export namespace LatticeRunService {
     const loopID = session.blueprint?.loopID
     if (!loopID) return
     const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => undefined)
-    if (loop && activeLoopStatus(loop.status) && loop.orchestration?.kind === "lattice") {
+    if (loop && activeLoopStatus(loop.status) && loop.source === "lattice") {
       await BlueprintLoopStore.updateStatus(scopeID, loopID, { status: "cancelled" }).catch(() => undefined)
     }
   }
@@ -99,7 +82,6 @@ export namespace LatticeRunService {
         draft.mode = input.mode
         if (input.maxModelCalls !== undefined) draft.maxModelCalls = input.maxModelCalls
       })
-      await writeSessionLattice(run)
       return run
     }
 
@@ -109,7 +91,6 @@ export namespace LatticeRunService {
         if (input.maxModelCalls !== undefined) draft.maxModelCalls = input.maxModelCalls
       })
       const run = await LatticeMachine.resume(scopeID, input.sessionID)
-      await writeSessionLattice(run)
       // The session is idle; nudge the kernel so it starts a loop or continues.
       void ContinuationKernel.kick(input.sessionID).catch(() => undefined)
       return run
@@ -123,7 +104,6 @@ export namespace LatticeRunService {
       maxModelCalls: input.maxModelCalls,
       goal: input.goal,
     })
-    await writeSessionLattice(run)
     if (input.goal) await deliverPlanningKick(input.sessionID, input.goal)
     return run
   }
@@ -137,10 +117,8 @@ export namespace LatticeRunService {
       const paused = await LatticeMachine.pause(scopeID, sessionID, "user_exit")
       const session = await Session.get(sessionID)
       await cancelActiveLatticeLoop(scopeID, session)
-      await clearSessionLattice(sessionID)
       return paused
     }
-    await clearSessionLattice(sessionID)
     return run
   }
 
@@ -168,7 +146,6 @@ export namespace LatticeRunService {
     const cancelled = await LatticeMachine.cancel(scopeID, run.sessionID)
     const session = await Session.get(run.sessionID).catch(() => undefined)
     if (session) await cancelActiveLatticeLoop(scopeID, session)
-    await clearSessionLattice(run.sessionID)
     return cancelled
   }
 }
