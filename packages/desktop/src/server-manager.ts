@@ -147,9 +147,12 @@ export class DesktopServerManager {
       return this.url
     } catch (error) {
       this.state = "failed"
-      this.lastError = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      const logTail = await readLogTail(this.logFile)
+      const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
+      this.lastError = detail
       await this.stop()
-      throw error
+      throw new Error(detail, { cause: error instanceof Error ? error : undefined })
     }
   }
 
@@ -222,4 +225,21 @@ function sourceSynergyRoot(): string | null {
     path.resolve(dirname, "../../../packages/synergy"),
   ]
   return candidates.find((candidate) => fs.existsSync(path.join(candidate, "src/index.ts"))) ?? null
+}
+
+async function readLogTail(logFile: string | null): Promise<string | null> {
+  if (!logFile) return null
+  try {
+    const stat = await fsp.stat(logFile)
+    if (stat.size === 0) return "(empty)"
+    const fd = await fsp.open(logFile, "r")
+    const maxBytes = 8192
+    const start = Math.max(0, stat.size - maxBytes)
+    const buf = Buffer.alloc(maxBytes)
+    const { bytesRead } = await fd.read(buf, 0, maxBytes, start)
+    await fd.close()
+    return buf.subarray(0, bytesRead).toString("utf-8")
+  } catch {
+    return null
+  }
 }

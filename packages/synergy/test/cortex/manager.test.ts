@@ -5,7 +5,7 @@ import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
-import { SessionInbox } from "../../src/session/inbox"
+import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
 import { tmpdir } from "../fixture/fixture"
@@ -970,14 +970,14 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalInboxDeliver = SessionInbox.deliver
-          const deliveries: Parameters<typeof SessionInbox.deliver>[0][] = []
+          const originalDeliver = SessionManager.deliver
+          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionInbox.deliver as any) = mock(async (input: Parameters<typeof SessionInbox.deliver>[0]) => {
+          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
             deliveries.push(input)
           })
           try {
@@ -995,12 +995,12 @@ describe.serial("Cortex", () => {
 
             expect(completed?.status).toBe("completed")
             expect(deliveries).toHaveLength(1)
-            expect(deliveries[0].sessionID).toBe(parentSession.id)
-            expect(deliveries[0].mode).toBe("steer")
-            expect(deliveries[0].message?.origin?.type).toBe("cortex")
+            expect(deliveries[0].target).toBe(parentSession.id)
+            expect(deliveries[0].mail.type).toBe("user")
+            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionInbox.deliver as any) = originalInboxDeliver
+            ;(SessionManager.deliver as any) = originalDeliver
           }
         },
       })
@@ -1012,14 +1012,14 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal2 = SessionInvoke.invokeInternal
-          const originalInboxDeliver2 = SessionInbox.deliver
+          const originalDeliver2 = SessionManager.deliver
           const deliverMock = mock(async () => {})
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionInbox.deliver as any) = deliverMock
+          ;(SessionManager.deliver as any) = deliverMock
           try {
             const parentSession = await Session.create({})
             const task = await Cortex.launch({
@@ -1038,7 +1038,7 @@ describe.serial("Cortex", () => {
             expect(deliverMock).not.toHaveBeenCalled()
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal2
-            ;(SessionInbox.deliver as any) = originalInboxDeliver2
+            ;(SessionManager.deliver as any) = originalDeliver2
           }
         },
       })

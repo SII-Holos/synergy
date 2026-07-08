@@ -49,7 +49,7 @@ import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { blueprintNoteWriteFocusRequest } from "@/components/note/blueprint-note-focus"
+import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   defaultNewSessionWorkspaceSelection,
   normalizePathForCompare,
