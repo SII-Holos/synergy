@@ -45,7 +45,15 @@ export namespace SkillPaths {
   }
 
   export function runtimeSkillRootsSync(instanceDirectory: string) {
-    return uniqExisting(runtimeSkillRootCandidatesSync(instanceDirectory))
+    const synergy = nativeRuntimeRootsSync(instanceDirectory)
+    const claude = claudeRoots(instanceDirectory)
+
+    return uniqExisting([
+      ...synergy.flatMap((root) => [path.join(root, "skill"), path.join(root, "skills")]),
+      ...claude.map((root) => path.join(root, "skills")),
+      ...openClawRoots(instanceDirectory),
+      ...codexRoots(instanceDirectory),
+    ])
   }
 
   export function runtimeSkillRootCandidatesSync(instanceDirectory: string) {
