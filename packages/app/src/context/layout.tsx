@@ -522,10 +522,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
     }
 
-    function applyScopeRemoval(scopeID: string) {
-      const removed = removeScopeFromIndex(scopeIndex(), scopeID)
+    function applyScopeRemoval(scopeID: string, directory?: string) {
+      const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
+      if (removed.directory) server.scopes.close(removed.directory)
       if (removed.removed) {
-        if (removed.directory) server.scopes.close(removed.directory)
         setScopeIndex(removed.entries)
       }
       scheduleScopeIndexRefresh()
@@ -535,15 +535,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const unsub = globalSdk.event.listen((e) => {
         const event = e.details as { type?: string; properties?: unknown }
         const eventProperties = isRecord(event.properties) ? event.properties : undefined
+        const eventDirectory = typeof eventProperties?.directory === "string" ? eventProperties.directory : undefined
         if (event.type === "scope.removed") {
           const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
-          if (scopeID) applyScopeRemoval(scopeID)
+          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
           return
         }
         const eventTime = isRecord(eventProperties?.time) ? eventProperties.time : undefined
         if (event.type === "scope.updated" && eventTime?.archived) {
           const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
-          if (scopeID) applyScopeRemoval(scopeID)
+          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
           return
         }
         if (event.type !== "session.updated") return

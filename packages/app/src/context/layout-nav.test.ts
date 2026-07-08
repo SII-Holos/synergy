@@ -211,4 +211,13 @@ describe("removeScopeFromIndex", () => {
     expect(result.directory).toBeUndefined()
     expect(result.entries).toEqual(entries)
   })
+
+  test("returns the event directory when the scope is missing from the index", () => {
+    const entries = [scopeEntry({ scopeID: "scope-a", directory: "/repo/a" })]
+    const result = removeScopeFromIndex(entries, "scope-missing", "/repo/missing")
+
+    expect(result.removed).toBe(false)
+    expect(result.directory).toBe("/repo/missing")
+    expect(result.entries).toEqual(entries)
+  })
 })

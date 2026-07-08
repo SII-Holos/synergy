@@ -95,12 +95,13 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
 export function removeScopeFromIndex(
   entries: readonly ScopeNavEntry[],
   scopeID: string,
+  fallbackDirectory?: string,
 ): { entries: ScopeNavEntry[]; directory?: string; removed: boolean } {
   const removed = entries.find((entry) => entry.scopeID === scopeID)
-  if (!removed) return { entries: entries.slice(), removed: false }
+  if (!removed) return { entries: entries.slice(), directory: fallbackDirectory, removed: false }
   return {
     entries: entries.filter((entry) => entry.scopeID !== scopeID),
-    directory: removed.directory,
+    directory: removed.directory || fallbackDirectory,
     removed: true,
   }
 }
