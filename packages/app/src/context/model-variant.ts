@@ -34,6 +34,10 @@ export function createModelVariantSession(dir: string, id: string | undefined) {
       if (!model) return undefined
       return store.variant[modelVariantKey(model)]
     },
+    has(model: ModelVariantKey | undefined) {
+      if (!model) return false
+      return Object.hasOwn(store.variant, modelVariantKey(model))
+    },
     set(model: ModelVariantKey | undefined, value: string | undefined) {
       if (!model) return
       setStore("variant", modelVariantKey(model), value)
