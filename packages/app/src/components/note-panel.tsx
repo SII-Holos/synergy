@@ -32,6 +32,7 @@ import {
   isActiveBlueprintLoopStatus,
   type BlueprintRunMode,
 } from "@/components/note/blueprint-run-session"
+import { getNoteSnapshotDelta } from "@/components/note/note-snapshot"
 import "./note-panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -1470,22 +1471,23 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   function applySnapshot(snapshot: NoteInfo) {
+    const delta = getNoteSnapshotDelta(baseNote(), snapshot)
     const ed = editor()
     setBaseNote(snapshot)
-    setTitle(snapshot.title)
-    setTags(snapshot.tags ?? [])
+    if (delta.titleChanged) setTitle(snapshot.title)
+    if (delta.tagsChanged) setTags(snapshot.tags ?? [])
     setConflict(null)
     setDirty(false)
-    if (ed && !ed.isDestroyed) {
-      const { from } = ed.state.selection
-      ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
-      const docSize = ed.state.doc.content.size
-      if (from > 0 && from < docSize) {
-        try {
-          ed.commands.setTextSelection(from)
-        } catch {
-          /* position may be invalid */
-        }
+    if (!delta.contentChanged || !ed || ed.isDestroyed) return
+
+    const { from } = ed.state.selection
+    ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
+    const docSize = ed.state.doc.content.size
+    if (from > 0 && from < docSize) {
+      try {
+        ed.commands.setTextSelection(from)
+      } catch {
+        /* position may be invalid */
       }
     }
   }

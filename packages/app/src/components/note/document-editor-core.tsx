@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { Editor } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
@@ -489,7 +489,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
   let bubbleRef!: HTMLDivElement
   const [editorInstance, setEditorInstance] = createSignal<Editor>()
 
-  createEffect(() => {
+  onMount(() => {
     const instance = new Editor({
       element: editorRef,
       extensions: createDocumentEditorExtensions({
