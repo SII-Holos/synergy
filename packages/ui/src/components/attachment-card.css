@@ -12,6 +12,10 @@
   width: 100%;
 }
 
+[data-component="attachment-gallery"][data-align="end"] [data-slot="attachment-column-layout"] {
+  align-items: flex-end;
+}
+
 [data-slot="attachment-column"] {
   display: flex;
   flex: 1 1 0;
