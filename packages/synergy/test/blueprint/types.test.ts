@@ -51,6 +51,7 @@ describe("Blueprint types", () => {
         auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "armed" as const,
+        source: "user" as const,
         time: {
           created: Date.now(),
           updated: Date.now(),
@@ -71,6 +72,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "running",
+        source: "user" as const,
         userPrompt: "Only change the CLI behavior; do not touch desktop.",
         time: {
           created: now,
@@ -93,6 +95,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "running",
+        source: "user" as const,
         time: {
           created: now,
           started: now,
@@ -112,6 +115,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "waiting" as const,
+        source: "user" as const,
         time: {
           created: Date.now(),
           started: Date.now(),
@@ -132,6 +136,7 @@ describe("Blueprint types", () => {
         auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "auditing",
+        source: "user" as const,
         audit: {
           lastReason: "accuracy check",
           lastAuditedAt: Date.now(),
@@ -156,6 +161,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "completed",
+        source: "user" as const,
         time: {
           created: now,
           started: now - 60000,
