@@ -33,6 +33,11 @@ export namespace AgendaBootstrap {
           // when the user explicitly toggles autonomy on (handled by syncAnima via
           // the config change handler).
           if (!enabled) await enforceAnimaDisabled()
+          // Self-healing: upgrade existing items to ephemeral session mode so
+          // each Anima awakening starts fresh instead of reusing a persistent session.
+          if (!existing.sessionMode) {
+            await AgendaStore.update(scopeID, SEED_ID, { sessionMode: "ephemeral" })
+          }
           return
         }
 
@@ -42,6 +47,7 @@ export namespace AgendaBootstrap {
             prompt: "你醒了。",
             triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
             agent: "anima",
+            sessionMode: "ephemeral",
             silent: true,
             wake: false,
             global: true,
