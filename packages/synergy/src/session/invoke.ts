@@ -543,7 +543,7 @@ export namespace SessionInvoke {
         })
         if (!turnPreparation) break
 
-        const [
+        let [
           toolDefinitions,
           [envParts, customParts],
           cortexExecutionContext,
@@ -558,7 +558,7 @@ export namespace SessionInvoke {
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
-        const systemParts: string[] = []
+        let systemParts: string[] = []
         let systemCacheBreakpoint: number | undefined
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
@@ -699,12 +699,12 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
             )
           }
         }
-        const modelSessionMessages = WorkflowUserWrapper.projectMessages({
+        let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
         })
-        const preparedMessages = [
+        let preparedMessages = [
           ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
@@ -717,7 +717,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         ]
 
         const promptPlanTimer = log.time("promptBudgeter.buildPlan")
-        const promptPlan = await PromptBudgeter.buildPlan({
+        let promptPlan = await PromptBudgeter.buildPlan({
           sessionID,
           agent: agent.name,
           messageID: R.id,
@@ -735,7 +735,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
 
         const calibration = buildCalibration(msgs)
         const promptDecideTimer = log.time("promptBudgeter.decide")
-        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+        let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
         }).catch(async (error) => {
@@ -763,11 +763,17 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
             type: "compaction",
             auto: true,
           })
+          toolDefinitions = []
+          systemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptPlan = undefined
+          promptDecision = undefined
           continue
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const resolvedTools = await ToolResolver.resolveWithAvailability({
+        let resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
@@ -782,6 +788,24 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         })
         toolResolveTimer.stop()
         if (!resolvedTools) break
+
+        let streamInput: LLM.StreamInput | undefined
+        function releaseTurnReferences(mutateStreamInput: boolean) {
+          toolDefinitions = []
+          systemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptDecision = undefined
+          if (mutateStreamInput && streamInput) {
+            streamInput.system = []
+            streamInput.messages = []
+            streamInput.tools = {}
+            streamInput.activeToolIDs = undefined
+          }
+          promptPlan = undefined
+          resolvedTools = undefined
+          streamInput = undefined
+        }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         // Count LLM calls for an active Lattice run in memory; flushed to the
@@ -819,22 +843,20 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         })
         let turnSpanEnded = false
         let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+        streamInput = {
+          user: R,
+          agent,
+          abort: combinedAbort,
+          sessionID,
+          system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+          messages: promptPlan.messages,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
+          model,
+        }
         try {
-          result = await Promise.race([
-            processor.process({
-              user: R,
-              agent,
-              abort: combinedAbort,
-              sessionID,
-              system: promptPlan.system,
-              systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-              messages: promptPlan.messages,
-              tools: resolvedTools.tools,
-              activeToolIDs: resolvedTools.activeToolIDs,
-              model,
-            }),
-            deadlinePromise,
-          ])
+          result = await Promise.race([processor.process(streamInput), deadlinePromise])
         } catch (error) {
           if (error !== deadlineError) {
             PerformanceSpans.end(turnSpan, { status: "error", error })
@@ -855,6 +877,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         } finally {
           clearTimeout(turnTimer)
           processTimer.stop()
+          releaseTurnReferences(!turnDeadline.signal.aborted)
           if (!turnSpanEnded) {
             PerformanceSpans.end(turnSpan, {
               attributes: {
