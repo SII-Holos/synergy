@@ -1,25 +1,31 @@
 import { expect, test } from "bun:test"
-import { Agent } from "../../src/agent/agent"
-import { ScopeContext } from "../../src/scope/context"
-import { tmpdir } from "../fixture/fixture"
+import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { getDelegatableAgents } from "../../src/agent/prompt/agent-table"
 
-test("supervisor is hidden from delegated task agent listings", async () => {
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const supervisor = await Agent.get("supervisor")
-      expect(supervisor).toBeDefined()
-      expect(supervisor?.hidden).toBe(true)
+const ctx = {
+  defaults: [],
+  user: [],
+  role: () => undefined,
+  evolutionActive: false,
+}
 
-      const synergyMax = await Agent.get("synergy-max")
-      const delegatedAgents = (await Agent.list()).filter(
-        (agent: Agent.Info) =>
-          agent.mode !== "primary" &&
-          !agent.hidden &&
-          (!synergyMax || !agent.visibleTo || agent.visibleTo.includes(synergyMax.name)),
-      )
-      expect(delegatedAgents.map((agent: Agent.Info) => agent.name)).not.toContain("supervisor")
-    },
-  })
+test("supervisor is hidden and excluded from delegated agent listings", () => {
+  const agents = createBuiltinMaxSubagents(ctx)
+  const supervisor = agents["supervisor"]
+  expect(supervisor, "supervisor agent should exist").toBeDefined()
+  expect(supervisor.hidden, "supervisor must be marked hidden").toBe(true)
+
+  const agentInfos = Object.values(agents).map((a) => ({
+    name: a.name,
+    description: a.description ?? "",
+    mode: a.mode,
+    hidden: a.hidden,
+    visibleTo: a.visibleTo,
+  }))
+
+  const delegatable = getDelegatableAgents(agentInfos, "synergy-max")
+  const names = delegatable.map((a) => a.name)
+
+  expect(names, "supervisor should not appear in synergy-max delegatable agents").not.toContain("supervisor")
+  expect(names.length, "non-hidden subagents should still be present").toBeGreaterThan(0)
 })
