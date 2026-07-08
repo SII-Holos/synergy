@@ -178,7 +178,12 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
                   <Icon name={getSemanticIcon("settings.commands")} size="normal" />
                 </div>
                 <div class="gsm-item-content">
-                  <div class="gsm-item-title">{item.title}</div>
+                  <div class="gsm-item-title">
+                    <Show when={item.time.archived}>
+                      <span class="gsm-archived-tag">[Archived]</span>{" "}
+                    </Show>
+                    {item.title}
+                  </div>
                   <div class="gsm-item-meta">
                     {scopeLabel(item.scope)}
                     <span class="gsm-item-sep">·</span>
