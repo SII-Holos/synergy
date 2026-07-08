@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "fs"
+import { Database } from "bun:sqlite"
+import { mkdirSync, mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
 import { Observability } from "../../src/observability"
@@ -144,6 +145,62 @@ describe.serial("performance observability store", () => {
     } finally {
       restore()
     }
+  })
+
+  test("upgrades legacy resource sample tables for process attribution", () => {
+    mkdirSync(PerformanceStore.dir(), { recursive: true })
+    const conn = new Database(PerformanceStore.pathName(), { create: true })
+    try {
+      conn.exec(`
+        CREATE TABLE perf_resource_samples (
+          sample_id TEXT PRIMARY KEY,
+          time INTEGER NOT NULL,
+          iso TEXT NOT NULL,
+          source TEXT NOT NULL,
+          pid INTEGER,
+          cpu_user_micros REAL,
+          cpu_system_micros REAL,
+          cpu_utilization_ratio REAL,
+          memory_rss_bytes INTEGER,
+          memory_heap_total_bytes INTEGER,
+          memory_heap_used_bytes INTEGER,
+          memory_external_bytes INTEGER,
+          memory_array_buffers_bytes INTEGER,
+          event_loop_lag_ms REAL,
+          event_loop_sample_window_ms INTEGER,
+          app_read_bytes INTEGER,
+          app_written_bytes INTEGER,
+          app_read_ops INTEGER,
+          app_write_ops INTEGER,
+          os_read_bytes INTEGER,
+          os_written_bytes INTEGER,
+          os_available INTEGER NOT NULL DEFAULT 0,
+          scope_id TEXT,
+          session_id TEXT,
+          trace_id TEXT
+        );
+      `)
+      conn
+        .prepare(
+          `INSERT INTO perf_resource_samples (sample_id,time,iso,source,pid,memory_rss_bytes,event_loop_sample_window_ms,os_available)
+           VALUES ('legacy_server', 1, '1970-01-01T00:00:00.001Z', 'process', 123, 4096, 1000, 1)`,
+        )
+        .run()
+    } finally {
+      conn.close(false)
+    }
+
+    const rows = PerformanceStore.resourceSince(0)
+    expect(rows.find((row) => row.sample_id === "legacy_server")).toMatchObject({
+      process_role: "server",
+      process_id: null,
+      labels_json: "{}",
+    })
+    expect(PerformanceStore.meta().find((row) => row.key === "schemaVersion")?.value).toBe("2")
+
+    PerformanceResources.snapshot()
+    PerformanceStore.flush()
+    expect(PerformanceStore.latestResource({ processRole: "server" })?.memory_rss_bytes).toBeGreaterThan(0)
   })
 
   test("trace detail projects observability events without raw event data", async () => {
