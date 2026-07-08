@@ -889,7 +889,17 @@ export namespace ToolResolver {
     return true
   }
 
-  function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
+  async function isRecordedLightLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
+    if (input.agent.name !== "lightloop-reviewer") return false
+    const parentSessionID = input.session?.cortex?.parentSessionID
+    if (!parentSessionID || !input.session?.id) return false
+
+    const parent = await Session.get(parentSessionID).catch(() => undefined)
+    if (parent?.workflow?.kind !== "lightloop") return false
+    return parent.workflow.stopRequest?.reviewSessionID === input.session.id
+  }
+
+  async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const disabled = PermissionNext.disabled(
@@ -901,6 +911,7 @@ export namespace ToolResolver {
     const forcedGroups = forcedToolGroups(input.session)
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
+    const canUseLightLoopReviewTools = await isRecordedLightLoopReviewSession(input)
 
     const supportsImageInput = input.model.capabilities.input.image
 
@@ -976,13 +987,8 @@ export namespace ToolResolver {
         continue
       }
 
-      // light_loop_approve / light_loop_reject are gated by execution-time
-      // checks (stopRequest.reviewSessionID === ctx.sessionID) and the
-      // lightLoopReviewer permission profile. Hide them from sessions that
-      // aren't the recorded review session.
       if (def.id === "light_loop_approve" || def.id === "light_loop_reject") {
-        const wf = input.session?.workflow
-        if (wf?.kind !== "lightloop" || wf.stopRequest?.reviewSessionID !== input.session?.id) {
+        if (!canUseLightLoopReviewTools) {
           diagnostics.set(
             def.id,
             SessionModePolicy.unavailable({
@@ -1677,7 +1683,7 @@ export namespace ToolResolver {
 
   export async function availability(input: Omit<Input, "processor">): Promise<Availability> {
     using _ = log.time("availability")
-    return applyAvailability(await collectDefinitions(input), input)
+    return await applyAvailability(await collectDefinitions(input), input)
   }
 
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {

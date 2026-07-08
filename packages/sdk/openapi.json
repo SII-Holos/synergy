@@ -21380,6 +21380,20 @@
             "description": "Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)",
             "type": "boolean"
           },
+          "visibleTo": {
+            "description": "Agent or delegation group names allowed to delegate to this subagent",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
+            "description": "Additional delegation catalogs this agent may use when dispatching subagents",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "options": {
             "type": "object",
             "propertyNames": {
@@ -24973,6 +24987,63 @@
               },
               "taskDescription": {
                 "type": "string"
+              },
+              "stopRequest": {
+                "type": "object",
+                "properties": {
+                  "summary": {
+                    "type": "string"
+                  },
+                  "completed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "remaining": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requestedAt": {
+                    "type": "number"
+                  },
+                  "requesterSessionID": {
+                    "type": "string"
+                  },
+                  "requesterMessageID": {
+                    "type": "string"
+                  },
+                  "reviewTaskID": {
+                    "type": "string"
+                  },
+                  "reviewSessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
+              },
+              "review": {
+                "type": "object",
+                "properties": {
+                  "attempts": {
+                    "type": "number"
+                  },
+                  "lastReason": {
+                    "type": "string"
+                  },
+                  "lastReviewedAt": {
+                    "type": "number"
+                  }
+                },
+                "required": ["attempts"]
               }
             },
             "required": ["kind", "taskDescription"]
@@ -31874,6 +31945,12 @@
               "type": "string"
             }
           },
+          "delegationGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "topP": {
             "type": "number"
           },
@@ -31954,6 +32031,12 @@
             "type": "boolean"
           },
           "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
             "type": "array",
             "items": {
               "type": "string"

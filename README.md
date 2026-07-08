@@ -282,7 +282,9 @@ Core `synergy-max` subagent groups include:
 - Quality gates: `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`
 - Reviews: `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`
 - External and internal knowledge: `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `memory-curator`, `note-librarian`, `session-historian`
-- Continuity: `anima` for background maintenance roles, `lightloop-reviewer` for LightLoop completion verification
+- Continuity: `anima` for background maintenance roles
+
+Hidden recursive reviewer agents include `supervisor` for BlueprintLoop audit and `lightloop-reviewer` for LightLoop completion verification. They use `mode: "subagent"` with `hidden: true`, so they are not primary-selectable and are not direct `task` targets for primary agents. When configured with `delegationGroups`, these hidden reviewers can delegate specialist subagents internally; `lightloop-reviewer` uses the supervisor delegation group for review fan-out.
 
 If you update agent names, roles, or recommended usage, update this section and `AGENTS.md` together.
 

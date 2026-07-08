@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { Agent } from "../../src/agent/agent"
+import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -49,6 +50,13 @@ const allowAllAgent: Agent.Info = {
   mode: "primary",
   permission: PermissionNext.fromConfig({ "*": "allow" }),
   options: {},
+}
+
+const builtinCtx = {
+  defaults: [],
+  user: [],
+  role: () => undefined,
+  evolutionActive: false,
 }
 
 async function definitionIDs(
@@ -403,6 +411,172 @@ describe("tool exposure", () => {
 
         expect(availability.visible.some((def) => def.id === "bash")).toBe(false)
         expect(availability.diagnostics.get("bash")?.code).toBe("permission_denied")
+      },
+    })
+  })
+
+  test("LightLoop primary and recorded reviewer sessions expose the correct review tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({})
+        await Session.update(parent.id, (draft) => {
+          draft.workflow = { kind: "lightloop", taskDescription: "Finish the feature" }
+        })
+        const primarySession = await Session.get(parent.id)
+
+        let availability = await ToolResolver.availability({
+          agent: allowAllAgent,
+          model,
+          sessionID: primarySession.id,
+          session: primarySession,
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+        expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
+        expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
+
+        const child = await Session.create({
+          parentID: parent.id,
+          cortex: {
+            parentSessionID: parent.id,
+            parentMessageID: "msg_parent",
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(parent.id, (draft) => {
+          if (draft.workflow?.kind !== "lightloop") throw new Error("expected lightloop")
+          draft.workflow.stopRequest = {
+            summary: "done",
+            requestedAt: Date.now(),
+            requesterSessionID: parent.id,
+            requesterMessageID: "msg_parent",
+            reviewSessionID: child.id,
+            reviewTaskID: "ctx_review",
+          }
+        })
+
+        const reviewerAgent = {
+          ...allowAllAgent,
+          name: "lightloop-reviewer",
+          mode: "subagent" as const,
+        }
+        const reviewerSession = await Session.get(child.id)
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: reviewerSession.id,
+          session: reviewerSession,
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(false)
+      },
+    })
+  })
+
+  test("LightLoop review tools stay diagnostically denied outside the recorded reviewer session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({})
+        await Session.update(parent.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            taskDescription: "Finish the feature",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: parent.id,
+              requesterMessageID: "msg_parent",
+              reviewSessionID: "ses_other_reviewer",
+              reviewTaskID: "ctx_review",
+            },
+          }
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+          cortex: {
+            parentSessionID: parent.id,
+            parentMessageID: "msg_parent",
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        const reviewerAgent = {
+          ...allowAllAgent,
+          name: "lightloop-reviewer",
+          mode: "subagent" as const,
+        }
+
+        const availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: child.id,
+          session: await Session.get(child.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+        expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
+        expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
+      },
+    })
+  })
+
+  test("recursive coordinator agents resolve task tools while ordinary subagents do not", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const agents = createBuiltinMaxSubagents(builtinCtx)
+        const recursiveTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
+
+        for (const name of ["supervisor", "lightloop-reviewer"]) {
+          const agent = agents[name]
+          if (!agent) throw new Error(`missing ${name}`)
+          const availability = await ToolResolver.availability({
+            agent,
+            model,
+            sessionID: session.id,
+            session,
+            includeMCP: false,
+          })
+          const visible = new Set(availability.visible.map((def) => def.id))
+          for (const tool of recursiveTools) {
+            expect(visible.has(tool), `${name}:${tool}`).toBe(true)
+          }
+          const task = availability.visible.find((def) => def.id === "task")
+          expect(task?.description).toContain("implementation-engineer")
+        }
+
+        const ordinary = agents["implementation-engineer"]
+        if (!ordinary) throw new Error("missing implementation-engineer")
+        const availability = await ToolResolver.availability({
+          agent: ordinary,
+          model,
+          sessionID: session.id,
+          session,
+          includeMCP: false,
+        })
+        const visible = new Set(availability.visible.map((def) => def.id))
+        for (const tool of recursiveTools) {
+          expect(visible.has(tool), `implementation-engineer:${tool}`).toBe(false)
+          expect(availability.diagnostics.get(tool)?.code).toBe("permission_denied")
+        }
       },
     })
   })

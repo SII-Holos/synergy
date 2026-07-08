@@ -49,7 +49,8 @@ describe("LightLoopContinuationPolicy", () => {
     expect(mail.parts).toHaveLength(1)
     expect(mail.parts[0].type).toBe("text")
     if (mail.parts[0].type === "text") {
-      expect(mail.parts[0].synthetic).toBe(true)
+      expect(mail.parts[0].origin).toBe("system")
+      expect("synthetic" in mail.parts[0]).toBe(false)
       expect(mail.parts[0].text).toContain("Task: Write unit tests")
       expect(mail.parts[0].text).toContain("loop_stop()")
     }
@@ -115,7 +116,34 @@ describe("LightLoopContinuationPolicy", () => {
     expect(deliveries).toHaveLength(0)
   })
 
-  test("delivered mail is a synthetic user message with continuation prompt", async () => {
+  test("handle continues when a partial stop request has no reviewer session", async () => {
+    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+      deliveries.push(input)
+    })
+
+    const g = gate({
+      id: "ses_partial_review",
+      workflow: {
+        kind: "lightloop" as const,
+        taskDescription: "Write unit tests",
+        stopRequest: {
+          summary: "done",
+          requestedAt: Date.now(),
+          requesterSessionID: "ses_partial_review",
+          requesterMessageID: "msg_123",
+          reviewTaskID: "ctx_partial",
+        },
+      },
+    })
+
+    const handled = await LightLoopContinuationPolicy.handle(g)
+
+    expect(handled).toBe(true)
+    expect(deliveries).toHaveLength(1)
+  })
+
+  test("delivered mail is a system-origin user message with continuation prompt", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
       deliveries.push(input)
@@ -135,7 +163,8 @@ describe("LightLoopContinuationPolicy", () => {
     const part = mail.parts[0]
     expect(part.type).toBe("text")
     if (part.type === "text") {
-      expect(part.synthetic).toBe(true)
+      expect(part.origin).toBe("system")
+      expect("synthetic" in part).toBe(false)
       expect(part.text).toBe(`Task: Refactor the login flow
 
 Review the task against the current work:

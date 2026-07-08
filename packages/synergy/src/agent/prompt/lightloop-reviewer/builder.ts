@@ -5,7 +5,11 @@ import type { AgentInfo } from "../types"
 import PROMPT_BASE from "./base.txt"
 
 export function buildLightLoopReviewerPrompt(agents: AgentInfo[]): string {
-  const agentTable = buildAgentTable(agents, "lightloop-reviewer")
+  const caller = agents.find((agent) => agent.name === "lightloop-reviewer") ?? {
+    name: "lightloop-reviewer",
+    delegationGroups: ["supervisor"],
+  }
+  const agentTable = buildAgentTable(agents, caller)
   return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable)
 }
 
@@ -18,6 +22,7 @@ export function createLightLoopReviewerAgent(ctx: BuiltinAgentContext) {
     model: "thinking",
     permission: "lightLoopReviewer",
     hidden: true,
-    visibleTo: ["lightloop-reviewer", "synergy", "synergy-max"],
+    visibleTo: ["lightloop-reviewer"],
+    delegationGroups: ["supervisor"],
   })
 }

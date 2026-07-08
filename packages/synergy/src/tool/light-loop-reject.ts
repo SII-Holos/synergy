@@ -26,6 +26,9 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     if (!reason) throw new Error("reason is required")
     if (!remaining) throw new Error("remaining is required")
     if (!instructions) throw new Error("instructions is required")
+    if (ctx.agent !== "lightloop-reviewer") {
+      throw new Error("Only the lightloop-reviewer agent may reject Light Loop stop requests")
+    }
 
     const target = await Session.get(sessionID)
     if (!target) throw new Error(`Session ${sessionID} not found`)
@@ -79,10 +82,10 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
             messageID: "",
             type: "text",
             text,
-            synthetic: true,
+            origin: "system",
           },
         ],
-        metadata: { source: "light_loop_rejected" },
+        metadata: { source: "light_loop_rejected", sourceSessionID: ctx.sessionID },
       },
     })
 

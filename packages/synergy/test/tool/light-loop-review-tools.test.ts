@@ -76,7 +76,10 @@ describe("light_loop_approve", () => {
           fn(session)
           if (session.workflow === undefined) workflowCleared = true
         })
-        ;(SessionManager.deliver as any) = mock(async () => {})
+        const deliveries: any[] = []
+        ;(SessionManager.deliver as any) = mock(async (input: any) => {
+          deliveries.push(input)
+        })
 
         const tool = await LightLoopApproveTool.init()
         const result = await tool.execute(
@@ -86,6 +89,14 @@ describe("light_loop_approve", () => {
 
         expect(result.metadata.loopApproved).toBe(true)
         expect(workflowCleared).toBe(true)
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0].mail.metadata).toMatchObject({
+          source: "light_loop_approved",
+          sourceSessionID: "ses_reviewer",
+        })
+        const part = deliveries[0].mail.parts[0]
+        expect(part.origin).toBe("system")
+        expect("synthetic" in part).toBe(false)
       },
     })
   })
@@ -205,6 +216,10 @@ describe("light_loop_reject", () => {
         expect((session.workflow as any)?.taskDescription).toBe("Build the thing")
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata.source).toBe("light_loop_rejected")
+        expect(deliveries[0].mail.metadata.sourceSessionID).toBe("ses_reviewer")
+        const part = deliveries[0].mail.parts[0]
+        expect(part.origin).toBe("system")
+        expect("synthetic" in part).toBe(false)
       },
     })
   })

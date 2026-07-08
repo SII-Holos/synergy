@@ -18,6 +18,9 @@ export const LightLoopApproveTool = Tool.define("light_loop_approve", {
     const sessionID = params.sessionID
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
+    if (ctx.agent !== "lightloop-reviewer") {
+      throw new Error("Only the lightloop-reviewer agent may approve Light Loop stop requests")
+    }
 
     const target = await Session.get(sessionID)
     if (!target) throw new Error(`Session ${sessionID} not found`)
@@ -50,10 +53,10 @@ export const LightLoopApproveTool = Tool.define("light_loop_approve", {
             messageID: "",
             type: "text",
             text,
-            synthetic: true,
+            origin: "system",
           },
         ],
-        metadata: { source: "light_loop_approved" },
+        metadata: { source: "light_loop_approved", sourceSessionID: ctx.sessionID },
       },
     })
 

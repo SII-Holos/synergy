@@ -35,6 +35,7 @@ export interface SubagentDefinition {
   model?: Provider.ModelRole
   permission: SubagentPermissionProfile
   visibleTo?: string[]
+  delegationGroups?: string[]
   hidden?: boolean
   steps?: number
   temperature?: number
@@ -255,6 +256,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     mode: "subagent",
     native: true,
     visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
+    delegationGroups: definition.delegationGroups,
     hidden: definition.hidden,
     ...resolveAgentModelRole(ctx, definition.model ?? "mid"),
     steps: definition.steps,

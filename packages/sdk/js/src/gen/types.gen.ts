@@ -1514,6 +1514,14 @@ export type AgentConfig = {
    * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
    */
   hidden?: boolean
+  /**
+   * Agent or delegation group names allowed to delegate to this subagent
+   */
+  visibleTo?: Array<string>
+  /**
+   * Additional delegation catalogs this agent may use when dispatching subagents
+   */
+  delegationGroups?: Array<string>
   options?: {
     [key: string]: unknown
   }
@@ -1547,6 +1555,8 @@ export type AgentConfig = {
     | "subagent"
     | "primary"
     | "all"
+    | Array<string>
+    | Array<string>
     | {
         [key: string]: unknown
       }
@@ -3306,6 +3316,22 @@ export type SessionWorkflowInfo =
   | {
       kind: "lightloop"
       taskDescription: string
+      stopRequest?: {
+        summary: string
+        completed?: Array<string>
+        evidence?: Array<string>
+        remaining?: Array<string>
+        requestedAt: number
+        requesterSessionID: string
+        requesterMessageID: string
+        reviewTaskID?: string
+        reviewSessionID?: string
+      }
+      review?: {
+        attempts: number
+        lastReason?: string
+        lastReviewedAt?: number
+      }
     }
   | {
       kind: "lattice"
@@ -5609,6 +5635,7 @@ export type Agent = {
   native?: boolean
   hidden?: boolean
   visibleTo?: Array<string>
+  delegationGroups?: Array<string>
   topP?: number
   temperature?: number
   color?: string
@@ -5636,6 +5663,7 @@ export type ModelRoleUsage = {
   mode: "subagent" | "primary" | "all"
   hidden?: boolean
   visibleTo?: Array<string>
+  delegationGroups?: Array<string>
   native?: boolean
   source?: "builtin" | "config" | "plugin" | "external"
   modelSource?: "role" | "explicit"

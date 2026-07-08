@@ -26,7 +26,7 @@ export const LoopStopTool = Tool.define("loop_stop", {
     if (!summary) throw new Error("summary is required")
 
     // Idempotency: don't launch a second reviewer while one is pending
-    if (session.workflow.stopRequest?.reviewSessionID || session.workflow.stopRequest?.reviewTaskID) {
+    if (session.workflow.stopRequest?.reviewSessionID) {
       return {
         title: "Light Loop review already requested",
         output: `A review was already requested for this Light Loop task. The reviewer is session \`${session.workflow.stopRequest.reviewSessionID}\`.`,
@@ -102,26 +102,32 @@ export const LoopStopTool = Tool.define("loop_stop", {
       })
     } catch (error) {
       // Clear the stop request on launch failure so LightLoop can continue
-      await Session.update(ctx.sessionID, (draft) => {
-        if (draft.workflow?.kind !== "lightloop") return
-        draft.workflow = { ...draft.workflow, stopRequest: undefined }
-      })
+      await clearStopRequest(ctx.sessionID)
       throw error
     }
 
     // Persist reviewer session/task IDs into stop request
-    await Session.update(ctx.sessionID, (draft) => {
-      if (draft.workflow?.kind !== "lightloop") return
-      if (!draft.workflow.stopRequest) return
-      draft.workflow = {
-        ...draft.workflow,
-        stopRequest: {
-          ...draft.workflow.stopRequest,
-          reviewTaskID: task.id,
-          reviewSessionID: task.sessionID,
-        },
-      }
-    })
+    try {
+      let recorded = false
+      await Session.update(ctx.sessionID, (draft) => {
+        if (draft.workflow?.kind !== "lightloop") return
+        if (!draft.workflow.stopRequest) return
+        draft.workflow = {
+          ...draft.workflow,
+          stopRequest: {
+            ...draft.workflow.stopRequest,
+            reviewTaskID: task.id,
+            reviewSessionID: task.sessionID,
+          },
+        }
+        recorded = true
+      })
+      if (!recorded) throw new Error("Failed to record Light Loop reviewer session")
+    } catch (error) {
+      await Cortex.cancel(task.id).catch(() => {})
+      await clearStopRequest(ctx.sessionID).catch(() => {})
+      throw error
+    }
 
     const output = `Light Loop stop review requested. The reviewer is session \`${task.sessionID}\`.`
     return {
@@ -131,3 +137,10 @@ export const LoopStopTool = Tool.define("loop_stop", {
     }
   },
 })
+
+async function clearStopRequest(sessionID: string): Promise<void> {
+  await Session.update(sessionID, (draft) => {
+    if (draft.workflow?.kind !== "lightloop") return
+    draft.workflow = { ...draft.workflow, stopRequest: undefined }
+  })
+}
