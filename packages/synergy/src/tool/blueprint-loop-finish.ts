@@ -127,7 +127,7 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
     }
 
     if (currentStatus === "auditing" && params.status === "auditing") {
-      if (!loop.auditTaskID) {
+      if (!loop.auditTaskID && loop.auditSessionID && SessionManager.isRunning(loop.auditSessionID)) {
         return {
           title: `Loop ${params.loopID} → already auditing`,
           output: `BlueprintLoop ${params.loopID} is already being audited.`,
@@ -139,7 +139,7 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
       }
 
       const { Cortex } = await import("../cortex")
-      const auditTask = Cortex.get(loop.auditTaskID)
+      const auditTask = loop.auditTaskID ? Cortex.get(loop.auditTaskID) : undefined
       if (auditTask && (auditTask.status === "queued" || auditTask.status === "running")) {
         return {
           title: `Loop ${params.loopID} → already auditing`,

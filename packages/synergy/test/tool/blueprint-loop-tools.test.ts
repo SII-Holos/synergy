@@ -177,6 +177,42 @@ describe("BlueprintLoop tools", () => {
     })
   })
 
+  test("restarts legacy audit when no audit task is recorded and audit runtime is gone", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        const firstAuditSession = await Session.create({})
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: firstAuditSession.id,
+        })
+        await Session.update(firstAuditSession.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+
+        const launches: Parameters<typeof Cortex.launch>[0][] = []
+        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
+          const auditSession = await Session.create({})
+          launches.push(input)
+          return auditTask(input, auditSession.id)
+        })
+
+        const tool = await BlueprintLoopFinishTool.init()
+        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+
+        expect(launches).toHaveLength(1)
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(updated.status).toBe("auditing")
+        expect(updated.auditSessionID).not.toBe(firstAuditSession.id)
+        expect(updated.auditTaskID).toBeDefined()
+        const clearedFirstAuditSession = await Session.get(firstAuditSession.id)
+        expect(clearedFirstAuditSession.blueprint?.loopID).toBeUndefined()
+      },
+    })
+  })
+
   test("restart wakes the execution session with user mail", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
