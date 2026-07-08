@@ -84,9 +84,14 @@ describe("Codex external adapter CLI args", () => {
   test("uses configured path for discovery and version checks", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "synergy-codex-test-"))
     cleanupDirs.push(dir)
-    const binary = path.join(dir, "codex-wrapper")
-    await Bun.write(binary, "#!/bin/sh\necho codex-test 1.2.3\n")
-    await Bun.spawn(["chmod", "+x", binary]).exited
+    const binary = process.platform === "win32" ? path.join(dir, "codex-wrapper.cmd") : path.join(dir, "codex-wrapper")
+    await Bun.write(
+      binary,
+      process.platform === "win32" ? "@echo codex-test 1.2.3\r\n" : "#!/bin/sh\necho codex-test 1.2.3\n",
+    )
+    if (process.platform !== "win32") {
+      await Bun.spawn(["chmod", "+x", binary]).exited
+    }
 
     const adapter = ExternalAgent.getAdapter("codex", `codex-test-${Date.now()}-discover`) as any
     const info = await adapter.discover({ path: binary })
