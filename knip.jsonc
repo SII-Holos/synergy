@@ -144,13 +144,5 @@
       "entry": ["src/**/*.ts"],
       "project": ["src/**/*.ts"],
     },
-    "packages/meta-protocol": {
-      "entry": ["test/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-    },
-    "packages/meta-synergy": {
-      "entry": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-    },
   },
 }

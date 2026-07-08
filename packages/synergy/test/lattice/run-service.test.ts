@@ -7,6 +7,7 @@ import { LatticeStore } from "../../src/lattice/store"
 import { LatticeMachine } from "../../src/lattice/machine"
 import { LatticeRunService } from "../../src/lattice/run-service"
 import { BlueprintLoopStore } from "../../src/blueprint"
+import { SessionWorkflowService } from "../../src/session/workflow"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -15,19 +16,19 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("LatticeRunService", () => {
-  test("enable creates a run, writes session metadata, and clears plan mode", async () => {
+  test("workflow enable creates a run and writes session workflow", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await Session.update(session.id, (draft) => {
-        draft.blueprint = { planMode: true }
-      })
-      const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      const after = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      const run = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
       expect(run.status).toBe("active")
       expect(run.maxModelCalls).toBe(0)
-      const after = await Session.get(session.id)
-      expect(after.lattice?.runID).toBe(run.id)
-      expect(after.lattice?.mode).toBe("auto")
-      expect(after.blueprint?.planMode).toBe(false)
+      expect(after.workflow).toEqual({
+        kind: "lattice",
+        runID: run.id,
+        mode: "auto",
+        firstBlueprintStarted: false,
+      })
     })
   })
 
@@ -41,15 +42,16 @@ describe("LatticeRunService", () => {
     })
   })
 
-  test("disable pauses the run and clears session metadata", async () => {
+  test("workflow disable pauses the run and clears session workflow", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
-      const run = await LatticeRunService.disable(session.id)
+      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      await SessionWorkflowService.setNone(session.id)
+      const run = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
       expect(run?.status).toBe("paused")
       expect(run?.statusReason).toBe("user_exit")
       const after = await Session.get(session.id)
-      expect(after.lattice).toBeUndefined()
+      expect(after.workflow).toBeUndefined()
       // Data preserved for later continue.
       const stored = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
       expect(stored?.status).toBe("paused")
@@ -96,14 +98,12 @@ describe("LatticeRunService", () => {
     })
   })
 
-  test("cancel cancels the run and clears session metadata", async () => {
+  test("cancel cancels the run", async () => {
     await withScope(async () => {
       const session = await Session.create({})
       const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
       const cancelled = await LatticeRunService.cancel(run.id)
       expect(cancelled.status).toBe("cancelled")
-      const after = await Session.get(session.id)
-      expect(after.lattice).toBeUndefined()
     })
   })
 })

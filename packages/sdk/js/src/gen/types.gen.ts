@@ -3299,6 +3299,21 @@ export type SessionWorkspace = {
   [key: string]: unknown | string
 }
 
+export type SessionWorkflowInfo =
+  | {
+      kind: "plan"
+    }
+  | {
+      kind: "lightloop"
+      taskDescription: string
+    }
+  | {
+      kind: "lattice"
+      runID: string
+      mode: "auto" | "collaborative"
+      firstBlueprintStarted?: boolean
+    }
+
 export type Session = {
   id: string
   scope: SessionScope
@@ -3360,13 +3375,8 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-    planMode?: boolean
   }
-  lattice?: {
-    runID: string
-    mode: "auto" | "collaborative"
-    firstBlueprintStarted?: boolean
-  }
+  workflow?: SessionWorkflowInfo
 }
 
 export type VcsInfo = {
@@ -4939,12 +4949,9 @@ export type BlueprintLoopInfo = {
   error?: string
   loopIndex?: number
   /**
-   * External orchestrator that owns this loop's lifecycle (e.g. Lattice)
+   * Owner that created and drives this loop lifecycle
    */
-  orchestration?: {
-    kind: "lattice"
-    runID: string
-  }
+  source: "user" | "lattice"
   audit?: {
     lastReason?: string
     lastAuditedAt?: number
@@ -5073,29 +5080,6 @@ export type LatticeRun = {
   }
 }
 
-export type LatticeModeInput = {
-  /**
-   * Enable or disable Lattice mode for the session
-   */
-  enabled: boolean
-  /**
-   * Lattice mode (default auto)
-   */
-  mode?: "auto" | "collaborative"
-  /**
-   * Model-call budget (0 = unlimited). Not Pathway steps.
-   */
-  max_model_calls?: number
-  /**
-   * High-level goal for the run
-   */
-  goal?: string
-  /**
-   * Resume a paused run or restart it
-   */
-  action?: "continue" | "restart"
-}
-
 export type LatticeEvent = {
   id: string
   runID: string
@@ -5129,6 +5113,40 @@ export type LatticeEvent = {
     created: number
   }
 }
+
+export type WorkflowSetInput =
+  | {
+      kind: "none"
+    }
+  | {
+      kind: "plan"
+    }
+  | {
+      kind: "lightloop"
+      /**
+       * Task description for Light Loop
+       */
+      taskDescription: string
+    }
+  | {
+      kind: "lattice"
+      /**
+       * Lattice mode
+       */
+      mode: "auto" | "collaborative"
+      /**
+       * Model-call budget; 0 means unlimited
+       */
+      maxModelCalls?: number
+      /**
+       * High-level goal for the Lattice run
+       */
+      goal?: string
+      /**
+       * Resume a paused run or restart it
+       */
+      action?: "continue" | "restart"
+    }
 
 export type AssetInfo = {
   id: string
@@ -12162,86 +12180,6 @@ export type BlueprintLoopActivityResponses = {
 
 export type BlueprintLoopActivityResponse = BlueprintLoopActivityResponses[keyof BlueprintLoopActivityResponses]
 
-export type BlueprintSessionPlanModeData = {
-  body?: {
-    /**
-     * Enable or disable Plan Mode
-     */
-    planMode: boolean
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/blueprint/session/{id}/plan-mode"
-}
-
-export type BlueprintSessionPlanModeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type BlueprintSessionPlanModeError = BlueprintSessionPlanModeErrors[keyof BlueprintSessionPlanModeErrors]
-
-export type BlueprintSessionPlanModeResponses = {
-  /**
-   * Updated session
-   */
-  200: Session
-}
-
-export type BlueprintSessionPlanModeResponse =
-  BlueprintSessionPlanModeResponses[keyof BlueprintSessionPlanModeResponses]
-
-export type LatticeSessionModeData = {
-  body?: LatticeModeInput
-  path: {
-    /**
-     * Session ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lattice/session/{id}/mode"
-}
-
-export type LatticeSessionModeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type LatticeSessionModeError = LatticeSessionModeErrors[keyof LatticeSessionModeErrors]
-
-export type LatticeSessionModeResponses = {
-  /**
-   * Lattice run or null
-   */
-  200: LatticeRun | null
-}
-
-export type LatticeSessionModeResponse = LatticeSessionModeResponses[keyof LatticeSessionModeResponses]
-
 export type LatticeSessionGetRunData = {
   body?: never
   path: {
@@ -12455,6 +12393,43 @@ export type LatticeRunCancelResponses = {
 }
 
 export type LatticeRunCancelResponse = LatticeRunCancelResponses[keyof LatticeRunCancelResponses]
+
+export type WorkflowSessionSetData = {
+  body?: WorkflowSetInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}"
+}
+
+export type WorkflowSessionSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowSessionSetError = WorkflowSessionSetErrors[keyof WorkflowSessionSetErrors]
+
+export type WorkflowSessionSetResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type WorkflowSessionSetResponse = WorkflowSessionSetResponses[keyof WorkflowSessionSetResponses]
 
 export type AssetUploadData = {
   body?: {

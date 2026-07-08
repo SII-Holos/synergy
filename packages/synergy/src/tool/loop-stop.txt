@@ -1,0 +1,1 @@
+Stop the active light loop. Use this when the light loop task is fully complete.

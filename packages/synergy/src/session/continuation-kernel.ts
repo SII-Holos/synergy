@@ -7,6 +7,9 @@ import { SessionManager } from "./manager"
 import { MessageV2 } from "./message-v2"
 import { SessionProgress } from "./progress"
 import type { Info as SessionInfo } from "./types"
+import { BlueprintContinuationPolicy } from "./blueprint-continuation"
+import { LightLoopContinuationPolicy } from "./light-loop-continuation"
+import { LatticeContinuationPolicy } from "../lattice/policy"
 
 /**
  * Session Continuation Kernel.
@@ -145,12 +148,8 @@ export namespace ContinuationKernel {
   function registerBuiltins(): void {
     if (builtinsRegistered) return
     builtinsRegistered = true
-    // Static requires avoid a top-level import cycle (policies import the
-    // kernel for its types). Registration happens once, lazily.
-    const { BlueprintContinuationPolicy } =
-      require("./blueprint-continuation") as typeof import("./blueprint-continuation")
     register(BlueprintContinuationPolicy)
-    const { LatticeContinuationPolicy } = require("../lattice/policy") as typeof import("../lattice/policy")
+    register(LightLoopContinuationPolicy)
     register(LatticeContinuationPolicy)
   }
 

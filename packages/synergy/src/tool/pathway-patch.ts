@@ -38,23 +38,51 @@ const parameters = z.object({
     .describe("Attach a result summary to a terminal step (result_analysis)."),
 })
 
+type Params = z.infer<typeof parameters>
+
+function nonEmpty(value: string | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function normalizePatch(params: Params): LatticeMachine.PatchInput {
+  const steps = params.steps && params.steps.length > 0 ? params.steps : undefined
+  const noteID = nonEmpty(params.bindCurrentBlueprint?.noteID)
+  const stepID = nonEmpty(params.recordResult?.stepID)
+
+  return {
+    steps,
+    bindCurrentBlueprint: noteID
+      ? {
+          noteID,
+          version: params.bindCurrentBlueprint?.version,
+        }
+      : undefined,
+    recordResult: stepID
+      ? {
+          stepID,
+          resultSummary: params.recordResult?.resultSummary,
+        }
+      : undefined,
+  }
+}
+
 export const PathwayPatchTool = Tool.define("pathway_patch", {
   description: DESCRIPTION,
   parameters,
-  async execute(params: z.infer<typeof parameters>, ctx) {
+  async execute(params: Params, ctx) {
     const scopeID = ScopeContext.current.scope.id
     const existing = await LatticeStore.getOrUndefined(scopeID, ctx.sessionID)
     if (!existing) throw new LatticeError.NotFound({ sessionID: ctx.sessionID })
 
-    if (!params.steps && !params.bindCurrentBlueprint && !params.recordResult) {
-      throw new Error("pathway_patch requires at least one of: steps, bindCurrentBlueprint, recordResult.")
+    const input = normalizePatch(params)
+    if (!input.steps && !input.bindCurrentBlueprint && !input.recordResult) {
+      throw new Error(
+        "pathway_patch requires at least one non-empty intent: steps, bindCurrentBlueprint, recordResult.",
+      )
     }
 
-    const run = await LatticeMachine.patch(scopeID, ctx.sessionID, {
-      steps: params.steps,
-      bindCurrentBlueprint: params.bindCurrentBlueprint,
-      recordResult: params.recordResult,
-    })
+    const run = await LatticeMachine.patch(scopeID, ctx.sessionID, input)
 
     const summary = run.pathway
       .map((step, index) => {

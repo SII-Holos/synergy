@@ -6,7 +6,6 @@ import { BlueprintLoopStore, BlueprintLoopService, LoopError } from "../blueprin
 import { Info as BlueprintLoopInfoSchema } from "../blueprint/types"
 import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
-import { Session } from "../session"
 
 const CreateInput = z
   .object({
@@ -326,37 +325,6 @@ export const BlueprintRoute = new Hono()
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
           return c.json({ message: `BlueprintLoop not found: ${c.req.valid("param").id}` }, 404)
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
-    },
-  )
-  .put(
-    "/session/:id/plan-mode",
-    describeRoute({
-      summary: "Toggle Plan Mode",
-      description: "Enable or disable Plan Mode on a session.",
-      operationId: "blueprint.session.planMode",
-      responses: {
-        200: {
-          description: "Updated session",
-          content: { "application/json": { schema: resolver(Session.Info) } },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
-    validator("json", z.object({ planMode: z.boolean().meta({ description: "Enable or disable Plan Mode" }) })),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const { planMode } = c.req.valid("json")
-        const session = await Session.update(id, (draft) => {
-          draft.blueprint = { ...draft.blueprint, planMode }
-        })
-        return c.json(session)
-      } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
         return c.json({ message: err?.message ?? String(err) }, 400)
       }
     },

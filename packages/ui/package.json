@@ -29,7 +29,6 @@
     "generate:tailwind": "bun run script/tailwind.ts"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "20.0.11",
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",

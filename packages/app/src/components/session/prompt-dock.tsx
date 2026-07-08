@@ -1,4 +1,4 @@
-import { Show } from "solid-js"
+import { Show, createMemo, createSignal, untrack, type JSX } from "solid-js"
 import type { Accessor } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,8 +8,6 @@ import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "./session-new-view"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
-import { SubagentDock } from "./subagent-dock"
-import { SessionProgressPanel } from "./session-progress-panel"
 import { SessionInbox } from "./session-inbox"
 import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
@@ -18,6 +16,8 @@ import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
+import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -48,6 +48,17 @@ export function PromptDock(props: {
   rollbackActive?: boolean
 }) {
   const nav = useNavigate()
+  const meta = createMemo(() => props.meta())
+  const backToParentID = createMemo(() => promptDockBackToParentID(meta()))
+  const forkSourceID = createMemo(() => promptDockForkSourceID(meta(), props.forkedFromID))
+  const returnPath = createMemo(() => promptDockBackPath(meta(), props.backPath?.()))
+  const cortex = createMemo(() => meta().cortex)
+  const [priorityControl, setPriorityControl] = createSignal<JSX.Element | undefined>(undefined)
+  const subagentFooter = createMemo(() => {
+    const delegation = cortex()
+    if (!delegation || !props.sessionID) return undefined
+    return { delegation, sessionID: props.sessionID, parentSessionID: meta().parentID ?? undefined }
+  })
 
   return (
     <div
@@ -67,15 +78,8 @@ export function PromptDock(props: {
           "md:max-w-[54rem]": !props.showTabs(),
         }}
       >
-        {/* Out-of-flow overlay anchored to the top of the content area:
-            subagent dock sits above, progress island below. Both float
-            outside normal flow so expanding the island never changes
-            --prompt-height. */}
         <Show when={props.sessionID}>
-          <div class="absolute inset-x-0 bottom-full flex flex-col items-center pointer-events-none">
-            <SubagentDock sessionID={props.sessionID!} />
-            <SessionProgressPanel sessionID={props.sessionID!} />
-          </div>
+          <PromptDockFloatLayer sessionID={props.sessionID!} priorityControl={priorityControl()} />
         </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
@@ -89,7 +93,7 @@ export function PromptDock(props: {
           }
         >
           <Show
-            when={props.meta().isReadOnly}
+            when={meta().isReadOnly}
             fallback={
               <>
                 <Show when={props.sessionID}>
@@ -102,25 +106,27 @@ export function PromptDock(props: {
                     </div>
                   )}
                 </Show>
-                <Show when={props.meta().showBackToParent}>
-                  <div class="flex items-center justify-center pb-2">
-                    <Tooltip value={props.parentTitle || "Parent session"} placement="top">
-                      <button
-                        type="button"
-                        class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                        border border-border-base
-                        text-12-medium text-text-weak hover:text-text-base
-                        active:scale-95
-                        transition-all duration-150"
-                        onClick={() => props.navigate(props.meta().parentID!)}
-                      >
-                        <Icon name={getSemanticIcon("navigation.back")} size="small" />
-                        <span>Back to parent</span>
-                      </button>
-                    </Tooltip>
-                  </div>
+                <Show when={backToParentID()}>
+                  {(parentID) => (
+                    <div class="flex items-center justify-center pb-2">
+                      <Tooltip value={props.parentTitle || "Parent session"} placement="top">
+                        <button
+                          type="button"
+                          class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                          border border-border-base
+                          text-12-medium text-text-weak hover:text-text-base
+                          active:scale-95
+                          transition-all duration-150"
+                          onClick={() => props.navigate(untrack(parentID))}
+                        >
+                          <Icon name={getSemanticIcon("navigation.back")} size="small" />
+                          <span>Back to parent</span>
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
                 </Show>
-                <Show when={!props.meta().isSubsession && props.forkedFromID}>
+                <Show when={forkSourceID()}>
                   {(sourceID) => (
                     <div class="flex items-center justify-center pb-2">
                       <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
@@ -131,7 +137,7 @@ export function PromptDock(props: {
                           text-12-medium text-text-weak hover:text-text-base
                           active:scale-95
                           transition-all duration-150"
-                          onClick={() => props.navigate(sourceID())}
+                          onClick={() => props.navigate(untrack(sourceID))}
                         >
                           <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
                           <span>Forked from</span>
@@ -140,7 +146,7 @@ export function PromptDock(props: {
                     </div>
                   )}
                 </Show>
-                <Show when={!props.meta().isSubsession && props.backPath?.()}>
+                <Show when={returnPath()}>
                   {(from) => (
                     <div class="flex items-center justify-center pb-2">
                       <button
@@ -150,7 +156,7 @@ export function PromptDock(props: {
                         text-12-medium text-text-weak hover:text-text-base
                         active:scale-95
                         transition-all duration-150"
-                        onClick={() => nav(from())}
+                        onClick={() => nav(untrack(from))}
                       >
                         <Icon name={getSemanticIcon("navigation.back")} size="small" />
                         <span>Back</span>
@@ -167,7 +173,8 @@ export function PromptDock(props: {
                     newSessionCanCreateWorktree={!props.isGlobal}
                     onNewSessionWorkspaceSelectionChange={props.onNewSessionWorkspaceSelectionChange}
                     onNewSessionWorkspaceSelectionReset={props.onNewSessionWorkspaceSelectionReset}
-                    hideAgentSelector={!props.meta().showInputBar}
+                    hideAgentSelector={!meta().showInputBar}
+                    onPriorityControlChange={(control) => setPriorityControl(() => control)}
                   />
                   <Show when={props.sessionID}>
                     <SessionInbox
@@ -184,7 +191,15 @@ export function PromptDock(props: {
             <Show when={props.sessionID}>
               <PermissionDock sessionID={props.sessionID!} />
             </Show>
-            <SubagentSessionFooter cortex={props.meta().cortex!} parentSessionID={props.meta().parentID ?? undefined} />
+            <Show when={subagentFooter()}>
+              {(footer) => (
+                <SubagentSessionFooter
+                  cortex={footer().delegation}
+                  sessionID={footer().sessionID}
+                  parentSessionID={footer().parentSessionID}
+                />
+              )}
+            </Show>
           </Show>
         </Show>
         <Show when={props.isNewSession() && !props.isGlobal}>

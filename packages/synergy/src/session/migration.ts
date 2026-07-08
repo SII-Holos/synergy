@@ -231,6 +231,165 @@ function stringArray(value: unknown): string[] | undefined {
   return items.length > 0 ? items : undefined
 }
 
+function activeLoopStatus(status: unknown) {
+  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
+async function sessionHasActiveBlueprintLoop(info: Record<string, unknown>): Promise<boolean> {
+  const scopeID = asString(asRecord(info.scope)?.id)
+  const loopID = asString(asRecord(info.blueprint)?.loopID)
+  if (!scopeID || !loopID) return false
+  const loop = await Storage.read<Record<string, unknown>>(
+    StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), loopID),
+  ).catch(() => undefined)
+  return activeLoopStatus(loop?.status)
+}
+
+function workflowFromLegacySession(info: Record<string, unknown>, hasActiveBlueprintLoop: boolean) {
+  const lattice = asRecord(info.lattice)
+  const latticeMode = lattice?.mode
+  if (lattice && (latticeMode === "auto" || latticeMode === "collaborative")) {
+    const runID = asString(lattice.runID)
+    if (!runID) return undefined
+    return compact({
+      kind: "lattice",
+      runID,
+      mode: latticeMode,
+      firstBlueprintStarted: lattice.firstBlueprintStarted === true ? true : undefined,
+    })
+  }
+
+  if (hasActiveBlueprintLoop) return undefined
+
+  const lightLoop = asRecord(info.lightLoop)
+  if (lightLoop?.active === true) {
+    const taskDescription = asString(lightLoop.taskDescription)
+    if (taskDescription) return { kind: "lightloop", taskDescription }
+  }
+
+  if (info.planMode === true) return { kind: "plan" }
+  return undefined
+}
+
+async function migrateSessionWorkflowFields(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const path = StoragePath.sessionInfo(scope, sid)
+    const info = await Storage.read<Record<string, unknown>>(path).catch(() => undefined)
+    if (!info) {
+      done++
+      progress(done, tasks.length)
+      continue
+    }
+
+    const hadLegacy = "planMode" in info || "lightLoop" in info || "lattice" in info
+    if (hadLegacy) {
+      const workflow = workflowFromLegacySession(info, await sessionHasActiveBlueprintLoop(info))
+      delete info.planMode
+      delete info.lightLoop
+      delete info.lattice
+      if (workflow) info.workflow = workflow
+      else delete info.workflow
+      await Storage.write(path, info)
+      changed++
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("session workflow field migration complete", { total: tasks.length, changed })
+}
+
+function migrateWorkflowMessageMetadata(metadata: Record<string, unknown>): {
+  metadata: Record<string, unknown> | undefined
+  changed: boolean
+} {
+  const original = JSON.stringify(metadata)
+  const next: Record<string, unknown> = { ...metadata }
+  let workflow: "plan" | "lightloop" | "lattice" | undefined
+
+  if (metadata.planModeRequest === true) workflow = "plan"
+  const workflowMode = metadata.workflowMode
+  if (workflowMode === "plan" || workflowMode === "lattice") workflow = workflowMode
+  if (workflowMode === "light_loop") workflow = "lightloop"
+
+  const agent = asString(metadata.workflowModeAgent) ?? asString(metadata.planModeAgent)
+
+  delete next.planModeRequest
+  delete next.planModeAgent
+  delete next.planModeWrapperVersion
+  delete next.workflowMode
+  delete next.workflowModeAgent
+  delete next.workflowModeVersion
+
+  if (workflow) {
+    next.workflow = workflow
+    next.workflowVersion = 1
+  }
+  if (agent) next.workflowAgent = agent
+
+  const normalized = compact(next)
+  return { metadata: normalized, changed: JSON.stringify(normalized) !== original }
+}
+
+async function migrateWorkflowMessageMetadataFields(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string; messageID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) {
+      const messageIDs = await Storage.scan(
+        StoragePath.sessionMessagesRoot(scope, Identifier.asSessionID(sessionID)),
+      ).catch(() => [])
+      for (const messageID of messageIDs) tasks.push({ scopeID, sessionID, messageID })
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID, messageID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const mid = Identifier.asMessageID(messageID)
+    const path = StoragePath.messageInfo(scope, sid, mid)
+    const info = await Storage.read<MessageV2.Info>(path).catch(() => undefined)
+    if (info?.metadata) {
+      const migrated = migrateWorkflowMessageMetadata(info.metadata as Record<string, unknown>)
+      if (migrated.changed) {
+        await Storage.write(path, {
+          ...info,
+          metadata: migrated.metadata,
+        })
+        changed++
+      }
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("workflow message metadata migration complete", { total: tasks.length, changed })
+}
+
 function migrateAttachmentPresentation(presentation: unknown): {
   value: MessageV2.AttachmentPresentation | undefined
   changed: boolean
@@ -1949,6 +2108,14 @@ export const migrations: Migration[] = [
     description: "Migrate Cortex task metadata to outputConfig/output contract and remove legacy output fields",
     async up(progress) {
       await migrateCortexTaskOutputContract(progress)
+    },
+  },
+  {
+    id: "20260708-session-workflow-field",
+    description: "Migrate workflow mode session fields and message metadata to canonical workflow shape",
+    async up(progress) {
+      await migrateSessionWorkflowFields(progress)
+      await migrateWorkflowMessageMetadataFields(progress)
     },
   },
 ]

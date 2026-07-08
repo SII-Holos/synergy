@@ -245,6 +245,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   task_list: "task",
   task_output: "task",
   task_cancel: "task",
+  loop_stop: "task",
   dagwrite: "dag",
   dagread: "dag",
   dagpatch: "dag",

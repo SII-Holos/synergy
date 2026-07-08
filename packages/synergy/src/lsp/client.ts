@@ -12,6 +12,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { withTimeout } from "../util/timeout"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
+import { Shell } from "../util/shell"
 
 const DIAGNOSTICS_DEBOUNCE_MS = 150
 
@@ -251,7 +252,7 @@ export namespace LSPClient {
         }
         connection.end()
         connection.dispose()
-        input.server.process.kill()
+        await Shell.killTree(input.server.process)
         l.info("shutdown")
       },
     }
