@@ -11,7 +11,7 @@ The validation blockers from audit were resolved:
 - `packages/synergy/test/session/invoke.test.ts` verifies the coauthor reminder in `lateSystem`, where the optimized prompt layout intentionally places advisory runtime content.
 - `docs/kvcache-measurement-results.md` references the current production prompt-layout test names and live provider evidence.
 - Live OpenAI-Codex and DeepSeek experiments validate the optimization with real Synergy sessions, repeated tool calls, and provider-reported cache metadata.
-- The initial DeepSeek run exposed that `deepseek` was not covered by the late advisory layout; the branch now includes a narrow DeepSeek provider gate with deterministic coverage.
+- The initial DeepSeek run exposed that `deepseek` was not covered by the late advisory layout; the branch now routes cache-sensitive provider behavior through `PromptCachePolicy` with deterministic coverage.
 
 ## Quality gates
 
@@ -127,9 +127,9 @@ No blocker.
 No blocker.
 
 - Naming is clear: `lateSystem` and late-user-context rendering describe the optimization without adding a generic compatibility adapter.
-- Responsibilities remain separated: `invoke.ts` owns prompt-layer assembly, `prompt-budgeter.ts` owns budget-plan propagation, and `llm.ts` owns provider-specific message rendering.
+- Responsibilities remain separated: `invoke.ts` owns prompt-layer assembly, `prompt-budgeter.ts` owns budget-plan propagation, `PromptCachePolicy` owns provider cache routing, and `llm.ts` owns message rendering.
 - Tests cover the key invariants: OpenAI-style stable prefix preservation, DeepSeek stable prefix preservation, late advisory context placement, tool-call history ordering, Anthropic stable breakpoint behavior, provider cache options, cache token accounting, and invoke-level coauthor reminder placement.
-- The DeepSeek provider gate is intentionally narrow; generic `@ai-sdk/openai-compatible` providers still use the conservative fallback until verified.
+- The DeepSeek route is intentionally explicit; generic `@ai-sdk/openai-compatible` providers still use the conservative fallback until verified or configured for `promptCacheKey`.
 
 ## Remaining uncertainty
 

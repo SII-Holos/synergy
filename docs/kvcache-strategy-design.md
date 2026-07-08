@@ -147,7 +147,7 @@ Late context rendering options, in order of preference:
 The first implementation should choose the safest small path:
 
 - Build late context support only for volatile advisory regions (`memory_context`, `environment_context`) and route it through a role supported by the provider adapter.
-- Gate it behind a provider capability predicate such as `cacheLayout: "openai-prefix-v1"` rather than applying to all providers by string matching.
+- Gate it behind the provider cache policy router rather than applying it to all providers.
 
 OpenAI-Codex:
 

@@ -15,6 +15,7 @@ import { clone, mergeDeep, pipe } from "remeda"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
+import { PromptCachePolicy } from "@/provider/prompt-cache-policy"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
 import { withPreambleSection } from "@/agent/prompt/preamble"
@@ -135,7 +136,7 @@ export namespace LLM {
 
   function promptLayoutMetadata(input: PromptLayoutInput & { systemCacheBreakpoint?: number }): PromptLayoutMetadata {
     return {
-      mode: usesLateUserContext(input.model) ? "late-user-context" : "system",
+      mode: PromptCachePolicy.layout(input.model),
       stableSystemCount: input.system.filter((content) => content.length > 0).length,
       lateSystemCount: (input.lateSystem ?? []).filter((content) => content.length > 0).length,
       historyMessageCount: input.messages.length,
@@ -153,7 +154,7 @@ export namespace LLM {
     const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
     if (lateSystem.length === 0) return [...systemMessages, ...input.messages]
 
-    if (!usesLateUserContext(input.model)) {
+    if (PromptCachePolicy.layout(input.model) === "system") {
       return [
         ...systemMessages,
         ...lateSystem.map(
@@ -174,16 +175,6 @@ export namespace LLM {
         content: formatLateUserContext(lateSystem),
       },
     ]
-  }
-
-  function usesLateUserContext(model: Provider.Model) {
-    return (
-      model.providerID === "openai" ||
-      model.providerID === "openai-codex" ||
-      model.providerID === "deepseek" ||
-      model.api.npm === "@ai-sdk/openai" ||
-      model.api.npm === "@ai-sdk/azure"
-    )
   }
 
   function formatLateUserContext(parts: string[]) {
