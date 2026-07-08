@@ -18,6 +18,6 @@ export function createSupervisorAgent(ctx: BuiltinAgentContext) {
     model: "thinking",
     permission: "supervisor",
     hidden: true,
-    visibleTo: ["synergy", "synergy-max", "supervisor"],
+    visibleTo: ["supervisor"],
   })
 }
