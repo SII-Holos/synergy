@@ -5,11 +5,13 @@ import { Auth } from "../../src/provider/api-key"
 import { GitHubProvider } from "../../src/provider/github"
 import { ScopeContext } from "../../src/scope/context"
 import { LocalBashBackend } from "../../src/tool/bash/local"
+import { Shell } from "../../src/util/shell"
 import { tmpdir } from "../fixture/fixture"
 
 const originalGHToken = process.env.GH_TOKEN
 const originalGITHUBToken = process.env.GITHUB_TOKEN
 const originalPath = process.env.PATH
+const originalShell = process.env.SHELL
 
 async function reset() {
   await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
@@ -19,9 +21,18 @@ async function reset() {
   else process.env.GITHUB_TOKEN = originalGITHUBToken
   if (originalPath === undefined) delete process.env.PATH
   else process.env.PATH = originalPath
+  if (originalShell === undefined) delete process.env.SHELL
+  else process.env.SHELL = originalShell
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
 }
 
-beforeEach(reset)
+beforeEach(async () => {
+  await reset()
+  delete process.env.SHELL
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
+})
 afterEach(reset)
 
 function testContext() {

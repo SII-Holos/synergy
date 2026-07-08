@@ -34,13 +34,26 @@ export namespace NoteStore {
   }
 
   function normalize(note: z.infer<typeof NoteTypes.Info>): z.infer<typeof NoteTypes.Info> {
+    note.pinned ??= false
     note.global ??= false
     note.archived ??= false
+    note.tags ??= []
     note.version ??= 1
     note.kind ??= "note"
     note.content = NoteDocument.normalize(note.content)
     normalizeBlueprint(note)
     return note
+  }
+
+  function normalizeMetadata(entry: Metadata, scopeID: string): Metadata {
+    entry.pinned ??= false
+    entry.global ??= scopeID === HOME_SCOPE_ID
+    entry.archived ??= false
+    entry.tags ??= []
+    entry.kind ??= "note"
+    entry.version ??= 1
+    entry.searchText ??= [entry.title, ...entry.tags].filter(Boolean).join("\n")
+    return entry
   }
 
   function toMetadata(note: z.infer<typeof NoteTypes.Info>): Metadata {
@@ -91,7 +104,9 @@ export namespace NoteStore {
   async function loadIndex(scopeID: string): Promise<Metadata[]> {
     const sid = Identifier.asScopeID(scopeID)
     try {
-      return await Storage.read<Metadata[]>(indexPath(sid))
+      const entries = await Storage.read<Metadata[]>(indexPath(sid))
+      if (!Array.isArray(entries)) return rebuildIndex(scopeID)
+      return entries.map((entry) => normalizeMetadata(entry, scopeID))
     } catch {
       return rebuildIndex(scopeID)
     }

@@ -226,15 +226,16 @@ describe("GET /global/session", () => {
       scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
+        const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
 
-        const def = await app.request("/global/session")
+        const def = await app.request(`/global/session?${scopeQuery}`)
         const defBody = await def.json()
         const defIDs = defBody.data.map((s: any) => s.id)
         expect(defIDs).toContain(active!.id)
         expect(defIDs).not.toContain(archivedNeedle!.id)
         expect(defIDs).not.toContain(archivedOther!.id)
 
-        const archived = await app.request("/global/session?archived=only")
+        const archived = await app.request(`/global/session?${scopeQuery}&archived=only`)
         const archivedBody = await archived.json()
         const archivedIDs = archivedBody.data.map((s: any) => s.id)
         expect(archivedBody.total).toBe(2)
@@ -242,7 +243,7 @@ describe("GET /global/session", () => {
         expect(archivedIDs).toContain(archivedOther!.id)
         expect(archivedIDs).not.toContain(active!.id)
 
-        const searched = await app.request("/global/session?archived=only&search=Needle")
+        const searched = await app.request(`/global/session?${scopeQuery}&archived=only&search=Needle`)
         const searchedBody = await searched.json()
         expect(searchedBody.total).toBe(1)
         expect(searchedBody.data.map((s: any) => s.id)).toEqual([archivedNeedle!.id])

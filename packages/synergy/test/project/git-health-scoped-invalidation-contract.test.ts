@@ -30,6 +30,8 @@ import { $ } from "bun"
 // ---------------------------------------------------------------------------
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
+const GIT_HEALTH_TEST_TIMEOUT = 30_000
+const gitHealthTest = test.serial
 
 beforeAll(async () => {
   const mod = await import("../../src/project/git-health")
@@ -82,84 +84,92 @@ async function gitEmptyCommit(dir: string, message = "test commit"): Promise<voi
 // ===========================================================================
 
 describe("GitHealth.invalidate — scoped vs global contract", () => {
-  test("invalidate(cwd) clears only the specified directory's cache; other dirs survive", async () => {
-    const repoA = makeRepo()
-    const repoB = makeRepo()
-    try {
-      // repoA: clean repo
-      await gitInit(repoA.path)
-      await gitEmptyCommit(repoA.path, "root")
+  gitHealthTest(
+    "invalidate(cwd) clears only the specified directory's cache; other dirs survive",
+    async () => {
+      const repoA = makeRepo()
+      const repoB = makeRepo()
+      try {
+        // repoA: clean repo
+        await gitInit(repoA.path)
+        await gitEmptyCommit(repoA.path, "root")
 
-      // repoB: has detectable issues (detached HEAD)
-      await gitInit(repoB.path)
-      await gitEmptyCommit(repoB.path, "root")
-      await $`git checkout --detach`.cwd(repoB.path).quiet()
+        // repoB: has detectable issues (detached HEAD)
+        await gitInit(repoB.path)
+        await gitEmptyCommit(repoB.path, "root")
+        await $`git checkout --detach`.cwd(repoB.path).quiet()
 
-      // Populate caches for both
-      await GitHealth.check(repoA.path)
-      await GitHealth.check(repoB.path)
+        // Populate caches for both
+        await GitHealth.check(repoA.path)
+        await GitHealth.check(repoB.path)
 
-      // Verify repoB is cached (returns without re-scanning)
-      const issuesB1 = await GitHealth.check(repoB.path)
-      const detachedB1 = issuesB1.find((i: Issue) => i.dimension === "detached_head")
-      expect(detachedB1, "detached head should be cached").toBeDefined()
+        // Verify repoB is cached (returns without re-scanning)
+        const issuesB1 = await GitHealth.check(repoB.path)
+        const detachedB1 = issuesB1.find((i: Issue) => i.dimension === "detached_head")
+        expect(detachedB1, "detached head should be cached").toBeDefined()
 
-      // Scoped invalidate on repoA only
-      GitHealth.invalidate(repoA.path)
+        // Scoped invalidate on repoA only
+        GitHealth.invalidate(repoA.path)
 
-      // repoB should STILL return cached result (not re-scanned)
-      const issuesB2 = await GitHealth.check(repoB.path)
-      const detachedB2 = issuesB2.find((i: Issue) => i.dimension === "detached_head")
-      expect(detachedB2, "scoped invalidate on repoA must not clear repoB cache").toBeDefined()
+        // repoB should STILL return cached result (not re-scanned)
+        const issuesB2 = await GitHealth.check(repoB.path)
+        const detachedB2 = issuesB2.find((i: Issue) => i.dimension === "detached_head")
+        expect(detachedB2, "scoped invalidate on repoA must not clear repoB cache").toBeDefined()
 
-      // repoA should re-scan (cache was cleared)
-      // Add files so re-scan detects something different
-      for (let i = 1; i <= 50; i++) {
-        writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        // repoA should re-scan (cache was cleared)
+        // Add files so re-scan detects something different
+        for (let i = 1; i <= 50; i++) {
+          writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        }
+        const issuesA2 = await GitHealth.check(repoA.path)
+        const untrackedA = issuesA2.find((i: Issue) => i.dimension === "untracked")
+        expect(untrackedA, "re-scan on repoA should find new untracked files").toBeDefined()
+      } finally {
+        repoA.cleanup()
+        repoB.cleanup()
+        GitHealth.invalidate()
       }
-      const issuesA2 = await GitHealth.check(repoA.path)
-      const untrackedA = issuesA2.find((i: Issue) => i.dimension === "untracked")
-      expect(untrackedA, "re-scan on repoA should find new untracked files").toBeDefined()
-    } finally {
-      repoA.cleanup()
-      repoB.cleanup()
-      GitHealth.invalidate()
-    }
-  })
+    },
+    GIT_HEALTH_TEST_TIMEOUT,
+  )
 
-  test("invalidate() without cwd clears caches for all directories", async () => {
-    const repoA = makeRepo()
-    const repoB = makeRepo()
-    try {
-      await gitInit(repoA.path)
-      await gitEmptyCommit(repoA.path, "root")
+  gitHealthTest(
+    "invalidate() without cwd clears caches for all directories",
+    async () => {
+      const repoA = makeRepo()
+      const repoB = makeRepo()
+      try {
+        await gitInit(repoA.path)
+        await gitEmptyCommit(repoA.path, "root")
 
-      await gitInit(repoB.path)
-      await gitEmptyCommit(repoB.path, "root")
-      await $`git checkout --detach`.cwd(repoB.path).quiet()
+        await gitInit(repoB.path)
+        await gitEmptyCommit(repoB.path, "root")
+        await $`git checkout --detach`.cwd(repoB.path).quiet()
 
-      // Populate caches
-      await GitHealth.check(repoA.path)
-      await GitHealth.check(repoB.path)
+        // Populate caches
+        await GitHealth.check(repoA.path)
+        await GitHealth.check(repoB.path)
 
-      // Global invalidate
-      GitHealth.invalidate()
+        // Global invalidate
+        GitHealth.invalidate()
 
-      // Both should re-scan now
-      for (let i = 1; i <= 50; i++) {
-        writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        // Both should re-scan now
+        for (let i = 1; i <= 50; i++) {
+          writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        }
+        const issuesA = await GitHealth.check(repoA.path)
+        const untrackedA = issuesA.find((i: Issue) => i.dimension === "untracked")
+        expect(untrackedA, "after global invalidate, repoA should re-scan").toBeDefined()
+
+        const issuesB = await GitHealth.check(repoB.path)
+        const detachedB = issuesB.find((i: Issue) => i.dimension === "detached_head")
+        expect(detachedB, "after global invalidate, repoB should re-scan").toBeDefined()
+      } finally {
+        repoA.cleanup()
+        repoB.cleanup()
+        GitHealth.invalidate()
       }
-      const issuesA = await GitHealth.check(repoA.path)
-      const untrackedA = issuesA.find((i: Issue) => i.dimension === "untracked")
-      expect(untrackedA, "after global invalidate, repoA should re-scan").toBeDefined()
-
-      const issuesB = await GitHealth.check(repoB.path)
-      const detachedB = issuesB.find((i: Issue) => i.dimension === "detached_head")
-      expect(detachedB, "after global invalidate, repoB should re-scan").toBeDefined()
-    } finally {
-      repoA.cleanup()
-      repoB.cleanup()
-      GitHealth.invalidate()
-    }
-  })
+    },
+    GIT_HEALTH_TEST_TIMEOUT,
+  )
 })
