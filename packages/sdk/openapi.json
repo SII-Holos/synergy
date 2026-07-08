@@ -32570,32 +32570,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.mcp.tools.changed": {
         "type": "object",
         "properties": {
@@ -33227,11 +33201,17 @@
           "properties": {
             "type": "object",
             "properties": {
+              "scopeID": {
+                "type": "string"
+              },
               "note": {
                 "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
               }
             },
-            "required": ["note"]
+            "required": ["scopeID", "note", "meta"]
           }
         },
         "required": ["type", "properties"]
@@ -33246,11 +33226,24 @@
           "properties": {
             "type": "object",
             "properties": {
+              "scopeID": {
+                "type": "string"
+              },
               "note": {
                 "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
+                }
               }
             },
-            "required": ["note"]
+            "required": ["scopeID", "note", "meta", "changed"]
           }
         },
         "required": ["type", "properties"]
@@ -33295,9 +33288,15 @@
               },
               "scopeID": {
                 "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
               }
             },
-            "required": ["ids", "scopeID"]
+            "required": ["ids", "scopeID", "metas"]
           }
         },
         "required": ["type", "properties"]
@@ -33320,9 +33319,15 @@
               },
               "scopeID": {
                 "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
               }
             },
-            "required": ["ids", "scopeID"]
+            "required": ["ids", "scopeID", "metas"]
           }
         },
         "required": ["type", "properties"]
@@ -33727,6 +33732,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.pty.created": {
         "type": "object",
         "properties": {
@@ -34081,9 +34112,6 @@
             "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
@@ -34241,6 +34269,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

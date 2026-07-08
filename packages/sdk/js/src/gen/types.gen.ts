@@ -6097,14 +6097,19 @@ export type EventTodoUpdated = {
 export type EventNoteCreated = {
   type: "note.created"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
   }
 }
 
 export type EventNoteUpdated = {
   type: "note.updated"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
   }
 }
 
@@ -6121,6 +6126,7 @@ export type EventNoteArchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
@@ -6129,6 +6135,7 @@ export type EventNoteUnarchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 

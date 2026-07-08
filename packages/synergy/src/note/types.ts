@@ -1,6 +1,9 @@
 import z from "zod"
 
 export namespace NoteTypes {
+  export const ChangedField = z.enum(["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"])
+  export type ChangedField = z.infer<typeof ChangedField>
+
   export const Info = z
     .object({
       id: z.string(),

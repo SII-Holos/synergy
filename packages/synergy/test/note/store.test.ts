@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import z from "zod"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { NoteError, NoteStore } from "../../src/note"
+import { NoteEvent } from "../../src/note/event"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
+import { Bus } from "../../src/bus"
 
 Log.init({ print: false })
 
@@ -51,6 +54,48 @@ describe("NoteStore", () => {
 
         expect(updated.version).toBe(2)
         expect(updated.content).toEqual({ type: "doc", content: [] })
+      },
+    })
+  })
+
+  test("publishes scoped metadata and actual changed fields", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const createdEvents: Array<z.infer<typeof NoteEvent.Created.properties>> = []
+        const updatedEvents: Array<z.infer<typeof NoteEvent.Updated.properties>> = []
+        const unsubCreated = Bus.subscribe(NoteEvent.Created, (event) => {
+          createdEvents.push(event.properties)
+        })
+        const unsubUpdated = Bus.subscribe(NoteEvent.Updated, (event) => {
+          updatedEvents.push(event.properties)
+        })
+        try {
+          const created = await NoteStore.create({
+            title: "Event note",
+            content: { type: "doc", content: [] },
+          })
+          const updated = await NoteStore.update(scope.id, created.id, {
+            expectedVersion: created.version,
+            pinned: true,
+          })
+
+          expect(createdEvents).toHaveLength(1)
+          expect(createdEvents[0].scopeID).toBe(scope.id)
+          expect(createdEvents[0].meta.id).toBe(created.id)
+          expect(createdEvents[0].meta).not.toHaveProperty("content")
+          expect(updatedEvents).toHaveLength(1)
+          expect(updatedEvents[0].scopeID).toBe(scope.id)
+          expect(updatedEvents[0].note.id).toBe(updated.id)
+          expect(updatedEvents[0].meta.pinned).toBe(true)
+          expect(updatedEvents[0].changed).toEqual(["pinned"])
+        } finally {
+          unsubCreated()
+          unsubUpdated()
+        }
       },
     })
   })
@@ -289,6 +334,52 @@ describe("NoteStore", () => {
         expect(restored[0].archived).toBe(false)
         expect(restored[0].title).toBe("To unarchive")
         expect(restored[0].tags).toEqual(["keep"])
+      },
+    })
+  })
+
+  test("archive and unarchive resolve visible global notes from project scope", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const globalNote = await NoteStore.create(
+          {
+            title: "Visible global",
+          },
+          { scopeID: "home" },
+        )
+        const archivedEvents: Array<z.infer<typeof NoteEvent.Archived.properties>> = []
+        const unarchivedEvents: Array<z.infer<typeof NoteEvent.Unarchived.properties>> = []
+        const unsubArchived = Bus.subscribe(NoteEvent.Archived, (event) => {
+          archivedEvents.push(event.properties)
+        })
+        const unsubUnarchived = Bus.subscribe(NoteEvent.Unarchived, (event) => {
+          unarchivedEvents.push(event.properties)
+        })
+        try {
+          const archived = await NoteStore.archive(scope.id, [globalNote.id])
+          expect(archived[0].archived).toBe(true)
+          expect((await NoteStore.get("home", globalNote.id)).archived).toBe(true)
+
+          const restored = await NoteStore.unarchive(scope.id, [globalNote.id])
+          expect(restored[0].archived).toBe(false)
+          expect((await NoteStore.get("home", globalNote.id)).archived).toBe(false)
+
+          expect(archivedEvents).toHaveLength(1)
+          expect(archivedEvents[0].scopeID).toBe("home")
+          expect(archivedEvents[0].ids).toEqual([globalNote.id])
+          expect(archivedEvents[0].metas[0].id).toBe(globalNote.id)
+          expect(archivedEvents[0].metas[0].archived).toBe(true)
+          expect(unarchivedEvents).toHaveLength(1)
+          expect(unarchivedEvents[0].scopeID).toBe("home")
+          expect(unarchivedEvents[0].metas[0].archived).toBe(false)
+        } finally {
+          unsubArchived()
+          unsubUnarchived()
+        }
       },
     })
   })
