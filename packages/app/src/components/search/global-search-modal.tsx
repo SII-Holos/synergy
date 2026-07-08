@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -64,14 +64,19 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
     }
   }
 
-  createEffect(() => {
-    if (!props.open) return
-    setQuery("")
-    setSelectedIdx(-1)
-    setShowArchived(false)
-    fetchResults()
-    setTimeout(() => inputRef?.focus(), 50)
-  })
+  createEffect(
+    on(
+      () => props.open,
+      (open) => {
+        if (!open) return
+        setQuery("")
+        setSelectedIdx(-1)
+        setShowArchived(false)
+        fetchResults()
+        setTimeout(() => inputRef?.focus(), 50)
+      },
+    ),
+  )
 
   const handleInput = (value: string) => {
     setQuery(value)
