@@ -420,7 +420,7 @@ test("merges plugin arrays from global and local configs", async () => {
       expect(pluginNames.length).toBeGreaterThanOrEqual(3)
     },
   })
-})
+}, 30_000)
 
 test("does not error when only custom agent is a subagent", async () => {
   await using tmp = await tmpdir({

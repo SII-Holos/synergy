@@ -166,10 +166,10 @@ export namespace SessionInvoke {
         },
       )
     }
-    // Keep the recalled memory/experience in the system prompt for every step
-    // so the prefix stays stable (maximizing cache hits) and the agent retains
-    // its knowledge context across the entire trajectory, including after
-    // compaction boundaries.
+    // Keep recalled memory/experience available for every step so the agent
+    // retains its knowledge context across the entire trajectory, including
+    // after compaction boundaries. Provider layout decides whether this
+    // advisory context stays in system or moves late for cacheability.
     if (step > 1 && isTopSession) {
       return getCachedResult(sessionID)
     }
@@ -559,6 +559,7 @@ export namespace SessionInvoke {
         // This ordering maximizes prompt caching by keeping static content first.
         const systemParts: string[] = []
         let systemCacheBreakpoint: number | undefined
+        const lateSystemParts: string[] = []
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
@@ -654,9 +655,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           }
         }
 
-        // Layer 3: Dynamic — memory/experience context (varies per step)
+        // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
         if (memoryResult) {
-          systemParts.push(memoryResult.context)
+          lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
           if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
@@ -669,32 +670,32 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           }
         }
 
-        // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
-        systemParts.push(...envParts)
+        // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
+        lateSystemParts.push(...envParts)
 
-        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
         const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
-        if (gitHealthBlock) systemParts.push(gitHealthBlock)
+        if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
-        // Layer 4.55: Configurable — git commit coauthor footer reminder
+        // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
         if ((await Config.current()).experimental?.coauthor_reminder !== false) {
-          systemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
         }
 
-        // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
-        if (agendaReminder) systemParts.push(agendaReminder)
+        // Layer 5: Dynamic advisory context — upcoming agenda wake-ups
+        if (agendaReminder) lateSystemParts.push(agendaReminder)
 
-        // Layer 6: Dynamic — cortex reminders and time context (always at the end)
-        if (cortexReminder) systemParts.push(cortexReminder)
+        // Layer 6: Dynamic advisory context — cortex reminders and time context
+        if (cortexReminder) lateSystemParts.push(cortexReminder)
 
-        // Layer 7: Dynamic — planning reminder when agent self-executes without a DAG
+        // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
         const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
-        if (planningReminder) systemParts.push(planningReminder)
+        if (planningReminder) lateSystemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
           const elapsed = R.time.created - lastFinished.time.completed
           if (elapsed > 0) {
-            systemParts.push(
+            lateSystemParts.push(
               `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
             )
           }
@@ -725,6 +726,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           system: systemParts,
           systemCacheBreakpoint,
           messages: preparedMessages,
+          lateSystem: lateSystemParts,
           toolDefinitions,
         }).catch(async (error) => {
           await completeAssistantWithError({ sessionID, processor, model, error })
@@ -828,6 +830,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               sessionID,
               system: promptPlan.system,
               systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+              lateSystem: promptPlan.lateSystem,
               messages: promptPlan.messages,
               tools: resolvedTools.tools,
               activeToolIDs: resolvedTools.activeToolIDs,
@@ -1811,6 +1814,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         }
       }
     }
+    // This deliberately uses the cheap four-chars-per-token heuristic instead
+    // of PromptBudgeter.measure's model-aware tokenizer path. Calibration runs
+    // between tool steps and starts from provider-reported actual input tokens,
+    // so only the small post-calibration delta is approximate.
     const deltaTokens = Math.ceil(deltaChars / 4)
 
     return { actualInput, outputTokens, deltaTokens }
