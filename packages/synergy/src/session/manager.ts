@@ -57,6 +57,7 @@ export namespace SessionManager {
       onCancel(): void
     }[]
     lastActiveAt: number
+    isChild: boolean
   }
 
   const runtimes = new Map<string, SessionRuntime>()
@@ -100,7 +101,8 @@ export namespace SessionManager {
   }
 
   const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
-  const IDLE_TTL_MS = 30 * 60 * 1000
+  const USER_IDLE_TTL_MS = 30 * 60 * 1000
+  const CHILD_SESSION_IDLE_TTL_MS = 5 * 60 * 1000
 
   const sweepTimer = setInterval(() => {
     const now = Date.now()
@@ -112,9 +114,10 @@ export namespace SessionManager {
           continue
         }
       }
-      if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
+      const ttl = runtime.isChild ? CHILD_SESSION_IDLE_TTL_MS : USER_IDLE_TTL_MS
+      if (now - runtime.lastActiveAt < ttl) continue
       runtimes.delete(sessionID)
-      log.info("swept idle runtime", { sessionID })
+      log.info("swept idle runtime", { sessionID, isChild: runtime.isChild })
     }
   }, IDLE_SWEEP_INTERVAL_MS)
   sweepTimer.unref()
@@ -198,9 +201,30 @@ export namespace SessionManager {
       status: { type: "idle" },
       waiters: [],
       lastActiveAt: Date.now(),
+      isChild: false,
     }
     runtimes.set(sessionID, runtime)
     log.info("registered runtime", { sessionID })
+    return runtime
+  }
+
+  export function registerChildRuntime(sessionID: string): SessionRuntime {
+    const existing = runtimes.get(sessionID)
+    if (existing) {
+      existing.isChild = true
+      existing.lastActiveAt = Date.now()
+      return existing
+    }
+
+    const runtime: SessionRuntime = {
+      sessionID,
+      status: { type: "idle" },
+      waiters: [],
+      lastActiveAt: Date.now(),
+      isChild: true,
+    }
+    runtimes.set(sessionID, runtime)
+    log.info("registered child runtime", { sessionID })
     return runtime
   }
 
