@@ -537,17 +537,29 @@ async function runSerial(processes: DevProcessSpec[]): Promise<number> {
 async function runParallel(plan: DevPlan): Promise<number> {
   await assertPreflight(plan)
   const children: ReturnType<typeof spawnDevProcess>[] = []
-  const cleanup = () => {
+  let exiting = false
+  const cleanup = async () => {
     for (const child of children) {
       if (child.exitCode === null) child.kill()
     }
+    // Wait for children to exit gracefully (max 3s), then force-kill stragglers.
+    const settle = Promise.allSettled(children.map((c) => c.exited))
+    const timeout = new Promise<void>((r) => setTimeout(r, 3000))
+    await Promise.race([settle, timeout])
+    for (const child of children) {
+      if (child.exitCode === null) child.kill("SIGKILL")
+    }
   }
-  process.once("SIGINT", () => {
-    cleanup()
+  process.once("SIGINT", async () => {
+    if (exiting) return
+    exiting = true
+    await cleanup()
     process.exit(130)
   })
-  process.once("SIGTERM", () => {
-    cleanup()
+  process.once("SIGTERM", async () => {
+    if (exiting) return
+    exiting = true
+    await cleanup()
     process.exit(143)
   })
   try {
