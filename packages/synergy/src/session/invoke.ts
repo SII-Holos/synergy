@@ -28,6 +28,7 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { SessionMemoryPressure } from "./memory-pressure"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
@@ -865,24 +866,33 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
           }
         }
 
-        // post-LLM jobs
-        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
-        const postCtx: LoopJob.Context = {
-          ...jobCtx,
-          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
-          lastAssistant: processor.message,
-          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
-            ? processor.message
-            : jobCtx.lastFinished,
-          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
-            ? postParts
-            : jobCtx.lastFinishedParts,
+        let postRequestedStop = false
+        {
+          // post-LLM jobs
+          const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+          const postCtx: LoopJob.Context = {
+            ...jobCtx,
+            messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+            lastAssistant: processor.message,
+            lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+              ? processor.message
+              : jobCtx.lastFinished,
+            lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+              ? postParts
+              : jobCtx.lastFinishedParts,
+          }
+          const postJobs = LoopJob.collect("post", postCtx)
+          if (postJobs.length > 0) {
+            const postResult = await LoopJob.execute(postJobs, postCtx)
+            postRequestedStop = postResult === "stop"
+          }
         }
-        const postJobs = LoopJob.collect("post", postCtx)
-        if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, postCtx)
-          if (postResult === "stop") break
-        }
+        await SessionMemoryPressure.maybeCollect({
+          sessionID,
+          messageID: processor.message.id,
+          phase: "session.turn.after_post_jobs",
+        })
+        if (postRequestedStop) break
 
         if (result === "stop") {
           // If the failure was caused by exceeding context limits, inject a

@@ -23,6 +23,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
 import { PerformanceMetrics } from "@/performance/metrics"
 import { PerformanceSpans } from "@/performance/spans"
+import { SessionMemoryPressure } from "./memory-pressure"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -276,32 +277,53 @@ export namespace SessionProcessor {
       })
     }
 
-    function toolSettlementSnapshot(callID?: string): Record<string, any> {
-      const ids = callID
-        ? [callID]
-        : [...new Set([...Object.keys(toolcalls), ...executions.keys(), ...settledToolCalls])]
+    function toolSettlementSnapshot(callID?: string, detail = false): Record<string, any> {
+      const ids = detail
+        ? callID
+          ? [callID]
+          : [...new Set([...Object.keys(toolcalls), ...executions.keys(), ...settledToolCalls])]
+        : []
+      const part = callID ? toolcalls[callID] : undefined
+      const slot = callID ? executions.get(callID) : undefined
       return {
         activeToolCallCount: Object.keys(toolcalls).length,
         activeExecutionCount: executions.size,
         settledToolCallCount: settledToolCalls.size,
         settlementPromiseCount: settlementPromises.size,
-        calls: ids.map((id) => {
-          const part = toolcalls[id]
-          const slot = executions.get(id)
-          return {
-            callID: id,
-            tool: part?.tool,
-            partStatus: part?.state.status,
-            hasPart: Boolean(part),
-            hasSlot: Boolean(slot),
-            slotStatus: slot?.status,
-            hasOutcome: Boolean(slot?.outcome),
-            registeredAt: slot?.registeredAt,
-            resolvedAt: slot?.resolvedAt,
-            hasSettlementPromise: settlementPromises.has(id),
-            settled: settledToolCalls.has(id),
-          }
-        }),
+        ...(callID
+          ? {
+              callID,
+              tool: part?.tool,
+              partStatus: part?.state.status,
+              hasPart: Boolean(part),
+              hasSlot: Boolean(slot),
+              slotStatus: slot?.status,
+              hasOutcome: Boolean(slot?.outcome),
+              hasSettlementPromise: settlementPromises.has(callID),
+              settled: settledToolCalls.has(callID),
+            }
+          : {}),
+        ...(detail
+          ? {
+              calls: ids.map((id) => {
+                const part = toolcalls[id]
+                const slot = executions.get(id)
+                return {
+                  callID: id,
+                  tool: part?.tool,
+                  partStatus: part?.state.status,
+                  hasPart: Boolean(part),
+                  hasSlot: Boolean(slot),
+                  slotStatus: slot?.status,
+                  hasOutcome: Boolean(slot?.outcome),
+                  registeredAt: slot?.registeredAt,
+                  resolvedAt: slot?.resolvedAt,
+                  hasSettlementPromise: settlementPromises.has(id),
+                  settled: settledToolCalls.has(id),
+                }
+              }),
+            }
+          : {}),
       }
     }
 
@@ -625,6 +647,22 @@ export namespace SessionProcessor {
       return slot
     }
 
+    function dispose(reason = "manual") {
+      const before = toolSettlementSnapshot(undefined, true)
+      for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
+      executions.clear()
+      settlementPromises.clear()
+      settledToolCalls.clear()
+      for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
+      snapshot = undefined
+      log.info("processor disposed", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        reason,
+        before,
+      })
+    }
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -633,6 +671,7 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       beginExecution,
+      dispose,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
         const turnTraceId = Observability.traceId("turn")
@@ -649,581 +688,618 @@ export namespace SessionProcessor {
           },
         })
         const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
-        while (true) {
-          try {
-            input.abort.throwIfAborted()
-            let currentText: MessageV2.TextPart | undefined
-            let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
-            const stream = await LLM.stream(streamInput)
-            const llmSpan = PerformanceSpans.start({
-              name: "llm.request",
-              module: "llm",
-              sessionID: input.sessionID,
-              messageID: input.assistantMessage.id,
-              attributes: { provider: input.model.providerID, model: input.model.id },
-            })
-            const llmStartedAt = Date.now()
-            let firstTokenSeen = false
-
+        try {
+          while (true) {
             try {
-              for await (const value of stream.fullStream) {
-                input.abort.throwIfAborted()
-                switch (value.type) {
-                  case "start":
-                    SessionManager.setStatus(input.sessionID, { type: "busy" })
-                    PerformanceMetrics.record({
-                      name: "llm.stream.start",
-                      value: Date.now() - llmStartedAt,
-                      unit: "ms",
-                      module: "llm",
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      labels: { provider: input.model.providerID, model: input.model.id },
-                    })
-                    break
+              input.abort.throwIfAborted()
+              let currentText: MessageV2.TextPart | undefined
+              let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+              SessionMemoryPressure.probe("processor.before_llm_stream", {
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+              const stream = await LLM.stream(streamInput)
+              SessionMemoryPressure.probe("processor.after_llm_stream", {
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+              const llmSpan = PerformanceSpans.start({
+                name: "llm.request",
+                module: "llm",
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+                attributes: { provider: input.model.providerID, model: input.model.id },
+              })
+              const llmStartedAt = Date.now()
+              let firstTokenSeen = false
 
-                  case "reasoning-start":
-                    if (value.id in reasoningMap) {
-                      continue
-                    }
-                    reasoningMap[value.id] = {
-                      id: Identifier.ascending("part"),
-                      messageID: input.assistantMessage.id,
-                      sessionID: input.assistantMessage.sessionID,
-                      type: "reasoning",
-                      text: "",
-                      time: {
-                        start: Date.now(),
-                      },
-                      metadata: value.providerMetadata,
-                    }
-                    break
-
-                  case "reasoning-delta":
-                    if (!firstTokenSeen) {
-                      firstTokenSeen = true
+              try {
+                for await (const value of stream.fullStream) {
+                  input.abort.throwIfAborted()
+                  switch (value.type) {
+                    case "start":
+                      SessionManager.setStatus(input.sessionID, { type: "busy" })
                       PerformanceMetrics.record({
-                        name: "llm.stream.first_token",
+                        name: "llm.stream.start",
                         value: Date.now() - llmStartedAt,
                         unit: "ms",
                         module: "llm",
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
-                        labels: { provider: input.model.providerID, model: input.model.id, kind: "reasoning" },
+                        labels: { provider: input.model.providerID, model: input.model.id },
                       })
-                    }
-                    if (value.text) {
-                      PerformanceMetrics.record({
-                        name: "llm.stream.output_chars",
-                        value: value.text.length,
-                        unit: "count",
-                        module: "llm",
-                        sessionID: input.sessionID,
-                        messageID: input.assistantMessage.id,
-                        labels: { kind: "reasoning" },
-                      })
-                    }
-                    if (value.id in reasoningMap) {
-                      const part = reasoningMap[value.id]
-                      part.text += value.text
-                      if (value.providerMetadata) part.metadata = value.providerMetadata
-                      if (part.text) await Session.updatePartDelta(part, value.text)
-                    }
-                    break
+                      break
 
-                  case "reasoning-end":
-                    if (value.id in reasoningMap) {
-                      const part = reasoningMap[value.id]
-                      part.text = part.text.trimEnd()
-
-                      part.time = {
-                        ...part.time,
-                        end: Date.now(),
+                    case "reasoning-start":
+                      if (value.id in reasoningMap) {
+                        continue
                       }
-                      if (value.providerMetadata) part.metadata = value.providerMetadata
-                      await Session.updatePart(part)
-                      delete reasoningMap[value.id]
-                    }
-                    break
-
-                  case "tool-input-start": {
-                    const part = await Session.updatePart({
-                      id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
-                      messageID: input.assistantMessage.id,
-                      sessionID: input.assistantMessage.sessionID,
-                      type: "tool",
-                      tool: value.toolName,
-                      callID: value.id,
-                      state: {
-                        status: "pending",
-                        input: {},
-                        raw: "",
-                        metadata: runningToolMetadata(
-                          value.toolName,
-                          "providerMetadata" in value ? value.providerMetadata : undefined,
-                        ),
-                      },
-                    })
-                    toolcalls[value.id] = part as MessageV2.ToolPart
-                    generatingAccum[value.id] = ""
-                    break
-                  }
-
-                  case "tool-input-delta": {
-                    const match = toolcalls[value.id]
-                    if (!match) break
-                    const prevRaw = generatingAccum[value.id]
-                    if (prevRaw === undefined) break
-                    const raw = prevRaw + value.delta
-                    generatingAccum[value.id] = raw
-                    // Throttle generating updates: emit when enough new content has accumulated
-                    if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
-                    const part = await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "generating",
-                        input: {},
-                        raw,
-                        charsReceived: raw.length,
-                        metadata: streamingToolMetadata(match),
-                      },
-                    })
-                    toolcalls[value.id] = part as MessageV2.ToolPart
-                    break
-                  }
-
-                  case "tool-input-end": {
-                    const match = toolcalls[value.id]
-                    if (!match) break
-                    const raw = generatingAccum[value.id]
-                    if (!raw) break
-                    // Final flush: push the complete accumulated raw even if it didn't hit the throttle
-                    const part = await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "generating",
-                        input: {},
-                        raw,
-                        charsReceived: raw.length,
-                        metadata: streamingToolMetadata(match),
-                      },
-                    })
-                    toolcalls[value.id] = part as MessageV2.ToolPart
-                    break
-                  }
-
-                  case "tool-call": {
-                    log.info("tool.stream.tool_call.received", {
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      callID: value.toolCallId,
-                      tool: value.toolName,
-                      hadPart: Boolean(toolcalls[value.toolCallId]),
-                      hadSlot: executions.has(value.toolCallId),
-                      snapshot: toolSettlementSnapshot(value.toolCallId),
-                    })
-                    const match = toolcalls[value.toolCallId]
-                    const toolInput = SessionToolInput.normalize(value.input)
-                    const part = await Session.updatePart({
-                      ...(match ?? {
+                      reasoningMap[value.id] = {
                         id: Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
                         sessionID: input.assistantMessage.sessionID,
-                        type: "tool" as const,
-                        callID: value.toolCallId,
-                      }),
-                      tool: value.toolName,
-                      state: {
-                        status: "running",
-                        input: toolInput,
-                        metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                        type: "reasoning",
+                        text: "",
                         time: {
                           start: Date.now(),
                         },
-                      },
-                      metadata: value.providerMetadata,
-                    })
-                    toolcalls[value.toolCallId] = part as MessageV2.ToolPart
-                    delete generatingAccum[value.toolCallId]
-                    log.info("tool.stream.tool_call.part_running", {
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      callID: value.toolCallId,
-                      tool: value.toolName,
-                      hasSlot: executions.has(value.toolCallId),
-                      snapshot: toolSettlementSnapshot(value.toolCallId),
-                    })
-
-                    if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
-                      const agent = await Agent.get(input.assistantMessage.agent)
-                      const session = await Session.get(input.assistantMessage.sessionID)
-                      await PermissionNext.ask({
-                        permission: "doom_loop",
-                        patterns: [value.toolName],
-                        sessionID: input.assistantMessage.sessionID,
-                        metadata: {
-                          tool: value.toolName,
-                          input: toolInput,
-                        },
-                        ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                        signal: input.abort,
-                      })
-                    }
-                    await settleTrackedExecution(value.toolCallId)
-                    break
-                  }
-                  case "tool-result": {
-                    const slot = executions.get(value.toolCallId)
-                    log.info("tool.stream.tool_result.received", {
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      callID: value.toolCallId,
-                      hadSlot: Boolean(slot),
-                      slotStatus: slot?.status,
-                      hasOutcome: Boolean(slot?.outcome),
-                      snapshot: toolSettlementSnapshot(value.toolCallId),
-                    })
-                    if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
-                    await settleTrackedExecution(value.toolCallId)
-                    break
-                  }
-
-                  case "tool-error": {
-                    log.warn("tool.stream.tool_error.received", {
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      callID: value.toolCallId,
-                      hadPart: Boolean(toolcalls[value.toolCallId]),
-                      hadSlot: executions.has(value.toolCallId),
-                      error: value.error instanceof Error ? value.error.message : String(value.error),
-                      snapshot: toolSettlementSnapshot(value.toolCallId),
-                    })
-                    const match = toolcalls[value.toolCallId]
-                    if (match && match.state.status === "running") {
-                      const slot = executions.get(value.toolCallId)
-                      if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
-                      const settlement = settleTrackedExecution(value.toolCallId)
-                      if (settlement) {
-                        await settlement
-                      } else if (!slot) {
-                        await settleToolPart(match, streamToolErrorOutcome(match, value.error))
-                        delete toolcalls[value.toolCallId]
+                        metadata: value.providerMetadata,
                       }
-                    }
-                    if (
-                      value.error instanceof PermissionNext.RejectedError ||
-                      value.error instanceof Question.RejectedError
-                    ) {
-                      blocked = shouldBreak
-                    }
-                    break
-                  }
-                  case "error":
-                    throw value.error
+                      break
 
-                  case "start-step":
-                    snapshot = await Snapshot.track(input.sessionID, input.abort)
-                    await Session.updatePart({
-                      id: Identifier.ascending("part"),
-                      messageID: input.assistantMessage.id,
-                      sessionID: input.sessionID,
-                      snapshot,
-                      type: "step-start",
-                    })
-                    break
-
-                  case "finish-step": {
-                    const usage = Session.getUsage({
-                      model: input.model,
-                      usage: value.usage,
-                      metadata: value.providerMetadata,
-                    })
-                    PerformanceMetrics.record({
-                      name: "llm.tokens.input",
-                      value: usage.tokens.input,
-                      unit: "tokens",
-                      module: "llm",
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      labels: { provider: input.model.providerID, model: input.model.id },
-                    })
-                    PerformanceMetrics.record({
-                      name: "llm.tokens.output",
-                      value: usage.tokens.output,
-                      unit: "tokens",
-                      module: "llm",
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      labels: { provider: input.model.providerID, model: input.model.id },
-                    })
-                    PerformanceMetrics.record({
-                      name: "llm.request.count",
-                      value: 1,
-                      unit: "count",
-                      module: "llm",
-                      sessionID: input.sessionID,
-                      messageID: input.assistantMessage.id,
-                      labels: {
-                        provider: input.model.providerID,
-                        model: input.model.id,
-                        finishReason: value.finishReason,
-                      },
-                    })
-                    input.assistantMessage.finish = value.finishReason
-                    input.assistantMessage.cost += usage.cost
-                    input.assistantMessage.tokens = usage.tokens
-                    await Session.updatePart({
-                      id: Identifier.ascending("part"),
-                      reason: value.finishReason,
-                      snapshot: await Snapshot.track(input.sessionID, input.abort),
-                      messageID: input.assistantMessage.id,
-                      sessionID: input.assistantMessage.sessionID,
-                      type: "step-finish",
-                      tokens: usage.tokens,
-                      cost: usage.cost,
-                    })
-                    await Session.updateMessage(input.assistantMessage)
-                    if (snapshot) {
-                      const patch = await Snapshot.patch(snapshot, input.sessionID, {
-                        indexFresh: true,
-                        signal: input.abort,
-                      })
-                      if (patch.files.length) {
-                        await Session.updatePart({
-                          id: Identifier.ascending("part"),
-                          messageID: input.assistantMessage.id,
+                    case "reasoning-delta":
+                      if (!firstTokenSeen) {
+                        firstTokenSeen = true
+                        PerformanceMetrics.record({
+                          name: "llm.stream.first_token",
+                          value: Date.now() - llmStartedAt,
+                          unit: "ms",
+                          module: "llm",
                           sessionID: input.sessionID,
-                          type: "patch",
-                          hash: patch.hash,
-                          files: patch.files,
+                          messageID: input.assistantMessage.id,
+                          labels: { provider: input.model.providerID, model: input.model.id, kind: "reasoning" },
                         })
                       }
-                      snapshot = undefined
-                    }
-                    break
-                  }
+                      if (value.text) {
+                        PerformanceMetrics.record({
+                          name: "llm.stream.output_chars",
+                          value: value.text.length,
+                          unit: "count",
+                          module: "llm",
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          labels: { kind: "reasoning" },
+                        })
+                      }
+                      if (value.id in reasoningMap) {
+                        const part = reasoningMap[value.id]
+                        part.text += value.text
+                        if (value.providerMetadata) part.metadata = value.providerMetadata
+                        if (part.text) await Session.updatePartDelta(part, value.text)
+                      }
+                      break
 
-                  case "text-start":
-                    currentText = {
-                      id: Identifier.ascending("part"),
-                      messageID: input.assistantMessage.id,
-                      sessionID: input.assistantMessage.sessionID,
-                      type: "text",
-                      text: "",
-                      time: {
-                        start: Date.now(),
-                      },
-                      metadata: value.providerMetadata,
-                    }
-                    break
+                    case "reasoning-end":
+                      if (value.id in reasoningMap) {
+                        const part = reasoningMap[value.id]
+                        part.text = part.text.trimEnd()
 
-                  case "text-delta":
-                    if (!firstTokenSeen) {
-                      firstTokenSeen = true
+                        part.time = {
+                          ...part.time,
+                          end: Date.now(),
+                        }
+                        if (value.providerMetadata) part.metadata = value.providerMetadata
+                        await Session.updatePart(part)
+                        delete reasoningMap[value.id]
+                      }
+                      break
+
+                    case "tool-input-start": {
+                      const part = await Session.updatePart({
+                        id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "tool",
+                        tool: value.toolName,
+                        callID: value.id,
+                        state: {
+                          status: "pending",
+                          input: {},
+                          raw: "",
+                          metadata: runningToolMetadata(
+                            value.toolName,
+                            "providerMetadata" in value ? value.providerMetadata : undefined,
+                          ),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      generatingAccum[value.id] = ""
+                      break
+                    }
+
+                    case "tool-input-delta": {
+                      const match = toolcalls[value.id]
+                      if (!match) break
+                      const prevRaw = generatingAccum[value.id]
+                      if (prevRaw === undefined) break
+                      const raw = prevRaw + value.delta
+                      generatingAccum[value.id] = raw
+                      // Throttle generating updates: emit when enough new content has accumulated
+                      if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
+                      const part = await Session.updatePart({
+                        ...match,
+                        state: {
+                          status: "generating",
+                          input: {},
+                          raw,
+                          charsReceived: raw.length,
+                          metadata: streamingToolMetadata(match),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      break
+                    }
+
+                    case "tool-input-end": {
+                      const match = toolcalls[value.id]
+                      if (!match) break
+                      const raw = generatingAccum[value.id]
+                      if (!raw) break
+                      // Final flush: push the complete accumulated raw even if it didn't hit the throttle
+                      const part = await Session.updatePart({
+                        ...match,
+                        state: {
+                          status: "generating",
+                          input: {},
+                          raw,
+                          charsReceived: raw.length,
+                          metadata: streamingToolMetadata(match),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      break
+                    }
+
+                    case "tool-call": {
+                      log.info("tool.stream.tool_call.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        hadPart: Boolean(toolcalls[value.toolCallId]),
+                        hadSlot: executions.has(value.toolCallId),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      const match = toolcalls[value.toolCallId]
+                      const toolInput = SessionToolInput.normalize(value.input)
+                      const part = await Session.updatePart({
+                        ...(match ?? {
+                          id: Identifier.ascending("part"),
+                          messageID: input.assistantMessage.id,
+                          sessionID: input.assistantMessage.sessionID,
+                          type: "tool" as const,
+                          callID: value.toolCallId,
+                        }),
+                        tool: value.toolName,
+                        state: {
+                          status: "running",
+                          input: toolInput,
+                          metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                          time: {
+                            start: Date.now(),
+                          },
+                        },
+                        metadata: value.providerMetadata,
+                      })
+                      toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                      delete generatingAccum[value.toolCallId]
+                      log.info("tool.stream.tool_call.part_running", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        hasSlot: executions.has(value.toolCallId),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+
+                      if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
+                        const agent = await Agent.get(input.assistantMessage.agent)
+                        const session = await Session.get(input.assistantMessage.sessionID)
+                        await PermissionNext.ask({
+                          permission: "doom_loop",
+                          patterns: [value.toolName],
+                          sessionID: input.assistantMessage.sessionID,
+                          metadata: {
+                            tool: value.toolName,
+                            input: toolInput,
+                          },
+                          ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                          signal: input.abort,
+                        })
+                      }
+                      await settleTrackedExecution(value.toolCallId)
+                      break
+                    }
+                    case "tool-result": {
+                      const slot = executions.get(value.toolCallId)
+                      log.info("tool.stream.tool_result.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        hadSlot: Boolean(slot),
+                        slotStatus: slot?.status,
+                        hasOutcome: Boolean(slot?.outcome),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
+                      await settleTrackedExecution(value.toolCallId)
+                      break
+                    }
+
+                    case "tool-error": {
+                      log.warn("tool.stream.tool_error.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        hadPart: Boolean(toolcalls[value.toolCallId]),
+                        hadSlot: executions.has(value.toolCallId),
+                        error: value.error instanceof Error ? value.error.message : String(value.error),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      const match = toolcalls[value.toolCallId]
+                      if (match && match.state.status === "running") {
+                        const slot = executions.get(value.toolCallId)
+                        if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
+                        const settlement = settleTrackedExecution(value.toolCallId)
+                        if (settlement) {
+                          await settlement
+                        } else if (!slot) {
+                          await settleToolPart(match, streamToolErrorOutcome(match, value.error))
+                          delete toolcalls[value.toolCallId]
+                        }
+                      }
+                      if (
+                        value.error instanceof PermissionNext.RejectedError ||
+                        value.error instanceof Question.RejectedError
+                      ) {
+                        blocked = shouldBreak
+                      }
+                      break
+                    }
+                    case "error":
+                      throw value.error
+
+                    case "start-step":
+                      snapshot = await Snapshot.track(input.sessionID, input.abort)
+                      await Session.updatePart({
+                        id: Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.sessionID,
+                        snapshot,
+                        type: "step-start",
+                      })
+                      break
+
+                    case "finish-step": {
+                      const usage = Session.getUsage({
+                        model: input.model,
+                        usage: value.usage,
+                        metadata: value.providerMetadata,
+                      })
                       PerformanceMetrics.record({
-                        name: "llm.stream.first_token",
-                        value: Date.now() - llmStartedAt,
-                        unit: "ms",
+                        name: "llm.tokens.input",
+                        value: usage.tokens.input,
+                        unit: "tokens",
                         module: "llm",
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
-                        labels: { provider: input.model.providerID, model: input.model.id, kind: "text" },
+                        labels: { provider: input.model.providerID, model: input.model.id },
                       })
-                    }
-                    if (value.text) {
                       PerformanceMetrics.record({
-                        name: "llm.stream.output_chars",
-                        value: value.text.length,
+                        name: "llm.tokens.output",
+                        value: usage.tokens.output,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      PerformanceMetrics.record({
+                        name: "llm.request.count",
+                        value: 1,
                         unit: "count",
                         module: "llm",
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
-                        labels: { kind: "text" },
+                        labels: {
+                          provider: input.model.providerID,
+                          model: input.model.id,
+                          finishReason: value.finishReason,
+                        },
                       })
+                      input.assistantMessage.finish = value.finishReason
+                      input.assistantMessage.cost += usage.cost
+                      input.assistantMessage.tokens = usage.tokens
+                      await Session.updatePart({
+                        id: Identifier.ascending("part"),
+                        reason: value.finishReason,
+                        snapshot: await Snapshot.track(input.sessionID, input.abort),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "step-finish",
+                        tokens: usage.tokens,
+                        cost: usage.cost,
+                      })
+                      await Session.updateMessage(input.assistantMessage)
+                      if (snapshot) {
+                        const patch = await Snapshot.patch(snapshot, input.sessionID, {
+                          indexFresh: true,
+                          signal: input.abort,
+                        })
+                        if (patch.files.length) {
+                          await Session.updatePart({
+                            id: Identifier.ascending("part"),
+                            messageID: input.assistantMessage.id,
+                            sessionID: input.sessionID,
+                            type: "patch",
+                            hash: patch.hash,
+                            files: patch.files,
+                          })
+                        }
+                        snapshot = undefined
+                      }
+                      break
                     }
-                    if (currentText) {
-                      currentText.text += value.text
-                      if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                      if (currentText.text) await Session.updatePartDelta(currentText, value.text)
-                    }
-                    break
 
-                  case "text-end":
-                    if (currentText) {
-                      currentText.text = currentText.text.trimEnd()
-                      const textOutput = await Plugin.trigger(
-                        "experimental.text.complete",
-                        {
+                    case "text-start":
+                      currentText = {
+                        id: Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "text",
+                        text: "",
+                        time: {
+                          start: Date.now(),
+                        },
+                        metadata: value.providerMetadata,
+                      }
+                      break
+
+                    case "text-delta":
+                      if (!firstTokenSeen) {
+                        firstTokenSeen = true
+                        PerformanceMetrics.record({
+                          name: "llm.stream.first_token",
+                          value: Date.now() - llmStartedAt,
+                          unit: "ms",
+                          module: "llm",
                           sessionID: input.sessionID,
                           messageID: input.assistantMessage.id,
-                          partID: currentText.id,
-                        },
-                        { text: currentText.text },
-                      )
-                      currentText.text = textOutput.text
-                      currentText.time = {
-                        start: Date.now(),
-                        end: Date.now(),
+                          labels: { provider: input.model.providerID, model: input.model.id, kind: "text" },
+                        })
                       }
-                      if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                      await Session.updatePart(currentText)
-                    }
-                    currentText = undefined
-                    break
+                      if (value.text) {
+                        PerformanceMetrics.record({
+                          name: "llm.stream.output_chars",
+                          value: value.text.length,
+                          unit: "count",
+                          module: "llm",
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          labels: { kind: "text" },
+                        })
+                      }
+                      if (currentText) {
+                        currentText.text += value.text
+                        if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                        if (currentText.text) await Session.updatePartDelta(currentText, value.text)
+                      }
+                      break
 
-                  case "finish":
-                    break
+                    case "text-end":
+                      if (currentText) {
+                        currentText.text = currentText.text.trimEnd()
+                        const textOutput = await Plugin.trigger(
+                          "experimental.text.complete",
+                          {
+                            sessionID: input.sessionID,
+                            messageID: input.assistantMessage.id,
+                            partID: currentText.id,
+                          },
+                          { text: currentText.text },
+                        )
+                        currentText.text = textOutput.text
+                        currentText.time = {
+                          start: Date.now(),
+                          end: Date.now(),
+                        }
+                        if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                        await Session.updatePart(currentText)
+                      }
+                      currentText = undefined
+                      break
 
-                  case "abort":
-                    break
+                    case "finish":
+                      break
 
-                  default:
-                    log.info("unhandled", {
-                      ...value,
-                    })
-                    continue
+                    case "abort":
+                      break
+
+                    default:
+                      log.info("unhandled", {
+                        ...value,
+                      })
+                      continue
+                  }
                 }
+                PerformanceSpans.end(llmSpan, {
+                  attributes: { provider: input.model.providerID, model: input.model.id },
+                })
+              } catch (error) {
+                PerformanceSpans.end(llmSpan, { status: "error", error })
+                throw error
+              } finally {
+                currentText = undefined
+                reasoningMap = {}
+                SessionMemoryPressure.probe("processor.after_full_stream", {
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                })
               }
-              PerformanceSpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
-            } catch (error) {
-              PerformanceSpans.end(llmSpan, { status: "error", error })
-              throw error
-            }
-          } catch (e: any) {
-            fastAbort = isFastAbort(input.abort, e)
-            log.error("process", {
-              error: e,
-            })
-            const error = MessageV2.fromError(e, { providerID: input.model.providerID })
-            const retry = fastAbort ? undefined : SessionRetry.retryable(error)
-            if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
-              attempt++
-              const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
+            } catch (e: any) {
+              fastAbort = isFastAbort(input.abort, e)
+              log.error("process", {
+                error: e,
+              })
+              const error = MessageV2.fromError(e, { providerID: input.model.providerID })
+              const retry = fastAbort ? undefined : SessionRetry.retryable(error)
+              if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
+                attempt++
+                const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
+                PerformanceMetrics.record({
+                  name: "session.turn.retry",
+                  value: 1,
+                  unit: "count",
+                  module: "session",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: { attempt, retry, errorName: error.name },
+                })
+                await Observability.emit("session.turn.retry", {
+                  traceId: turnTraceId,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  level: "warn",
+                  data: {
+                    attempt,
+                    delay,
+                    retry,
+                    error,
+                  },
+                })
+                SessionManager.setStatus(input.sessionID, {
+                  type: "retry",
+                  attempt,
+                  message: retry,
+                  next: Date.now() + delay,
+                })
+                await SessionRetry.sleep(delay, input.abort).catch(() => {})
+                continue
+              }
+              input.assistantMessage.error = error
               PerformanceMetrics.record({
-                name: "session.turn.retry",
+                name: "session.turn.error",
                 value: 1,
                 unit: "count",
                 module: "session",
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
-                labels: { attempt, retry, errorName: error.name },
+                labels: { errorName: error.name },
               })
-              await Observability.emit("session.turn.retry", {
+              await Observability.emit("session.turn.error", {
                 traceId: turnTraceId,
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
-                level: "warn",
+                level: "error",
                 data: {
-                  attempt,
-                  delay,
-                  retry,
                   error,
                 },
               })
-              SessionManager.setStatus(input.sessionID, {
-                type: "retry",
-                attempt,
-                message: retry,
-                next: Date.now() + delay,
+              Bus.publish(SessionEvent.Error, {
+                sessionID: input.assistantMessage.sessionID,
+                error: input.assistantMessage.error,
               })
-              await SessionRetry.sleep(delay, input.abort).catch(() => {})
-              continue
             }
-            input.assistantMessage.error = error
-            PerformanceMetrics.record({
-              name: "session.turn.error",
-              value: 1,
-              unit: "count",
-              module: "session",
+            fastAbort ||= input.abort.aborted
+            if (snapshot) {
+              if (!fastAbort) {
+                const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
+                if (patch.files.length) {
+                  await Session.updatePart({
+                    id: Identifier.ascending("part"),
+                    messageID: input.assistantMessage.id,
+                    sessionID: input.sessionID,
+                    type: "patch",
+                    hash: patch.hash,
+                    files: patch.files,
+                  })
+                }
+              }
+              snapshot = undefined
+            }
+            await waitForTrackedSettlements()
+            SessionMemoryPressure.probe("processor.after_tool_settlement", {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
-              labels: { errorName: error.name },
             })
-            await Observability.emit("session.turn.error", {
+            // Flush buffered streaming part writes before reading parts to
+            // finalize the message. A turn interrupted mid-stream (idle timeout,
+            // provider error, abort) never fires the terminal part write that
+            // normally flushes, so without this the persisted/finalized parts
+            // would be missing the last streamed content (issue #327).
+            await Session.flushPartWrites()
+            SessionMemoryPressure.probe("processor.after_flush_part_writes", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            let parts = await MessageV2.parts({
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            if (!fastAbort) {
+              await waitForOutcomesAndSettle(parts)
+              await waitForTrackedSettlements()
+              parts = await MessageV2.parts({
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+            }
+            await resolveUnsettledParts(parts, fastAbort)
+            input.assistantMessage.time.completed = Date.now()
+            await Session.updateMessage(input.assistantMessage)
+            Session.updateLastExchange(input.sessionID).catch((e) =>
+              log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
+            )
+            ExperienceEncoder.onComplete(input.assistantMessage)
+            await Plugin.trigger(
+              "session.turn.after",
+              {
+                sessionID: input.sessionID,
+                userMessageID: input.assistantMessage.parentID,
+                assistantMessageID: input.assistantMessage.id,
+                assistant: input.assistantMessage,
+                finish: input.assistantMessage.finish,
+                error: input.assistantMessage.error,
+              },
+              {},
+            )
+            SessionMemoryPressure.probe("processor.after_plugin_turn_after", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            await Observability.emit("session.turn.end", {
               traceId: turnTraceId,
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
-              level: "error",
+              level: input.assistantMessage.error ? "error" : "info",
               data: {
-                error,
+                finish: input.assistantMessage.finish,
+                blocked,
+                error: input.assistantMessage.error,
+                durationMs: Date.now() - turnStartedAt,
+                pendingTools: executions.size,
               },
             })
-            Bus.publish(SessionEvent.Error, {
-              sessionID: input.assistantMessage.sessionID,
-              error: input.assistantMessage.error,
-            })
-          }
-          fastAbort ||= input.abort.aborted
-          if (snapshot) {
-            if (!fastAbort) {
-              const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
-              if (patch.files.length) {
-                await Session.updatePart({
-                  id: Identifier.ascending("part"),
-                  messageID: input.assistantMessage.id,
-                  sessionID: input.sessionID,
-                  type: "patch",
-                  hash: patch.hash,
-                  files: patch.files,
-                })
-              }
-            }
-            snapshot = undefined
-          }
-          await waitForTrackedSettlements()
-          // Flush buffered streaming part writes before reading parts to
-          // finalize the message. A turn interrupted mid-stream (idle timeout,
-          // provider error, abort) never fires the terminal part write that
-          // normally flushes, so without this the persisted/finalized parts
-          // would be missing the last streamed content (issue #327).
-          await Session.flushPartWrites()
-          let parts = await MessageV2.parts({
-            sessionID: input.sessionID,
-            messageID: input.assistantMessage.id,
-          })
-          if (!fastAbort) {
-            await waitForOutcomesAndSettle(parts)
-            await waitForTrackedSettlements()
-            parts = await MessageV2.parts({
+            SessionMemoryPressure.probe("processor.after_observability_turn_end", {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
             })
+            if (blocked) return "stop"
+            if (input.assistantMessage.error) return "stop"
+            return "continue"
           }
-          await resolveUnsettledParts(parts, fastAbort)
-          input.assistantMessage.time.completed = Date.now()
-          await Session.updateMessage(input.assistantMessage)
-          Session.updateLastExchange(input.sessionID).catch((e) =>
-            log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
-          )
-          ExperienceEncoder.onComplete(input.assistantMessage)
-          await Plugin.trigger(
-            "session.turn.after",
-            {
-              sessionID: input.sessionID,
-              userMessageID: input.assistantMessage.parentID,
-              assistantMessageID: input.assistantMessage.id,
-              assistant: input.assistantMessage,
-              finish: input.assistantMessage.finish,
-              error: input.assistantMessage.error,
-            },
-            {},
-          )
-          await Observability.emit("session.turn.end", {
-            traceId: turnTraceId,
-            sessionID: input.sessionID,
-            messageID: input.assistantMessage.id,
-            level: input.assistantMessage.error ? "error" : "info",
-            data: {
-              finish: input.assistantMessage.finish,
-              blocked,
-              error: input.assistantMessage.error,
-              durationMs: Date.now() - turnStartedAt,
-              pendingTools: executions.size,
-            },
-          })
-          if (blocked) return "stop"
-          if (input.assistantMessage.error) return "stop"
-          return "continue"
+        } finally {
+          dispose("process.complete")
         }
       },
     }

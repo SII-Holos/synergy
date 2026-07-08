@@ -51,6 +51,14 @@ Performance settings extend the existing runtime observability domain in `120-ru
 
 Use the generated SDK for non-streaming Performance API calls. The Performance SSE stream is `/global/performance/events` and emits refresh hints plus heartbeat events; clients should refetch summary after reconnect.
 
+## Session memory pressure
+
+After each model/tool turn, the session runtime samples process memory and may run Bun GC before the loop starts another turn. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Critical pressure bypasses that interval when RSS, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
+
+- `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
+- `SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES` (default `8 GiB`)
+- `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default cgroup `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
+
 ## Performance API
 
 The server exposes local-first endpoints under `/global/performance`:
