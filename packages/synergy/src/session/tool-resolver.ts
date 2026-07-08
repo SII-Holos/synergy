@@ -978,7 +978,22 @@ export namespace ToolResolver {
 
       // light_loop_approve / light_loop_reject are gated by execution-time
       // checks (stopRequest.reviewSessionID === ctx.sessionID) and the
-      // lightLoopReviewer permission profile.
+      // lightLoopReviewer permission profile. Hide them from sessions that
+      // aren't the recorded review session.
+      if (def.id === "light_loop_approve" || def.id === "light_loop_reject") {
+        const wf = input.session?.workflow
+        if (wf?.kind !== "lightloop" || wf.stopRequest?.reviewSessionID !== input.session?.id) {
+          diagnostics.set(
+            def.id,
+            SessionModePolicy.unavailable({
+              toolName: def.id,
+              reason: "permission",
+              session: input.session,
+            }),
+          )
+          continue
+        }
+      }
 
       if (disabled.has(def.id) && !isEphemeral) {
         diagnostics.set(

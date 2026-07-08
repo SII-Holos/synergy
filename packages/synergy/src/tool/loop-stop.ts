@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
-import { Identifier } from "../id/id"
-import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./loop-stop.txt"
 
 const parameters = z.object({
@@ -41,7 +39,6 @@ export const LoopStopTool = Tool.define("loop_stop", {
     }
 
     const requestedAt = Date.now()
-    const scope = ScopeContext.current
 
     // Persist stop request before launching reviewer
     await Session.update(ctx.sessionID, (draft) => {
