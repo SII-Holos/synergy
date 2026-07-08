@@ -379,7 +379,7 @@ then review both `README.md` and any related setup/help text.
 
 The repository has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
 
-Built-in primary agent names are `synergy` and `synergy-max`. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
+Built-in primary agent names are `synergy` and `synergy-max`. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`. Hidden built-in review subagents include `supervisor` (BlueprintLoop audit) and `lightloop-reviewer` (LightLoop completion verification); both are visible to `synergy` and `synergy-max` in agent tables but not delegatable via the `task` tool.
 
 ### Tool implementation
 
