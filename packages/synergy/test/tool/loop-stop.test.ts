@@ -68,7 +68,7 @@ describe("loop_stop", () => {
           fn(session)
           updates.push({
             kind: session.workflow?.kind,
-            stopRequest: session.workflow?.stopRequest ? { ...(session.workflow as any).stopRequest } : undefined,
+            stopRequest: (session.workflow as any)?.stopRequest,
           })
         })
 
