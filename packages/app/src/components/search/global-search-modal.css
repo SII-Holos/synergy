@@ -174,3 +174,8 @@
   padding: 8px 28px;
   border-top: 1px solid var(--border-weaker-base);
 }
+
+.gsm-archived-tag {
+  font-weight: 500;
+  color: var(--text-weak);
+}
