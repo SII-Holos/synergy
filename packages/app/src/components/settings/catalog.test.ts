@@ -12,6 +12,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 const canonicalDomains = [
   "general",
   "models",
+  "agents",
   "providers",
   "library",
   "mcp",
@@ -42,11 +43,10 @@ describe("settings catalog", () => {
     }
   })
 
-  test("agent and command config domains are intentionally not first-class settings pages", () => {
+  test("agents domain config is reachable yet not a standalone settings page", () => {
     expect(BUILTIN_SETTINGS_IDS).not.toContain("agents")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("commands")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("instructions")
-    expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("agents"))).toBe(false)
     expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("commands"))).toBe(false)
   })
 
@@ -54,6 +54,8 @@ describe("settings catalog", () => {
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
     expect(general.keywords).toContain("toast")
     expect(general.rowLabels).toContain("Product Updates")
+    const timeouts = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "timeouts")!
+    expect(timeouts.keywords).toContain("agent")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
   })
@@ -69,6 +71,7 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.controlProfile).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
     for (const role of MODEL_ROLES) {
       expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
     }
