@@ -21,6 +21,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
+import { SessionManager } from "./manager"
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
@@ -1214,6 +1215,9 @@ export namespace ToolResolver {
 
               try {
                 toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
+                if (runtimeInput.session) {
+                  SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
+                }
                 const workspace = ScopeContext.current.directory
                 const workspaceInfo = ScopeContext.current.workspace
                 const profileId = await Session.resolveEffectiveControlProfile({
@@ -1461,6 +1465,9 @@ export namespace ToolResolver {
 
                 try {
                   toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
+                  if (runtimeInput.session) {
+                    SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${key}`)
+                  }
                   const workspace = ScopeContext.current.directory
                   const workspaceInfo = ScopeContext.current.workspace
                   const profileId = await Session.resolveEffectiveControlProfile({
