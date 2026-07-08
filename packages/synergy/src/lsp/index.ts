@@ -13,6 +13,7 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Flag } from "@/flag/flag"
 import { LSPPid } from "./pid"
+import { Shell } from "../util/shell"
 import { LSPSchema } from "./schema"
 
 export namespace LSP {
@@ -134,6 +135,7 @@ export namespace LSP {
             return {
               process: spawn(item.command[0], item.command.slice(1), {
                 cwd: root,
+                detached: process.platform !== "win32",
                 env: {
                   ...process.env,
                   ...item.env,
@@ -246,19 +248,19 @@ export namespace LSP {
         root,
       }).catch((err) => {
         s.broken.add(key)
-        handle.process.kill()
+        void Shell.killTree(handle.process)
         log.error(`Failed to initialize LSP client ${server.id}`, { error: err })
         return undefined
       })
 
       if (!client) {
-        handle.process.kill()
+        void Shell.killTree(handle.process)
         return undefined
       }
 
       const existing = s.clients.find((x) => x.root === root && x.serverID === server.id)
       if (existing) {
-        handle.process.kill()
+        void Shell.killTree(handle.process)
         return existing
       }
 
