@@ -10,7 +10,6 @@ import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special
 
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
-import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -29,7 +28,6 @@ import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
 import { getDraggableId } from "@/utils/solid-dnd"
-import { SessionReviewTab } from "@/components/session"
 
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
@@ -44,9 +42,10 @@ import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
+import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
+import { WorkspaceSessionReviewTool } from "@/components/workspace/tool-session-review"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteWriteFocusRequest } from "@/components/note/blueprint-note-focus"
@@ -189,14 +188,11 @@ function SessionPageContent() {
     activeDraggable: undefined as string | undefined,
     messageId: undefined as string | undefined,
     turnStart: 0,
-    mobileTab: "session" as "session" | "review",
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
-  const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
@@ -441,14 +437,6 @@ function SessionPageContent() {
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
-  const diffsReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
-    if (!hasReview()) return true
-    return sync.data.session_diff[id] !== undefined
-  })
-
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
@@ -659,41 +647,23 @@ function SessionPageContent() {
       .filter((tab) => tab !== "context"),
   )
 
-  const reviewTab = createMemo(() => hasReview() || tabs().active() === "review")
-  const mobileReview = createMemo(() => !isDesktop() && hasReview() && store.mobileTab === "review")
-
-  const showTabs = createMemo(
-    () => layout.review.opened() && (hasReview() || (tabs().all()?.length ?? 0) > 0 || contextOpen()),
-  )
+  const showTabs = createMemo(() => (tabs().all()?.length ?? 0) > 0 || contextOpen())
 
   const activeTab = createMemo(() => {
     const active = tabs().active()
     if (active) return active
-    if (reviewTab()) return "review"
 
     const first = openedTabs()[0]
     if (first) return first
     if (contextOpen()) return "context"
-    return "review"
+    return openedTabs()[0] ?? "context"
   })
 
   createEffect(() => {
     if (!layout.ready()) return
     if (tabs().active()) return
-    if (!hasReview() && openedTabs().length === 0 && !contextOpen()) return
+    if (openedTabs().length === 0 && !contextOpen()) return
     tabs().setActive(activeTab())
-  })
-
-  createEffect(() => {
-    const id = params.id
-    if (!id) return
-    if (!hasReview()) return
-
-    const wants = isDesktop() ? layout.review.opened() && activeTab() === "review" : store.mobileTab === "review"
-    if (!wants) return
-    if (diffsReady()) return
-
-    sync.session.diff(id)
   })
 
   const isWorking = createMemo(() => status().type !== "idle")
@@ -927,32 +897,11 @@ function SessionPageContent() {
       </Show>
       <WorkspaceNotesTool />
       <WorkspaceTerminalTool />
+      <Show when={!!params.id}>
+        <WorkspaceSessionReviewTool />
+      </Show>
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
-          {/* Mobile tab bar */}
-          <Show when={!isDesktop() && hasReview()}>
-            <Tabs class="h-auto">
-              <Tabs.List>
-                <Tabs.Trigger
-                  value="session"
-                  class="w-1/2"
-                  classes={{ button: "w-full" }}
-                  onClick={() => setStore("mobileTab", "session")}
-                >
-                  Session
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                  value="review"
-                  class="w-1/2 !border-r-0"
-                  classes={{ button: "w-full" }}
-                  onClick={() => setStore("mobileTab", "review")}
-                >
-                  {reviewCount()} Files Changed
-                </Tabs.Trigger>
-              </Tabs.List>
-            </Tabs>
-          </Show>
-
           <div
             class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
             classList={{
@@ -1031,71 +980,52 @@ function SessionPageContent() {
                         </Show>
                       }
                     >
-                      <Show
-                        when={!mobileReview()}
-                        fallback={
-                          <div class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger">
-                            <Show
-                              when={diffsReady()}
-                              fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}
-                            >
-                              <SessionReviewTab
-                                diffs={diffs}
-                                view={view}
-                                diffStyle="unified"
-                                onViewFile={(path) => {
-                                  const value = file.tab(path)
-                                  tabs().open(value)
-                                  file.load(path)
-                                }}
-                                classes={{
-                                  root: "pb-4 md:pb-[calc(var(--prompt-height,8rem)+32px)]",
-                                  header: "px-4",
-                                  container: "px-4",
-                                }}
-                              />
-                            </Show>
-                          </div>
-                        }
-                      >
-                        <SessionConversation
-                          sessionID={params.id!}
-                          paramsDir={params.dir!}
-                          timeline={timeline}
-                          pendingTimeline={pendingTimeline}
-                          visibleUserMessages={visibleUserMessages}
-                          lastUserMessage={lastRenderableUserMessage}
-                          activeMessage={activeMessage}
-                          showTabs={showTabs}
-                          isWorking={isWorking}
-                          turnStart={store.turnStart}
-                          turnBatch={turnBatch}
-                          onSetTurnStart={(start) => setStore("turnStart", start)}
-                          historyMore={historyMore}
-                          historyLoading={historyLoading}
-                          onLoadMore={() => {
-                            const id = params.id
-                            if (!id) return
-                            setStore("turnStart", 0)
-                            sync.session.history.loadMore(id)
-                          }}
-                          scrolledUp={scrolledUp}
-                          onScrolledUpChange={setScrolledUp}
-                          autoScroll={autoScroll}
-                          onClearHash={clearHash}
-                          onScheduleScrollSpy={scheduleScrollSpy}
-                          setScrollRef={setScrollRef}
-                          isDesktop={isDesktop}
-                          scrollToMessage={scrollToMessage}
-                          anchor={anchor}
-                          terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
-                          workspaceOpen={sideOpen}
-                          onRewind={openRewindConfirm}
-                          onPendingGuide={(item) => void guidePending(item)}
-                          onPendingRemove={(item) => void removePending(item)}
-                          rollbackActive={rollbackActive()}
-                        />
-                      </Show>
+                      <SessionConversation
+                        sessionID={params.id!}
+                        paramsDir={params.dir!}
+                        timeline={timeline}
+                        pendingTimeline={pendingTimeline}
+                        visibleUserMessages={visibleUserMessages}
+                        lastUserMessage={lastRenderableUserMessage}
+                        activeMessage={activeMessage}
+                        showTabs={showTabs}
+                        isWorking={isWorking}
+                        turnStart={store.turnStart}
+                        turnBatch={turnBatch}
+                        onSetTurnStart={(start) => setStore("turnStart", start)}
+                        historyMore={historyMore}
+                        historyLoading={historyLoading}
+                        onLoadMore={() => {
+                          const id = params.id
+                          if (!id) return
+                          setStore("turnStart", 0)
+                          sync.session.history.loadMore(id)
+                        }}
+                        scrolledUp={scrolledUp}
+                        onScrolledUpChange={setScrolledUp}
+                        autoScroll={autoScroll}
+                        onClearHash={clearHash}
+                        onScheduleScrollSpy={scheduleScrollSpy}
+                        setScrollRef={setScrollRef}
+                        isDesktop={isDesktop}
+                        scrollToMessage={scrollToMessage}
+                        anchor={anchor}
+                        terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
+                        workspaceOpen={sideOpen}
+                        onRewind={openRewindConfirm}
+                        onReviewChanges={(input) => {
+                          void workbench.openPanel("session-review", {
+                            reuseExisting: true,
+                            init: {
+                              ...(input.file ? { resourceId: input.file } : {}),
+                              source: input.messageID,
+                            },
+                          })
+                        }}
+                        onPendingGuide={(item) => void guidePending(item)}
+                        onPendingRemove={(item) => void removePending(item)}
+                        rollbackActive={rollbackActive()}
+                      />
                     </Show>
                   </Match>
                   <Match when={true}>{null}</Match>
@@ -1150,18 +1080,14 @@ function SessionPageContent() {
               openTab={openTab}
               tabs={tabs}
               view={view}
-              layout={layout}
               file={file}
               prompt={prompt}
               command={command}
               dialog={dialog}
-              reviewTab={reviewTab}
               contextOpen={contextOpen}
               openedTabs={openedTabs}
-              info={info}
-              diffs={diffs}
-              diffsReady={diffsReady}
               messages={messages}
+              info={info}
               visibleUserMessages={visibleUserMessages}
               handleDragStart={handleDragStart}
               handleDragOver={handleDragOver}

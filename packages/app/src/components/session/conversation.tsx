@@ -41,6 +41,7 @@ export function SessionConversation(props: {
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
   onRewind?: (message: UserMessage) => void
+  onReviewChanges?: (input: { messageID: string; file?: string }) => void
   onPendingGuide?: (item: SessionInboxItem) => void
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
@@ -152,6 +153,7 @@ export function SessionConversation(props: {
                 lastUserMessageID={props.lastUserMessage()?.id}
                 onRewind={() => props.onRewind?.(msg as UserMessage)}
                 rollbackActive={props.rollbackActive}
+                onReviewChanges={props.onReviewChanges}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",

@@ -11,6 +11,7 @@ export interface SessionReviewTabProps {
   diffStyle: DiffStyle
   onDiffStyleChange?: (style: DiffStyle) => void
   onViewFile?: (file: string) => void
+  selectedFile?: () => string | undefined
   classes?: {
     root?: string
     header?: string
@@ -22,6 +23,25 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
   let pending: { x: number; y: number } | undefined
+
+  const openSelectedFile = () => {
+    const selected = props.selectedFile?.()
+    if (!selected) return
+    if (!props.diffs().some((diff) => diff.file === selected)) return
+
+    const current = props.view().review.open() ?? []
+    if (!current.includes(selected)) {
+      props.view().review.setOpen([...current, selected])
+    }
+
+    requestAnimationFrame(() => {
+      const row = scroll?.querySelector<HTMLElement>(
+        `[data-slot="session-review-accordion-item"][data-file="${CSS.escape(selected)}"]`,
+      )
+      row?.scrollIntoView({ block: "nearest" })
+      row?.querySelector<HTMLElement>("[data-slot='accordion-trigger']")?.focus({ preventScroll: true })
+    })
+  }
 
   const restoreScroll = (retries = 0) => {
     const el = scroll
@@ -67,6 +87,21 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     ),
   )
 
+  createEffect(
+    on(
+      () =>
+        [
+          props.selectedFile?.(),
+          props
+            .diffs()
+            .map((diff) => diff.file)
+            .join("\u0000"),
+        ] as const,
+      openSelectedFile,
+      { defer: true },
+    ),
+  )
+
   onCleanup(() => {
     if (frame === undefined) return
     cancelAnimationFrame(frame)
@@ -90,6 +125,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
       diffStyle={props.diffStyle}
       onDiffStyleChange={props.onDiffStyleChange}
       onViewFile={props.onViewFile}
+      selectedFile={props.selectedFile?.()}
     />
   )
 }

@@ -51,7 +51,6 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const openContext = () => {
     if (!params.id) return
-    layout.review.open()
     tabs().open("context")
     tabs().setActive("context")
   }
