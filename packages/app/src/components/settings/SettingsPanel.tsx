@@ -114,6 +114,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return (res.data ?? []) as ModelRoleSummary[]
   })
 
+  const [agents, { refetch: refetchAgents }] = createResource(async () => {
+    const res = await globalSDK.client.app.agents()
+    return res.data ?? []
+  })
+
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
     const list: ProviderModel[] = []
@@ -207,7 +212,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     doEnsureInit()
   })
 
-  const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries()
+  // Include agents() — the Agents page requires the agent list for the Default Agent dropdown.
+  const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries() && !!agents()
   const cancelDebouncesRef = { current: () => {} }
 
   function resetEditor() {
@@ -220,7 +226,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries()])
+    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries(), refetchAgents()])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -614,6 +620,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <TimeoutsPanel
             runtime={settings.runtime}
             onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+            availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
+            defaultAgent={settings.agents.defaultAgent}
+            onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
           />
         )
       case "formatter":

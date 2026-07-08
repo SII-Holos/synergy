@@ -14,6 +14,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
   buildGeneralPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)
+  buildAgentPatch(cfg, state, patch)
   buildProviderPatch(cfg, state, patch)
   buildPluginPatch(cfg, state, patch)
   buildMcpPatch(cfg, state, originalMcps, patch)
@@ -63,6 +64,15 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
   )
   if (JSON.stringify(cleanedQuickSwitcher) !== JSON.stringify(cfg.quick_switcher?.models ?? [])) {
     patch.quick_switcher = { models: cleanedQuickSwitcher }
+  }
+}
+
+function buildAgentPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const defaultAgent = state.agents.defaultAgent.trim()
+  if (!defaultAgent) return
+  const resolved = cfg.default_agent ?? UI_DEFAULTS.defaultAgent
+  if (defaultAgent !== resolved) {
+    patch.default_agent = defaultAgent
   }
 }
 
