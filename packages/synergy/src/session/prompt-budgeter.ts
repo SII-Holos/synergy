@@ -22,6 +22,7 @@ export namespace PromptBudgeter {
     model: Provider.Model
     system: string[]
     systemCacheBreakpoint?: number
+    lateSystem?: string[]
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
@@ -29,6 +30,7 @@ export namespace PromptBudgeter {
   export interface PromptPlan {
     system: string[]
     systemCacheBreakpoint?: number
+    lateSystem?: string[]
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
@@ -94,9 +96,11 @@ export namespace PromptBudgeter {
       restoredEmptySystem: system.length === 0,
     })
 
+    const lateSystem = [...(input.lateSystem ?? [])]
     return {
       system: normalizedSystem,
       systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
+      lateSystem,
       messages: ProviderTransform.message(input.messages, input.model),
       toolDefinitions: input.toolDefinitions,
     }
@@ -167,7 +171,7 @@ export namespace PromptBudgeter {
     await Token.warmup(modelID)
     const systemCost = await estimateModelJSONCached(
       modelID,
-      plan.system.map((content) => ({ role: "system", content })),
+      [...plan.system, ...(plan.lateSystem ?? [])].map((content) => ({ role: "system", content })),
     )
     const messageCost = await estimateMessages(plan.messages, modelID)
     const toolCost = await estimateTools(plan.toolDefinitions, modelID)

@@ -3,6 +3,7 @@ import { unique } from "remeda"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
+import { PromptCachePolicy } from "./prompt-cache-policy"
 import { iife } from "@/util/iife"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -590,7 +591,7 @@ export namespace ProviderTransform {
       result["chat_template_args"] = { enable_thinking: true }
     }
 
-    if (model.providerID === "openai" || model.providerID === "openai-codex" || providerOptions?.setCacheKey) {
+    if (PromptCachePolicy.usesSessionPromptCacheKey(model, providerOptions)) {
       result["promptCacheKey"] = sessionID
     }
 
@@ -602,7 +603,6 @@ export namespace ProviderTransform {
 
     if (model.api.npm === "@ai-sdk/azure") {
       result["store"] = false
-      result["promptCacheKey"] = sessionID
     }
 
     if (model.api.npm === "@ai-sdk/google" || model.api.npm === "@ai-sdk/google-vertex") {
