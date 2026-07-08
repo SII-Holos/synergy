@@ -52,7 +52,6 @@ describe("session_search", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        // Create 3 sessions, each with 1 match. limit=1 should return 1 session, 1 match.
         const sessionA = await Session.create({ title: "A" })
         const sessionB = await Session.create({ title: "B" })
         const sessionC = await Session.create({ title: "C" })
@@ -66,10 +65,8 @@ describe("session_search", () => {
 
         expect(result.metadata.matches).toBe(1)
         expect(result.metadata.sessionsMatched).toBe(1)
-        // With limit=1, session_search should stop after 1 match across all sessions
-        // Only one session's data should appear in the output
         const lines = result.output.split("\n")
-        const sessionLines = lines.filter((l: string) => /\[ses_/.test(l))
+        const sessionLines = lines.filter((l: string) => /^\[ses_/.test(l))
         expect(sessionLines.length).toBe(1)
       },
     })
@@ -112,6 +109,102 @@ describe("session_search", () => {
         const totalMatches = result.metadata.matches as number
         expect(totalMatches).toBeGreaterThanOrEqual(1)
         expect(totalMatches).toBeLessThanOrEqual(10)
+      },
+    })
+  })
+
+  test("limits to MAX_MATCHES_PER_SESSION matches per session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "PerSession" })
+        for (let i = 0; i < 10; i++) {
+          await writeMessage(session.id, Identifier.ascending("message"), `needle message ${i}`, 1000 - i * 10)
+        }
+
+        const tool = await SessionSearchTool.init()
+        const result = await tool.execute({ pattern: "needle", scope: "current", limit: 10 }, ctx)
+
+        expect(result.metadata.matches).toBe(3)
+        expect(result.metadata.sessionsMatched).toBe(1)
+      },
+    })
+  })
+
+  test("handles limit=0 by returning no matches", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "LimitZero" })
+        await writeMessage(session.id, Identifier.ascending("message"), "needle here", 100)
+
+        const tool = await SessionSearchTool.init()
+        const result = await tool.execute({ pattern: "needle", scope: "current", limit: 0 }, ctx)
+
+        expect(result.metadata.matches).toBe(0)
+        expect(result.title).toBe("No matches")
+      },
+    })
+  })
+
+  test("skips child sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent" })
+        const child = await Session.create({ title: "Child", parentID: parent.id })
+
+        await writeMessage(parent.id, Identifier.ascending("message"), "needle in parent", 100)
+        await writeMessage(child.id, Identifier.ascending("message"), "needle in child", 90)
+
+        const tool = await SessionSearchTool.init()
+        const result = await tool.execute({ pattern: "needle", scope: "current", limit: 10 }, ctx)
+
+        expect(result.metadata.matches).toBe(1)
+        expect(result.metadata.sessionsMatched).toBe(1)
+      },
+    })
+  })
+
+  test("skips archived sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const active = await Session.create({ title: "Active" })
+        const archived = await Session.create({ title: "Archived" })
+
+        await writeMessage(active.id, Identifier.ascending("message"), "needle in active", 100)
+        await writeMessage(archived.id, Identifier.ascending("message"), "needle in archived", 90)
+
+        await Session.update(archived.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+
+        const tool = await SessionSearchTool.init()
+        const result = await tool.execute({ pattern: "needle", scope: "current", limit: 10 }, ctx)
+
+        expect(result.metadata.matches).toBe(1)
+        expect(result.metadata.sessionsMatched).toBe(1)
+      },
+    })
+  })
+
+  test("handles no sessions in scope gracefully", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await SessionSearchTool.init()
+        const result = await tool.execute({ pattern: "anything", scope: "current", limit: 10 }, ctx)
+
+        expect(result.metadata.matches).toBe(0)
+        expect(result.metadata.sessionsSearched).toBe(0)
+        expect(result.metadata.candidateSessions).toBe(0)
+        expect(result.title).toBe("No matches")
       },
     })
   })

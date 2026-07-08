@@ -53,10 +53,10 @@ function buildSnippet(text: string, matchIndex: number, matchLength: number): st
   const half = Math.floor(SNIPPET_CHARS / 2)
   const start = Math.max(0, matchIndex - half)
   const end = Math.min(text.length, matchIndex + matchLength + half)
-  let snippet = text.slice(start, end).replace(/\n/g, " ")
-  if (start > 0) snippet = "..." + snippet
-  if (end < text.length) snippet = snippet + "..."
-  return snippet
+  const middle = text.slice(start, end).replace(/\n/g, " ")
+  const prefix = start > 0 ? "..." : ""
+  const suffix = end < text.length ? "..." : ""
+  return prefix + middle + suffix
 }
 
 async function collectSessionCandidates(
@@ -73,8 +73,8 @@ async function collectSessionCandidates(
     for (const entry of index.entries) {
       if (entry.archived) continue
       if (entry.parentID) continue
-      if (sinceMs && entry.updated < sinceMs) continue
-      if (beforeMs && entry.updated >= beforeMs) continue
+      if (sinceMs !== undefined && entry.updated < sinceMs) continue
+      if (beforeMs !== undefined && entry.updated >= beforeMs) continue
       candidates.push({
         scopeID,
         sessionID: Identifier.asSessionID(entry.id),
@@ -160,14 +160,13 @@ export const SessionSearchTool = Tool.define("session_search", {
       sessionsSearched++
       const matches: Match[] = []
 
-      for await (const msg of MessageV2.stream({ scopeID: candidate.scopeID, sessionID: candidate.sessionID })) {
+      for await (const msg of MessageV2.stream({ scopeID: session.scope.id, sessionID: session.id })) {
         if (matches.length >= MAX_MATCHES_PER_SESSION) break
         if (totalMatches + matches.length >= clampedLimit) break
 
         const match = searchMessage(msg, regex)
         if (match) {
           matches.push(match)
-          regex.lastIndex = 0
         }
       }
 
