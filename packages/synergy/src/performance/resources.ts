@@ -90,6 +90,20 @@ export namespace PerformanceResources {
       module: "process",
       source: "process",
     })
+    PerformanceMetrics.record({
+      name: "process.memory.external",
+      value: memory.external,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    PerformanceMetrics.record({
+      name: "process.memory.array_buffers",
+      value: memory.arrayBuffers,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
     if (memory.rss >= (config.thresholds.highRssBytes ?? PerformanceConfig.defaults.thresholds.highRssBytes)) {
       PerformanceIssues.raise({
         code: "PERF_MEMORY_HIGH_RSS",
@@ -108,6 +122,30 @@ export namespace PerformanceResources {
         title: "Event loop lag detected",
         message: `Event loop lag is ${Math.round(lagMs)}ms`,
         evidence: { observedValue: lagMs, thresholdValue: config.thresholds.eventLoopLagMs ?? null, unit: "ms" },
+      })
+    }
+    const highExternalThreshold =
+      config.thresholds.highExternalBytes ?? PerformanceConfig.defaults.thresholds.highExternalBytes
+    if (memory.external >= highExternalThreshold) {
+      PerformanceIssues.raise({
+        code: "PERF_MEMORY_HIGH_EXTERNAL",
+        severity: "warning",
+        module: "process",
+        title: "High external memory usage",
+        message: `Process external memory is ${memory.external} bytes`,
+        evidence: { observedValue: memory.external, thresholdValue: highExternalThreshold, unit: "bytes" },
+      })
+    }
+    const highArrayBuffersThreshold =
+      config.thresholds.highArrayBuffersBytes ?? PerformanceConfig.defaults.thresholds.highArrayBuffersBytes
+    if (memory.arrayBuffers >= highArrayBuffersThreshold) {
+      PerformanceIssues.raise({
+        code: "PERF_MEMORY_HIGH_ARRAY_BUFFERS",
+        severity: "warning",
+        module: "process",
+        title: "High ArrayBuffers memory usage",
+        message: `Process ArrayBuffers memory is ${memory.arrayBuffers} bytes`,
+        evidence: { observedValue: memory.arrayBuffers, thresholdValue: highArrayBuffersThreshold, unit: "bytes" },
       })
     }
   }
