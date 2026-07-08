@@ -1,3 +1,4 @@
+/* Confirmation dialog */
 [data-component="dialog"]
   [data-slot="dialog-container"]:has(> [data-slot="dialog-content"].workspace-transition-dialog) {
   width: min(560px, calc(100vw - 40px));
@@ -218,6 +219,7 @@
   padding-top: 18px;
 }
 
+/* In-session progress card */
 .wtd-card {
   --wtd-border: color-mix(in oklch, var(--border-base) 44%, transparent);
   --wtd-row-border: color-mix(in srgb, var(--border-base) 36%, transparent);
@@ -226,7 +228,7 @@
   width: min(100%, 44rem);
   padding: 16px 18px;
   border: 1px solid var(--wtd-border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface-raised-stronger-non-alpha);
   box-shadow: 0 1px 0 color-mix(in oklch, var(--border-base) 28%, transparent);
   font-family: var(--font-family-sans);
@@ -247,7 +249,7 @@
   height: 34px;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--icon-base);
   background: var(--wtd-control-bg);
   border: 1px solid var(--wtd-border);

@@ -20,7 +20,11 @@ function operationLabel(progress: SessionWorkspaceProgress) {
   return "Worktree session"
 }
 
-export function WorktreeTransitionCard(props: { progress: SessionWorkspaceProgress }) {
+export function WorktreeTransitionCard(props: {
+  progress: SessionWorkspaceProgress
+  onRetry?: () => void
+  onDismiss?: () => void
+}) {
   return (
     <div class="wtd-card" data-phase={props.progress.phase} data-operation={props.progress.operation}>
       <div class="wtd-card-header">
@@ -36,18 +40,18 @@ export function WorktreeTransitionCard(props: { progress: SessionWorkspaceProgre
       <Show when={props.progress.steps.length > 0}>
         <StepList steps={props.progress.steps} />
       </Show>
-      <Show when={props.progress.retry || props.progress.dismiss}>
+      <Show when={props.onRetry || props.onDismiss}>
         <div class="wtd-actions wtd-card-actions">
-          <Show when={props.progress.dismiss}>
+          <Show when={props.onDismiss}>
             {(dismiss) => (
-              <Button type="button" variant="ghost" size="small" onClick={() => dismiss()()}>
+              <Button type="button" variant="ghost" size="small" onClick={dismiss()}>
                 Dismiss
               </Button>
             )}
           </Show>
-          <Show when={props.progress.retry}>
+          <Show when={props.onRetry}>
             {(retry) => (
-              <Button type="button" variant="primary" size="small" onClick={() => retry()()}>
+              <Button type="button" variant="primary" size="small" onClick={retry()}>
                 Retry
               </Button>
             )}

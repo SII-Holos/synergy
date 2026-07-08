@@ -7,6 +7,7 @@ import {
   defaultNewSessionWorkspaceSelection,
   isSessionRunningForWorkspaceChange,
   worktreeOptionSelection,
+  worktreeSetupFailureMessage,
 } from "./worktree-session"
 
 describe("new session workspace selection", () => {
@@ -75,27 +76,25 @@ describe("workspace change disabled state", () => {
 })
 
 describe("workspace transition progress model", () => {
-  test("creates existing-session enter loading, success, and retryable error states", () => {
+  test("creates existing-session enter loading, success, and pure error states", () => {
     const request = { operation: "enter" as const, sessionID: "ses_1", directory: "/repo", name: "feature" }
     const loading = createWorkspaceTransitionLoadingProgress(request)
 
     expect(loading.phase).toBe("loading")
     expect(loading.operation).toBe("enter")
-    expect(loading.steps.map((step) => [step.label, step.state])).toEqual([
-      ["Create checkout", "active"],
-      ["Move to worktree", "pending"],
-    ])
+    expect(loading.steps.map((step) => [step.label, step.state])).toEqual([["Create and bind checkout", "active"]])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "enter" })
     expect(success.title).toBe("Worktree active")
     expect(success.description).toContain("isolated checkout")
     expect(success.steps.every((step) => step.state === "complete")).toBe(true)
 
-    const retry = () => undefined
-    const error = createWorkspaceTransitionErrorProgress({ operation: "enter", message: "Failed", retry })
+    const error = createWorkspaceTransitionErrorProgress({ operation: "enter", message: "Failed" })
     expect(error).toMatchObject({ phase: "error", operation: "enter", title: "Move to worktree failed" })
     expect(error.description).toBe("Failed")
-    expect(error.retry).toBe(retry)
+    expect("retry" in error).toBe(false)
+    expect("dismiss" in error).toBe(false)
+    expect(JSON.parse(JSON.stringify(error))).toEqual(error)
   })
 
   test("creates existing-session leave loading and success states", () => {
@@ -114,22 +113,38 @@ describe("workspace transition progress model", () => {
   })
 
   test("creates new-session worktree startup steps for create and existing modes", () => {
+    const sessionProgress = createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "session" })
+    expect(sessionProgress.steps.map((step) => [step.label, step.state])).toEqual([
+      ["Prepare session", "active"],
+      ["Create checkout", "pending"],
+      ["Send prompt", "pending"],
+    ])
+
     const createProgress = createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "workspace" })
     expect(createProgress.steps.map((step) => step.label)).toEqual([
-      "Create checkout",
       "Prepare session",
+      "Create checkout",
       "Send prompt",
     ])
-    expect(createProgress.steps.map((step) => step.state)).toEqual(["active", "pending", "pending"])
+    expect(createProgress.steps.map((step) => step.state)).toEqual(["complete", "active", "pending"])
 
     const existingProgress = createNewSessionWorkspaceProgress({
       selection: { mode: "existing", target: "/repo/.synergy/worktrees/feature" },
       stage: "prompt",
     })
     expect(existingProgress.steps.map((step) => [step.label, step.state])).toEqual([
-      ["Bind worktree", "complete"],
       ["Prepare session", "complete"],
+      ["Bind worktree", "complete"],
       ["Send prompt", "active"],
     ])
+  })
+
+  test("maps worktree setup failure metadata to a user-facing failure message", () => {
+    expect(worktreeSetupFailureMessage(undefined)).toBeUndefined()
+    expect(worktreeSetupFailureMessage({ setupFailed: false, setupError: "ignored" })).toBeUndefined()
+    expect(worktreeSetupFailureMessage({ setupFailed: true, setupError: " npm install failed " })).toBe(
+      "npm install failed",
+    )
+    expect(worktreeSetupFailureMessage({ setupFailed: true })).toBe("Worktree setup command failed.")
   })
 })

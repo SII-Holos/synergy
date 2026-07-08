@@ -52,6 +52,11 @@ export function isSessionRunningForWorkspaceChange(input: {
   return input.status.type !== undefined && input.status.type !== "idle"
 }
 
+export function worktreeSetupFailureMessage(input: { setupFailed?: boolean; setupError?: string } | undefined) {
+  if (!input?.setupFailed) return undefined
+  return input.setupError?.trim() || "Worktree setup command failed."
+}
+
 export type WorkspaceTransitionOperation = "enter" | "leave" | "start"
 export type WorkspaceTransitionPhase = "loading" | "success" | "error"
 export type WorkspaceProgressStepState = "pending" | "active" | "complete"
@@ -73,6 +78,9 @@ export type SessionWorkspaceProgress = {
   title: string
   description: string
   steps: WorkspaceProgressStep[]
+}
+
+export type SessionWorkspaceProgressActions = {
   retry?: () => void
   dismiss?: () => void
 }
@@ -115,13 +123,14 @@ export function createWorkspaceTransitionLoadingProgress(
     phase: "loading",
     title: "Moving session to worktree",
     description: "Creating an isolated checkout and binding this session to it.",
-    steps: withStepStates(
-      [
-        { id: "create", label: "Create checkout", detail: "Preparing a new git worktree." },
-        { id: "bind", label: "Move to worktree", detail: "Updating this session workspace." },
-      ],
-      "create",
-    ),
+    steps: [
+      {
+        id: "enter",
+        label: "Create and bind checkout",
+        detail: "Preparing the worktree and updating this session workspace.",
+        state: "active",
+      },
+    ],
   }
 }
 
@@ -152,8 +161,12 @@ export function createWorkspaceTransitionSuccessProgress(input: {
     title: "Worktree active",
     description: input.description ?? "This session now runs in the isolated checkout.",
     steps: [
-      { id: "create", label: "Create checkout", detail: "Git worktree is ready.", state: "complete" },
-      { id: "bind", label: "Move to worktree", detail: "Session workspace updated.", state: "complete" },
+      {
+        id: "enter",
+        label: "Create and bind checkout",
+        detail: "Session workspace updated.",
+        state: "complete",
+      },
     ],
   }
 }
@@ -161,8 +174,6 @@ export function createWorkspaceTransitionSuccessProgress(input: {
 export function createWorkspaceTransitionErrorProgress(input: {
   operation: WorkspaceTransitionOperation
   message: string
-  retry?: () => void
-  dismiss?: () => void
 }): SessionWorkspaceProgress {
   const title =
     input.operation === "leave"
@@ -177,8 +188,6 @@ export function createWorkspaceTransitionErrorProgress(input: {
     title,
     description: input.message,
     steps: [],
-    retry: input.retry,
-    dismiss: input.dismiss,
   }
 }
 
@@ -198,8 +207,8 @@ export function createNewSessionWorkspaceProgress(input: {
     description: "Preparing the workspace and sending your first prompt.",
     steps: withStepStates(
       [
-        workspaceStep,
         { id: "session", label: "Prepare session", detail: "Creating the conversation state." },
+        workspaceStep,
         { id: "prompt", label: "Send prompt", detail: "Dispatching your first message." },
       ],
       input.stage,
@@ -214,8 +223,8 @@ export function createNewSessionWorkspaceSuccessProgress(): SessionWorkspaceProg
     title: "Worktree session started",
     description: "The session is ready and your prompt was sent.",
     steps: [
-      { id: "workspace", label: "Prepare workspace", detail: "Workspace setup complete.", state: "complete" },
       { id: "session", label: "Prepare session", detail: "Conversation state is ready.", state: "complete" },
+      { id: "workspace", label: "Prepare workspace", detail: "Workspace setup complete.", state: "complete" },
       { id: "prompt", label: "Send prompt", detail: "First prompt dispatched.", state: "complete" },
     ],
   }

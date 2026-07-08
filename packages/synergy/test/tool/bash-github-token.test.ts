@@ -53,11 +53,18 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
   await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-gh-token" })
 
   await using tmp = await tmpdir({ git: true })
-  const ghPath = `${tmp.path}/gh`
-  await Bun.write(ghPath, "#!/bin/sh\nprintf '%s' \"$GH_TOKEN\"")
-  await fs.chmod(ghPath, 0o755)
-  if (process.platform === "win32") {
-    await Bun.write(`${tmp.path}/gh.cmd`, "@printf '%GH_TOKEN%'")
+  const shell = Shell.acceptable()
+  const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
+  const printTokenOrMissing = usesBash
+    ? "printf '%s' \"${GH_TOKEN:-missing}\""
+    : "if defined GH_TOKEN (<nul set /p dummy=%GH_TOKEN%) else (<nul set /p dummy=missing)"
+  const chainedTokenCommand = `gh && ${printTokenOrMissing}`
+  if (process.platform === "win32" && !usesBash) {
+    await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n<nul set /p dummy=%GH_TOKEN%\r\n")
+  } else {
+    const ghPath = `${tmp.path}/gh`
+    await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' \"$GH_TOKEN\"")
+    await fs.chmod(ghPath, 0o755)
   }
   process.env.PATH = `${tmp.path}${path.delimiter}${originalPath ?? ""}`
   await ScopeContext.provide({
@@ -75,7 +82,7 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
 
       const nonGhResult = await LocalBashBackend.execute(
         {
-          command: "printf '%s' \"${GH_TOKEN:-missing}\"",
+          command: printTokenOrMissing,
           description: "prints token availability",
           workdir: tmp.path,
         },
@@ -85,7 +92,7 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
 
       const chainedResult = await LocalBashBackend.execute(
         {
-          command: "gh && printf '%s' \"${GH_TOKEN:-missing}\"",
+          command: chainedTokenCommand,
           description: "prints chained token availability",
           workdir: tmp.path,
         },

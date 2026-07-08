@@ -172,6 +172,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
@@ -464,8 +465,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const promptText = createMemo(() => inlineText(prompt.current()))
   const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || workspaceTransitionPending())
   const canSubmit = createMemo(() => {
-    if (workspaceTransitionPending()) return false
+    if (submitPending()) return false
     return canSubmitPrompt({
       text: promptText(),
       working: working(),
@@ -1446,6 +1448,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
+    newSessionSubmitPending,
+    setNewSessionSubmitPending,
     store,
     setStore,
     addToHistory,
@@ -1883,9 +1887,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!workspaceTransitionPending() && !canSubmit()}
+                  inactive={!submitPending() && !canSubmit()}
                   value={
-                    <Show when={!workspaceTransitionPending()} fallback={<span>Workspace setup in progress</span>}>
+                    <Show
+                      when={!submitPending()}
+                      fallback={
+                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                      }
+                    >
                       <Switch>
                         <Match when={submitStopsSession()}>
                           <div class="flex items-center gap-2">
