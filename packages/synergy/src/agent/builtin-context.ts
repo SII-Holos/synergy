@@ -26,6 +26,7 @@ export type SubagentPermissionProfile =
   | "externalResearch"
   | "research"
   | "supervisor"
+  | "lightLoopReviewer"
 
 export interface SubagentDefinition {
   name: string
@@ -210,6 +211,33 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_edit: "deny",
         blueprint_loop_restart: "allow",
         blueprint_loop_finish: "allow",
+      }),
+    )
+  }
+
+  if (profile === "lightLoopReviewer") {
+    return PermissionNext.merge(
+      common,
+      anchoredReadTools(),
+      PermissionNext.fromConfig({
+        dagwrite: "allow",
+        dagread: "allow",
+        dagpatch: "allow",
+        task: "allow",
+        task_list: "allow",
+        task_output: "allow",
+        task_cancel: "allow",
+        session_send: "deny",
+        session_control: "deny",
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "deny",
+        note_edit: "deny",
+        memory_write: "deny",
+        memory_edit: "deny",
+        light_loop_approve: "allow",
+        light_loop_reject: "allow",
       }),
     )
   }

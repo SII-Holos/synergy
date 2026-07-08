@@ -976,6 +976,10 @@ export namespace ToolResolver {
         continue
       }
 
+      // light_loop_approve / light_loop_reject are gated by execution-time
+      // checks (stopRequest.reviewSessionID === ctx.sessionID) and the
+      // lightLoopReviewer permission profile.
+
       if (disabled.has(def.id) && !isEphemeral) {
         diagnostics.set(
           def.id,

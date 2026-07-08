@@ -1,12 +1,18 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
-import { SessionWorkflowService } from "../session/workflow"
 import { Identifier } from "../id/id"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./loop-stop.txt"
 
 const parameters = z.object({
-  summary: z.string().optional().describe("Optional summary of what was completed."),
+  summary: z.string().describe("Summary of what was completed."),
+  completed: z.array(z.string()).optional().describe("Completed deliverable or requirement statements."),
+  evidence: z
+    .array(z.string())
+    .optional()
+    .describe("Concrete verification evidence (test results, file paths, checks)."),
+  remaining: z.array(z.string()).optional().describe("Any known remaining work or limitations."),
 })
 
 export const LoopStopTool = Tool.define("loop_stop", {
@@ -18,24 +24,113 @@ export const LoopStopTool = Tool.define("loop_stop", {
       throw new Error("No active Light Loop workflow on this session")
     }
 
-    await SessionWorkflowService.setNone(ctx.sessionID, { allowRunning: true })
+    const summary = params.summary.trim()
+    if (!summary) throw new Error("summary is required")
 
-    const text = `Light loop stopped.${params.summary ? ` Summary: ${params.summary}` : ""}`
+    // Idempotency: don't launch a second reviewer while one is pending
+    if (session.workflow.stopRequest?.reviewSessionID || session.workflow.stopRequest?.reviewTaskID) {
+      return {
+        title: "Light Loop review already requested",
+        output: `A review was already requested for this Light Loop task. The reviewer is session \`${session.workflow.stopRequest.reviewSessionID}\`.`,
+        metadata: {
+          loopStopRequested: true,
+          reviewTaskID: session.workflow.stopRequest.reviewTaskID,
+          reviewSessionID: session.workflow.stopRequest.reviewSessionID,
+        },
+      }
+    }
 
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: ctx.messageID,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text,
-      synthetic: true,
-      time: { start: Date.now(), end: Date.now() },
+    const requestedAt = Date.now()
+    const scope = ScopeContext.current
+
+    // Persist stop request before launching reviewer
+    await Session.update(ctx.sessionID, (draft) => {
+      if (draft.workflow?.kind !== "lightloop") return
+      draft.workflow = {
+        ...draft.workflow,
+        stopRequest: {
+          summary,
+          completed: params.completed,
+          evidence: params.evidence,
+          remaining: params.remaining,
+          requestedAt,
+          requesterSessionID: ctx.sessionID,
+          requesterMessageID: ctx.messageID,
+        },
+      }
     })
 
+    const { Cortex } = await import("../cortex")
+
+    const taskDescription = session.workflow.taskDescription
+    const reviewPrompt = [
+      "## Task",
+      "Audit this LightLoop stop request.",
+      "",
+      "## Original task description",
+      taskDescription,
+      "",
+      "## Stop request",
+      `**Summary:** ${summary}`,
+      params.completed?.length ? `**Completed:**\n${params.completed.map((c) => `- ${c}`).join("\n")}` : "",
+      params.evidence?.length ? `**Evidence:**\n${params.evidence.map((e) => `- ${e}`).join("\n")}` : "",
+      params.remaining?.length
+        ? `**Remaining:**\n${params.remaining.map((r) => `- ${r}`).join("\n")}`
+        : "**Remaining:** none claimed",
+      "",
+      "## Execution session",
+      `Session ID: ${ctx.sessionID}. Use session_read to inspect the execution trajectory.`,
+      "",
+      "## Instructions",
+      "1. Inspect the execution session trajectory and workspace evidence.",
+      "2. Verify every explicit requirement and implied deliverable against the task.",
+      "3. If all work is complete and verified, call light_loop_approve with the execution session ID and a verdict summary.",
+      "4. If any work is missing, partially done, or unverified, call light_loop_reject with concrete remaining instructions.",
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    let task: { id: string; sessionID: string }
+    try {
+      task = await Cortex.launch({
+        description: `[Review] Review LightLoop: ${taskDescription.slice(0, 80)}`,
+        prompt: reviewPrompt,
+        agent: "lightloop-reviewer",
+        executionRole: "delegated_subagent",
+        category: "general",
+        parentSessionID: ctx.sessionID,
+        parentMessageID: ctx.messageID,
+        notifyParentOnComplete: false,
+        visibility: "hidden",
+      })
+    } catch (error) {
+      // Clear the stop request on launch failure so LightLoop can continue
+      await Session.update(ctx.sessionID, (draft) => {
+        if (draft.workflow?.kind !== "lightloop") return
+        draft.workflow = { ...draft.workflow, stopRequest: undefined }
+      })
+      throw error
+    }
+
+    // Persist reviewer session/task IDs into stop request
+    await Session.update(ctx.sessionID, (draft) => {
+      if (draft.workflow?.kind !== "lightloop") return
+      if (!draft.workflow.stopRequest) return
+      draft.workflow = {
+        ...draft.workflow,
+        stopRequest: {
+          ...draft.workflow.stopRequest,
+          reviewTaskID: task.id,
+          reviewSessionID: task.sessionID,
+        },
+      }
+    })
+
+    const output = `Light Loop stop review requested. The reviewer is session \`${task.sessionID}\`.`
     return {
-      title: "Light loop stopped",
-      output: text,
-      metadata: { loopStopped: true },
+      title: "Light Loop review requested",
+      output,
+      metadata: { loopStopRequested: true, reviewTaskID: task.id, reviewSessionID: task.sessionID },
     }
   },
 })

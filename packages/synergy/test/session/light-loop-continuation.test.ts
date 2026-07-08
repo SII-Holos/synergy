@@ -88,6 +88,33 @@ describe("LightLoopContinuationPolicy", () => {
     expect(deliveries).toHaveLength(0)
   })
 
+  test("handle returns false when a stop request is pending", async () => {
+    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+      deliveries.push(input)
+    })
+
+    const g = gate({
+      id: "ses_review_pending",
+      workflow: {
+        kind: "lightloop" as const,
+        taskDescription: "Write unit tests",
+        stopRequest: {
+          summary: "done",
+          requestedAt: Date.now(),
+          requesterSessionID: "ses_review_pending",
+          requesterMessageID: "msg_123",
+          reviewSessionID: "ses_reviewer",
+        },
+      },
+    })
+
+    const handled = await LightLoopContinuationPolicy.handle(g)
+
+    expect(handled).toBe(false)
+    expect(deliveries).toHaveLength(0)
+  })
+
   test("delivered mail is a synthetic user message with continuation prompt", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
@@ -116,7 +143,7 @@ Review the task against the current work:
 - Is the result verified with appropriate evidence?
 - Are there unresolved errors, missing edge cases, or implied follow-up steps?
 
-If anything remains, continue working now. If the task is complete and verified, call loop_stop() with a concise summary. Do not claim completion without evidence.`)
+If anything remains, continue working now. If the task is complete and verified, call loop_stop() to request a completion review. Do not claim completion without evidence.`)
     }
   })
 })
