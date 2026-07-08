@@ -463,13 +463,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
-  const canSubmit = createMemo(() =>
-    canSubmitPrompt({
+  const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
+  const canSubmit = createMemo(() => {
+    if (workspaceTransitionPending()) return false
+    return canSubmitPrompt({
       text: promptText(),
       working: working(),
       hasBlueprintSlot: !!localArmedLoop(),
-    }),
-  )
+    })
+  })
   const submitStopsSession = createMemo(() => working() && !promptText().trim())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
@@ -1881,22 +1883,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!canSubmit()}
+                  inactive={!workspaceTransitionPending() && !canSubmit()}
                   value={
-                    <Switch>
-                      <Match when={submitStopsSession()}>
-                        <div class="flex items-center gap-2">
-                          <span>Stop</span>
-                          <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
-                        </div>
-                      </Match>
-                      <Match when={true}>
-                        <div class="flex items-center gap-2">
-                          <span>Send</span>
-                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
-                        </div>
-                      </Match>
-                    </Switch>
+                    <Show when={!workspaceTransitionPending()} fallback={<span>Workspace setup in progress</span>}>
+                      <Switch>
+                        <Match when={submitStopsSession()}>
+                          <div class="flex items-center gap-2">
+                            <span>Stop</span>
+                            <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                          </div>
+                        </Match>
+                        <Match when={true}>
+                          <div class="flex items-center gap-2">
+                            <span>Send</span>
+                            <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
+                          </div>
+                        </Match>
+                      </Switch>
+                    </Show>
                   }
                 >
                   <IconButton

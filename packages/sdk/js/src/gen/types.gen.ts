@@ -3379,6 +3379,11 @@ export type Session = {
   workflow?: SessionWorkflowInfo
 }
 
+export type WorktreeEnterInput = {
+  target: string
+  force?: boolean
+}
+
 export type VcsInfo = {
   branch: string
 }
@@ -8237,6 +8242,40 @@ export type WorktreeCreateResponses = {
 }
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
+
+export type WorktreeEnterData = {
+  body?: WorktreeEnterInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/session/{sessionID}/enter"
+}
+
+export type WorktreeEnterErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeEnterError = WorktreeEnterErrors[keyof WorktreeEnterErrors]
+
+export type WorktreeEnterResponses = {
+  /**
+   * Session moved to worktree
+   */
+  200: Session
+}
+
+export type WorktreeEnterResponse = WorktreeEnterResponses[keyof WorktreeEnterResponses]
 
 export type WorktreeLeaveData = {
   body?: never
