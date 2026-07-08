@@ -1295,6 +1295,67 @@ describe("EnforcementGate readRoots", () => {
   })
 })
 
+describe("EnforcementGate trustedRoots", () => {
+  test("read and write inside trustedRoots are classified as workspace file capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const read = gate.classify("read", {
+      filePath: "/Users/test/.codex/skills/frontend/SKILL.md",
+    })
+    expect(read.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    expect(read.capabilities.find((cap: any) => cap.class === "file_read")?.paths).toEqual([
+      "/Users/test/.codex/skills/frontend/SKILL.md",
+    ])
+
+    const write = gate.classify("save_file", {
+      filePath: "/Users/test/.codex/skills/frontend/SKILL.md",
+    })
+    expect(write.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+    expect(write.capabilities.find((cap: any) => cap.class === "file_write")?.paths).toEqual([
+      "/Users/test/.codex/skills/frontend/SKILL.md",
+    ])
+  })
+
+  test("external skill script paths do not create file_external_write capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "node /Users/test/.codex/skills/impeccable/scripts/context.mjs --target packages/app",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+    expect(envelope.capabilities.find((cap: any) => cap.class === "file_write")?.paths).toEqual([
+      "/Users/test/.codex/skills/impeccable/scripts/context.mjs",
+    ])
+  })
+
+  test("paths outside workspace and trustedRoots remain external writes", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "node /Users/test/Downloads/context.mjs",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(true)
+  })
+})
+
 // ------------------------------------------------------------------
 // 9. DESTRUCTIVE_PATTERNS — expanded P0 coverage
 // ------------------------------------------------------------------
