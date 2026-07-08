@@ -119,6 +119,9 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      if (agent.hidden) {
+        throw new Error(`Agent type ${params.subagent_type} is internal and cannot be called with the task tool`)
+      }
       if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
         throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
       }

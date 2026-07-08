@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
 import { getDelegatableAgents } from "../../src/agent/prompt/agent-table"
+import { ScopeContext } from "../../src/scope/context"
+import { TaskTool } from "../../src/tool/task"
+import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
   defaults: [],
@@ -40,4 +43,33 @@ test("supervisor is hidden and invisible to all primaries except itself", () => 
       !supervisor.visibleTo || supervisor.visibleTo.length === 0 || supervisor.visibleTo.includes(caller)
     expect(isVisible, `supervisor must not be visible to ${caller}`).toBe(false)
   }
+})
+
+test("task tool refuses hidden supervisor even when called directly", async () => {
+  await using tmp = await tmpdir({ git: true })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const tool = await TaskTool.init()
+
+      await expect(
+        tool.execute(
+          {
+            description: "audit directly",
+            prompt: "Audit this loop",
+            subagent_type: "supervisor",
+          },
+          {
+            sessionID: "ses_exec",
+            messageID: "msg_exec",
+            agent: "synergy",
+            abort: new AbortController().signal,
+            ask: async () => {},
+            metadata: () => {},
+          },
+        ),
+      ).rejects.toThrow("internal and cannot be called with the task tool")
+    },
+  })
 })
