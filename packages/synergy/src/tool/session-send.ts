@@ -44,8 +44,7 @@ export const SessionSendTool = Tool.define("session_send", {
     }
 
     const mailMetadata = {
-      mailbox: true,
-      source: "mailbox",
+      source: "session_send",
       sourceSessionID: ctx.sessionID,
       ...(params.sourceName ? { sourceName: params.sourceName } : {}),
     }
@@ -73,13 +72,14 @@ export const SessionSendTool = Tool.define("session_send", {
         parts: [textPart],
         metadata: mailMetadata,
       }
-      await SessionManager.deliver({ target: session.id, mail })
+      await SessionManager.deliver({ target: session.id, mail, waitForProcessing: false })
     }
 
+    const deliveryState = params.role === "user" ? "queued and scheduled for asynchronous processing" : "delivered"
     return {
       title: `Sent to ${params.target}`,
-      output: `Message delivered to session ${session.id} as ${params.role}.`,
-      metadata: { sessionID: session.id, role: params.role } as Record<string, any>,
+      output: `Message ${deliveryState} in session ${session.id} as ${params.role}. The session_send tool call is complete.`,
+      metadata: { sessionID: session.id, role: params.role, deliveryState } as Record<string, any>,
     }
   },
 })
