@@ -11,7 +11,7 @@ import {
 import { runtimeSupportItems } from "./runtime-support"
 import type { PerformanceSummary, PerformanceTimeline } from "./types"
 
-function summary(runtime: PerformanceSummary["runtime"]): PerformanceSummary {
+function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSummary {
   return {
     generatedAt: new Date(0).toISOString(),
     windowMs: 900_000,
@@ -20,7 +20,33 @@ function summary(runtime: PerformanceSummary["runtime"]): PerformanceSummary {
     resources: {},
     sessions: { turnCount: 0, llmCallCount: 0, toolCallCount: 0 },
     frontend: { longTaskCount: 0 },
-    runtime,
+    runtime: {
+      traceFiles: 0,
+      recentErrors: 0,
+      pendingSessions: 0,
+      sessionRuntimes: {
+        totalCount: 0,
+        runningCount: 0,
+        idleCount: 0,
+        childCount: 0,
+        userCount: 0,
+        waiterCount: 0,
+      },
+      cortexTasks: {
+        totalCount: 0,
+        pendingCount: 0,
+        queuedCount: 0,
+        runningCount: 0,
+        completedCount: 0,
+        errorCount: 0,
+        cancelledCount: 0,
+        retainedPromptChars: 0,
+        retainedOutputChars: 0,
+        retainedErrorChars: 0,
+        retainedProgressToolCount: 0,
+      },
+      ...runtime,
+    },
     top: {
       slowRoutes: [],
       slowSessions: [],
@@ -201,6 +227,8 @@ describe("performance dashboard runtime support", () => {
     expect(items).toContainEqual({ label: "Trace files", value: "3 files", tone: "default" })
     expect(items).toContainEqual({ label: "Recent errors", value: "0", tone: "default" })
     expect(items).toContainEqual({ label: "Pending sessions", value: "2", tone: "warning" })
+    expect(items).toContainEqual({ label: "Session runtimes", value: "0 total · 0 running", tone: "default" })
+    expect(items).toContainEqual({ label: "Cortex tasks", value: "0 retained · 0 running", tone: "default" })
     expect(items[0].value).toContain("Alive")
     expect(items[0].value).toContain("pid 42")
     expect(items[0].tone).toBe("success")

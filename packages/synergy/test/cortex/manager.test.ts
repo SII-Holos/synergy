@@ -656,6 +656,52 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("terminal tasks release child runtime and compact retained memory", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const largePrompt = "prompt ".repeat(24_000)
+          const largeResult = "result ".repeat(24_000)
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, largeResult)
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Large retained output",
+              prompt: largePrompt,
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+
+            expect(completed?.status).toBe("completed")
+            expect(SessionManager.getRuntime(completed!.sessionID)).toBeUndefined()
+            expect(completed!.prompt.length).toBeLessThan(largePrompt.length)
+            expect(completed!.prompt).toContain("characters omitted")
+            expect(completed!.progress?.recentTools).toBeUndefined()
+            expect(completed!.output?.mode).toBe("final_response")
+            if (completed!.output?.mode === "final_response") {
+              expect(completed!.output.value.length).toBeLessThan(largeResult.length)
+              expect(completed!.output.value).toContain("characters omitted")
+            }
+            expect(Cortex.retentionStats().retainedProgressToolCount).toBe(0)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
     test("structured mode accepts hidden structured tool output", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
