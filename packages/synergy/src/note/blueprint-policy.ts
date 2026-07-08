@@ -1,7 +1,8 @@
 export namespace NoteBlueprintPolicy {
   export type Kind = "note" | "blueprint"
   export type WriteAction = "create" | "update" | "edit"
-  export type BlockReason = "non_plan_mode_blueprint_write"
+  export type WorkflowKind = "plan" | "lightloop" | "lattice"
+  export type BlockReason = "non_plan_blueprint_write"
 
   export type Decision =
     | {
@@ -29,18 +30,17 @@ export namespace NoteBlueprintPolicy {
   }
 
   export function evaluateWrite(input: {
-    planMode: boolean
-    latticeActive: boolean
+    workflowKind?: WorkflowKind
     action: WriteAction
     existingKind?: Kind
     requestedKind?: Kind
   }): Decision {
-    if (input.planMode || input.latticeActive) return { allowed: true }
+    if (input.workflowKind === "plan" || input.workflowKind === "lattice") return { allowed: true }
     const touchesBlueprint = input.existingKind === "blueprint" || input.requestedKind === "blueprint"
     if (!touchesBlueprint) return { allowed: true }
     return {
       allowed: false,
-      reason: "non_plan_mode_blueprint_write",
+      reason: "non_plan_blueprint_write",
       action: input.action,
     }
   }
@@ -56,8 +56,8 @@ export namespace NoteBlueprintPolicy {
     return {
       title: "Blueprint write blocked",
       output: [
-        `Error: this session is not in Plan Mode, so note tools cannot ${actionLabel}.`,
-        "Outside Plan Mode, Blueprint notes are read-only: use note_read, note_search, or note_list to inspect them.",
+        `Error: this session is not in Plan or Lattice, so note tools cannot ${actionLabel}.`,
+        "Outside Plan or Lattice, Blueprint notes are read-only: use note_read, note_search, or note_list to inspect them.",
         'You may still use note_write or note_edit for ordinary notes. To store a deliverable, create or update a regular note with kind: "note" and do not pass Blueprint fields.',
         input.id ? `ID: ${input.id}` : undefined,
         input.title ? `Title: ${input.title}` : undefined,
@@ -66,7 +66,7 @@ export namespace NoteBlueprintPolicy {
         .join("\n"),
       metadata: {
         blocked: true,
-        reason: "non_plan_mode_blueprint_write" as const,
+        reason: "non_plan_blueprint_write" as const,
         action: input.action,
         id: input.id,
         title: input.title,

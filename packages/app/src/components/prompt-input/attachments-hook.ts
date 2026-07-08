@@ -25,6 +25,9 @@ type PromptAttachmentsInput = {
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   activeLoopID: Accessor<string | undefined>
+  working: Accessor<boolean>
+  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | undefined>
+  clearPendingWorkflows: () => void
   setStore: SetStoreFunction<PromptInputStore>
 }
 
@@ -158,6 +161,20 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
       try {
         const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
         if (!dropped.noteID) return
+        const workflowKind = input.workflowKind()
+        if (input.working()) {
+          showToast({
+            type: "warning",
+            title: "Session is running",
+            description:
+              workflowKind === "lightloop"
+                ? "Wait for Light Loop to stop before equipping a Blueprint."
+                : workflowKind === "plan"
+                  ? "Wait for Plan to finish before equipping a Blueprint."
+                  : "Wait for the current session run to finish before equipping a Blueprint.",
+          })
+          return
+        }
         if (input.localArmedLoop() || input.activeLoopID()) {
           showToast({
             type: "warning",
@@ -165,6 +182,32 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
             description: "Wait for the current BlueprintLoop to finish before equipping another Blueprint.",
           })
           return
+        }
+        if (workflowKind === "lattice") {
+          showToast({
+            type: "warning",
+            title: "Lattice is active",
+            description: "Cancel Lattice before equipping a user Blueprint.",
+          })
+          return
+        }
+        if (workflowKind === "plan" || workflowKind === "lightloop") {
+          if (params.id) {
+            try {
+              await sdk.client.workflow.session.set({
+                id: params.id,
+                workflowSetInput: { kind: "none" },
+              })
+            } catch (err) {
+              showToast({
+                type: "error",
+                title: workflowKind === "plan" ? "Failed to exit Plan" : "Failed to exit Light Loop",
+                description: err instanceof Error ? err.message : "Request failed",
+              })
+              return
+            }
+          }
+          input.clearPendingWorkflows()
         }
         input.setLocalArmedLoop({
           type: "pending",

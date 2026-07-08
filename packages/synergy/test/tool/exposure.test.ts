@@ -356,14 +356,14 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode keeps bash visible and forces the note group without exposing other deferred groups", async () => {
+  test("Plan keeps bash visible and forces the note group without exposing other deferred groups", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
 
         const ids = await definitionIDs(await Session.get(session.id))
@@ -379,14 +379,14 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode does not override explicit permission denial for bash", async () => {
+  test("Plan does not override explicit permission denial for bash", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
         const denyBash: Agent.Info = {
           ...allowAllAgent,
@@ -407,14 +407,14 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
+  test("Plan resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
         const executions = new Map<string, Promise<any>>()
         const processor = {
@@ -466,7 +466,7 @@ describe("tool exposure", () => {
 
         await expect(
           (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
-        ).rejects.toThrow("Plan Mode")
+        ).rejects.toThrow("Plan")
         const outcome = await executions.get("call_edit")
         expect(outcome.status).toBe("error")
         expect(outcome.metadata.toolDiagnostic.code).toBe("plan_mode_blocked")

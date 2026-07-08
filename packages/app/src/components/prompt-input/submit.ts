@@ -28,7 +28,6 @@ import {
   formatSessionPreview,
   formatSessionReference,
   inlineLength,
-  inlineText,
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
@@ -36,6 +35,9 @@ import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
 import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
+import { buildLightLoopTaskDescription } from "./light-loop-task"
+import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
+import { resolvePromptSubmitIntent } from "./submit-intent"
 import {
   SessionStartProgressDialog,
   type SessionStartProgress,
@@ -53,15 +55,19 @@ type PromptSubmitInput = {
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
-  planMode: Accessor<boolean>
+  pendingPlan: Accessor<boolean>
+  clearPendingPlan: () => void
   pendingLattice: Accessor<{ mode: "auto" | "collaborative"; maxModelCalls: number } | null>
   clearPendingLattice: () => void
+  pendingLightLoop: Accessor<boolean>
+  clearPendingLightLoop: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
   store: PromptInputStore
   setStore: SetStoreFunction<PromptInputStore>
   addToHistory: (prompt: Prompt, mode: PromptInputMode) => void
+  frontendCommands: Accessor<SlashUiCommand[]>
   working: Accessor<boolean>
   abort: () => void
   editor: () => HTMLDivElement
@@ -164,16 +170,63 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       prompt: currentPrompt,
       context: currentContext,
     })
+    const slashIntent = resolveSlashCommandIntent({
+      text,
+      backendCommands: sync.data.command,
+      uiCommands: input.frontendCommands(),
+    })
 
     const blueprintSlot = input.localArmedLoop()
-    if (
-      !blueprintSlot &&
-      text.trim().length === 0 &&
-      attachments.length === 0 &&
-      notes.length === 0 &&
-      sessions.length === 0
-    ) {
-      if (input.working()) input.abort()
+    const submitIntent = resolvePromptSubmitIntent({
+      text,
+      working: input.working(),
+      hasBlueprintSlot: !!blueprintSlot,
+    })
+    if (submitIntent === "abort") {
+      input.abort()
+      return
+    }
+    if (submitIntent === "blocked") {
+      if (input.pendingLightLoop()) {
+        showToast({
+          type: "warning",
+          title: "Describe the Light Loop task",
+          description: "Write the task first; attachments and references can only add context.",
+        })
+        return
+      }
+      const hasContextOnlyInput =
+        attachments.length > 0 ||
+        notes.length > 0 ||
+        sessions.length > 0 ||
+        currentContext.items.length > 0 ||
+        currentPrompt.some((part) => part.type === "file") ||
+        (!!input.activeFile() && currentContext.activeTab)
+      if (hasContextOnlyInput) {
+        showToast({
+          type: "warning",
+          title: "Add a message",
+          description: "Attachments and references need a text prompt.",
+        })
+      }
+      return
+    }
+    if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
+      showToast({
+        type: "warning",
+        title: "Use a normal message",
+        description: "Light Loop starts from the next text prompt, not shell mode.",
+      })
+      return
+    }
+    const pendingLightLoopSlashBlock =
+      input.pendingLightLoop() && !blueprintSlot ? getPendingLightLoopSlashBlock(slashIntent) : undefined
+    if (pendingLightLoopSlashBlock) {
+      showToast({
+        type: "warning",
+        title: pendingLightLoopSlashBlock.title,
+        description: pendingLightLoopSlashBlock.description,
+      })
       return
     }
 
@@ -196,10 +249,35 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const projectDirectory = sdk.directory
     const currentScopeKey = sdk.scopeKey
     const isNewSession = !params.id
-    // Capture (and disarm) any Lattice config armed on the new-session composer
+    // Capture (and disarm) workflow state armed on the new-session composer
     // before navigation can reset it; applied once the session exists.
-    const armedLattice = input.pendingLattice()
+    const armedPlan = isNewSession && input.pendingPlan()
+    if (armedPlan) input.clearPendingPlan()
+    const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
+    const armedLightLoop = input.pendingLightLoop()
+    const fileAttachmentsForTask = currentPrompt.filter((part): part is FileAttachmentPart => part.type === "file")
+    const armedLightLoopTaskDescription = armedLightLoop
+      ? buildLightLoopTaskDescription({
+          text,
+          uploads: attachments,
+          notes,
+          sessions,
+          fileAttachments: fileAttachmentsForTask,
+          contextItems: currentContext.items,
+          activeFile: input.activeFile(),
+          activeTabIncluded: currentContext.activeTab,
+        })
+      : undefined
+    if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
+      showToast({
+        type: "warning",
+        title: "Describe the Light Loop task",
+        description: "Write the task first; attachments and references can only add context.",
+      })
+      return
+    }
+    if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
     const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
 
     let sessionScopeKey = currentScopeKey
@@ -279,16 +357,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => session)
     }
     if (!session) return
-    if (blueprintSlot && session.blueprint?.planMode) {
+    if (blueprintSlot && (session.workflow?.kind === "plan" || session.workflow?.kind === "lightloop")) {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.blueprint.session
-        .planMode({ id: sessionID, planMode: false })
+      const workflowName = session.workflow.kind === "plan" ? "Plan" : "Light Loop"
+      session = await client.workflow.session
+        .set({ id: sessionID, workflowSetInput: { kind: "none" } })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
-            title: "Failed to exit Plan Mode",
+            title: `Failed to exit ${workflowName}`,
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -300,16 +379,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (!blueprintSlot && input.planMode() && !session.blueprint?.planMode) {
+    if (!blueprintSlot && armedPlan && !armedLattice && !armedLightLoop && session.workflow?.kind !== "plan") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.blueprint.session
-        .planMode({ id: sessionID, planMode: true })
+      session = await client.workflow.session
+        .set({ id: sessionID, workflowSetInput: { kind: "plan" } })
         .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
-            title: "Failed to toggle Plan Mode",
+            title: "Failed to toggle Plan",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -321,26 +400,51 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (!session) return
     }
-    if (armedLattice && !session.lattice) {
+    if (armedLattice && session.workflow?.kind !== "lattice") {
       const sessionID = session.id
       const fallbackSession = session
-      session = await client.lattice.session
-        .mode({
+      session = await client.workflow.session
+        .set({
           id: sessionID,
-          latticeModeInput: {
-            enabled: true,
+          workflowSetInput: {
+            kind: "lattice",
             mode: armedLattice.mode,
-            max_model_calls: armedLattice.maxModelCalls,
+            maxModelCalls: armedLattice.maxModelCalls,
           },
         })
-        .then(async () => {
-          await sync.session.sync(sessionID).catch(() => undefined)
-          return sync.session.get(sessionID) ?? fallbackSession
-        })
+        .then((x) => x.data ?? fallbackSession)
         .catch(async (err) => {
           showToast({
             type: "error",
             title: "Failed to enable Lattice",
+            description: errorMessage(err),
+          })
+          if (createdSessionForSubmit) {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+            navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+          }
+          closeStartProgress()
+          return undefined
+        })
+      if (!session) return
+    }
+    let enabledLightLoopForSubmit: { sessionID: string } | undefined
+    if (!blueprintSlot && armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.workflow.session
+        .set({
+          id: sessionID,
+          workflowSetInput: { kind: "lightloop", taskDescription: armedLightLoopTaskDescription! },
+        })
+        .then((x) => {
+          enabledLightLoopForSubmit = { sessionID }
+          return x.data ?? fallbackSession
+        })
+        .catch(async (err) => {
+          showToast({
+            type: "error",
+            title: "Failed to enable Light Loop",
             description: errorMessage(err),
           })
           if (createdSessionForSubmit) {
@@ -360,9 +464,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const agent = currentAgent.name
     const variant = selectedVariant
-    const optimisticPlanModeMetadata =
-      !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
-
     const clearInput = () => {
       prompt.resetDraft()
       input.setStore("mode", "normal")
@@ -386,6 +487,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (!createdSessionForSubmit) return
       await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
       navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+    }
+
+    const rollbackLightLoopForSubmit = async () => {
+      if (!enabledLightLoopForSubmit) return
+      await client.workflow.session
+        .set({
+          id: enabledLightLoopForSubmit.sessionID,
+          workflowSetInput: { kind: "none" },
+        })
+        .catch(() => undefined)
     }
 
     if (isNewSession) updateStartProgress(workspaceSelection, "prompt")
@@ -461,39 +572,36 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    if (text.startsWith("/")) {
-      const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
-      const customCommand = sync.data.command.find((c) => c.name === commandName)
-      if (customCommand) {
-        clearInput()
-        sendSessionCommand({
-          client,
-          sessionID: activeSession.id,
-          command: commandName,
-          arguments: args.join(" "),
-          agent,
-          model,
-          variant,
-          attachments,
-          notes,
-          sessions,
+    if (slashIntent.kind === "backend-prompt" || slashIntent.kind === "backend-action") {
+      clearInput()
+      sendSessionCommand({
+        client,
+        sessionID: activeSession.id,
+        command: slashIntent.command,
+        arguments: slashIntent.arguments,
+        agent,
+        model,
+        variant,
+        attachments,
+        notes,
+        sessions,
+      })
+        .then(() => {
+          closeStartProgress()
+          if (armedLightLoop) input.clearPendingLightLoop()
         })
-          .then(() => {
-            closeStartProgress()
+        .catch(async (err) => {
+          closeStartProgress()
+          await rollbackLightLoopForSubmit()
+          showToast({
+            type: "error",
+            title: "Failed to send command",
+            description: errorMessage(err),
           })
-          .catch((err) => {
-            closeStartProgress()
-            showToast({
-              type: "error",
-              title: "Failed to send command",
-              description: errorMessage(err),
-            })
-            rollbackCreatedSession()
-            restoreInput()
-          })
-        return
-      }
+          rollbackCreatedSession()
+          restoreInput()
+        })
+      return
     }
 
     const toAbsolutePath = (path: string) =>
@@ -663,7 +771,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       : []
 
     const userMessageMetadata = {
-      ...optimisticPlanModeMetadata,
       promptDraft: draftSnapshot,
     }
 
@@ -737,6 +844,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       .then((result) => {
         closeStartProgress()
+        if (armedLightLoop) input.clearPendingLightLoop()
         if (result.data?.status === "queued" && optimisticAdded) {
           removeOptimisticMessage()
           optimisticAdded = false
@@ -749,8 +857,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
         }
       })
-      .catch((err) => {
+      .catch(async (err) => {
         closeStartProgress()
+        await rollbackLightLoopForSubmit()
         showToast({
           type: "error",
           title: "Failed to send prompt",

@@ -121,6 +121,46 @@ async function userPromptFromStartMessage(loop: BlueprintLoopInfo): Promise<stri
   }
 }
 
+async function migrateBlueprintLoopSource(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["blueprint_loops"])
+  const loops: Array<{ scopeID: string; loopID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+    for (const loopID of loopIDs) loops.push({ scopeID, loopID })
+  }
+
+  if (loops.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, loopID } of loops) {
+    const scope = Identifier.asScopeID(scopeID)
+    const loopPath = StoragePath.blueprintLoop(scope, loopID)
+    const loop = await Storage.read<Record<string, unknown>>(loopPath).catch(() => undefined)
+    if (!loop) {
+      done++
+      progress(done, loops.length)
+      continue
+    }
+
+    const orchestration = asRecord(loop.orchestration)
+    const source = orchestration?.kind === "lattice" ? "lattice" : "user"
+    if (loop.source !== source || "orchestration" in loop) {
+      loop.source = source
+      delete loop.orchestration
+      await Storage.write(loopPath, loop)
+      changed++
+    }
+
+    done++
+    progress(done, loops.length)
+  }
+
+  log.info("BlueprintLoop source migration complete", { totalLoops: loops.length, changed })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260624-blueprint-cancel-stale-armed-loops",
@@ -349,6 +389,15 @@ export const migrations: Migration[] = [
       }
 
       log.info("BlueprintLoop userPrompt migration complete", { totalLoops: loops.length, changed })
+    },
+  },
+  {
+    id: "20260708-blueprint-loop-source",
+    description: "Migrate BlueprintLoop orchestration ownership into source",
+    domain: "blueprint_loop",
+    dependsOn: ["20260704-blueprint-loop-user-prompt"],
+    async up(progress) {
+      await migrateBlueprintLoopSource(progress)
     },
   },
 ]
