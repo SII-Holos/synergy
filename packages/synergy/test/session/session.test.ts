@@ -197,6 +197,42 @@ describe("session lifecycle events", () => {
       },
     })
   })
+
+  test("Session.get exposes effective control profile for root sessions without persisting it", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+        expect((await Session.get(session.id)).controlProfile).toBe("full_access")
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("Session.list exposes effective control profiles for root and child sessions", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const root = await Session.create({})
+        const child = await Session.create({ parentID: root.id })
+
+        const roots = await Session.list()
+        expect(roots.data.find((item) => item.id === root.id)?.controlProfile).toBe("full_access")
+
+        const all = await Session.list({ parentOnly: false })
+        expect(all.data.find((item) => item.id === child.id)?.controlProfile).toBe("full_access")
+
+        await Session.remove(root.id)
+      },
+    })
+  })
+
   test("resolveControlProfile falls back to guarded for ordinary root sessions", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
