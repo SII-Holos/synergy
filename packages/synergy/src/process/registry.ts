@@ -7,8 +7,8 @@ import { PerformanceMetrics } from "@/performance/metrics"
 const log = Log.create({ service: "process.registry" })
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000 // 30 minutes
-const MAX_OUTPUT_CHARS = 200_000
-const TAIL_CHARS = 2000
+const MAX_OUTPUT_CHARS = 64_000
+const TAIL_CHARS = 8000
 
 export namespace ProcessRegistry {
   export type Status = "running" | "completed" | "failed" | "killed"
