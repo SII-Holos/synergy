@@ -864,7 +864,7 @@ export namespace ToolResolver {
 
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
-    if (session?.planMode || session?.blueprint?.loopID || session?.lattice) {
+    if (session?.workflow?.kind === "plan" || session?.workflow?.kind === "lattice" || session?.blueprint?.loopID) {
       result.add("note")
     }
     if (session?.interaction?.source === "chronicler") {
@@ -962,7 +962,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (def.id === "loop_stop" && !input.session?.lightLoop?.active) {
+      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({

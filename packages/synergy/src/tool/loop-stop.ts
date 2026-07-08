@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
+import { SessionWorkflowService } from "../session/workflow"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./loop-stop.txt"
 
@@ -13,13 +14,11 @@ export const LoopStopTool = Tool.define("loop_stop", {
   parameters,
   async execute(params, ctx) {
     const session = await Session.get(ctx.sessionID)
-    if (!session.lightLoop?.active) {
-      throw new Error("No active light loop on this session")
+    if (session.workflow?.kind !== "lightloop") {
+      throw new Error("No active Light Loop workflow on this session")
     }
 
-    await Session.update(ctx.sessionID, (draft) => {
-      draft.lightLoop = undefined
-    })
+    await SessionWorkflowService.setNone(ctx.sessionID, { allowRunning: true })
 
     const text = `Light loop stopped.${params.summary ? ` Summary: ${params.summary}` : ""}`
 

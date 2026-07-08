@@ -10,7 +10,7 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
-export function blueprintNoteCreateFocusRequest(part: Part, sessionID: string): BlueprintNoteFocusRequest | undefined {
+export function blueprintNoteWriteFocusRequest(part: Part, sessionID: string): BlueprintNoteFocusRequest | undefined {
   if (part.sessionID !== sessionID) return undefined
   if (part.type !== "tool") return undefined
   if (part.tool !== "note_write") return undefined
@@ -19,7 +19,7 @@ export function blueprintNoteCreateFocusRequest(part: Part, sessionID: string): 
   const metadata = part.state.metadata ?? {}
   const input = part.state.input ?? {}
   const action = stringValue(metadata.action) ?? stringValue(input.mode) ?? "create"
-  if (action !== "create") return undefined
+  if (action !== "create" && action !== "replace") return undefined
 
   const kind = stringValue(metadata.kind) ?? stringValue(input.kind)
   if (kind !== "blueprint") return undefined

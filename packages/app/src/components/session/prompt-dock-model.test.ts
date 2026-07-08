@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { SessionMeta } from "@/composables/use-session-meta"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
+import { selectPromptDockControl } from "./prompt-dock-control-model"
 import { subagentFooterSessionStatus } from "./subagent-session-footer-model"
 
 const baseMeta: SessionMeta = {
@@ -54,5 +55,34 @@ describe("subagent footer session ownership", () => {
         "ses_subagent",
       ),
     ).toBe(subagentStatus)
+  })
+})
+
+describe("prompt dock control slot", () => {
+  test("workflow offer takes priority over session progress", () => {
+    expect(
+      selectPromptDockControl({
+        workflowOfferVisible: true,
+        sessionProgressVisible: true,
+      }),
+    ).toBe("workflow_offer")
+  })
+
+  test("session progress is the fallback control", () => {
+    expect(
+      selectPromptDockControl({
+        workflowOfferVisible: false,
+        sessionProgressVisible: true,
+      }),
+    ).toBe("session_progress")
+  })
+
+  test("empty control slot stays empty", () => {
+    expect(
+      selectPromptDockControl({
+        workflowOfferVisible: false,
+        sessionProgressVisible: false,
+      }),
+    ).toBeUndefined()
   })
 })
