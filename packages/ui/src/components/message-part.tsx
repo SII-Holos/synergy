@@ -887,6 +887,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Task Cancel",
         subtitle: input.task_id,
       }
+    case "loop_stop":
+      return {
+        icon: "flag",
+        title: "Stop Loop",
+        subtitle: (input.summary as string) || "",
+      }
     case "context7_resolve-library-id":
       return {
         icon: "tag",
