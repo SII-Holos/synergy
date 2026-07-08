@@ -1,5 +1,6 @@
 import { describe, test, expect, mock } from "bun:test"
 import { Skill } from "../../src/skill"
+import { SkillPaths } from "../../src/skill/paths"
 import { Plugin } from "../../src/plugin"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
 import { ScopeContext } from "../../src/scope/context"
@@ -39,6 +40,48 @@ async function createSkill(baseDir: string, relativeDir: string, content: string
 // Skill discovery tests share global state (process.env, ScopedState)
 // and must run serially to avoid interference between concurrent tests.
 describe.serial("skill discovery", () => {
+  test("runtime skill root candidates include external compatibility roots without requiring directories", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalHome = process.env.SYNERGY_TEST_HOME
+    process.env.SYNERGY_TEST_HOME = tmp.path
+
+    try {
+      const roots = SkillPaths.runtimeSkillRootCandidatesSync(tmp.path).map(normalizedLocation)
+
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "skill")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "config", "skill")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "config", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".claude", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".agents", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".openclaw", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, "skills")))
+    } finally {
+      process.env.SYNERGY_TEST_HOME = originalHome
+    }
+  })
+
+  test("runtime skill roots include only existing external compatibility roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalHome = process.env.SYNERGY_TEST_HOME
+    process.env.SYNERGY_TEST_HOME = tmp.path
+
+    try {
+      await fs.mkdir(path.join(tmp.path, ".codex", "skills"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".agents", "skills"), { recursive: true })
+
+      const roots = SkillPaths.runtimeSkillRootsSync(tmp.path).map(normalizedLocation)
+
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
+      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".agents", "skills")))
+      expect(roots).not.toContain(normalizedLocation(path.join(tmp.path, ".claude", "skills")))
+      expect(roots).not.toContain(normalizedLocation(path.join(tmp.path, ".openclaw", "skills")))
+    } finally {
+      process.env.SYNERGY_TEST_HOME = originalHome
+    }
+  })
+
   test("discovers skills from .synergy/skill/ directory", async () => {
     await using tmp = await tmpdir({
       git: true,

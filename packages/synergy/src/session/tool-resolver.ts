@@ -1236,7 +1236,7 @@ export namespace ToolResolver {
                   pluginToolCapabilities: pluginGateData.toolCapabilities,
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
-                  readRoots: [synergyRoot],
+                  readRoots: [synergyRoot, ...trustedRoots],
                   trustedRoots,
                   synergyRoot,
                 })
@@ -1299,7 +1299,7 @@ export namespace ToolResolver {
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...extRoots],
+                      extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots],
                       extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                       protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                       dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
@@ -1486,6 +1486,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    readRoots: [Global.Path.root, ...trustedRoots],
                     synergyRoot: Global.Path.root,
                     trustedRoots,
                   })
