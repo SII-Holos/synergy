@@ -42,7 +42,6 @@ import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
-import { AgentsPanel } from "./panels/AgentsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
 import { UsagePanel } from "./panels/UsagePanel"
@@ -500,14 +499,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onConnectProvider={() => setActiveTab("providers")}
           />
         )
-      case "agents":
-        return (
-          <AgentsPanel
-            value={settings.agents}
-            availableAgents={agents() ?? []}
-            onChange={(value) => setSettings("agents", value)}
-          />
-        )
       case "providers":
         return (
           <ProvidersPanel
@@ -625,6 +616,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <TimeoutsPanel
             runtime={settings.runtime}
             onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+            availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
+            defaultAgent={settings.agents.defaultAgent}
+            onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
           />
         )
       case "formatter":

@@ -42,8 +42,9 @@ describe("settings config patch", () => {
     expect(patch.default_agent).toBe("synergy-max")
   })
 
-  test("default agent can return to the backend default", () => {
+  test("default agent is sent when different from server config", () => {
     const state = defaultSettingsState("enter")
+    state.agents.defaultAgent = "synergy"
 
     const patch = buildPatch({
       cfg: { default_agent: "synergy-max" } as Config,
@@ -51,7 +52,19 @@ describe("settings config patch", () => {
       originalMcps: {},
     })
 
-    expect(patch).toHaveProperty("default_agent", undefined)
+    expect(patch.default_agent).toBe("synergy")
+  })
+
+  test("default agent not sent when unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { default_agent: "synergy" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("default_agent")
   })
 
   test("provider idle timeout can be disabled with false", () => {

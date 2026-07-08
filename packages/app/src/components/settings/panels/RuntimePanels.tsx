@@ -1,3 +1,5 @@
+import type { Agent } from "@ericsanchezok/synergy-sdk/client"
+import { For } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
@@ -106,10 +108,26 @@ export function CompactionPanel(props: {
 export function TimeoutsPanel(props: {
   runtime: RuntimeStore
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
+  availableAgents: Agent[]
+  defaultAgent: string
+  onDefaultAgentChange: (agent: string) => void
 }) {
   return (
     <SettingsPage title="Timeouts" description="Agent, provider, and tool timeout controls.">
       <SettingsSection title="Agent">
+        <SettingRow
+          title="Default Agent"
+          description="Primary agent for new conversations. Hidden and subagent definitions are excluded."
+          trailing={
+            <select
+              class="settings-select"
+              value={props.defaultAgent}
+              onChange={(event) => props.onDefaultAgentChange(event.currentTarget.value)}
+            >
+              <For each={props.availableAgents}>{(agent) => <option value={agent.name}>{agent.name}</option>}</For>
+            </select>
+          }
+        />
         <SettingRow
           title="Invoke Timeout"
           description="Milliseconds before a task invoke call times out."

@@ -62,8 +62,10 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
 
 function buildAgentPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const defaultAgent = state.agents.defaultAgent.trim()
-  if (defaultAgent !== (cfg.default_agent ?? UI_DEFAULTS.defaultAgent)) {
-    patch.default_agent = defaultAgent === UI_DEFAULTS.defaultAgent ? undefined : defaultAgent
+  if (!defaultAgent) return
+  const resolved = cfg.default_agent ?? UI_DEFAULTS.defaultAgent
+  if (defaultAgent !== resolved) {
+    patch.default_agent = defaultAgent
   }
 }
 
