@@ -396,25 +396,45 @@ export namespace PerformanceStore {
       .all(...params) as StoredIssue[]
   }
 
-  export function latestResource(opts: { scopeID?: string } = {}) {
+  export function latestResource(opts: { scopeID?: string; processRole?: string } = {}) {
     flush()
+    const filters: string[] = []
+    const params: Array<string | number> = []
     if (opts.scopeID) {
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.processRole) {
+      filters.push("process_role = ?")
+      params.push(opts.processRole)
+    }
+    if (filters.length > 0) {
       return open()
-        ?.prepare("SELECT * FROM perf_resource_samples WHERE scope_id = ? ORDER BY time DESC LIMIT 1")
-        .get(opts.scopeID) as StoredResource | undefined
+        ?.prepare(`SELECT * FROM perf_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time DESC LIMIT 1`)
+        .get(...params) as StoredResource | undefined
     }
     return open()?.prepare("SELECT * FROM perf_resource_samples ORDER BY time DESC LIMIT 1").get() as
       | StoredResource
       | undefined
   }
 
-  export function resourceSince(since: number, opts: { scopeID?: string } = {}) {
+  export function resourceSince(since: number, opts: { scopeID?: string; processRole?: string } = {}) {
     flush()
+    const filters = ["time >= ?"]
+    const params: Array<string | number> = [since]
     if (opts.scopeID) {
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.processRole) {
+      filters.push("process_role = ?")
+      params.push(opts.processRole)
+    }
+    if (filters.length > 1) {
       return (
         (open()
-          ?.prepare("SELECT * FROM perf_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ASC")
-          .all(since, opts.scopeID) as StoredResource[] | undefined) ?? []
+          ?.prepare(`SELECT * FROM perf_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time ASC`)
+          .all(...params) as StoredResource[] | undefined) ?? []
       )
     }
     return (
@@ -561,6 +581,8 @@ export namespace PerformanceStore {
     iso: string
     source: PerformanceSchema.Source
     pid?: number | null
+    process_id?: string | null
+    process_role: string
     cpu_user_micros?: number | null
     cpu_system_micros?: number | null
     cpu_utilization_ratio?: number | null
@@ -573,6 +595,7 @@ export namespace PerformanceStore {
     app_written_bytes?: number | null
     app_read_ops?: number | null
     app_write_ops?: number | null
+    labels_json: string
   }
 
   export interface PerfMetaRow {

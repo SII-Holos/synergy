@@ -218,6 +218,8 @@ export type PerfRankedItem = {
   sessionID?: string
   tool?: string
   status?: string
+  processId?: string
+  pid?: number
 }
 
 export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
@@ -283,6 +285,8 @@ export type PerfDashboardSummary = {
     appWrittenBytes?: number
     appReadOps?: number
     appWriteOps?: number
+    childProcessCount?: number
+    childProcessRssBytes?: number
   }
   sessions: {
     turnCount: number
@@ -315,6 +319,7 @@ export type PerfDashboardSummary = {
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
     slowLibrary: Array<PerfRankedItem>
+    childProcesses: Array<PerfRankedItem>
     slowFrontend: Array<PerfRankedItem>
   }
   issues: Array<PerfIssue>

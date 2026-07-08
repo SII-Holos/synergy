@@ -77,6 +77,8 @@ Desktop managed-local project selection should use native OS folder picking for 
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
+Performance should separate server process resources from registered tool child process resources. Main RSS, heap, CPU, and event-loop signals belong in the primary resource cards and charts; tool child process count, aggregate RSS, and top child memory contributors should be visible as support-oriented diagnostics without crowding the main time-series model.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.

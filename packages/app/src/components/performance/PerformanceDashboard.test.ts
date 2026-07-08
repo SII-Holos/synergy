@@ -28,6 +28,7 @@ function summary(runtime: PerformanceSummary["runtime"]): PerformanceSummary {
       slowProviders: [],
       slowStorage: [],
       slowLibrary: [],
+      childProcesses: [],
       slowFrontend: [],
     },
     issues: [],

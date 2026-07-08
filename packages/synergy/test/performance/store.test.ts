@@ -14,6 +14,7 @@ import { PerformanceResources } from "../../src/performance/resources"
 import { PerformanceStore } from "../../src/performance/store"
 import { PerformanceWriter } from "../../src/performance/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
+import { ProcessRegistry } from "../../src/process/registry"
 
 const homes: string[] = []
 const originalTestHome = process.env.SYNERGY_TEST_HOME
@@ -27,6 +28,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  ProcessRegistry.reset()
   PerformanceStore.close()
   PerformanceConfig.refresh()
   if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
@@ -115,6 +117,33 @@ describe.serial("performance observability store", () => {
     const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
     expect(summary.top.slowProviders[0]?.label).toBe("openai")
     expect(summary.top.slowLibrary[0]?.label).toBe("select")
+  })
+
+  test("dashboard summary separates server RSS from child process RSS contributors", async () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 8 * 1024 * 1024 }))
+    try {
+      const child = ProcessRegistry.create({ command: "next dev -p 8090", description: "Next dev server" })
+      child.pid = 4321
+      ProcessRegistry.markBackgrounded(child)
+
+      PerformanceResources.snapshot()
+      PerformanceStore.flush()
+
+      const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+      expect(summary.resources.rssBytes).toBeGreaterThan(0)
+      expect(summary.resources.rssBytes).not.toBe(8 * 1024 * 1024)
+      expect(summary.resources.childProcessCount).toBe(1)
+      expect(summary.resources.childProcessRssBytes).toBe(8 * 1024 * 1024)
+      expect(summary.top.childProcesses[0]).toMatchObject({
+        label: "next dev -p 8090",
+        value: 8 * 1024 * 1024,
+        unit: "bytes",
+        processId: child.id,
+        pid: 4321,
+      })
+    } finally {
+      restore()
+    }
   })
 
   test("trace detail projects observability events without raw event data", async () => {
