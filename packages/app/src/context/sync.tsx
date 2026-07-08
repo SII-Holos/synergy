@@ -6,6 +6,7 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -111,6 +112,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
           // Track this bucket for LRU eviction now that it is loaded.
           globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
         })
         .finally(() => {
           setMeta("loading", sessionID, false)
@@ -209,6 +211,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if (match.found) return globalSync.data.scope[match.index]
         return undefined
       },
+      planBlueprintOffer: {
+        dismiss(sessionID: string, key: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "dismissed", key })
+        },
+        mute(sessionID: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "muted" })
+        },
+        equip(sessionID: string, key: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "equipped", key })
+        },
+        refresh(sessionID: string) {
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        },
+      },
       session: {
         get: getSession,
         addOptimisticMessage(input: {
@@ -306,6 +322,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           }
 
           await Promise.all(requests)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
         },
         // Force a fresh re-fetch of a session's messages and volatile state,
         // bypassing the "already loaded" short-circuit in sync(). Used by the
