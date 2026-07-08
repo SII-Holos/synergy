@@ -131,7 +131,7 @@ export namespace SessionInvoke {
       }
 
       try {
-        return await loop(input.sessionID)
+        return await loopBody(input.sessionID)
       } catch (error) {
         await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
           log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
@@ -184,6 +184,10 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    return SessionManager.run(sessionID, () => loopBody(sessionID))
+  })
+
+  async function loopBody(sessionID: string): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
     LatticeBridge.init()
     SessionManager.registerRuntime(sessionID)
@@ -212,6 +216,7 @@ export namespace SessionInvoke {
     let step = 0
     let emergencyCompactionTriggered = false
     let session = await Session.get(sessionID)
+    SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
 
     outer: while (true) {
@@ -220,6 +225,7 @@ export namespace SessionInvoke {
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
         session = await Session.get(sessionID)
+        SessionManager.assertExecutionContext(session, "session loop refresh")
         scopeID = (session.scope as Scope).id
         let msgs = await effectiveCompactedMessages(sessionID)
 
@@ -967,7 +973,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
       q.onComplete(resultMessage)
     }
     return resultMessage
-  })
+  }
 
   export function selectResultMessage(messages: MessageV2.WithParts[]): MessageV2.WithParts | undefined {
     let lastReplyRequiredUser: MessageV2.User | undefined

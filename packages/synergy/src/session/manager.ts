@@ -9,6 +9,7 @@ import type { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "@/scope"
+import { ScopeContext } from "@/scope/context"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionInbox } from "./inbox"
@@ -230,6 +231,7 @@ export namespace SessionManager {
         workspace,
         ensure: scope.type === "project",
         fn: async () => {
+          assertExecutionContext(session, "session manager run")
           const workspace = (session as Info).workspace
           if (workspace?.type !== "git_worktree") return fn()
           const { Worktree } = await import("../project/worktree")
@@ -247,6 +249,30 @@ export namespace SessionManager {
         unregisterRuntime(session.id)
       }
     }
+  }
+
+  export function assertExecutionContext(session: Info, phase: string): void {
+    const expected = session.workspace
+    if (!expected || expected.type !== "git_worktree") return
+
+    const actualWorkspace = ScopeContext.tryWorkspace()
+    if (actualWorkspace?.path === expected.path) return
+
+    const actualPath = actualWorkspace?.path ?? ScopeContext.tryScope()?.directory
+    log.error("session execution workspace mismatch", {
+      sessionID: session.id,
+      phase,
+      expected: expected.path,
+      actual: actualPath,
+      actualType: actualWorkspace?.type ?? "scope",
+    })
+    throw new Error(
+      [
+        `Session ${session.id} is bound to worktree ${expected.path},`,
+        `but ${phase} is running in ${actualPath ?? "no workspace context"}.`,
+        "Refusing to continue outside the session workspace.",
+      ].join(" "),
+    )
   }
 
   export function acquire(sessionID: string): AbortSignal | undefined {
@@ -299,9 +325,23 @@ export namespace SessionManager {
     })
 
     if (await SessionInbox.hasRunnableItem(sessionID)) {
-      const { SessionInvoke } = await import("./invoke")
-      await SessionInvoke.loop(sessionID)
+      scheduleWake(sessionID, "release")
     }
+  }
+
+  export async function wake(sessionID: string): Promise<void> {
+    if (isRunning(sessionID)) return
+    if (!(await SessionInbox.hasRunnableItem(sessionID))) return
+    const { SessionInvoke } = await import("./invoke")
+    await SessionInvoke.loop(sessionID)
+  }
+
+  export function scheduleWake(sessionID: string, reason: string): void {
+    setTimeout(() => {
+      void wake(sessionID).catch((error) => {
+        log.error("async session wake failed", { sessionID, reason, error })
+      })
+    }, 0)
   }
 
   export function setStatus(sessionID: string, status: StatusInfo): void {
@@ -404,21 +444,15 @@ export namespace SessionManager {
       return
     }
 
-    const process = async () => {
-      const { SessionInvoke } = await import("./invoke")
-      await SessionInvoke.loop(session.id)
-    }
-
     if (input.waitForProcessing === false) {
       log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
-      void process().catch((error) => {
-        log.error("async inbox processing failed", { sessionID: session.id, error })
-      })
+      releaseIfIdle()
+      scheduleWake(session.id, "deliver")
       return
     }
 
     log.info("mail queued (session idle), processing", { sessionID: session.id })
-    await process()
+    await wake(session.id)
   }
 
   // --- Pending Reply ---
@@ -445,42 +479,44 @@ export namespace SessionManager {
 
   function emitStatus(runtime: SessionRuntime, status: StatusInfo): void {
     const payload = { sessionID: runtime.sessionID, status }
-    try {
-      Bus.publish(SessionEvent.Status, payload)
-      if (status.type === "idle") {
-        Bus.publish(SessionEvent.Idle, { sessionID: runtime.sessionID })
+    publishStatus(runtime.sessionID, SessionEvent.Status.type, payload, () => Bus.publish(SessionEvent.Status, payload))
+    if (status.type === "idle") {
+      const idlePayload = { sessionID: runtime.sessionID }
+      publishStatus(runtime.sessionID, SessionEvent.Idle.type, idlePayload, () =>
+        Bus.publish(SessionEvent.Idle, idlePayload),
+      )
+    }
+  }
+
+  function publishStatus(
+    sessionID: string,
+    type: string,
+    properties: Record<string, unknown>,
+    publish: () => Promise<void>,
+  ): void {
+    void publish().catch((e) => {
+      if (!(e instanceof Context.NotFound)) {
+        log.error("failed to publish session status event", { sessionID, type, error: e })
+        return
       }
-    } catch (e) {
-      if (!(e instanceof Context.NotFound)) throw e
-      void requireSession(runtime.sessionID)
+      void requireSession(sessionID)
         .then((session) => {
           const scope = session.scope as Scope
           GlobalBus.emit("event", {
             directory: scope.directory,
             payload: {
-              type: "session.status",
-              properties: payload,
+              type,
+              properties,
             },
           })
-          if (status.type === "idle") {
-            GlobalBus.emit("event", {
-              directory: scope.directory,
-              payload: {
-                type: "session.idle",
-                properties: { sessionID: runtime.sessionID },
-              },
-            })
-          }
         })
         .catch((err) => {
-          // Session was cleaned up before the async fallback ran — idle event dropped.
-          if (status.type === "idle") {
-            log.warn("emitStatus fallback: session already cleaned up, idle event dropped", {
-              sessionID: runtime.sessionID,
-              error: (err as Error)?.message ?? String(err),
-            })
-          }
+          log.warn("emitStatus fallback: session already cleaned up, event dropped", {
+            sessionID,
+            type,
+            error: (err as Error)?.message ?? String(err),
+          })
         })
-    }
+    })
   }
 }

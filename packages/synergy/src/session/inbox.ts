@@ -346,19 +346,6 @@ export namespace SessionInbox {
     return !!(await latestRootID(sessionID))
   }
 
-  async function wakeIfRunnable(item: StoredItem): Promise<void> {
-    const { SessionManager } = await import("./manager")
-    if (SessionManager.isRunning(item.sessionID)) return
-    if (!(await hasRunnableItem(item.sessionID))) return
-
-    log.info("waking idle session for inbox item", { sessionID: item.sessionID, itemID: item.id, mode: item.mode })
-    void import("./invoke")
-      .then(({ SessionInvoke }) => SessionInvoke.loop(item.sessionID))
-      .catch((error) => {
-        log.error("async inbox wake failed", { sessionID: item.sessionID, itemID: item.id, error })
-      })
-  }
-
   export async function list(sessionID: string): Promise<Item[]> {
     return (await listStored(sessionID)).map(publicItem)
   }
@@ -420,7 +407,6 @@ export namespace SessionInbox {
     }
 
     await writeItem(item)
-    await wakeIfRunnable(item)
     return { itemID, messageID }
   })
 

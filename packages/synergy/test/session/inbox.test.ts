@@ -6,6 +6,7 @@ import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
 import { SessionInvoke } from "../../src/session/invoke"
+import { AgendaDelivery } from "../../src/agenda/delivery"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -264,6 +265,48 @@ describe("SessionInbox", () => {
           expect(finished).toBe(true)
         } finally {
           release.resolve()
+          ;(SessionInvoke.loop as any) = originalLoop
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
+  test("agenda delivery wakes through session manager and preserves agenda origin", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const originalLoop = SessionInvoke.loop
+        let loopSessionID: string | undefined
+        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+          loopSessionID = sessionID
+        })
+
+        try {
+          await AgendaDelivery.deliver({
+            sessionID: "ses_agenda_run",
+            lastMessage: "agenda completed",
+            item: {
+              id: "ag_test",
+              status: "done",
+              title: "Daily check",
+              origin: { scope, sessionID: session.id },
+              triggers: [],
+              prompt: "check status",
+              silent: false,
+            } as any,
+          })
+
+          const items = await SessionInbox.list(session.id)
+          expect(loopSessionID).toBe(session.id)
+          expect(items).toHaveLength(1)
+          expect(items[0].mode).toBe("task")
+          expect(items[0].source.type).toBe("agenda")
+          expect(items[0].message?.origin).toEqual({ type: "agenda", sessionID: "ses_agenda_run" })
+        } finally {
           ;(SessionInvoke.loop as any) = originalLoop
           SessionManager.unregisterRuntime(session.id)
         }
