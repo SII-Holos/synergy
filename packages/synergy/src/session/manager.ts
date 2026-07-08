@@ -444,7 +444,11 @@ export namespace SessionManager {
     for (const runtime of runtimes.values()) {
       if (runtime.status.type === "idle") continue
       if (scopeID) {
-        const session = await requireSession(runtime.sessionID)
+        const session = await getSession(runtime.sessionID)
+        if (!session) {
+          unregisterRuntime(runtime.sessionID)
+          continue
+        }
         if ((session.scope as Scope).id !== scopeID) continue
       }
       result[runtime.sessionID] = runtime.status
