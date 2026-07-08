@@ -9,7 +9,6 @@ import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
-import { SessionInbox } from "../session/inbox"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { CortexTypes } from "./types"
@@ -29,7 +28,8 @@ export namespace Cortex {
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
 
-  const CLEANUP_DELAY_MS = 20 * 60 * 1000
+  const PROMPT_COMPACT_DELAY_MS = 30 * 1000
+  const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -194,6 +194,7 @@ export namespace Cortex {
     }
 
     tasks.set(taskID, task)
+    SessionManager.registerChildRuntime(session.id)
 
     if (task.visibility !== "hidden") {
       Bus.publish(Event.TaskCreated, { task })
@@ -482,22 +483,20 @@ export namespace Cortex {
     setTimeout(() => {
       const task = tasks.get(taskID)
       if (task) {
-        task.prompt = ""
-        log.info("task prompt evicted", { taskID })
+        task.prompt = truncate(task.prompt, 4096)
+        task.progress = undefined
+        log.info("task compacted", { taskID })
       }
-    }, CLEANUP_DELAY_MS)
+    }, PROMPT_COMPACT_DELAY_MS)
 
-    setTimeout(
-      () => {
-        void (async () => {
-          tasks.delete(taskID)
-          acquiredTasks.delete(taskID)
-          SessionManager.unregisterRuntime(task.sessionID)
-          log.info("task cleaned up", { taskID })
-        })()
-      },
-      CLEANUP_DELAY_MS + 5 * 60 * 1000,
-    )
+    setTimeout(() => {
+      void (async () => {
+        tasks.delete(taskID)
+        acquiredTasks.delete(taskID)
+        SessionManager.unregisterRuntime(task.sessionID)
+        log.info("task cleaned up", { taskID })
+      })()
+    }, TASK_CLEANUP_DELAY_MS)
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {
@@ -533,14 +532,20 @@ export namespace Cortex {
       .filter(Boolean)
       .join("\n")
 
-    void SessionInbox.deliver({
-      sessionID: task.parentSessionID,
-      mode: "steer",
-      message: {
-        role: "user",
-        visible: true,
-        parts: [{ type: "text", text: notification }],
-        origin: { type: "cortex", sessionID: task.sessionID },
+    void SessionManager.deliver({
+      target: task.parentSessionID,
+      mail: {
+        type: "user",
+        metadata: { source: "cortex", sourceSessionID: task.sessionID },
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            sessionID: task.parentSessionID,
+            messageID: Identifier.ascending("message"),
+            type: "text",
+            text: notification,
+          },
+        ],
       },
     }).catch((error) => {
       log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })

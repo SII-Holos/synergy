@@ -347,7 +347,15 @@ Provider auth paths are distinct. The built-in `openai-codex` provider uses Chat
 
 `autonomous` is the unattended profile: it must never ask the user. Operations that cannot be automatically allowed must be automatically denied with a clear policy diagnostic. SmartAllow may auto-allow eligible false positives at high confidence, but failed SmartAllow checks deny instead of prompting.
 
+`guarded` is the interactive profile: it is the only standard profile that can ask the user for permission. Do not add ask flows to `autonomous`; if an unattended operation exceeds its policy, deny it.
+
 `smartAllow` reduces noise and false positives. In `guarded`, it can auto-allow safe asks before prompting. In `autonomous`, it can auto-allow eligible soft denies at a stricter threshold. It must use metadata or redacted evidence for secret-like files and must never send raw secret values to a model.
+
+External reads are allowed by default, including ordinary reads from a worktree session's original checkout. Do not treat non-sensitive `file_external_read` as a protected operation merely because it is outside the active workspace. Sensitive regions remain protected: credentials, secrets, private auth stores, and other explicit sensitive-path matches must still be denied or gated according to the active profile.
+
+Worktree isolation blocks writes, modifications, and execution outside the active worktree unless the active profile explicitly allows them. In particular, a worktree session may read ordinary files in the original checkout, but must not write to, modify, or run commands from the original checkout under `autonomous`.
+
+Skill roots are trusted runtime areas. Reading, writing, and running inside configured skill/plugin skill roots is allowed by the permission model; do not reclassify those paths as ordinary external writes or external execution unless they escape the trusted root.
 
 ### Config-aware work
 

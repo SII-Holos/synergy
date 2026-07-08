@@ -242,7 +242,7 @@ describe("session workspace binding", () => {
             })
             await Session.update(session.id, (draft) => {
               draft.blueprint = { loopID: loop.id }
-              draft.planMode = true
+              draft.workflow = { kind: "plan" }
             })
 
             worktree = await Worktree.create({
@@ -255,15 +255,14 @@ describe("session workspace binding", () => {
 
             const entered = await Session.get(session.id)
             expect(entered.blueprint).toEqual({ loopID: loop.id })
-            expect(entered.planMode).toBe(true)
+            expect(entered.workflow).toEqual({ kind: "plan" })
             expect(entered.workspace?.type).toBe("git_worktree")
             expect(entered.workspace?.path).toBe(worktree.path)
 
             await Worktree.leave(session.id)
             const left = await Session.get(session.id)
             expect(left.blueprint).toEqual({ loopID: loop.id })
-            expect(left.planMode).toBe(true)
-            expect(left.planMode).toBe(true)
+            expect(left.workflow).toEqual({ kind: "plan" })
             expect(left.workspace?.type).toBe("main")
           } finally {
             if (session) await Worktree.leave(session.id).catch(() => undefined)

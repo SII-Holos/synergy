@@ -30,7 +30,7 @@ export namespace LatticePrompt {
   }
 
   /** Full Lattice system-prompt block for an active run. */
-  export function build(_session: Pick<SessionInfo, "lattice">, run: LatticeTypes.Run): string {
+  export function build(_session: Pick<SessionInfo, "workflow">, run: LatticeTypes.Run): string {
     const modePrompt = run.mode === "auto" ? MODE_AUTO : MODE_COLLABORATIVE
     return [BASE.trim(), modePrompt.trim(), PHASE_PROMPTS[run.phase].trim(), dynamicContext(run)].join("\n\n")
   }

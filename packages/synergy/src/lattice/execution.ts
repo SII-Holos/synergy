@@ -35,7 +35,7 @@ export namespace LatticeExecution {
       description: step.objective,
       sessionID: run.sessionID,
       runMode: "current",
-      orchestration: { kind: "lattice", runID: run.id },
+      source: "lattice",
     })
     // Reflect running state before the first prompt wakes the session.
     await LatticeMachine.onLoopStarted(scopeID, run.sessionID, step.id, armed.id)

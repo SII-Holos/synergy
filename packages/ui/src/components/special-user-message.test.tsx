@@ -1,49 +1,13 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator"
-import { afterEach, describe, expect, mock, test } from "bun:test"
-import { createComponent, render } from "solid-js/web"
+import { describe, expect, mock, test } from "bun:test"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 
-GlobalRegistrator.register()
-
-let dispose: (() => void) | undefined
-
-mock.module("../context", () => ({
-  useData: () => ({
-    navigateToSession: () => {},
-  }),
-}))
-
-mock.module("./icon", () => ({
-  Icon: (props: { name: string }) => {
-    const el = document.createElement("span")
-    el.dataset.component = "icon"
-    el.dataset.name = props.name
-    return el
-  },
-}))
-
 mock.module("./message-part", () => ({
-  Message: (props: { userVariant?: string; parts: PartType[] }) => {
-    const el = document.createElement("div")
-    el.dataset.component = "user-message"
-    el.dataset.variant = props.userVariant ?? "default"
-    el.textContent = props.parts
-      .filter((part) => part.type === "text")
-      .map((part) => ("text" in part ? part.text : ""))
-      .join("\n")
-    return el
-  },
+  Message: () => undefined,
 }))
 
 mock.module("./special-user-message.css", () => ({}))
 
-const { getSpecialUserMessageRenderer } = await import("./special-user-message")
-
-afterEach(() => {
-  dispose?.()
-  dispose = undefined
-  document.body.replaceChildren()
-})
+const { getSpecialUserMessageBubbleView, getSpecialUserMessageRenderer } = await import("./special-user-message")
 
 function userMessage(metadata: Record<string, unknown>): UserMessage {
   return {
@@ -65,88 +29,95 @@ function textPart(text: string): PartType {
   } as PartType
 }
 
-function renderSpecial(message: UserMessage, parts: PartType[] = []) {
-  const Component = getSpecialUserMessageRenderer(message)
-  if (!Component) throw new Error("expected special user message renderer")
-
-  const root = document.createElement("div")
-  document.body.appendChild(root)
-  dispose = render(() => createComponent(Component, { message, parts }), root)
-  return root
+function projectedText(view: { parts: PartType[] } | undefined) {
+  return view?.parts
+    .filter((part) => part.type === "text")
+    .map((part) => ("text" in part ? part.text : ""))
+    .join("\n")
 }
 
 describe("special user messages", () => {
-  test("renders Plan Mode requests as right-side user bubbles", async () => {
-    const root = renderSpecial(userMessage({ planModeRequest: true }), [textPart("Create a Blueprint")])
-    await Promise.resolve()
+  test("keeps workflow user requests as their original prompt bubbles", () => {
+    const message = userMessage({ workflow: "plan" })
+    const originalParts = [textPart("Create a Blueprint")]
+    const view = getSpecialUserMessageBubbleView(message, originalParts)
 
-    const wrapper = root.querySelector('[data-component="special-user-message"]')
-    const user = root.querySelector('[data-component="user-message"]')
-
-    expect(wrapper?.getAttribute("data-layout")).toBe("user-bubble")
-    expect(root.querySelector('[data-slot="special-message-badge"]')?.textContent).toBe("Plan mode")
-    expect(user?.getAttribute("data-variant")).toBe("turn-bubble")
-    expect(user?.textContent).toContain("Create a Blueprint")
+    expect(getSpecialUserMessageRenderer(message)).toBeDefined()
+    expect(view?.label).toBe("Plan")
+    expect(view?.kind).toBe("plan-request")
+    expect(view?.parts).toBe(originalParts)
+    expect(projectedText(view)).toContain("Create a Blueprint")
   })
 
-  test("renders Blueprint control messages as event cards", async () => {
+  test("projects Blueprint start into a concise user bubble", () => {
+    const message = userMessage({
+      source: "blueprint_loop_start",
+      loopID: "loop_123",
+      noteID: "note_123",
+      title: "Anima",
+      userPrompt: "Implement this directly in the worktree.",
+    })
+    const view = getSpecialUserMessageBubbleView(message, [
+      textPart("Execute the coding Blueprint with a long internal prompt."),
+    ])
+
+    expect(getSpecialUserMessageRenderer(message)).toBeDefined()
+    expect(view?.label).toBe("Blueprint")
+    expect(view?.kind).toBe("blueprint-control")
+    expect(projectedText(view)).toContain("Implement this directly in the worktree.")
+    expect(projectedText(view)).not.toContain("Execute the coding Blueprint")
+    expect(projectedText(view)).not.toContain("loop_123")
+    expect(projectedText(view)).not.toContain("note_123")
+  })
+
+  test("projects Blueprint controls into concise badged user bubbles", () => {
     const cases = [
-      ["blueprint_loop_start", "Started execution"],
-      ["blueprint_loop_continuation", "Continued from idle"],
-      ["blueprint_loop_restart", "Changes requested"],
+      ["blueprint_loop_continuation", "Blueprint · Continue", "Check progress"],
+      ["blueprint_loop_restart", "Blueprint · Changes requested", "Run the suite again"],
+      ["blueprint_loop_completed", "Blueprint · Completed", "Shipped the change"],
     ] as const
 
-    for (const [source, heading] of cases) {
-      const root = renderSpecial(
-        userMessage({
-          source,
-          loopID: "loop_123",
-          noteID: "note_123",
-          sourceSessionID: "session_source",
-        }),
-      )
-      await Promise.resolve()
+    for (const [source, label, expected] of cases) {
+      const message = userMessage({
+        source,
+        title: "Anima",
+        loopID: "loop_123",
+        noteID: "note_123",
+        reason: "Tests failed",
+        instructions: "Run the suite again",
+        summary: "Shipped the change",
+      })
+      const view = getSpecialUserMessageBubbleView(message, [textPart("Raw internal control prompt")])
 
-      const wrapper = root.querySelector('[data-component="special-user-message"]')
-
-      expect(wrapper?.getAttribute("data-layout")).toBe("event-card")
-      expect(root.querySelector('[data-slot="special-message-heading"]')?.textContent).toBe(heading)
-      expect(root.textContent).toContain("Loop loop_123")
-      expect(root.textContent).toContain("Note note_123")
-      expect(root.textContent).toContain("Source session")
-
-      dispose?.()
-      dispose = undefined
-      document.body.replaceChildren()
+      expect(getSpecialUserMessageRenderer(message)).toBeDefined()
+      expect(view?.label).toBe(label)
+      expect(view?.kind).toBe("blueprint-control")
+      expect(projectedText(view)).toContain(expected)
+      expect(projectedText(view)).not.toContain("Raw internal control prompt")
+      expect(projectedText(view)).not.toContain("loop_123")
+      expect(projectedText(view)).not.toContain("note_123")
     }
   })
 
-  test("keeps Blueprint restart details collapsed until opened", async () => {
-    const root = renderSpecial(
-      userMessage({
-        source: "blueprint_loop_restart",
-        reason: "Tests failed",
-        completed: "Implemented UI",
-        remaining: "Fix tests",
-        instructions: "Run the suite again",
-      }),
-    )
-    await Promise.resolve()
+  test("projects workflow continuation controls into concise user bubbles", () => {
+    const cases = [
+      ["light_loop_continuation", "Light Loop · Continue", "keep going"],
+      ["lattice_continuation", "Lattice · Continue", "Current phase: result_analysis"],
+      ["lattice_planning_kick", "Lattice", "Start planning: Ship the project"],
+    ] as const
 
-    const trigger = root.querySelector<HTMLButtonElement>('[data-slot="special-message-details-trigger"]')
+    for (const [source, label, expected] of cases) {
+      const message = userMessage({
+        source,
+        phase: "result_analysis",
+        goal: "Ship the project",
+      })
+      const view = getSpecialUserMessageBubbleView(message, [textPart("Raw workflow control prompt")])
 
-    expect(trigger?.getAttribute("aria-expanded")).toBe("false")
-    expect(root.textContent).not.toContain("Reason")
-    expect(root.textContent).not.toContain("Tests failed")
-
-    trigger?.click()
-    await Promise.resolve()
-
-    expect(trigger?.getAttribute("aria-expanded")).toBe("true")
-    expect(root.textContent).toContain("Reason")
-    expect(root.textContent).toContain("Tests failed")
-    expect(root.textContent).toContain("Completed")
-    expect(root.textContent).toContain("Remaining")
-    expect(root.textContent).toContain("Next actions")
+      expect(getSpecialUserMessageRenderer(message)).toBeDefined()
+      expect(view?.label).toBe(label)
+      expect(projectedText(view)).toContain(expected)
+      expect(projectedText(view)).not.toContain("Raw workflow control prompt")
+    }
   })
 })

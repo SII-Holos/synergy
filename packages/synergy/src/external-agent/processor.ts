@@ -11,6 +11,7 @@ import { SessionToolInput } from "@/session/tool-input"
 
 export namespace ExternalAgentProcessor {
   const log = Log.create({ service: "external-agent.processor" })
+  const TOOL_OUTPUT_CHAR_LIMIT = 64_000
 
   function formatAgentLabel(agent: string) {
     return agent
@@ -139,7 +140,11 @@ export namespace ExternalAgentProcessor {
 
           case "tool_output": {
             const existing = toolOutputs.get(event.id) ?? ""
-            toolOutputs.set(event.id, existing + event.output)
+            const combined = existing + event.output
+            toolOutputs.set(
+              event.id,
+              combined.length > TOOL_OUTPUT_CHAR_LIMIT ? combined.slice(-TOOL_OUTPUT_CHAR_LIMIT) : combined,
+            )
             break
           }
 

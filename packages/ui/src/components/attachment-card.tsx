@@ -215,7 +215,7 @@ interface AttachmentGalleryEntry {
   imagePreviewIndex?: number
 }
 
-export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string }) {
+export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string; align?: "start" | "end" }) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
   const entries = createMemo<AttachmentGalleryEntry[]>(() => {
     let previewIndex = 0
@@ -233,7 +233,7 @@ export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: s
   const columns = createMemo(() => attachmentColumns(entries()))
   return (
     <Show when={columns().length > 0}>
-      <div data-component="attachment-gallery" data-columns={columns().length}>
+      <div data-component="attachment-gallery" data-columns={columns().length} data-align={props.align ?? "start"}>
         <div data-slot="attachment-column-layout">
           <For each={columns()}>
             {(column) => (

@@ -16,9 +16,9 @@ import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
-import PLAN_MODE from "./prompt/plan-mode.txt"
-import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
-import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
+import PLAN from "./prompt/plan.txt"
+import PLAN_SYNERGY from "./prompt/plan-synergy.txt"
+import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
@@ -70,7 +70,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
-import { WorkflowModeUserWrapper } from "./workflow-mode-user-wrapper"
+import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
 
@@ -131,7 +131,7 @@ export namespace SessionInvoke {
       }
 
       try {
-        return await loop(input.sessionID)
+        return await loopBody(input.sessionID)
       } catch (error) {
         await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
           log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
@@ -184,6 +184,10 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    return SessionManager.run(sessionID, () => loopBody(sessionID))
+  })
+
+  async function loopBody(sessionID: string): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
     LatticeBridge.init()
     SessionManager.registerRuntime(sessionID)
@@ -212,6 +216,7 @@ export namespace SessionInvoke {
     let step = 0
     let emergencyCompactionTriggered = false
     let session = await Session.get(sessionID)
+    SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
 
     outer: while (true) {
@@ -220,6 +225,7 @@ export namespace SessionInvoke {
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
         session = await Session.get(sessionID)
+        SessionManager.assertExecutionContext(session, "session loop refresh")
         scopeID = (session.scope as Scope).id
         let msgs = await effectiveCompactedMessages(sessionID)
 
@@ -582,12 +588,37 @@ export namespace SessionInvoke {
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
 
-        // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
+        // Layer 2.5: Semi-static workflow / BlueprintLoop context
         const sessionBlueprint = session?.blueprint
-        if (session?.planMode) {
-          systemParts.push(PLAN_MODE.trim())
-          if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
-          if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
+        switch (session?.workflow?.kind) {
+          case "plan":
+            systemParts.push(PLAN.trim())
+            if (agent.name === "synergy") systemParts.push(PLAN_SYNERGY.trim())
+            if (agent.name === "synergy-max") systemParts.push(PLAN_SYNERGY_MAX.trim())
+            break
+          case "lattice": {
+            const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
+            if (latticeRun && latticeRun.status === "active") {
+              systemParts.push(LatticePrompt.build(session, latticeRun))
+            }
+            break
+          }
+          case "lightloop":
+            systemParts.push(`<light-loop-context>
+You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
+
+Task: ${session.workflow.taskDescription}
+
+Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
+- Have you produced all requested deliverables, artifacts, or changes?
+- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
+- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
+
+If the task is NOT fully complete, continue working now.
+If the task IS fully complete and verified, call loop_stop().
+Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
+</light-loop-context>`)
+            break
         }
         if (sessionBlueprint?.loopID) {
           const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
@@ -620,32 +651,6 @@ export namespace SessionInvoke {
               ].join("\n"),
             )
           }
-        }
-
-        // Layer 2.6: Semi-static — Lattice pathway context (active run only)
-        if (session?.lattice) {
-          const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
-          if (latticeRun && latticeRun.status === "active") {
-            systemParts.push(LatticePrompt.build(session, latticeRun))
-          }
-        }
-
-        // Layer 2.65: Semi-static — Light Loop context
-        if (session?.lightLoop?.active) {
-          systemParts.push(`<light-loop-context>
-You are in Light Loop mode. The user has set a task that you must complete fully before stopping.
-
-Task: ${session.lightLoop.taskDescription}
-
-Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
-- Have you produced all requested deliverables, artifacts, or changes?
-- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
-- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
-
-If the task is NOT fully complete, continue working now.
-If the task IS fully complete and verified, call loop_stop().
-Do not stop early — the user expects thorough completion, not a best-effort attempt.
-</light-loop-context>`)
         }
 
         // Layer 3: Dynamic — memory/experience context (varies per step)
@@ -693,7 +698,7 @@ Do not stop early — the user expects thorough completion, not a best-effort at
             )
           }
         }
-        const modelSessionMessages = WorkflowModeUserWrapper.projectMessages({
+        const modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
@@ -780,7 +785,7 @@ Do not stop early — the user expects thorough completion, not a best-effort at
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         // Count LLM calls for an active Lattice run in memory; flushed to the
         // run at turn boundaries / policy entry (never written per call).
-        if (session?.lattice) LatticeModelCalls.record(sessionID)
+        if (session?.workflow?.kind === "lattice") LatticeModelCalls.record(sessionID)
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
@@ -965,7 +970,7 @@ Do not stop early — the user expects thorough completion, not a best-effort at
       q.onComplete(resultMessage)
     }
     return resultMessage
-  })
+  }
 
   export function selectResultMessage(messages: MessageV2.WithParts[]): MessageV2.WithParts | undefined {
     let lastReplyRequiredUser: MessageV2.User | undefined

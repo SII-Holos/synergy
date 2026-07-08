@@ -247,7 +247,9 @@ export namespace LatticeMachine {
     if (wasFirst) {
       const { Session } = await import("../session")
       await Session.update(sessionID, (draft) => {
-        if (draft.lattice) draft.lattice = { ...draft.lattice, firstBlueprintStarted: true }
+        if (draft.workflow?.kind === "lattice") {
+          draft.workflow = { ...draft.workflow, firstBlueprintStarted: true }
+        }
       }).catch(() => undefined)
     }
     await LatticeStore.appendEvent(scopeID, run, { kind: "step_started", stepID, phase: run.phase })

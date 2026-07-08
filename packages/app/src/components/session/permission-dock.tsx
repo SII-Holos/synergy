@@ -157,14 +157,16 @@ export function PermissionDock(props: PermissionDockProps) {
                   </Tabs>
                 </Show>
 
-                <div class="flex items-center justify-between gap-3">
-                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3 overflow-hidden min-w-0">
+                  <div class="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                     <Icon
                       name={getSemanticIcon("settings.permissions")}
                       size="small"
                       class="shrink-0 text-icon-warning-base"
                     />
-                    <span class="text-14-medium text-text-strong truncate">{permissionLabel()}</span>
+                    <span class="text-14-medium text-text-strong truncate" title={permissionLabel()}>
+                      {permissionLabel()}
+                    </span>
                     <Show when={item().origin === "child"}>
                       <span class="text-12-regular text-text-subtle shrink-0">
                         from{" "}
@@ -174,7 +176,7 @@ export function PermissionDock(props: PermissionDockProps) {
                       </span>
                     </Show>
                   </div>
-                  <div class="flex items-center gap-1.5 shrink-0">
+                  <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                     <Button variant="ghost" size="small" onClick={() => respond("reject")}>
                       Deny
                     </Button>
