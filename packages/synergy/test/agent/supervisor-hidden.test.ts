@@ -52,6 +52,7 @@ test("task tool refuses hidden supervisor even when called directly", async () =
     scope: await tmp.scope(),
     fn: async () => {
       const tool = await TaskTool.init()
+      let askCount = 0
 
       await expect(
         tool.execute(
@@ -65,11 +66,14 @@ test("task tool refuses hidden supervisor even when called directly", async () =
             messageID: "msg_exec",
             agent: "synergy",
             abort: new AbortController().signal,
-            ask: async () => {},
+            ask: async () => {
+              askCount++
+            },
             metadata: () => {},
           },
         ),
       ).rejects.toThrow("internal and cannot be called with the task tool")
+      expect(askCount, "hidden agent rejection should happen before permission prompts").toBe(0)
     },
   })
 })

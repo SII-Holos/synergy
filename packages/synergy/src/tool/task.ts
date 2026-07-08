@@ -108,15 +108,6 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      await ctx.ask({
-        permission: "task",
-        patterns: [params.subagent_type],
-        metadata: {
-          description: params.description,
-          subagent_type: params.subagent_type,
-        },
-      })
-
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
       if (agent.hidden) {
@@ -125,6 +116,15 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
       if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
         throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
       }
+
+      await ctx.ask({
+        permission: "task",
+        patterns: [params.subagent_type],
+        metadata: {
+          description: params.description,
+          subagent_type: params.subagent_type,
+        },
+      })
 
       const msg = await MessageV2.get({
         scopeID: ScopeContext.current.scope.id,
