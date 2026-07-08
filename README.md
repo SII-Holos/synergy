@@ -737,4 +737,14 @@ bun run desktop:pack                           # validate local desktop packagin
 
 Regenerate the SDK after modifying server routes or route schemas.
 
-## Documentation Rules
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=sii-holos%2Fsynergy&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=sii-holos/synergy&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=sii-holos/synergy&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=sii-holos/synergy&type=date&legend=top-left" />
+  </picture>
+</a>
