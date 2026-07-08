@@ -1258,6 +1258,30 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "loop_stop",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "flag",
+          title: "Stop Loop",
+          subtitle: (props.input.summary as string) || "",
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "agenda_schedule",
   render(props) {
     return (

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { SessionModePolicy } from "../../src/session/tool-mode-policy"
 
 const lattice = (mode: "auto" | "collaborative", firstBlueprintStarted?: boolean) => ({
-  lattice: { runID: "ltr_x", mode, firstBlueprintStarted },
+  workflow: { kind: "lattice" as const, runID: "ltr_x", mode, firstBlueprintStarted },
 })
 
 describe("Lattice tool visibility", () => {

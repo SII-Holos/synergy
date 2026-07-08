@@ -1,7 +1,7 @@
 # 消息组装管线：从落盘消息到模型请求
 
 > 所属：Session 核心重构（issue #281，总纲见 `docs/architecture/session-message-core.md`）
-> 范围：后端。`session/invoke.ts`、`session/message-v2.ts`、`session/llm.ts`、`session/history.ts`、`session/compaction.ts`、`session/plan-mode-user-wrapper.ts`
+> 范围：后端。`session/invoke.ts`、`session/message-v2.ts`、`session/llm.ts`、`session/history.ts`、`session/compaction.ts`、`session/workflow-user-wrapper.ts`
 > 本文写法：每个阶段先描述现状（含代码位置），再给出新设计下的变化。末尾附完整伪代码与字段消费对照。
 
 ---
@@ -16,7 +16,7 @@
 ├─────────────────────────────────────────────────────────────┤
 │ L2 有效视图（裁剪）    history 回退事件过滤 → compaction 截断   │  确定性派生
 ├─────────────────────────────────────────────────────────────┤
-│ L3 调用投影（改写）    reminder 包装 → plan-mode 包装 →        │  每次调用临时生成
+│ L3 调用投影（改写）    reminder 包装 → workflow 包装 →         │  每次调用临时生成
 │                       plugin transform → toModelMessage      │  永不回写
 ├─────────────────────────────────────────────────────────────┤
 │ L4 system 层（拼装）   agent prompt → 分层 systemParts →       │  每次调用临时生成
@@ -26,7 +26,7 @@
 
 不变式（在总纲 I1–I6 基础上补充）：
 
-- **I7（临时拼装）**：L2–L4 均为 L1 的纯函数投影。任何 prompt 脚手架（plan-mode 包装、reminder、recall 内容、system 各层）不落盘；落盘层只记录事实（消息本体）与事实的元数据（如 `injectedContext` 记录"注入过哪些条目"，但不含内容）。
+- **I7（临时拼装）**：L2–L4 均为 L1 的纯函数投影。任何 prompt 脚手架（workflow 包装、reminder、recall 内容、system 各层）不落盘；落盘层只记录事实（消息本体）与事实的元数据（如 `injectedContext` 记录"注入过哪些条目"，但不含内容）。
 - **I8（调度与内容分离）**：L2 的裁剪只依赖 `rootID` / 回退事件 / compaction 边界；L3/L4 的改写只依赖 `origin` / `includeInContext` / agent 配置。任何一层不得读取另一层专属的字段。
 
 ---
@@ -131,11 +131,11 @@ runSession:
 
 新设计：目标改为**非 root 注入消息**（`!isRoot && origin.type === "user"`，即 steer 进来的用户插话）的 `part.origin === "user"` 文本。语义从"位置启发"（晚于上次完成）变为"身份精确"（就是 mid-run 插话）。cortex/agenda 等非用户 origin 的注入不包装（它们有自己的结构化文本）。
 
-### 4.2 plan-mode 包装
+### 4.2 workflow 包装
 
-现状（`plan-mode-user-wrapper.ts:53-90`）：session 处于 plan mode 时，对带 `metadata.planModeRequest === true` 的 user 消息，把第一个非 synthetic/ignored text part 原地替换为 `<plan-mode-user-request>` 包装；无文本时前插一个 synthetic 占位 part（仅存在于投影中）。
+现状（`workflow-user-wrapper.ts`）：session 处于 Plan、Light Loop 或 Lattice workflow 时，对带 `metadata.workflow` 的 root user 消息，把第一个非 system text part 原地替换为对应 workflow 包装；无文本时前插一个 system-origin 占位 part（仅存在于投影中）。
 
-新设计：判定简化为 `isRoot && origin.type === "user" && planMode`，包装目标为 `part.origin === "user"` 的 text part。`planModeAgent`/`planModeWrapperVersion` 仍留 metadata（plan-mode 私有）。`metadataForUserMessage` 里对 `noReply`/`synthetic`/`source` 的排除条件（`plan-mode-user-wrapper.ts:36-44`）全部替换为 `isRoot` 与 `origin` 判断。
+新设计：判定简化为 `isRoot && origin.type === "user" && workflow`，包装目标为 `part.origin === "user"` 的 text part。`workflowAgent` / `workflowVersion` 保留为 workflow 私有 metadata。`metadataForUserMessage` 里对控制消息和外部来源消息的排除由 `WorkflowUserWrapper` 集中处理。
 
 ### 4.3 plugin transform
 
@@ -174,7 +174,7 @@ runSession:
 [1] AGENTS.md 等 custom parts                                  ← 稳定，缓存断点
 [2] permission context（control profile 编译产物）              ← 半稳定，缓存断点
 [3] cortex execution context（delegated_subagent 时）
-[4] plan-mode / blueprint-loop 上下文
+[4] workflow / blueprint-loop 上下文
 [5] memory/experience recall（step1 检索，之后读内存 cache）     ← I7：内容不落盘
 [6] env block（含时间戳）
 [7] git health / coauthor reminder
@@ -233,7 +233,7 @@ async function runLoop(sessionID, R) {
     await materialize(await Inbox.drainContext(sessionID), R)        // ② context 搭便车
     const projected = project(msgs, R)                               // L3：shallow copy
     //   ├─ wrapReminders(projected, R)        非 root user-origin 插话
-    //   ├─ wrapPlanMode(projected, R)         R 的 user-origin 正文
+    //   ├─ wrapWorkflow(projected, R)         R 的 user-origin 正文
     //   └─ Plugin.transform(projected)
     const modelMessages = toModelMessage(projected, { maxHistoryImages })
     const system = assembleSystem(R, step)                           // L4，读 R.system/R.tools
@@ -251,18 +251,18 @@ async function runLoop(sessionID, R) {
 
 ## 8. 字段消费对照（本管线内）
 
-| 消费点                                                        | 现状读取                                  | 新设计读取                                                 |
-| ------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
-| L2 回退过滤                                                   | `droppedMessageIDs` 集合                  | `cutMessageID` 前缀比较                                    |
-| 调度选 parent                                                 | `metadata.noReply` + `isPromptVisible`    | `isRoot` + `needsModelCall`                                |
-| assistant 归属                                                | `parentID = lastUser.id`（漂移）          | `rootID = R.id`（恒定）                                    |
-| reminder 包装目标                                             | 位置启发 + `!ignored && !synthetic`       | `!isRoot && origin.type==="user"` + `part.origin==="user"` |
-| plan-mode 包装目标                                            | `planModeRequest` metadata + part 双 flag | `isRoot && origin.type==="user"` + `part.origin==="user"`  |
-| toModelMessage 整条跳过                                       | `promptVisible` metadata                  | `includeInContext`                                         |
-| toModelMessage part 过滤                                      | `part.ignored`（死代码）                  | 无                                                         |
-| 任务级配置（system/tools/variant/agent/model/ephemeralTools） | `lastUser.*`（可能漂移）                  | `R.*`                                                      |
-| anchor 文本                                                   | 三级 fallback + metadata 接力             | 按 `rootID` 读 R 的 `part.origin==="user"` 文本            |
-| compaction part 挂载点                                        | lastUser（可能是通知）                    | R                                                          |
+| 消费点                                                        | 现状读取                               | 新设计读取                                                 |
+| ------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------- |
+| L2 回退过滤                                                   | `droppedMessageIDs` 集合               | `cutMessageID` 前缀比较                                    |
+| 调度选 parent                                                 | `metadata.noReply` + `isPromptVisible` | `isRoot` + `needsModelCall`                                |
+| assistant 归属                                                | `parentID = lastUser.id`（漂移）       | `rootID = R.id`（恒定）                                    |
+| reminder 包装目标                                             | 位置启发 + `!ignored && !synthetic`    | `!isRoot && origin.type==="user"` + `part.origin==="user"` |
+| workflow 包装目标                                             | `workflow` metadata + part origin      | `isRoot && origin.type==="user"` + `part.origin==="user"`  |
+| toModelMessage 整条跳过                                       | `promptVisible` metadata               | `includeInContext`                                         |
+| toModelMessage part 过滤                                      | `part.ignored`（死代码）               | 无                                                         |
+| 任务级配置（system/tools/variant/agent/model/ephemeralTools） | `lastUser.*`（可能漂移）               | `R.*`                                                      |
+| anchor 文本                                                   | 三级 fallback + metadata 接力          | 按 `rootID` 读 R 的 `part.origin==="user"` 文本            |
+| compaction part 挂载点                                        | lastUser（可能是通知）                 | R                                                          |
 
 ---
 
@@ -270,7 +270,7 @@ async function runLoop(sessionID, R) {
 
 1. **R 被 compaction 截出窗口**：anchor 按 rootID 从存储读，不依赖窗口（总纲 §7）；`needsModelCall` 只比较 id 与 finish，不需要 R 的 parts 在窗口内。
 2. **半任务（rewind 切中间 / fork 截断）**：谓词为真但不自启（resume 禁自启原则）；下一条 steer 可续跑，下一条 task 开新组。
-3. **R 无文本**（agenda 触发、纯附件）：anchor 退 `R.summary.title`；plan-mode 投影用占位 part（仅投影内）。
+3. **R 无文本**（agenda 触发、纯附件）：anchor 退 `R.summary.title`；workflow 投影用占位 part（仅投影内）。
 4. **步内注入的可见性**：steer 在 ① 物化后立即进入本轮 L2 视图；context 在 ② 物化，进入**本轮**调用（搭的就是这班车）。
 5. **外部代理适配器**：无 L3/L4 管线（单次 process），steer 降级为 task 在 deliver 层完成，本管线不感知。
 6. **abort 时机**：①② 物化与 model call 之间 abort——已物化消息保留（事实层），未消费的 inbox 项按 §5.3 规则处理（steer 丢弃、task 保留）。

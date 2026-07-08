@@ -39,7 +39,7 @@ import { LatticePanel } from "@/components/lattice/lattice-panel"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
@@ -74,6 +74,7 @@ import { usePromptAttachments } from "@/components/prompt-input/attachments-hook
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
+import { canSubmitPrompt } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import {
@@ -83,6 +84,8 @@ import {
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
+import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
+import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -91,6 +94,63 @@ function sanitizePromptHistory(value: unknown) {
     ...value,
     entries: Array.isArray(entries) ? entries.map(sanitizePrompt) : [],
   }
+}
+
+function WorkflowChip(props: {
+  label: string
+  ariaLabel: string
+  tooltip: string
+  icon: IconName
+  working: () => boolean
+  onCancel: () => void | Promise<void>
+}) {
+  const blockedTooltip = "Stop the session before changing workflow modes."
+  const handleClick = (event: MouseEvent) => {
+    if (!props.working()) {
+      void props.onCancel()
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    showToast({
+      type: "warning",
+      title: "Session is running",
+      description: blockedTooltip,
+    })
+  }
+
+  return (
+    <Tooltip placement="top" value={props.working() ? blockedTooltip : props.tooltip}>
+      <button
+        type="button"
+        aria-label={props.ariaLabel}
+        aria-disabled={props.working()}
+        class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak"
+        classList={{
+          "hover:text-text-base": !props.working(),
+          "opacity-60 cursor-not-allowed": props.working(),
+        }}
+        onClick={handleClick}
+      >
+        <span class="relative flex size-4 shrink-0 items-center justify-center">
+          <span
+            class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity"
+            classList={{ "group-hover:opacity-0": !props.working() }}
+          >
+            <Icon name={props.icon} size="small" class="text-icon-weak" />
+          </span>
+          <span
+            class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity"
+            classList={{ "group-hover:opacity-100": !props.working() }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
+          </span>
+        </span>
+        <span class="prompt-input-compact-label text-12-medium leading-none">{props.label}</span>
+      </button>
+    </Tooltip>
+  )
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -122,23 +182,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return files.pathFromTab(tab)
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
-  const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
+  const [pendingPlan, setPendingPlan] = createSignal(false)
   const [pendingLattice, setPendingLattice] = createSignal<{
     mode: "auto" | "collaborative"
     maxModelCalls: number
   } | null>(null)
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
-  const [pendingLightLoopDesc, setPendingLightLoopDesc] = createSignal<string | undefined>(undefined)
-  const storedLightLoop = createMemo(() => (params.id ? (info()?.lightLoop?.active ?? false) : pendingLightLoop()))
+  const storedLightLoop = createMemo(() =>
+    params.id ? activeWorkflow()?.kind === "lightloop" || pendingLightLoop() : pendingLightLoop(),
+  )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
-  const lightLoopTaskDesc = createMemo(() =>
-    params.id ? (info()?.lightLoop?.taskDescription ?? undefined) : pendingLightLoopDesc(),
-  )
-  const storedPlanMode = createMemo(() => (params.id ? (info()?.planMode ?? false) : pendingPlanMode()))
-  const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
+  const lightLoopTaskDesc = createMemo(() => {
+    const workflow = activeWorkflow()
+    return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : undefined
+  })
+  const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
+  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -153,10 +216,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       () => params.id,
       (id) => {
         if (id) {
-          setPendingPlanMode(false)
+          setPendingPlan(false)
           setPendingLattice(null)
           setPendingLightLoop(false)
-          setPendingLightLoopDesc(undefined)
         }
       },
     ),
@@ -392,8 +454,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
     })
   })
+  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | undefined>(() => {
+    const workflow = activeWorkflow()?.kind
+    if (workflow) return workflow
+    if (pendingPlan()) return "plan"
+    if (pendingLightLoop()) return "lightloop"
+    if (pendingLattice()) return "lattice"
+  })
 
-  const canSubmit = createMemo(() => prompt.dirty() || working() || !!localArmedLoop())
+  const promptText = createMemo(() => inlineText(prompt.current()))
+  const canSubmit = createMemo(() =>
+    canSubmitPrompt({
+      text: promptText(),
+      working: working(),
+      hasBlueprintSlot: !!localArmedLoop(),
+    }),
+  )
+  const submitStopsSession = createMemo(() => working() && !promptText().trim())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
   createEffect(
@@ -451,15 +528,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     requestAnimationFrame(scrollCursorIntoView)
   }
 
-  const setPlanMode = async (next: boolean, title = "Failed to toggle Plan Mode") => {
+  const setPlan = async (next: boolean, title = "Failed to toggle Plan") => {
     if (!params.id) {
-      setPendingPlanMode(next)
+      setPendingPlan(next)
+      if (next) {
+        setPendingLattice(null)
+        setPendingLightLoop(false)
+      }
       return true
     }
     try {
-      await sdk.client.blueprint.session.planMode({
+      await sdk.client.workflow.session.set({
         id: params.id,
-        planMode: next,
+        workflowSetInput: { kind: next ? "plan" : "none" },
       })
       return true
     } catch (err) {
@@ -472,29 +553,77 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const togglePlanMode = async () => {
-    if (blueprintModeLocked()) return
-    await setPlanMode(!storedPlanMode())
+  const togglePlan = async () => {
+    if (blueprintModeLocked() || latticeActive() || lightLoopActive()) return
+    await setPlan(!storedPlan())
+  }
+
+  const equipPlanBlueprintOffer = async () => {
+    const sessionID = params.id
+    const offer = sessionID ? untrack(() => sync.data.planBlueprintOffer[sessionID]?.offer) : undefined
+    if (!offer || !sessionID) return
+    if (working()) {
+      showToast({
+        type: "warning",
+        title: "Session is running",
+        description: "Wait for the current response before equipping this Blueprint.",
+      })
+      return
+    }
+    if (blueprintModeLocked()) {
+      showToast({
+        type: "warning",
+        title: "Blueprint slot occupied",
+        description: "Unequip the current Blueprint before equipping another one.",
+      })
+      return
+    }
+
+    try {
+      await sdk.client.workflow.session.set({
+        id: sessionID,
+        workflowSetInput: { kind: "none" },
+      })
+      setLocalArmedLoop({
+        type: "pending",
+        noteID: offer.noteID,
+        title: offer.title,
+        runMode: "current",
+      })
+      sync.planBlueprintOffer.equip(sessionID, offer.key)
+      showToast({
+        type: "info",
+        title: "Blueprint equipped",
+        description: "Send when you are ready to start it.",
+      })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to equip Blueprint",
+        description: err instanceof Error ? err.message : "Request failed",
+      })
+    }
   }
 
   // Lattice is active when the current session already has a run, or — on the
-  // new-session composer, mirroring Plan Mode — when a config is armed for the
+  // new-session composer, mirroring Plan — when a config is armed for the
   // first message. The armed config is applied on submit once the session exists.
-  const latticeActive = createMemo(() => (params.id ? !!info()?.lattice : !!pendingLattice()))
+  const latticeActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "lattice" : !!pendingLattice()))
 
   const enableLattice = async (config: LatticeEnableConfig) => {
     if (!params.id) {
       // Defer: arm the config; submit applies it after the session is created.
       setPendingLattice({ mode: config.mode, maxModelCalls: config.maxModelCalls })
-      setPendingPlanMode(false)
+      setPendingPlan(false)
+      setPendingLightLoop(false)
       return
     }
-    await sdk.client.lattice.session.mode({
+    await sdk.client.workflow.session.set({
       id: params.id,
-      latticeModeInput: {
-        enabled: true,
+      workflowSetInput: {
+        kind: "lattice",
         mode: config.mode,
-        max_model_calls: config.maxModelCalls,
+        maxModelCalls: config.maxModelCalls,
         goal: config.goal,
         action: config.action,
       },
@@ -508,9 +637,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     try {
-      await sdk.client.lattice.session.mode({
+      await sdk.client.workflow.session.set({
         id: params.id,
-        latticeModeInput: { enabled: false },
+        workflowSetInput: { kind: "none" },
       })
     } catch (err) {
       showToast({
@@ -522,34 +651,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const openLatticeDialog = (event?: Event) => {
-    if (blueprintModeLocked()) {
+    if (blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive()) {
       event?.preventDefault()
       return
     }
     latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
   }
 
-  const selectPlanModeFromMenu = (event?: Event) => {
-    if (blueprintModeLocked()) {
+  const selectPlanFromMenu = (event?: Event) => {
+    if (blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive()) {
       event?.preventDefault()
       return
     }
-    if (planMode()) return
-    void togglePlanMode()
+    void togglePlan()
   }
 
-  const setLightLoop = async (active: boolean, taskDescription?: string) => {
-    if (!params.id) {
+  const setLightLoop = async (active: boolean) => {
+    const activeBackendLightLoop = activeWorkflow()?.kind === "lightloop"
+    if (!params.id || !activeBackendLightLoop) {
       setPendingLightLoop(active)
-      if (taskDescription) setPendingLightLoopDesc(taskDescription)
+      if (active) {
+        setPendingPlan(false)
+        setPendingLattice(null)
+      }
       return true
     }
     try {
-      await sdk.client.blueprint.session.toggleLightLoop({
+      await sdk.client.workflow.session.set({
         id: params.id,
-        active,
-        taskDescription,
+        workflowSetInput: { kind: "none" },
       })
+      setPendingLightLoop(false)
       return true
     } catch (err) {
       showToast({
@@ -561,15 +693,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const toggleLightLoop = async () => {
-    if (blueprintModeLocked()) return
-    if (lightLoopActive()) {
-      await setLightLoop(false)
+  const selectLightLoopFromMenu = (event?: Event) => {
+    if (blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive()) {
+      event?.preventDefault()
       return
     }
-    const desc = window.prompt("Task description:")?.trim()
-    if (!desc) return
-    await setLightLoop(true, desc)
+    void setLightLoop(true)
+  }
+
+  const cancelLightLoop = async () => {
+    await setLightLoop(false)
   }
 
   const sessionHasMessages = createMemo(() => {
@@ -620,66 +753,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         label: "Workflow",
         items: [
           {
-            id: "plan-mode",
-            label: "Plan mode",
-            description: planMode() ? "Planning before execution" : "Ask for an approach first",
-            icon: getSemanticIcon("prompt.plan"),
-            selected: planMode(),
-            ariaDisabled: blueprintModeLocked() || planMode() || latticeActive(),
-            title: blueprintModeLocked()
-              ? "Plan Mode is unavailable while a Blueprint is equipped"
-              : latticeActive()
-                ? "Plan Mode is unavailable while Lattice is active"
-                : planMode()
-                  ? "Plan Mode is already enabled"
-                  : undefined,
-            tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
-            iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-            labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
-            classList: {
-              "bg-workbench-selected-bg": planMode(),
-              "text-text-base": planMode(),
-              "opacity-60": blueprintModeLocked() || latticeActive(),
-            },
-            onSelect: selectPlanModeFromMenu,
-          },
-          {
-            id: "lattice-mode",
-            label: "Lattice",
-            description: latticeActive() ? "Recursive Blueprint run armed" : "Run a goal as a recursive Blueprint",
-            icon: getSemanticIcon("prompt.plan"),
-            selected: latticeActive(),
-            ariaDisabled: blueprintModeLocked() || planMode(),
-            title: blueprintModeLocked()
-              ? "Lattice is unavailable while a Blueprint is equipped"
-              : planMode()
-                ? "Lattice is unavailable while Plan Mode is active"
-                : undefined,
-            iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
-            classList: {
-              "bg-workbench-selected-bg": latticeActive(),
-              "text-text-base": latticeActive(),
-              "opacity-60": blueprintModeLocked() || planMode(),
-            },
-            onSelect: openLatticeDialog,
-          },
-          {
             id: "light-loop",
             label: "Light Loop",
             description: lightLoopActive()
-              ? (lightLoopTaskDesc() ?? "Auto-continuing")
+              ? (lightLoopTaskDesc() ?? "Next message starts the loop")
               : "Auto-continue until task is done",
-            icon: getSemanticIcon("prompt.loop"),
+            icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
-            ariaDisabled: blueprintModeLocked() || planMode() || lightLoopActive() || latticeActive(),
+            ariaDisabled: blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive(),
             title: blueprintModeLocked()
               ? "Light Loop is unavailable while a Blueprint is equipped"
-              : planMode()
-                ? "Light Loop is unavailable while Plan Mode is active"
-                : latticeActive()
-                  ? "Light Loop is unavailable while Lattice is active"
-                  : lightLoopActive()
-                    ? "Light Loop is already enabled"
+              : lightLoopActive()
+                ? "Light Loop is already enabled"
+                : planActive()
+                  ? "Light Loop is unavailable while Plan is active"
+                  : latticeActive()
+                    ? "Light Loop is unavailable while Lattice is active"
                     : undefined,
             iconClass: lightLoopActive()
               ? "text-icon-base"
@@ -688,9 +777,60 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": lightLoopActive(),
-              "opacity-60": blueprintModeLocked() || planMode() || latticeActive(),
+              "text-text-base": lightLoopActive(),
+              "opacity-60": blueprintModeLocked() || planActive() || latticeActive(),
             },
-            onSelect: toggleLightLoop,
+            onSelect: selectLightLoopFromMenu,
+          },
+          {
+            id: "plan",
+            label: "Plan",
+            description: planActive() ? "Planning before execution" : "Ask for an approach first",
+            icon: getSemanticIcon("prompt.plan"),
+            selected: planActive(),
+            ariaDisabled: blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive(),
+            title: blueprintModeLocked()
+              ? "Plan is unavailable while a Blueprint is equipped"
+              : planActive()
+                ? "Plan is already enabled"
+                : lightLoopActive()
+                  ? "Plan is unavailable while Light Loop is active"
+                  : latticeActive()
+                    ? "Plan is unavailable while Lattice is active"
+                    : undefined,
+            tooltip: blueprintModeLocked() ? "Plan is unavailable while a Blueprint is equipped" : undefined,
+            iconClass: planActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            labelClass: blueprintModeLocked() || latticeActive() || lightLoopActive() ? "text-text-weak" : undefined,
+            classList: {
+              "bg-workbench-selected-bg": planActive(),
+              "text-text-base": planActive(),
+              "opacity-60": blueprintModeLocked() || latticeActive() || lightLoopActive(),
+            },
+            onSelect: selectPlanFromMenu,
+          },
+          {
+            id: "lattice-mode",
+            label: "Lattice",
+            description: latticeActive() ? "Recursive Blueprint run armed" : "Run a goal as a recursive Blueprint",
+            icon: getSemanticIcon("prompt.lattice"),
+            selected: latticeActive(),
+            ariaDisabled: blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive(),
+            title: blueprintModeLocked()
+              ? "Lattice is unavailable while a Blueprint is equipped"
+              : latticeActive()
+                ? "Lattice is already enabled"
+                : planActive()
+                  ? "Lattice is unavailable while Plan is active"
+                  : lightLoopActive()
+                    ? "Lattice is unavailable while Light Loop is active"
+                    : undefined,
+            iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": latticeActive(),
+              "text-text-base": latticeActive(),
+              "opacity-60": blueprintModeLocked() || planActive() || lightLoopActive(),
+            },
+            onSelect: openLatticeDialog,
           },
         ],
       },
@@ -744,13 +884,52 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   createEffect(
     on(
-      () => [blueprintModeLocked(), storedPlanMode()] as const,
+      () => [blueprintModeLocked(), storedPlan()] as const,
       ([locked, active]) => {
         if (!locked || !active) return
-        void setPlanMode(false, "Failed to exit Plan Mode")
+        void setPlan(false, "Failed to exit Plan")
       },
     ),
   )
+
+  const planBlueprintOfferState = createMemo(() =>
+    params.id
+      ? (sync.data.planBlueprintOffer[params.id] ?? emptyPlanBlueprintOfferState)
+      : emptyPlanBlueprintOfferState,
+  )
+
+  const visiblePlanBlueprintOffer = createMemo(() => {
+    if (
+      !shouldDisplayPlanBlueprintOffer({
+        state: planBlueprintOfferState(),
+        workflowKind: info()?.workflow?.kind,
+        sessionStatus: status(),
+        slotOccupied: blueprintModeLocked(),
+        currentScopeID: info()?.scope.id,
+      })
+    ) {
+      return null
+    }
+    return planBlueprintOfferState().offer
+  })
+
+  createEffect(() => {
+    const offer = visiblePlanBlueprintOffer()
+    if (!offer) {
+      props.onPriorityControlChange?.(undefined)
+      return
+    }
+
+    props.onPriorityControlChange?.(
+      <PlanBlueprintOfferControl
+        offer={offer}
+        onEquip={equipPlanBlueprintOffer}
+        onDismiss={() => params.id && sync.planBlueprintOffer.dismiss(params.id, offer.key)}
+        onMute={() => params.id && sync.planBlueprintOffer.mute(params.id)}
+      />,
+    )
+  })
+  onCleanup(() => props.onPriorityControlChange?.(undefined))
 
   const selectedControlProfile = createMemo<ControlProfileId>(() => {
     const configured = params.id
@@ -1041,6 +1220,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sessionAttachments,
       localArmedLoop,
       activeLoopID: () => info()?.blueprint?.loopID,
+      working,
+      workflowKind: armedWorkflowKind,
+      clearPendingWorkflows: () => {
+        setPendingPlan(false)
+        setPendingLightLoop(false)
+      },
       setLocalArmedLoop,
       setStore,
     })
@@ -1248,15 +1433,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     sessionAttachments,
     activeFile,
     selectedControlProfile,
-    planMode,
+    pendingPlan,
+    clearPendingPlan: () => setPendingPlan(false),
     pendingLattice,
     clearPendingLattice: () => setPendingLattice(null),
+    pendingLightLoop,
+    clearPendingLightLoop: () => {
+      setPendingLightLoop(false)
+    },
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
     store,
     setStore,
     addToHistory,
+    frontendCommands: () => command.options,
     working,
     abort,
     editor: () => editorRef,
@@ -1433,7 +1624,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
               {store.mode === "shell"
                 ? "Enter shell command..."
-                : planMode()
+                : planActive()
                   ? "Plan your approach..."
                   : isHomeScope(sdk.scopeKey)
                     ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
@@ -1520,45 +1711,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   selectedProfile={selectedControlProfile}
                   updateProfile={updateControlProfile}
                 />
-                <Show when={planMode()}>
-                  <Tooltip placement="top" value="Exit Plan Mode">
-                    <button
-                      type="button"
-                      aria-label="Exit Plan Mode"
-                      class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak hover:text-text-base"
-                      onClick={() => void togglePlanMode()}
-                    >
-                      <span class="relative flex size-4 shrink-0 items-center justify-center">
-                        <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
-                          <Icon name={getSemanticIcon("prompt.plan")} size="small" class="text-icon-weak" />
-                        </span>
-                        <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                          <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
-                        </span>
-                      </span>
-                      <span class="prompt-input-compact-label text-12-medium leading-none">Plan</span>
-                    </button>
-                  </Tooltip>
+                <Show when={planActive()}>
+                  <WorkflowChip
+                    label="Plan"
+                    ariaLabel="Exit Plan"
+                    tooltip="Exit Plan"
+                    icon={getSemanticIcon("prompt.plan")}
+                    working={working}
+                    onCancel={togglePlan}
+                  />
+                </Show>
+                <Show when={lightLoopActive()}>
+                  <WorkflowChip
+                    label="Light Loop"
+                    ariaLabel="Cancel Light Loop"
+                    tooltip="Cancel Light Loop"
+                    icon={getSemanticIcon("prompt.lightLoop")}
+                    working={working}
+                    onCancel={cancelLightLoop}
+                  />
                 </Show>
                 <Show when={latticeActive()}>
-                  <Tooltip placement="top" value="Cancel Lattice">
-                    <button
-                      type="button"
-                      aria-label="Cancel Lattice"
-                      class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak hover:text-text-base"
-                      onClick={() => void cancelLattice()}
-                    >
-                      <span class="relative flex size-4 shrink-0 items-center justify-center">
-                        <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
-                          <Icon name={getSemanticIcon("prompt.lattice")} size="small" class="text-icon-weak" />
-                        </span>
-                        <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                          <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
-                        </span>
-                      </span>
-                      <span class="prompt-input-compact-label text-12-medium leading-none">Lattice</span>
-                    </button>
-                  </Tooltip>
+                  <WorkflowChip
+                    label="Lattice"
+                    ariaLabel="Cancel Lattice"
+                    tooltip="Cancel Lattice"
+                    icon={getSemanticIcon("prompt.lattice")}
+                    working={working}
+                    onCancel={cancelLattice}
+                  />
                 </Show>
                 <PromptAddMenu sections={addMenuSections()} />
                 <PromptStartModeSelector groups={newSessionStartOptions()} />
@@ -1703,7 +1884,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   inactive={!canSubmit()}
                   value={
                     <Switch>
-                      <Match when={working() && !prompt.dirty()}>
+                      <Match when={submitStopsSession()}>
                         <div class="flex items-center gap-2">
                           <span>Stop</span>
                           <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
@@ -1721,11 +1902,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     type="submit"
                     disabled={!canSubmit()}
-                    icon={
-                      working() && !prompt.dirty()
-                        ? getSemanticIcon("action.stop")
-                        : getSemanticIcon("prompt.submitArrow")
-                    }
+                    icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />

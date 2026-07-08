@@ -1,8 +1,6 @@
-import { For, Show, createEffect, createMemo, createSignal, type Component, type JSX } from "solid-js"
+import { type Component, type JSX } from "solid-js"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import h from "solid-js/h"
-import { useData } from "../context"
-import { Icon, type IconName } from "./icon"
 import { Message } from "./message-part"
 import "./special-user-message.css"
 
@@ -17,7 +15,20 @@ export interface SpecialUserMessageRenderer {
   component: Component<SpecialUserMessageProps>
 }
 
+export interface SpecialUserMessageBubbleView {
+  label: string
+  kind: string | undefined
+  parts: PartType[]
+}
+
+interface ProjectedBubbleText {
+  label: string
+  kind: string | undefined
+  text: string
+}
+
 const renderers: SpecialUserMessageRenderer[] = []
+const WORKFLOW_CONTROL_SOURCES = new Set(["light_loop_continuation", "lattice_continuation", "lattice_planning_kick"])
 
 export function registerSpecialUserMessageRenderer(renderer: SpecialUserMessageRenderer) {
   const index = renderers.findIndex((item) => item.id === renderer.id)
@@ -59,59 +70,180 @@ function isBlueprintControl(message: UserMessage): boolean {
   return message.origin?.type === "blueprint" || blueprintDetail(message) !== undefined
 }
 
-function Field(props: { label: string; value: string | undefined }): JSX.Element {
-  return h(Show, {
-    when: props.value,
-    children: (value: () => string) =>
-      h("div", { "data-slot": "special-message-field" }, [
-        h("div", { "data-slot": "special-message-field-label" }, props.label),
-        h("div", { "data-slot": "special-message-field-value" }, value()),
-      ]),
-  }) as unknown as JSX.Element
+function isWorkflowControl(message: UserMessage): boolean {
+  const source = metadataText(message, "source")
+  return source !== undefined && WORKFLOW_CONTROL_SOURCES.has(source)
 }
 
-function SourceSessionLink(props: { sessionID: string | undefined }): JSX.Element {
-  const data = useData()
-  return h(Show, {
-    when: props.sessionID,
-    children: (sessionID: () => string) =>
-      h(
-        "button",
-        { "data-slot": "special-message-link", onClick: () => data.navigateToSession?.(sessionID()) },
-        "Source session",
-      ),
-  }) as unknown as JSX.Element
+function textPart(message: UserMessage, text: string): PartType {
+  return {
+    id: `${message.id}_special_display`,
+    sessionID: message.sessionID,
+    messageID: message.id,
+    type: "text",
+    text,
+  } as PartType
 }
 
-function WorkflowModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
-  const label = createMemo(() => {
-    const mode = props.message.metadata?.workflowMode
-    if (mode === "plan") return "Plan mode"
-    if (mode === "lattice") return "Lattice"
-    if (mode === "light_loop") return "Light loop"
-    // Legacy back compat
-    if (props.message.metadata?.planModeRequest === true) return "Plan mode"
-    return "Workflow mode"
-  })
-  const kind = createMemo(() => {
-    const mode = props.message.metadata?.workflowMode
-    if (mode === "plan" || props.message.metadata?.planModeRequest === true) return "plan-mode-request"
-    if (mode === "lattice") return "lattice-mode-request"
-    if (mode === "light_loop") return "light-loop-mode-request"
-    return undefined
-  })
+function workflowLabel(message: UserMessage): string {
+  const mode = message.metadata?.workflow
+  if (mode === "plan") return "Plan"
+  if (mode === "lattice") return "Lattice"
+  if (mode === "lightloop") return "Light Loop"
+  return "Workflow"
+}
+
+function workflowKind(message: UserMessage): string | undefined {
+  const mode = message.metadata?.workflow
+  if (mode === "plan") return "plan-request"
+  if (mode === "lattice") return "lattice-request"
+  if (mode === "lightloop") return "lightloop-request"
+  return undefined
+}
+
+function blueprintRestartText(message: UserMessage): string {
+  const reason = metadataText(message, "reason")
+  const instructions = metadataText(message, "instructions")
+  const remaining = metadataText(message, "remaining")
+  const lines = ["Audit requested changes."]
+  if (reason) lines.push("", `Reason: ${reason}`)
+  if (instructions) lines.push(`Next: ${instructions}`)
+  else if (remaining) lines.push(`Remaining: ${remaining}`)
+  if (lines.length === 1) lines[0] = "Audit requested changes. Continue from the audit feedback."
+  return lines.join("\n")
+}
+
+function blueprintBubbleView(message: UserMessage): Omit<ProjectedBubbleText, "kind"> {
+  const kind = blueprintDetail(message)
+  const title = metadataText(message, "title")
+  switch (kind) {
+    case "start": {
+      const userPrompt = metadataText(message, "userPrompt")
+      return {
+        label: "Blueprint",
+        text: userPrompt ?? (title ? `Start Blueprint: ${title}` : "Start Blueprint"),
+      }
+    }
+    case "continuation":
+      return {
+        label: "Blueprint · Continue",
+        text: `${title ? `Continue Blueprint: ${title}` : "Continue this Blueprint."}\n\nCheck progress, keep going if work remains, or send it to audit when complete.`,
+      }
+    case "restart":
+      return {
+        label: "Blueprint · Changes requested",
+        text: blueprintRestartText(message),
+      }
+    case "completed": {
+      const summary = metadataText(message, "summary")
+      const base = metadataText(message, "latticeRunID")
+        ? "Blueprint step completed. Returning to Lattice result analysis."
+        : "Blueprint completed."
+      return {
+        label: "Blueprint · Completed",
+        text: summary ? `${base}\n\nSummary: ${summary}` : base,
+      }
+    }
+    default:
+      return {
+        label: "Blueprint",
+        text: title ? `Blueprint event: ${title}` : "Blueprint event delivered.",
+      }
+  }
+}
+
+function workflowControlView(message: UserMessage): ProjectedBubbleText {
+  const source = metadataText(message, "source")
+  if (source === "light_loop_continuation") {
+    return {
+      label: "Light Loop · Continue",
+      text: "Continue checking this task. If anything remains, keep going; if it is complete and verified, stop the loop.",
+      kind: "lightloop-control",
+    }
+  }
+  if (source === "lattice_continuation") {
+    const phase = metadataText(message, "phase")
+    return {
+      label: "Lattice · Continue",
+      text: phase
+        ? `Continue the current Lattice path.\n\nCurrent phase: ${phase}`
+        : "Continue the current Lattice path. Check the current phase and move to the next step.",
+      kind: "lattice-control",
+    }
+  }
+  if (source === "lattice_planning_kick") {
+    const goal = metadataText(message, "goal")
+    return {
+      label: "Lattice",
+      text: goal ? `Start planning: ${goal}` : "Start planning the Lattice path.",
+      kind: "lattice-control",
+    }
+  }
+  return {
+    label: "Workflow",
+    text: "Continue the workflow.",
+    kind: "workflow-control",
+  }
+}
+
+export function getSpecialUserMessageBubbleView(
+  message: UserMessage,
+  parts: PartType[],
+): SpecialUserMessageBubbleView | undefined {
+  if (isBlueprintControl(message)) {
+    const view = blueprintBubbleView(message)
+    return {
+      label: view.label,
+      kind: "blueprint-control",
+      parts: [textPart(message, view.text)],
+    }
+  }
+
+  if (isWorkflowControl(message)) {
+    const view = workflowControlView(message)
+    return {
+      label: view.label,
+      kind: view.kind,
+      parts: [textPart(message, view.text)],
+    }
+  }
+
+  if (
+    typeof message.metadata?.workflow === "string" &&
+    ["plan", "lattice", "lightloop"].includes(message.metadata.workflow)
+  ) {
+    return {
+      label: workflowLabel(message),
+      kind: workflowKind(message),
+      parts,
+    }
+  }
+
+  return undefined
+}
+
+function SpecialUserBubbleMessage(
+  props: SpecialUserMessageProps & { view: SpecialUserMessageBubbleView },
+): JSX.Element {
   return h(
     "div",
     {
       "data-component": "special-user-message",
-      "data-kind": kind(),
+      "data-kind": props.view.kind,
       "data-layout": "user-bubble",
     },
     [
-      h("div", { "data-slot": "special-message-badge" }, label()),
-      h(Message, { message: props.message, parts: props.parts, userVariant: "turn-bubble" }),
+      h("div", { "data-slot": "special-message-badge" }, props.view.label),
+      h(Message, { message: props.message, parts: props.view.parts, userVariant: "turn-bubble" }),
     ],
   ) as unknown as JSX.Element
+}
+
+function WorkflowUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
+  return SpecialUserBubbleMessage({
+    ...props,
+    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
+  })
 }
 
 function HiddenSpecialMessage(): JSX.Element {
@@ -123,146 +255,17 @@ function HiddenSpecialMessage(): JSX.Element {
 }
 
 function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
-  const [detailsOpen, setDetailsOpen] = createSignal(false)
-  let detailsTrigger: HTMLButtonElement | undefined
-  const kind = createMemo(() => blueprintDetail(props.message))
-  const title = createMemo(() => metadataText(props.message, "title"))
-  const loopID = createMemo(() => metadataText(props.message, "loopID"))
-  const noteID = createMemo(() => metadataText(props.message, "noteID"))
-  const sourceSessionID = createMemo(() => metadataText(props.message, "sourceSessionID"))
-
-  const view = createMemo(() => {
-    switch (kind()) {
-      case "start":
-        return {
-          tone: "start",
-          icon: "clipboard-list" as IconName,
-          eyebrow: "Blueprint",
-          heading: "Started execution",
-          description: "The execution session is now driving this BlueprintLoop.",
-        }
-      case "continuation":
-        return {
-          tone: "continue",
-          icon: "refresh-ccw" as IconName,
-          eyebrow: "Blueprint",
-          heading: "Continued from idle",
-          description: "The loop is still running, so the session was asked to inspect progress and continue.",
-        }
-      case "restart":
-        return {
-          tone: "restart",
-          icon: "clipboard-check" as IconName,
-          eyebrow: "Supervisor audit",
-          heading: "Changes requested",
-          description: "The audit found remaining work and returned the loop to the execution session.",
-        }
-      default:
-        return {
-          tone: "default",
-          icon: "workflow" as IconName,
-          eyebrow: "Blueprint",
-          heading: "Blueprint event",
-          description: "A BlueprintLoop control message was delivered to this session.",
-        }
-    }
+  return SpecialUserBubbleMessage({
+    ...props,
+    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
   })
+}
 
-  const userPrompt = createMemo(() => metadataText(props.message, "userPrompt"))
-  const restartFields = createMemo(() => [
-    { label: "Reason", value: metadataText(props.message, "reason") },
-    { label: "Completed", value: metadataText(props.message, "completed") },
-    { label: "Remaining", value: metadataText(props.message, "remaining") },
-    { label: "Next actions", value: metadataText(props.message, "instructions") },
-  ])
-  const hasRestartDetails = createMemo(() => restartFields().some((field) => !!field.value))
-
-  createEffect(() => {
-    detailsTrigger?.setAttribute("aria-expanded", String(detailsOpen()))
+function WorkflowControlMessage(props: SpecialUserMessageProps): JSX.Element {
+  return SpecialUserBubbleMessage({
+    ...props,
+    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
   })
-
-  return h(
-    "div",
-    {
-      "data-component": "special-user-message",
-      "data-kind": "blueprint",
-      "data-layout": "event-card",
-      "data-tone": () => view().tone,
-    },
-    [
-      h("div", { "data-slot": "special-message-icon", "aria-hidden": "true" }, [
-        h(Icon, { name: () => view().icon, size: "small" }),
-      ]),
-      h("div", { "data-slot": "special-message-body" }, [
-        h("div", { "data-slot": "special-message-header" }, [
-          h("div", { "data-slot": "special-message-heading-row" }, [
-            h("span", { "data-slot": "special-message-eyebrow" }, () => view().eyebrow),
-            h("span", { "data-slot": "special-message-heading" }, () => view().heading),
-          ]),
-        ]),
-        h(Show, {
-          when: title(),
-          children: (value: () => string) => h("div", { "data-slot": "special-message-title" }, value()),
-        }),
-        h("div", { "data-slot": "special-message-description" }, () => view().description),
-        h("div", { "data-slot": "special-message-meta" }, [
-          h(Show, {
-            when: loopID(),
-            children: (id: () => string) => h("span", {}, ["Loop ", id()]),
-          }),
-          h(Show, {
-            when: noteID(),
-            children: (id: () => string) => h("span", {}, ["Note ", id()]),
-          }),
-          h(SourceSessionLink, { sessionID: sourceSessionID() }),
-        ]),
-        h(Show, {
-          when: userPrompt(),
-          children: (prompt: () => string) =>
-            h("div", { "data-slot": "special-message-user-prompt" }, [
-              h("div", { "data-slot": "special-message-field-label" }, "User instruction"),
-              h("div", { "data-slot": "special-message-field-value" }, prompt()),
-            ]),
-        }),
-        h(Show, {
-          when: () => kind() === "restart" && hasRestartDetails(),
-          children: () => [
-            h(
-              "button",
-              {
-                ref: (element: HTMLButtonElement) => {
-                  detailsTrigger = element
-                },
-                type: "button",
-                "data-slot": "special-message-details-trigger",
-                "aria-expanded": () => detailsOpen(),
-                onClick: () => setDetailsOpen((value) => !value),
-              },
-              [
-                h(Show, {
-                  when: () => detailsOpen(),
-                  fallback: h(Icon, { name: "chevron-right", size: "small" }),
-                  children: () => h(Icon, { name: "chevron-down", size: "small" }),
-                }),
-                h("span", {}, "Details"),
-              ],
-            ),
-            h(Show, {
-              when: () => detailsOpen(),
-              children: () =>
-                h("div", { "data-slot": "special-message-fields" }, [
-                  h(For, {
-                    each: restartFields(),
-                    children: (field: { label: string; value: string | undefined }) =>
-                      h(Field, { label: field.label, value: field.value }),
-                  }),
-                ]),
-            }),
-          ],
-        }),
-      ]),
-    ],
-  ) as unknown as JSX.Element
 }
 
 registerSpecialUserMessageRenderer({
@@ -274,21 +277,28 @@ registerSpecialUserMessageRenderer({
 })
 
 registerSpecialUserMessageRenderer({
-  id: "workflow-mode-user-request",
-  match(message) {
-    return (
-      (typeof message.metadata?.workflowMode === "string" &&
-        ["plan", "lattice", "light_loop"].includes(message.metadata.workflowMode)) ||
-      message.metadata?.planModeRequest === true
-    )
-  },
-  component: WorkflowModeUserRequestMessage,
-})
-
-registerSpecialUserMessageRenderer({
   id: "blueprint-control",
   match(message) {
     return isBlueprintControl(message)
   },
   component: BlueprintControlMessage,
+})
+
+registerSpecialUserMessageRenderer({
+  id: "workflow-control",
+  match(message) {
+    return isWorkflowControl(message)
+  },
+  component: WorkflowControlMessage,
+})
+
+registerSpecialUserMessageRenderer({
+  id: "workflow-user-request",
+  match(message) {
+    return (
+      typeof message.metadata?.workflow === "string" &&
+      ["plan", "lattice", "lightloop"].includes(message.metadata.workflow)
+    )
+  },
+  component: WorkflowUserRequestMessage,
 })

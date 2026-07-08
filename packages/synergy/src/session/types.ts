@@ -71,6 +71,25 @@ export const SuperPlanSessionInfo = z
   .meta({ ref: "SessionSuperPlanInfo" })
 export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
 
+export const WorkflowInfo = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("plan"),
+    }),
+    z.object({
+      kind: z.literal("lightloop"),
+      taskDescription: z.string(),
+    }),
+    z.object({
+      kind: z.literal("lattice"),
+      runID: z.string(),
+      mode: z.enum(["auto", "collaborative"]),
+      firstBlueprintStarted: z.boolean().optional(),
+    }),
+  ])
+  .meta({ ref: "SessionWorkflowInfo" })
+export type WorkflowInfo = z.infer<typeof WorkflowInfo>
+
 export const HistoryInfo = z
   .object({
     rollback: z
@@ -205,20 +224,7 @@ export const Info = z
           loopRole: z.enum(["execution", "audit"]).optional(),
         })
         .optional(),
-      planMode: z.boolean().optional(),
-      lightLoop: z
-        .object({
-          active: z.boolean(),
-          taskDescription: z.string(),
-        })
-        .optional(),
-      lattice: z
-        .object({
-          runID: z.string(),
-          mode: z.enum(["auto", "collaborative"]),
-          firstBlueprintStarted: z.boolean().optional(),
-        })
-        .optional(),
+      workflow: WorkflowInfo.optional(),
     }),
   )
   .meta({

@@ -86,7 +86,7 @@ Before calling `blueprint_loop_finish(status="completed")`, produce a completion
 
 ### Cannot verify
 - Frontend Blueprint Panel UI (Phase 6-9, deferred)
-- Plan Mode toggle UX (Phase 6-9, deferred)
+- Plan workflow toggle UX (Phase 6-9, deferred)
 
 ### Evidence sources
 - Blueprint note: all acceptance criteria mapped
