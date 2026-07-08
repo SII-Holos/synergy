@@ -2,7 +2,7 @@ import { createSignal } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import type { PlanBlueprintOffer } from "./plan-blueprint-offer-model"
+import type { PlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import "./plan-blueprint-offer.css"
 
 export function PlanBlueprintOfferControl(props: {
