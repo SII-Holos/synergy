@@ -562,7 +562,7 @@ describe("session turn timeline", () => {
 
     expect(turnCompletionStats([message])).toEqual({
       duration: "01:01",
-      segments: ["12.4k input", "678 output", "42 reasoning", "$0.0042"],
+      segments: ["12.3k input", "100 cache read", "678 output", "42 reasoning", "$0.0042"],
     })
   })
 
@@ -611,7 +611,7 @@ describe("session turn timeline", () => {
 
     expect(turnCompletionStats([first, second])).toEqual({
       duration: "01:01",
-      segments: ["3,150 input", "500 output", "50 reasoning", "$0.03"],
+      segments: ["3,000 input", "100 cache read", "50 cache write", "500 output", "50 reasoning", "$0.03"],
     })
   })
 
