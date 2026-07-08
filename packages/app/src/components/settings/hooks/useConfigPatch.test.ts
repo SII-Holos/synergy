@@ -56,6 +56,44 @@ describe("settings config patch", () => {
     expect(patch.quick_switcher).toEqual({ models: [] })
   })
 
+  test("default agent draft persists as default_agent", () => {
+    const state = defaultSettingsState("enter")
+    state.agents.defaultAgent = "synergy-max"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.default_agent).toBe("synergy-max")
+  })
+
+  test("default agent is sent when different from server config", () => {
+    const state = defaultSettingsState("enter")
+    state.agents.defaultAgent = "synergy"
+
+    const patch = buildPatch({
+      cfg: { default_agent: "synergy-max" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.default_agent).toBe("synergy")
+  })
+
+  test("default agent not sent when unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { default_agent: "synergy" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("default_agent")
+  })
+
   test("provider idle timeout can be disabled with false", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"

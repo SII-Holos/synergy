@@ -60,6 +60,7 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  defaultAgent: "synergy" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -218,6 +219,10 @@ export type ModelsStore = {
   quick_switcher: QuickSwitcherPreference[]
 }
 
+export type AgentsStore = {
+  defaultAgent: string
+}
+
 export type PluginsStore = {
   entries: PluginEntry[]
 }
@@ -269,6 +274,7 @@ export type RuntimeStore = {
 export type SettingsState = {
   general: GeneralStore
   models: ModelsStore
+  agents: AgentsStore
   providers: ProvidersStore
   plugins: PluginsStore
   mcps: McpsStore
@@ -300,6 +306,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       long_context_model: MODEL_DEFAULTS.long_context_model,
       creative_model: MODEL_DEFAULTS.creative_model,
       quick_switcher: [],
+    },
+    agents: {
+      defaultAgent: UI_DEFAULTS.defaultAgent,
     },
     providers: {
       enabledProviders: "",
