@@ -211,6 +211,7 @@ const builtinIconNames = [
   "user-plus",
   "user-round-pen",
   "users",
+  "waypoints",
   "workflow",
   "worktree-enter",
   "worktree-leave",

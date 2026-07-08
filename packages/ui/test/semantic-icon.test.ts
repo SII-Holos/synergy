@@ -69,9 +69,9 @@ function collectFiles(dir: string, result: string[] = []): string[] {
 }
 
 function isExcludedPath(file: string): boolean {
-  const relative = path.relative(repoRoot, file)
+  const relative = path.relative(repoRoot, file).replace(/\\/g, "/")
   if (excludedRawIconPaths.has(relative)) return true
-  return excludedRawIconPathFragments.some((fragment) => file.includes(fragment))
+  return excludedRawIconPathFragments.some((fragment) => `/${relative}`.includes(fragment))
 }
 
 function componentIconNames(): Set<string> {
@@ -132,7 +132,7 @@ describe("semantic icons", () => {
       for (const file of collectFiles(root)) {
         if (isExcludedPath(file)) continue
 
-        const relative = path.relative(repoRoot, file)
+        const relative = path.relative(repoRoot, file).replace(/\\/g, "/")
         const source = readFileSync(file, "utf8")
         for (const pattern of rawIconPatterns) {
           pattern.lastIndex = 0

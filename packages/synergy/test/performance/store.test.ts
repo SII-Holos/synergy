@@ -245,6 +245,27 @@ describe.serial("performance observability store", () => {
       ),
     ).toBe(true)
   })
+
+  test("snapshot records external and array_buffers metrics and raises issues when thresholds exceeded", () => {
+    PerformanceConfig.refresh({
+      observability: {
+        performance: { thresholds: { highExternalBytes: 0, highArrayBuffersBytes: 0 } },
+      },
+    })
+    PerformanceResources.snapshot()
+    PerformanceStore.flush()
+
+    const metrics = PerformanceStore.queryMetrics({
+      since: 0,
+      names: ["process.memory.external", "process.memory.array_buffers"],
+    })
+    expect(metrics.some((row) => row.name === "process.memory.external")).toBe(true)
+    expect(metrics.some((row) => row.name === "process.memory.array_buffers")).toBe(true)
+
+    const issues = PerformanceIssues.list({ module: "process" })
+    expect(issues.some((issue) => issue.code === "PERF_MEMORY_HIGH_EXTERNAL")).toBe(true)
+    expect(issues.some((issue) => issue.code === "PERF_MEMORY_HIGH_ARRAY_BUFFERS")).toBe(true)
+  })
 })
 
 process.on("exit", () => {

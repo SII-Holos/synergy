@@ -23,13 +23,7 @@ export const Info = z
     userPrompt: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
-    orchestration: z
-      .object({
-        kind: z.literal("lattice"),
-        runID: z.string(),
-      })
-      .optional()
-      .meta({ description: "External orchestrator that owns this loop's lifecycle (e.g. Lattice)" }),
+    source: z.enum(["user", "lattice"]).meta({ description: "Owner that created and drives this loop lifecycle" }),
     audit: z
       .object({
         lastReason: z.string().optional(),

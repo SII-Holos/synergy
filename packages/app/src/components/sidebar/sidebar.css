@@ -109,6 +109,14 @@
   opacity: 1;
 }
 
+/* Collapsed search button */
+.sb-collapsed-search {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 4px;
+  flex-shrink: 0;
+}
 .sb-icon-btn {
   display: flex;
   align-items: center;

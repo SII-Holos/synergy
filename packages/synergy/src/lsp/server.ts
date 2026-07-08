@@ -80,6 +80,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(deno, ["lsp"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -99,6 +100,7 @@ export namespace LSPServer {
       if (!tsserver) return
       const proc = spawn(BunProc.which(), ["x", "typescript-language-server", "--stdio"], {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -150,6 +152,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -210,6 +213,7 @@ export namespace LSPServer {
 
       const proc = spawn(BunProc.which(), [serverPath, "--stdio"], {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -269,6 +273,7 @@ export namespace LSPServer {
         if (help.includes("--lsp")) {
           return {
             process: spawn(lintBin, ["--lsp"], {
+              detached: process.platform !== "win32",
               cwd: root,
             }),
           }
@@ -283,6 +288,7 @@ export namespace LSPServer {
       if (serverBin) {
         return {
           process: spawn(serverBin, [], {
+            detached: process.platform !== "win32",
             cwd: root,
           }),
         }
@@ -343,6 +349,7 @@ export namespace LSPServer {
 
       const proc = spawn(bin, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -391,6 +398,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin!, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -432,6 +440,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin!, ["--lsp"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -492,6 +501,7 @@ export namespace LSPServer {
       }
 
       const proc = spawn(binary, ["server"], {
+        detached: process.platform !== "win32",
         cwd: root,
       })
 
@@ -544,6 +554,7 @@ export namespace LSPServer {
 
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -612,6 +623,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(binary, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -724,6 +736,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -764,6 +777,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -804,6 +818,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -821,6 +836,7 @@ export namespace LSPServer {
       if (sourcekit) {
         return {
           process: spawn(sourcekit, {
+            detached: process.platform !== "win32",
             cwd: root,
           }),
         }
@@ -838,6 +854,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -884,6 +901,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -900,6 +918,7 @@ export namespace LSPServer {
       if (fromPath) {
         return {
           process: spawn(fromPath, args, {
+            detached: process.platform !== "win32",
             cwd: root,
           }),
         }
@@ -910,6 +929,7 @@ export namespace LSPServer {
       if (await Bun.file(direct).exists()) {
         return {
           process: spawn(direct, args, {
+            detached: process.platform !== "win32",
             cwd: root,
           }),
         }
@@ -923,6 +943,7 @@ export namespace LSPServer {
         if (await Bun.file(candidate).exists()) {
           return {
             process: spawn(candidate, args, {
+              detached: process.platform !== "win32",
               cwd: root,
             }),
           }
@@ -1030,6 +1051,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, args, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1064,6 +1086,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1111,6 +1134,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1208,6 +1232,7 @@ export namespace LSPServer {
           ],
           {
             cwd: root,
+            detached: process.platform !== "win32",
           },
         ),
       }
@@ -1299,6 +1324,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(launcherScript, ["--stdio"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1342,6 +1368,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1487,6 +1514,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1521,6 +1549,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1545,6 +1574,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(prisma, ["language-server"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1563,6 +1593,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(dart, ["language-server", "--lsp"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1581,6 +1612,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1614,6 +1646,7 @@ export namespace LSPServer {
       args.push("start")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1703,6 +1736,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, ["serve"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
         initialization: {
@@ -1799,6 +1833,7 @@ export namespace LSPServer {
 
       return {
         process: spawn(bin, {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1833,6 +1868,7 @@ export namespace LSPServer {
       args.push("--stdio")
       const proc = spawn(binary, args, {
         cwd: root,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           BUN_BE_BUN: "1",
@@ -1856,6 +1892,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(gleam, ["lsp"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1877,6 +1914,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin, ["listen"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }
@@ -1907,6 +1945,7 @@ export namespace LSPServer {
       return {
         process: spawn(nixd, [], {
           cwd: root,
+          detached: process.platform !== "win32",
           env: {
             ...process.env,
           },
@@ -2004,7 +2043,7 @@ export namespace LSPServer {
       }
 
       return {
-        process: spawn(bin, { cwd: root }),
+        process: spawn(bin, { detached: process.platform !== "win32", cwd: root }),
       }
     },
   }
@@ -2021,6 +2060,7 @@ export namespace LSPServer {
       }
       return {
         process: spawn(bin, ["--lsp"], {
+          detached: process.platform !== "win32",
           cwd: root,
         }),
       }

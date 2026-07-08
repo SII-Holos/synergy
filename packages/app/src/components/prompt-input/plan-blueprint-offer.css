@@ -1,0 +1,95 @@
+.plan-blueprint-offer {
+  display: flex;
+  width: fit-content;
+  max-width: min(620px, calc(100vw - 24px));
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-base);
+  background: var(--workbench-card-bg, var(--surface-raised-stronger));
+  color: var(--text-base);
+  padding: 5px 6px 5px 10px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--background-base) 72%, transparent);
+  animation: plan-blueprint-offer-enter 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.plan-blueprint-offer-title {
+  min-width: 0;
+  max-width: min(260px, 42vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plan-blueprint-offer-action {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--text-base);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.plan-blueprint-offer-action:hover {
+  background: var(--workbench-selected-bg, var(--surface-raised-base-hover));
+}
+
+.plan-blueprint-offer-action:active {
+  transform: scale(0.97);
+}
+
+.plan-blueprint-offer-icon-button {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--text-weak);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.plan-blueprint-offer-icon-button:hover {
+  background: var(--workbench-card-bg-hover, var(--surface-raised-base-hover));
+  color: var(--text-base);
+}
+
+.plan-blueprint-offer-icon-button:active {
+  transform: scale(0.95);
+}
+
+@keyframes plan-blueprint-offer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.99);
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-blueprint-offer {
+    animation: none;
+  }
+
+  .plan-blueprint-offer-action,
+  .plan-blueprint-offer-icon-button {
+    transition: none;
+  }
+}

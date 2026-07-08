@@ -49,7 +49,7 @@ import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { blueprintNoteCreateFocusRequest } from "@/components/note/blueprint-note-focus"
+import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   defaultNewSessionWorkspaceSelection,
   normalizePathForCompare,
@@ -519,7 +519,7 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID) return
 
-    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
+    const request = blueprintNoteWriteFocusRequest(event.properties.part, sessionID)
     if (!request) return
 
     const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`

@@ -278,4 +278,48 @@ describe("blueprint migrations", () => {
     const migrated = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, loopID))
     expect(migrated.userPrompt).toBeUndefined()
   })
+
+  test("migrates BlueprintLoop ownership into source", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const latticeLoopID = Identifier.ascending("blueprint_loop")
+    const userLoopID = Identifier.ascending("blueprint_loop")
+    const now = Date.now()
+
+    await Storage.write(StoragePath.blueprintLoop(scopeID, latticeLoopID), {
+      ...blueprintLoop({
+        id: latticeLoopID,
+        noteID: Identifier.ascending("note"),
+        sessionID: Identifier.ascending("session"),
+        scopeID,
+        status: "running",
+        updated: now,
+      }),
+      orchestration: { kind: "lattice", runID: "ltr_legacy" },
+    })
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, userLoopID),
+      blueprintLoop({
+        id: userLoopID,
+        noteID: Identifier.ascending("note"),
+        sessionID: Identifier.ascending("session"),
+        scopeID,
+        status: "armed",
+        updated: now,
+      }),
+    )
+
+    const migration = migrations.find((entry) => entry.id === "20260708-blueprint-loop-source")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const latticeLoop = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, latticeLoopID))
+    const userLoop = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, userLoopID))
+
+    expect(latticeLoop.source).toBe("lattice")
+    expect(userLoop.source).toBe("user")
+    expect("orchestration" in latticeLoop).toBe(false)
+    expect("orchestration" in userLoop).toBe(false)
+  })
 })

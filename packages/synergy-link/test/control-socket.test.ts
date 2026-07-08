@@ -199,7 +199,7 @@ describe("synergy-link control socket", () => {
       expect(listed.result.metadata.linkID).toBe(linkID)
       expect(listed.result.metadata.backend).toBe("remote")
     } finally {
-      await runtime.control.stop()
+      await runtime.stopServerProcess()
     }
   })
 })

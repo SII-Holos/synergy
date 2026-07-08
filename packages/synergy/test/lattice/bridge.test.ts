@@ -34,7 +34,7 @@ function loopEvent(overrides: Record<string, unknown>) {
     id: "bll_a",
     scopeID: ScopeContext.current.scope.id,
     status: "completed",
-    orchestration: { kind: "lattice", runID: "ltr_x" },
+    source: "lattice",
     ...overrides,
   } as any
 }
@@ -68,13 +68,13 @@ describe("LatticeBridge", () => {
     })
   })
 
-  test("ignores loops without lattice orchestration", async () => {
+  test("ignores loops not owned by lattice", async () => {
     await withScope(async () => {
       LatticeBridge.init()
       const scopeID = ScopeContext.current.scope.id
       const { session } = await runningRun(scopeID)
       await Bus.publish(LoopEvent.Updated, {
-        loop: loopEvent({ sessionID: session.id, status: "completed", orchestration: undefined }),
+        loop: loopEvent({ sessionID: session.id, status: "completed", source: "user" }),
       })
       const run = await LatticeStore.get(scopeID, session.id)
       expect(run.phase).toBe("blueprint_execution") // unchanged

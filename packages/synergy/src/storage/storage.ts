@@ -10,6 +10,7 @@ import { PerformanceResources } from "@/performance/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
+  const STORAGE_DURATION_SAMPLE_RATE = 0.02
 
   export const NotFoundError = NamedError.create(
     "NotFoundError",
@@ -179,6 +180,7 @@ export namespace Storage {
         unit: "ms",
         module: "storage",
         labels: { operation, keyPrefix: key[0] ?? "root", status },
+        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
       })
       PerformanceMetrics.record({
         name: "storage.operation.count",

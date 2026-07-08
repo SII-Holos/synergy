@@ -1,13 +1,15 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { relativeTime } from "@/utils/time"
-import { getScopeLabel, isHomeScope } from "@/utils/scope"
+import { getScopeLabel } from "@/utils/scope"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 import "./global-search-modal.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { resolveArchivedInput } from "./global-search-utils"
 
 type SessionItem = NonNullable<GlobalSessionSearchResponse["data"]>[number]
 
@@ -28,19 +30,27 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
   const [total, setTotal] = createSignal(0)
   const [loading, setLoading] = createSignal(false)
   const [selectedIdx, setSelectedIdx] = createSignal(-1)
+  const [showArchived, setShowArchived] = createSignal(false)
   let inputRef: HTMLInputElement | undefined
   let containerRef: HTMLDivElement | undefined
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
-  const fetchResults = async (search: string) => {
+  const archiveState = createMemo(() => {
+    const parsed = resolveArchivedInput(query())
+    return { search: parsed.search, includeArchived: parsed.includeArchived || showArchived() }
+  })
+
+  const fetchResults = async () => {
     if (!globalSDK.connected()) return
     setLoading(true)
     try {
+      const state = archiveState()
       const res = await globalSDK.client.global.session.search({
-        search: search || undefined,
+        search: state.search || undefined,
         offset: 0,
         limit: 50,
         parentOnly: "false",
+        includeArchived: state.includeArchived ? "true" : "false",
       })
       if (res.data) {
         setResults(res.data.data ?? [])
@@ -54,19 +64,25 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
     }
   }
 
-  createEffect(() => {
-    if (!props.open) return
-    setQuery("")
-    setSelectedIdx(-1)
-    fetchResults("")
-    setTimeout(() => inputRef?.focus(), 50)
-  })
+  createEffect(
+    on(
+      () => props.open,
+      (open) => {
+        if (!open) return
+        setQuery("")
+        setSelectedIdx(-1)
+        setShowArchived(false)
+        fetchResults()
+        setTimeout(() => inputRef?.focus(), 50)
+      },
+    ),
+  )
 
   const handleInput = (value: string) => {
     setQuery(value)
     setSelectedIdx(-1)
     clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => fetchResults(value), 250)
+    debounceTimer = setTimeout(() => fetchResults(), 250)
   }
 
   onCleanup(() => clearTimeout(debounceTimer))
@@ -82,7 +98,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
     if (e.key === "Escape") {
       if (query().length > 0) {
         setQuery("")
-        fetchResults("")
+        fetchResults()
       } else {
         props.onClose()
       }
@@ -117,8 +133,6 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
     onCleanup(() => document.removeEventListener("keydown", handler))
   })
 
-  const groupedResults = createMemo(() => results())
-
   return (
     <Show when={props.open}>
       <div class="gsm-overlay" onClick={props.onClose} />
@@ -141,7 +155,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
           </button>
         </div>
         <div class="gsm-results">
-          <Show when={!loading() && groupedResults().length === 0}>
+          <Show when={!loading() && results().length === 0}>
             <div class="gsm-empty">
               <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak" />
               <span class="text-13-medium text-text-weak">
@@ -149,7 +163,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
               </span>
             </div>
           </Show>
-          <For each={groupedResults()}>
+          <For each={results()}>
             {(item, index) => (
               <button
                 type="button"
@@ -164,7 +178,12 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
                   <Icon name={getSemanticIcon("settings.commands")} size="normal" />
                 </div>
                 <div class="gsm-item-content">
-                  <div class="gsm-item-title">{item.title}</div>
+                  <div class="gsm-item-title">
+                    <Show when={item.time.archived}>
+                      <span class="gsm-archived-tag">[Archived]</span>{" "}
+                    </Show>
+                    {item.title}
+                  </div>
                   <div class="gsm-item-meta">
                     {scopeLabel(item.scope)}
                     <span class="gsm-item-sep">·</span>
@@ -179,11 +198,20 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
             )}
           </For>
         </div>
-        <Show when={total() > 0}>
-          <div class="gsm-footer">
+        <div class="gsm-footer">
+          <Switch
+            checked={archiveState().includeArchived}
+            onChange={(value) => {
+              setShowArchived(value)
+              fetchResults()
+            }}
+          >
+            Include archived
+          </Switch>
+          <Show when={total() > 0}>
             <span class="text-11-regular text-text-subtle">{total()} sessions</span>
-          </div>
-        </Show>
+          </Show>
+        </div>
       </div>
     </Show>
   )

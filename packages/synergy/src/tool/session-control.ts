@@ -9,8 +9,6 @@ import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { SessionInteraction } from "../session/interaction"
-import { ScopeContext } from "../scope/context"
-import { Scope } from "../scope"
 import DESCRIPTION from "./session-control.txt"
 
 const Action = z.enum(["status", "compact", "abort", "question_reply", "question_reject", "permission_reply"])
@@ -55,15 +53,14 @@ export const SessionControlTool = Tool.define("session_control", {
       return handleStatus(sessionID)
     }
 
-    const withScope = <T>(fn: () => Promise<T>) =>
-      ScopeContext.provide({ scope: session.scope as Scope, workspace: session.workspace, fn })
+    const inSession = <T>(fn: () => Promise<T>) => SessionManager.run(sessionID, fn)
 
     switch (params.action) {
       case "compact": {
-        return withScope(() => handleCompact(sessionID))
+        return inSession(() => handleCompact(sessionID))
       }
       case "abort": {
-        return withScope(() => handleAbort(sessionID))
+        return inSession(() => handleAbort(sessionID))
       }
       case "question_reply": {
         if (!params.requestID) {
@@ -72,13 +69,13 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.answers) {
           throw new Error("answers is required for question_reply")
         }
-        return withScope(() => handleQuestionReply(params.requestID!, params.answers!))
+        return inSession(() => handleQuestionReply(params.requestID!, params.answers!))
       }
       case "question_reject": {
         if (!params.requestID) {
           throw new Error("requestID is required for question_reject")
         }
-        return withScope(() => handleQuestionReject(params.requestID!))
+        return inSession(() => handleQuestionReject(params.requestID!))
       }
       case "permission_reply": {
         if (!params.requestID) {
@@ -87,7 +84,7 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.reply) {
           throw new Error("reply is required for permission_reply")
         }
-        return withScope(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
+        return inSession(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
       }
     }
   },
@@ -199,7 +196,7 @@ async function handleCompact(sessionID: string) {
     text: "What did we do so far?",
   })
 
-  SessionInvoke.loop(sessionID).catch(() => {})
+  SessionManager.scheduleWake(sessionID, "session_control.compact")
 
   return {
     title: `Compacted ${sessionID}`,

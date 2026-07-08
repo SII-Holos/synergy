@@ -105,6 +105,8 @@ export interface GateOptions {
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
+  /** User-trusted local code roots treated like the active workspace for reads and writes. */
+  trustedRoots?: string[]
   execPolicy?: { rules: PrefixRule[] }
   synergyRoot?: string
 }
@@ -361,23 +363,33 @@ function uniqueCapability(caps: Capability[], cap: Capability) {
   caps.push(cap)
 }
 
+function isTrustedPath(pathInput: string, roots: string[] | undefined): boolean {
+  return roots?.some((root) => Filesystem.contains(root, pathInput)) ?? false
+}
+
 function classifyPathCapability(
   caps: Capability[],
   pathInput: string,
-  options: { activeWorkspace: string; originalCheckout?: string; write?: boolean; readRoots?: string[] },
+  options: {
+    activeWorkspace: string
+    originalCheckout?: string
+    write?: boolean
+    readRoots?: string[]
+    trustedRoots?: string[]
+  },
 ) {
   const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
     originalCheckout: options.originalCheckout,
   })
 
-  if (classification.boundary === "inside") {
+  if (classification.boundary === "inside" || isTrustedPath(pathInput, options.trustedRoots)) {
     uniqueCapability(caps, {
       class: options.write ? "file_write" : "file_read",
       nonBypassable: false,
       paths: [pathInput],
     })
-  } else if (!options.write && options.readRoots?.some((r) => Filesystem.contains(r, pathInput))) {
+  } else if (!options.write && isTrustedPath(pathInput, options.readRoots)) {
     uniqueCapability(caps, {
       class: "file_read",
       nonBypassable: false,
@@ -478,6 +490,7 @@ export namespace EnforcementGate {
       pluginApprovals,
       originalCheckout,
       readRoots,
+      trustedRoots,
       execPolicy,
       synergyRoot,
     } = options
@@ -496,6 +509,7 @@ export namespace EnforcementGate {
     // Accumulated sandbox-approved paths across all evaluate() calls
     const approvedReadPaths = new Set<string>()
     const approvedWritePaths = new Set<string>()
+    const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
 
@@ -592,7 +606,7 @@ export namespace EnforcementGate {
       ) {
         const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }
       }
@@ -605,13 +619,13 @@ export namespace EnforcementGate {
             multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
           for (const p of paths) {
             classifyProtectedPathCapability(caps, p, "write", { activeWorkspace, originalCheckout, synergyRoot })
-            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
+            classifyPathCapability(caps, p, { ...pathOptions, write: true })
           }
         } else {
           const filePath = firstPathArg(args)
           if (filePath) {
             classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
-            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
+            classifyPathCapability(caps, filePath, { ...pathOptions, write: true })
           }
         }
         return { capabilities: caps }
@@ -627,7 +641,7 @@ export namespace EnforcementGate {
         const raw = args.filePath ?? args.file_path ?? ""
         const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }
       }
@@ -709,7 +723,7 @@ export namespace EnforcementGate {
 
         const cwd = args.workdir ?? activeWorkspace
         if (args.workdir) {
-          classifyPathCapability(caps, args.workdir, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, args.workdir, pathOptions)
         }
 
         const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
@@ -722,14 +736,7 @@ export namespace EnforcementGate {
             originalCheckout,
             synergyRoot,
           })
-          const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
-          if (result.boundary === "outside") {
-            uniqueCapability(caps, {
-              class: writeCapable ? "file_external_write" : "file_external_read",
-              nonBypassable: writeCapable,
-              paths: [candidate],
-            })
-          }
+          classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
         }
 
         // Check for network activity
@@ -856,7 +863,7 @@ export namespace EnforcementGate {
         if (toolName === "ast_grep") {
           const paths: string[] = Array.isArray(args.paths) ? args.paths : []
           for (const p of paths) {
-            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, readRoots })
+            classifyPathCapability(caps, p, pathOptions)
           }
           if (paths.length === 0) {
             caps.push({ class: "file_read", nonBypassable: false })
@@ -864,7 +871,7 @@ export namespace EnforcementGate {
         } else {
           const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
           if (filePath) {
-            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+            classifyPathCapability(caps, filePath, pathOptions)
           } else {
             caps.push({ class: "file_read", nonBypassable: false })
           }
@@ -975,11 +982,11 @@ export namespace EnforcementGate {
         const imagePaths = imagePathArgs(args)
         for (const inputPath of imagePaths.read) {
           classifyProtectedPathCapability(caps, inputPath, "read", { activeWorkspace, originalCheckout, synergyRoot })
-          classifyPathCapability(caps, inputPath, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, inputPath, pathOptions)
         }
         for (const outputPath of imagePaths.write) {
           classifyProtectedPathCapability(caps, outputPath, "write", { activeWorkspace, originalCheckout, synergyRoot })
-          classifyPathCapability(caps, outputPath, { activeWorkspace, originalCheckout, write: true })
+          classifyPathCapability(caps, outputPath, { ...pathOptions, write: true })
         }
         caps.push({ class: "network_request", nonBypassable: false })
         return { capabilities: caps }

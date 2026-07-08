@@ -7,6 +7,8 @@ import { LoopEvent } from "../blueprint/event"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./blueprint-loop-finish.txt"
 import { SessionManager } from "../session/manager"
+import { LatticeStore } from "../lattice/store"
+import type { LatticeTypes } from "../lattice/types"
 
 const parameters = z.object({
   loopID: z.string().describe("The BlueprintLoop ID to finish."),
@@ -57,6 +59,18 @@ function latticeCompletionText(input: { loopID: string; runID: string; summary?:
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+async function latticeRunForLoop(scopeID: string, loop: { id: string; sessionID: string }): Promise<LatticeTypes.Run> {
+  const run = await LatticeStore.getOrUndefined(scopeID, loop.sessionID)
+  if (!run) {
+    throw new Error(`Lattice-owned BlueprintLoop ${loop.id} has no current Lattice run for session ${loop.sessionID}.`)
+  }
+  const belongsToRun = run.pathway.some((step) => step.blueprintLoopID === loop.id)
+  if (!belongsToRun) {
+    throw new Error(`Lattice-owned BlueprintLoop ${loop.id} is not referenced by current Lattice run ${run.id}.`)
+  }
+  return run
 }
 
 export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
@@ -196,12 +210,12 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
       await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)
     } else if (params.status === "completed") {
-      const orchestration = loop.orchestration
-      const isLattice = orchestration?.kind === "lattice"
+      const latticeRun = loop.source === "lattice" ? await latticeRunForLoop(scopeID, loop) : undefined
+      const isLattice = latticeRun !== undefined
       const completionText = isLattice
         ? latticeCompletionText({
             loopID: loop.id,
-            runID: orchestration.runID,
+            runID: latticeRun.id,
             summary: params.summary,
             userPrompt: loop.userPrompt,
           })
@@ -226,7 +240,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
           noteID: loop.noteID,
           title: loop.title,
           status: "completed",
-          ...(isLattice ? { latticeRunID: orchestration.runID } : {}),
+          ...(isLattice ? { latticeRunID: latticeRun.id } : {}),
           ...(params.summary ? { summary: params.summary } : {}),
           ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
         },
