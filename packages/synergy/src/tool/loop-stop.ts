@@ -40,22 +40,29 @@ export const LoopStopTool = Tool.define("loop_stop", {
 
     const requestedAt = Date.now()
 
-    // Persist stop request before launching reviewer
-    await Session.update(ctx.sessionID, (draft) => {
-      if (draft.workflow?.kind !== "lightloop") return
-      draft.workflow = {
-        ...draft.workflow,
-        stopRequest: {
-          summary,
-          completed: params.completed,
-          evidence: params.evidence,
-          remaining: params.remaining,
-          requestedAt,
-          requesterSessionID: ctx.sessionID,
-          requesterMessageID: ctx.messageID,
-        },
-      }
-    })
+    let stopRequestRecorded = false
+    try {
+      await Session.update(ctx.sessionID, (draft) => {
+        if (draft.workflow?.kind !== "lightloop") return
+        draft.workflow = {
+          ...draft.workflow,
+          stopRequest: {
+            summary,
+            completed: params.completed,
+            evidence: params.evidence,
+            remaining: params.remaining,
+            requestedAt,
+            requesterSessionID: ctx.sessionID,
+            requesterMessageID: ctx.messageID,
+          },
+        }
+        stopRequestRecorded = true
+      })
+      if (!stopRequestRecorded) throw new Error("Failed to record Light Loop stop request")
+    } catch (error) {
+      await clearStopRequest(ctx.sessionID).catch(() => {})
+      throw error
+    }
 
     const { Cortex } = await import("../cortex")
 
@@ -101,8 +108,7 @@ export const LoopStopTool = Tool.define("loop_stop", {
         visibility: "hidden",
       })
     } catch (error) {
-      // Clear the stop request on launch failure so LightLoop can continue
-      await clearStopRequest(ctx.sessionID)
+      await clearStopRequest(ctx.sessionID).catch(() => {})
       throw error
     }
 

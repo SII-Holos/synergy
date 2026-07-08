@@ -20,7 +20,7 @@ export namespace AgentDelegation {
   export function isVisibleToCaller(agent: Pick<DelegatableAgent, "visibleTo">, caller?: DelegationCaller | string) {
     if (!agent.visibleTo || agent.visibleTo.length === 0) return true
     const callerIdentities = identities(caller)
-    if (callerIdentities.length === 0) return true
+    if (callerIdentities.length === 0) return false
     return agent.visibleTo.some((name) => callerIdentities.includes(name))
   }
 

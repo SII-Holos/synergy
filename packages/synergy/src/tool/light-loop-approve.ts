@@ -5,6 +5,7 @@ import { SessionWorkflowService } from "../session/workflow"
 import { SessionManager } from "../session/manager"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./light-loop-approve.txt"
+import { LightLoopReviewAccess } from "@/session/light-loop-review-access"
 
 const parameters = z.object({
   sessionID: z.string().describe("The execution session ID provided in your launch context"),
@@ -18,10 +19,6 @@ export const LightLoopApproveTool = Tool.define("light_loop_approve", {
     const sessionID = params.sessionID
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
-    if (ctx.agent !== "lightloop-reviewer") {
-      throw new Error("Only the lightloop-reviewer agent may approve Light Loop stop requests")
-    }
-
     const target = await Session.get(sessionID)
     if (!target) throw new Error(`Session ${sessionID} not found`)
 
@@ -32,14 +29,15 @@ export const LightLoopApproveTool = Tool.define("light_loop_approve", {
     const stopRequest = target.workflow.stopRequest
     if (!stopRequest) throw new Error(`Session ${sessionID} has no pending stop request`)
 
-    if (stopRequest.reviewSessionID !== ctx.sessionID) {
-      throw new Error("Only the recorded reviewer session may approve this stop request")
-    }
+    await LightLoopReviewAccess.assertForTarget({
+      agent: ctx.agent,
+      reviewSessionID: ctx.sessionID,
+      targetSessionID: sessionID,
+      action: "approve",
+    })
 
-    // Clear the LightLoop workflow on the target session
     await SessionWorkflowService.setNone(sessionID, { allowRunning: true })
 
-    // Deliver approval notification
     const text = `Light Loop review approved.\n\n${summary}`
     await SessionManager.deliver({
       target: sessionID,

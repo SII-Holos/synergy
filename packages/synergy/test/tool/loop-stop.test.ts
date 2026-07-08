@@ -140,6 +140,58 @@ describe("loop_stop", () => {
     })
   })
 
+  test("does not launch reviewer when stop request cannot be recorded", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = sessionWithLightLoop(true)
+        const launch = mock(async () => ({ id: "ctx_should_not_launch", sessionID: "ses_should_not_launch" }))
+        let updateCalls = 0
+        ;(Session.get as any) = mock(async () => session)
+        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
+          updateCalls++
+          if (updateCalls === 1) {
+            fn({ id: session.id, workflow: { kind: "plan" } })
+            return
+          }
+          fn(session)
+        })
+        ;(Cortex.launch as any) = launch
+
+        const tool = await LoopStopTool.init()
+        await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow(
+          "Failed to record Light Loop stop request",
+        )
+
+        expect(launch).not.toHaveBeenCalled()
+        expect((session.workflow as any).stopRequest).toBeUndefined()
+      },
+    })
+  })
+
+  test("clears stop request and preserves launch error when reviewer launch fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = sessionWithLightLoop(true)
+        ;(Session.get as any) = mock(async () => session)
+        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
+          fn(session)
+        })
+        ;(Cortex.launch as any) = mock(async () => {
+          throw new Error("reviewer launch failed")
+        })
+
+        const tool = await LoopStopTool.init()
+        await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow("reviewer launch failed")
+
+        expect((session.workflow as any).stopRequest).toBeUndefined()
+      },
+    })
+  })
+
   test("throws when summary is empty", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

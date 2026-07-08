@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { AgentDelegation } from "../../src/agent/delegation"
 import { getDelegatableAgents } from "../../src/agent/prompt/agent-table"
 
 const ctx = {
@@ -47,6 +48,7 @@ test("hidden recursive reviewer agents stay off primary tables but can delegate 
   expect(reviewerNames).toContain("quality-gatekeeper")
   expect(reviewerNames).not.toContain("supervisor")
   expect(reviewerNames).not.toContain("lightloop-reviewer")
+  expect(AgentDelegation.canDelegateTo(agents["implementation-engineer"], undefined)).toBe(false)
 
   for (const caller of ["synergy", "synergy-max"]) {
     for (const agent of [supervisor, reviewer]) {

@@ -479,6 +479,20 @@ describe("tool exposure", () => {
         expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(true)
         expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(true)
         expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(false)
+
+        await Session.update(child.id, (draft) => {
+          if (!draft.cortex) throw new Error("expected cortex child")
+          draft.cortex.agent = "implementation-engineer"
+        })
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: child.id,
+          session: await Session.get(child.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
       },
     })
   })

@@ -41,6 +41,7 @@ import { PerformanceIssues } from "@/performance/issues"
 import { PerformanceMetrics } from "@/performance/metrics"
 import { SkillPaths } from "@/skill/paths"
 import { PerformanceSpans } from "@/performance/spans"
+import { LightLoopReviewAccess } from "./light-loop-review-access"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -890,13 +891,14 @@ export namespace ToolResolver {
   }
 
   async function isRecordedLightLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
-    if (input.agent.name !== "lightloop-reviewer") return false
-    const parentSessionID = input.session?.cortex?.parentSessionID
-    if (!parentSessionID || !input.session?.id) return false
-
-    const parent = await Session.get(parentSessionID).catch(() => undefined)
-    if (parent?.workflow?.kind !== "lightloop") return false
-    return parent.workflow.stopRequest?.reviewSessionID === input.session.id
+    if (!input.session?.id) return false
+    return (
+      (await LightLoopReviewAccess.resolve({
+        agent: input.agent.name,
+        reviewSessionID: input.session.id,
+        reviewSession: input.session,
+      })) !== undefined
+    )
   }
 
   async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {

@@ -4,6 +4,7 @@ import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./light-loop-reject.txt"
+import { LightLoopReviewAccess } from "@/session/light-loop-review-access"
 
 const parameters = z.object({
   sessionID: z.string().describe("The execution session ID provided in your launch context"),
@@ -26,10 +27,6 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     if (!reason) throw new Error("reason is required")
     if (!remaining) throw new Error("remaining is required")
     if (!instructions) throw new Error("instructions is required")
-    if (ctx.agent !== "lightloop-reviewer") {
-      throw new Error("Only the lightloop-reviewer agent may reject Light Loop stop requests")
-    }
-
     const target = await Session.get(sessionID)
     if (!target) throw new Error(`Session ${sessionID} not found`)
 
@@ -40,9 +37,12 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     const stopRequest = target.workflow.stopRequest
     if (!stopRequest) throw new Error(`Session ${sessionID} has no pending stop request`)
 
-    if (stopRequest.reviewSessionID !== ctx.sessionID) {
-      throw new Error("Only the recorded reviewer session may reject this stop request")
-    }
+    await LightLoopReviewAccess.assertForTarget({
+      agent: ctx.agent,
+      reviewSessionID: ctx.sessionID,
+      targetSessionID: sessionID,
+      action: "reject",
+    })
 
     const currentAttempts = target.workflow.review?.attempts ?? 0
     const now = Date.now()

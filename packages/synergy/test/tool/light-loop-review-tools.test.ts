@@ -53,6 +53,27 @@ function lightLoopSession(
   } as unknown as Session.Info
 }
 
+function reviewerSession(id = "ses_reviewer", parentSessionID = "ses_exec"): Session.Info {
+  return {
+    id,
+    cortex: {
+      parentSessionID,
+      parentMessageID: "msg_1",
+      description: "Review LightLoop",
+      agent: "lightloop-reviewer",
+      executionRole: "delegated_subagent",
+      startedAt: Date.now(),
+      status: "running",
+    },
+  } as unknown as Session.Info
+}
+
+function mockSessions(target: Session.Info, reviewers: Session.Info[] = [reviewerSession()]) {
+  const sessions = new Map<string, Session.Info>([[target.id, target]])
+  for (const reviewer of reviewers) sessions.set(reviewer.id, reviewer)
+  ;(Session.get as any) = mock(async (sessionID: string) => sessions.get(sessionID))
+}
+
 describe("light_loop_approve", () => {
   test("clears LightLoop workflow when called from the recorded review session", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -71,7 +92,7 @@ describe("light_loop_approve", () => {
         })
 
         let workflowCleared = false
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
           if (session.workflow === undefined) workflowCleared = true
@@ -117,7 +138,7 @@ describe("light_loop_approve", () => {
           },
         })
 
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopApproveTool.init()
         await expect(tool.execute({ sessionID: "ses_exec", summary: "approved" }, ctx("ses_exec"))).rejects.toThrow(
@@ -133,7 +154,7 @@ describe("light_loop_approve", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = lightLoopSession()
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopApproveTool.init()
         await expect(tool.execute({ sessionID: "ses_exec", summary: "approved" }, ctx("ses_reviewer"))).rejects.toThrow(
@@ -159,7 +180,7 @@ describe("light_loop_approve", () => {
           },
         })
 
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopApproveTool.init()
         await expect(
@@ -189,7 +210,7 @@ describe("light_loop_reject", () => {
         })
 
         const deliveries: any[] = []
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
         })
@@ -240,7 +261,7 @@ describe("light_loop_reject", () => {
           },
         })
 
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopRejectTool.init()
         await expect(
@@ -269,7 +290,7 @@ describe("light_loop_reject", () => {
           },
         })
 
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopRejectTool.init()
 
@@ -303,7 +324,7 @@ describe("light_loop_reject", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = lightLoopSession()
-        ;(Session.get as any) = mock(async () => session)
+        mockSessions(session)
 
         const tool = await LightLoopRejectTool.init()
         await expect(
