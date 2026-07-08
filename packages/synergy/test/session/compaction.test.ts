@@ -115,6 +115,93 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.read).toBe(256)
   })
 
+  test("extracts OpenAI prompt cache hit and miss metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        openai: {
+          prompt_cache_hit_tokens: 300,
+          prompt_cache_miss_tokens: 700,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(700)
+    expect(result.tokens.cache.read).toBe(300)
+  })
+
+  test("extracts DeepSeek prompt cache metadata from provider namespace", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        deepseek: {
+          prompt_cache_hit_tokens: 128,
+          prompt_cache_miss_tokens: 872,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(872)
+    expect(result.tokens.cache.read).toBe(128)
+  })
+
+  test("extracts hyphenated openai-compatible prompt cache metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        "openai-compatible": {
+          prompt_cache_hit_tokens: 64,
+          prompt_cache_miss_tokens: 936,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(936)
+    expect(result.tokens.cache.read).toBe(64)
+  })
+
+  test("handles Bedrock cache write metadata without subtracting cached reads from input", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        cachedInputTokens: 150,
+      },
+      metadata: {
+        bedrock: {
+          usage: {
+            cacheWriteInputTokens: 225,
+          },
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(1000)
+    expect(result.tokens.cache.read).toBe(150)
+    expect(result.tokens.cache.write).toBe(225)
+  })
+
   test("handles anthropic cache write metadata", () => {
     const model = createModel({ context: 100_000, output: 32_000 })
     const result = Session.getUsage({
