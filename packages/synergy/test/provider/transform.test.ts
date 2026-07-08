@@ -473,9 +473,13 @@ describe("ProviderTransform.message - empty image handling", () => {
     const result = ProviderTransform.message(msgs, mockModel)
 
     expect(result).toHaveLength(1)
-    expect(result[0].content).toHaveLength(2)
-    expect(result[0].content[0]).toEqual({ type: "text", text: "What is in this image?" })
-    expect(result[0].content[1]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
+    expect(result[0].content).toHaveLength(3)
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+    })
+    expect(result[0].content[1]).toEqual({ type: "text", text: "What is in this image?" })
+    expect(result[0].content[2]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
   })
 
   test("should handle mixed valid and empty images", () => {
@@ -495,10 +499,14 @@ describe("ProviderTransform.message - empty image handling", () => {
     const result = ProviderTransform.message(msgs, mockModel)
 
     expect(result).toHaveLength(1)
-    expect(result[0].content).toHaveLength(3)
-    expect(result[0].content[0]).toEqual({ type: "text", text: "Compare these images" })
-    expect(result[0].content[1]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
-    expect(result[0].content[2]).toEqual({
+    expect(result[0].content).toHaveLength(4)
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+    })
+    expect(result[0].content[1]).toEqual({ type: "text", text: "Compare these images" })
+    expect(result[0].content[2]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
+    expect(result[0].content[3]).toEqual({
       type: "text",
       text: "ERROR: Image file is empty or corrupted. Please provide a valid image.",
     })
