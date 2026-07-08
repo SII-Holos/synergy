@@ -683,4 +683,133 @@ describe("session migrations", () => {
       },
     })
   })
+
+  test("migrates legacy workflow session fields and message metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const latticeSession = await Session.create({ title: "Legacy Lattice" })
+        const lightloopSession = await Session.create({ title: "Legacy Light Loop" })
+        const planSession = await Session.create({ title: "Legacy Plan" })
+        const conflictSession = await Session.create({ title: "Legacy Conflict" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+
+        await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)), {
+          ...latticeSession,
+          planMode: true,
+          lightLoop: { active: true, taskDescription: "ignored" },
+          lattice: { runID: "ltr_legacy", mode: "auto", firstBlueprintStarted: true },
+        })
+        await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(lightloopSession.id)), {
+          ...lightloopSession,
+          lightLoop: { active: true, taskDescription: "Keep going" },
+        })
+        await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(planSession.id)), {
+          ...planSession,
+          planMode: true,
+        })
+
+        const loopID = Identifier.ascending("blueprint_loop")
+        await Storage.write(StoragePath.blueprintLoop(scope, loopID), {
+          id: loopID,
+          noteID: "note_conflict",
+          title: "Conflict Loop",
+          sessionID: conflictSession.id,
+          scopeID: scope,
+          status: "running",
+          source: "user",
+          time: { created: Date.now(), updated: Date.now() },
+        })
+        await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(conflictSession.id)), {
+          ...conflictSession,
+          blueprint: { loopID },
+          planMode: true,
+          lightLoop: { active: true, taskDescription: "conflict" },
+        })
+
+        const planMessageID = Identifier.ascending("message")
+        await Storage.write(StoragePath.messageInfo(scope, Identifier.asSessionID(planSession.id), planMessageID), {
+          id: planMessageID,
+          sessionID: planSession.id,
+          role: "user",
+          metadata: {
+            planModeRequest: true,
+            planModeAgent: "synergy",
+            planModeWrapperVersion: 1,
+            keep: "value",
+          },
+        })
+
+        const lightloopMessageID = Identifier.ascending("message")
+        await Storage.write(
+          StoragePath.messageInfo(scope, Identifier.asSessionID(lightloopSession.id), lightloopMessageID),
+          {
+            id: lightloopMessageID,
+            sessionID: lightloopSession.id,
+            role: "user",
+            metadata: {
+              workflowMode: "light_loop",
+              workflowModeAgent: "synergy-max",
+              workflowModeVersion: 1,
+            },
+          },
+        )
+
+        const migration = migrations.find((entry) => entry.id === "20260708-session-workflow-field")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const migratedLattice = await Storage.read<any>(
+          StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)),
+        )
+        const migratedLightloop = await Storage.read<any>(
+          StoragePath.sessionInfo(scope, Identifier.asSessionID(lightloopSession.id)),
+        )
+        const migratedPlan = await Storage.read<any>(
+          StoragePath.sessionInfo(scope, Identifier.asSessionID(planSession.id)),
+        )
+        const migratedConflict = await Storage.read<any>(
+          StoragePath.sessionInfo(scope, Identifier.asSessionID(conflictSession.id)),
+        )
+
+        expect(migratedLattice.workflow).toEqual({
+          kind: "lattice",
+          runID: "ltr_legacy",
+          mode: "auto",
+          firstBlueprintStarted: true,
+        })
+        expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", taskDescription: "Keep going" })
+        expect(migratedPlan.workflow).toEqual({ kind: "plan" })
+        expect(migratedConflict.workflow).toBeUndefined()
+
+        for (const migrated of [migratedLattice, migratedLightloop, migratedPlan, migratedConflict]) {
+          expect("planMode" in migrated).toBe(false)
+          expect("lightLoop" in migrated).toBe(false)
+          expect("lattice" in migrated).toBe(false)
+        }
+
+        const migratedPlanMessage = await Storage.read<any>(
+          StoragePath.messageInfo(scope, Identifier.asSessionID(planSession.id), planMessageID),
+        )
+        expect(migratedPlanMessage.metadata).toEqual({
+          workflow: "plan",
+          workflowAgent: "synergy",
+          workflowVersion: 1,
+          keep: "value",
+        })
+
+        const migratedLightloopMessage = await Storage.read<any>(
+          StoragePath.messageInfo(scope, Identifier.asSessionID(lightloopSession.id), lightloopMessageID),
+        )
+        expect(migratedLightloopMessage.metadata).toEqual({
+          workflow: "lightloop",
+          workflowAgent: "synergy-max",
+          workflowVersion: 1,
+        })
+      },
+    })
+  })
 })

@@ -83,21 +83,19 @@ function SourceSessionLink(props: { sessionID: string | undefined }): JSX.Elemen
   }) as unknown as JSX.Element
 }
 
-function WorkflowModeUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
+function WorkflowUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
   const label = createMemo(() => {
-    const mode = props.message.metadata?.workflowMode
-    if (mode === "plan") return "Plan mode"
+    const mode = props.message.metadata?.workflow
+    if (mode === "plan") return "Plan"
     if (mode === "lattice") return "Lattice"
-    if (mode === "light_loop") return "Light loop"
-    // Legacy back compat
-    if (props.message.metadata?.planModeRequest === true) return "Plan mode"
-    return "Workflow mode"
+    if (mode === "lightloop") return "Light Loop"
+    return "Workflow"
   })
   const kind = createMemo(() => {
-    const mode = props.message.metadata?.workflowMode
-    if (mode === "plan" || props.message.metadata?.planModeRequest === true) return "plan-mode-request"
-    if (mode === "lattice") return "lattice-mode-request"
-    if (mode === "light_loop") return "light-loop-mode-request"
+    const mode = props.message.metadata?.workflow
+    if (mode === "plan") return "plan-request"
+    if (mode === "lattice") return "lattice-request"
+    if (mode === "lightloop") return "lightloop-request"
     return undefined
   })
   return h(
@@ -274,15 +272,14 @@ registerSpecialUserMessageRenderer({
 })
 
 registerSpecialUserMessageRenderer({
-  id: "workflow-mode-user-request",
+  id: "workflow-user-request",
   match(message) {
     return (
-      (typeof message.metadata?.workflowMode === "string" &&
-        ["plan", "lattice", "light_loop"].includes(message.metadata.workflowMode)) ||
-      message.metadata?.planModeRequest === true
+      typeof message.metadata?.workflow === "string" &&
+      ["plan", "lattice", "lightloop"].includes(message.metadata.workflow)
     )
   },
-  component: WorkflowModeUserRequestMessage,
+  component: WorkflowUserRequestMessage,
 })
 
 registerSpecialUserMessageRenderer({

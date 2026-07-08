@@ -1,4 +1,4 @@
-import { Show, createMemo, untrack } from "solid-js"
+import { Show, createMemo, createSignal, untrack, type JSX } from "solid-js"
 import type { Accessor } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,8 +8,6 @@ import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "./session-new-view"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
-import { SubagentDock } from "./subagent-dock"
-import { SessionProgressPanel } from "./session-progress-panel"
 import { SessionInbox } from "./session-inbox"
 import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
@@ -19,6 +17,7 @@ import type { useSDK } from "@/context/sdk"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
+import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -54,6 +53,7 @@ export function PromptDock(props: {
   const forkSourceID = createMemo(() => promptDockForkSourceID(meta(), props.forkedFromID))
   const returnPath = createMemo(() => promptDockBackPath(meta(), props.backPath?.()))
   const cortex = createMemo(() => meta().cortex)
+  const [priorityControl, setPriorityControl] = createSignal<JSX.Element | undefined>(undefined)
   const subagentFooter = createMemo(() => {
     const delegation = cortex()
     if (!delegation || !props.sessionID) return undefined
@@ -78,15 +78,8 @@ export function PromptDock(props: {
           "md:max-w-[54rem]": !props.showTabs(),
         }}
       >
-        {/* Out-of-flow overlay anchored to the top of the content area:
-            subagent dock sits above, progress island below. Both float
-            outside normal flow so expanding the island never changes
-            --prompt-height. */}
         <Show when={props.sessionID}>
-          <div class="absolute inset-x-0 bottom-full flex flex-col items-center pointer-events-none">
-            <SubagentDock sessionID={props.sessionID!} />
-            <SessionProgressPanel sessionID={props.sessionID!} />
-          </div>
+          <PromptDockFloatLayer sessionID={props.sessionID!} priorityControl={priorityControl()} />
         </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
@@ -181,6 +174,7 @@ export function PromptDock(props: {
                     onNewSessionWorkspaceSelectionChange={props.onNewSessionWorkspaceSelectionChange}
                     onNewSessionWorkspaceSelectionReset={props.onNewSessionWorkspaceSelectionReset}
                     hideAgentSelector={!meta().showInputBar}
+                    onPriorityControlChange={(control) => setPriorityControl(() => control)}
                   />
                   <Show when={props.sessionID}>
                     <SessionInbox

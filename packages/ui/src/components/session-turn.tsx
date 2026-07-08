@@ -142,18 +142,22 @@ export function turnCompletionStats(messages: readonly AssistantMessage[]): Turn
     (sum, message) => {
       const tokens = message.tokens
       if (tokens) {
-        sum.input += ModelLimit.actualInput(tokens)
+        sum.input += tokens.input
         sum.output += tokens.output
         sum.reasoning += tokens.reasoning
+        sum.cacheRead += tokens.cache.read
+        sum.cacheWrite += tokens.cache.write
       }
       sum.cost += message.cost ?? 0
       return sum
     },
-    { input: 0, output: 0, reasoning: 0, cost: 0 },
+    { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
   )
 
   const segments: string[] = []
   if (totals.input > 0) segments.push(`${formatTurnTokenCount(totals.input)} input`)
+  if (totals.cacheRead > 0) segments.push(`${formatTurnTokenCount(totals.cacheRead)} cache read`)
+  if (totals.cacheWrite > 0) segments.push(`${formatTurnTokenCount(totals.cacheWrite)} cache write`)
   if (totals.output > 0) segments.push(`${formatTurnTokenCount(totals.output)} output`)
   if (totals.reasoning > 0) segments.push(`${formatTurnTokenCount(totals.reasoning)} reasoning`)
   const cost = formatTurnCost(totals.cost)

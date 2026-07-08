@@ -11,10 +11,10 @@ The `scope` parameter controls where new notes are created:
 - "current" (default): Creates in the current project scope
 - "home": Creates in the home scope (visible from all projects)
 
-Blueprint creation and editing is only available in Plan Mode. Outside Plan Mode, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan Mode will be rejected with a semantic error.
+Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error.
 
-Use `kind:"blueprint"` in Plan Mode when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer.
+Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer.
 
-In Plan Mode, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description`, `defaultAgent`, and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself.
+In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description`, `defaultAgent`, and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself.
 
 When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.

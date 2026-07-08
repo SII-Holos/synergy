@@ -38,6 +38,7 @@ import { SessionModePolicy } from "./tool-mode-policy"
 import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
 import { PerformanceIssues } from "@/performance/issues"
 import { PerformanceMetrics } from "@/performance/metrics"
+import { SkillPaths } from "@/skill/paths"
 import { PerformanceSpans } from "@/performance/spans"
 
 export namespace ToolResolver {
@@ -864,7 +865,7 @@ export namespace ToolResolver {
 
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
-    if (session?.planMode || session?.blueprint?.loopID || session?.lattice) {
+    if (session?.workflow?.kind === "plan" || session?.workflow?.kind === "lattice" || session?.blueprint?.loopID) {
       result.add("note")
     }
     if (session?.interaction?.source === "chronicler") {
@@ -962,7 +963,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (def.id === "loop_stop" && !input.session?.lightLoop?.active) {
+      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -1220,6 +1221,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
+                const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1231,6 +1233,7 @@ export namespace ToolResolver {
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
                   readRoots: [synergyRoot],
+                  trustedRoots,
                   synergyRoot,
                 })
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
@@ -1464,6 +1467,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
+                  const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
@@ -1476,6 +1480,7 @@ export namespace ToolResolver {
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
                     synergyRoot: Global.Path.root,
+                    trustedRoots,
                   })
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                     profileId,
