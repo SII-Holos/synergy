@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { BashTool } from "../../src/tool/bash"
 import { ScopeContext } from "../../src/scope/context"
@@ -7,6 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
+import { Shell } from "../../src/util/shell"
 
 const ctx = {
   sessionID: "test",
@@ -32,6 +33,20 @@ function metadataTracker() {
 }
 
 const projectRoot = path.join(__dirname, "../..")
+const originalShell = process.env.SHELL
+
+beforeEach(() => {
+  delete process.env.SHELL
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
+})
+
+afterEach(() => {
+  if (originalShell === undefined) delete process.env.SHELL
+  else process.env.SHELL = originalShell
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
+})
 
 function bunEval(script: string) {
   const executable = process.execPath.replace(/\\/g, "/")

@@ -108,6 +108,39 @@ describe("NoteStore", () => {
     })
   })
 
+  test("normalizes legacy notes when rebuilding metadata", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const noteID = Identifier.ascending("note")
+        const now = Date.now()
+        await Storage.write(StoragePath.note(Identifier.asScopeID(scope.id), noteID), {
+          id: noteID,
+          title: "Legacy metadata note",
+          time: { created: now, updated: now },
+        })
+
+        const metaList = await NoteStore.listMeta(scope.id, "all")
+        const meta = metaList.find((entry) => entry.id === noteID)
+
+        expect(meta).toMatchObject({
+          id: noteID,
+          title: "Legacy metadata note",
+          pinned: false,
+          global: false,
+          archived: false,
+          tags: [],
+          kind: "note",
+          version: 1,
+        })
+        expect(meta?.searchText).toContain("Legacy metadata note")
+      },
+    })
+  })
+
   test("getAny resolves notes outside the active and home scopes", async () => {
     await using sourceTmp = await tmpdir()
     await using activeTmp = await tmpdir()
