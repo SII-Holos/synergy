@@ -306,5 +306,63 @@ describe("SessionWorking", () => {
         },
       })
     })
+
+    test("resumePending reconciles interrupted Cortex delegation state after restart", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const parentMessageID = Identifier.ascending("message")
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Interrupted child task",
+              agent: "developer",
+              startedAt: Date.now(),
+              status: "running",
+            },
+          })
+
+          await Session.update(child.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: child.id,
+            role: "assistant",
+            parentID: parentMessageID,
+            time: { created: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          await SessionInvoke.resumePending()
+
+          const refreshed = await Session.get(child.id)
+          expect(refreshed.cortex?.status).toBe("cancelled")
+          expect(refreshed.cortex?.completedAt).toBeNumber()
+          expect(refreshed.cortex?.error).toContain("Server restarted")
+          expect(refreshed.pendingReply).toBeUndefined()
+          expect(await SessionWorking.resolve(child.id)).toBeUndefined()
+
+          const messages = await Session.messages({ sessionID: child.id })
+          const assistant = messages.find((message) => message.info.role === "assistant")?.info as
+            | import("../../src/session/message-v2").MessageV2.Assistant
+            | undefined
+          assertExists(assistant)
+          expect(assistant.time.completed).toBeNumber()
+          expect(assistant.finish).toBe("error")
+        },
+      })
+    })
   })
 })

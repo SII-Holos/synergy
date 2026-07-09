@@ -1722,6 +1722,8 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
   )
 
   export async function resumePending(): Promise<void> {
+    await reconcileInterruptedCortexDelegations()
+
     const sessionIDs = await SessionManager.listPendingReply()
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
@@ -1752,6 +1754,28 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
       }
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+    }
+  }
+
+  async function reconcileInterruptedCortexDelegations(): Promise<void> {
+    const sessionIDs = await SessionManager.listInterruptedCortexDelegations()
+    for (const sessionID of sessionIDs) {
+      const session = await SessionManager.getSession(sessionID)
+      if (!session?.cortex) continue
+      if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
+      if (SessionManager.isRunning(sessionID)) continue
+
+      log.warn("reconciling interrupted Cortex delegation", { sessionID, status: session.cortex.status })
+      await repairAfterAbort(sessionID)
+      const completedAt = Date.now()
+      await Session.update(sessionID, (draft) => {
+        if (!draft.cortex) return
+        if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
+        draft.cortex.status = "cancelled"
+        draft.cortex.completedAt ??= completedAt
+        draft.cortex.error ??= "Server restarted before this delegated task completed."
+        draft.pendingReply = undefined
+      })
     }
   }
 
