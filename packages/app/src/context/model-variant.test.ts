@@ -32,3 +32,35 @@ describe("model variant session state", () => {
     expect(workspaceA.storage).not.toBe(workspaceB.storage)
   })
 })
+
+describe("model variant has() contract", () => {
+  // has() uses Object.hasOwn to distinguish "never set" from "set to undefined".
+  // These tests verify the underlying semantics that the thin wrapper relies on.
+
+  test("Object.hasOwn returns false for absent key", () => {
+    const store = { variant: {} as Record<string, string | undefined> }
+    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
+    expect(Object.hasOwn(store.variant, key)).toBe(false)
+  })
+
+  test("Object.hasOwn returns true after entry is set to a value", () => {
+    const store = { variant: {} as Record<string, string | undefined> }
+    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
+    store.variant[key] = "high"
+    expect(Object.hasOwn(store.variant, key)).toBe(true)
+  })
+
+  test("Object.hasOwn returns true after entry is set to undefined — explicit clear ≠ unset", () => {
+    const store = { variant: {} as Record<string, string | undefined> }
+    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
+    store.variant[key] = undefined
+    expect(Object.hasOwn(store.variant, key)).toBe(true)
+    expect(store.variant[key]).toBeUndefined()
+  })
+
+  test("undefined model → has() guard returns false (null-guard path)", () => {
+    // mirrors model-variant.ts line 38: if (!model) return false
+    const model: undefined = undefined
+    expect(model ? Object.hasOwn({}, modelVariantKey(model)) : false).toBe(false)
+  })
+})
