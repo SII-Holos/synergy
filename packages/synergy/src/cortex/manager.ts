@@ -11,6 +11,7 @@ import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
+import { PermissionNext } from "@/permission/next"
 import { CortexTypes } from "./types"
 import { Trajectory } from "./trajectory"
 import { CortexConcurrency } from "./concurrency"
@@ -92,9 +93,12 @@ export namespace Cortex {
 
     const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
-    const blockedTools = Array.from(
+    const blockedCoordinationTools = Array.from(
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
+    const agent = await Agent.get(input.agent)
+    const delegatedSessionDenies =
+      executionRole === "delegated_subagent" ? delegatedCoordinationDenies(agent, blockedCoordinationTools) : []
 
     let session: import("../session/types").Info
 
@@ -123,16 +127,7 @@ export namespace Cortex {
         scope: parent.scope as import("@/scope").Scope,
         parentID: input.parentSessionID,
         title: `[Cortex] ${input.description} (@${input.agent})`,
-        permission: [
-          { permission: "question", pattern: "*", action: "deny" },
-          ...(executionRole === "delegated_subagent"
-            ? blockedTools.map((tool) => ({
-                pattern: "*",
-                action: "deny" as const,
-                permission: tool,
-              }))
-            : []),
-        ],
+        permission: [{ permission: "question", pattern: "*", action: "deny" }, ...delegatedSessionDenies],
         cortex: {
           parentSessionID: input.parentSessionID,
           parentMessageID: input.parentMessageID,
@@ -245,6 +240,16 @@ export namespace Cortex {
     })
 
     Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+  }
+
+  function delegatedCoordinationDenies(agent: Agent.Info | undefined, tools: string[]): PermissionNext.Ruleset {
+    return tools
+      .filter((tool) => !agent || PermissionNext.evaluate(tool, "*", agent.permission).action !== "allow")
+      .map((tool) => ({
+        pattern: "*",
+        action: "deny" as const,
+        permission: tool,
+      }))
   }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {

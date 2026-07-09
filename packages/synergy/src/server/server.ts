@@ -968,6 +968,52 @@ export namespace Server {
           },
         )
         .post(
+          "/experimental/worktree/session/:sessionID/enter",
+          describeRoute({
+            summary: "Enter worktree",
+            description: "Bind an existing git worktree to a session.",
+            operationId: "worktree.enter",
+            responses: {
+              200: {
+                description: "Session moved to worktree",
+                content: {
+                  "application/json": {
+                    schema: resolver(Session.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              sessionID: z.string(),
+            }),
+          ),
+          validator(
+            "json",
+            z
+              .object({
+                target: z.string().min(1),
+                force: z.boolean().optional().default(false),
+              })
+              .meta({ ref: "WorktreeEnterInput" }),
+          ),
+          async (c) => {
+            const sessionID = c.req.valid("param").sessionID
+            const body = c.req.valid("json")
+            const existing = await Session.get(sessionID)
+            if (!existing) {
+              return c.json({ name: "SessionNotFound", data: { message: `Session not found: ${sessionID}` } }, 404)
+            }
+            assertWorktreeSessionIdle(sessionID)
+            await Worktree.enter({ sessionID, target: body.target, force: body.force })
+            const session = await Session.get(sessionID)
+            return c.json(session)
+          },
+        )
+        .post(
           "/experimental/worktree/session/:sessionID/leave",
           describeRoute({
             summary: "Leave worktree",

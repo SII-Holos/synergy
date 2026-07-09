@@ -2,6 +2,7 @@ import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onClea
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -36,6 +37,7 @@ import { same } from "@/utils/same"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
+import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
@@ -51,12 +53,17 @@ import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
 import {
+  createWorkspaceTransitionErrorProgress,
+  createWorkspaceTransitionLoadingProgress,
+  createWorkspaceTransitionSuccessProgress,
   defaultNewSessionWorkspaceSelection,
   normalizePathForCompare,
+  worktreeSetupFailureMessage,
   type NewSessionWorkspaceSelection,
+  type SessionWorkspaceProgressActions,
+  type SessionWorkspaceProgress,
+  type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
-import { WorktreeTransitionContent } from "@/components/session/worktree-transition-dialog"
-import { worktreeTransition, clearWorktreeTransition } from "@/components/session/worktree-progress-signals"
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 
@@ -201,6 +208,121 @@ function SessionPageContent() {
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
   const [emptyRefreshing, setEmptyRefreshing] = createSignal(false)
+  const [workspaceProgress, setWorkspaceProgress] = createSignal<Record<string, SessionWorkspaceProgress>>({})
+  const [workspaceProgressActions, setWorkspaceProgressActions] = createSignal<
+    Record<string, SessionWorkspaceProgressActions>
+  >({})
+  const visibleWorkspaceProgress = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return null
+    return workspaceProgress()[sessionID] ?? null
+  })
+  const visibleWorkspaceProgressActions = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return undefined
+    return workspaceProgressActions()[sessionID]
+  })
+  const workspaceTransitionPending = createMemo(() => visibleWorkspaceProgress()?.phase === "loading")
+  const clearWorkspaceProgress = (sessionID: string) => {
+    setWorkspaceProgress((current) => {
+      const next = { ...current }
+      delete next[sessionID]
+      return next
+    })
+    setWorkspaceProgressActions((current) => {
+      const next = { ...current }
+      delete next[sessionID]
+      return next
+    })
+  }
+  const setVisibleWorkspaceProgress = (
+    sessionID: string,
+    progress: SessionWorkspaceProgress,
+    actions?: SessionWorkspaceProgressActions,
+  ) => {
+    setWorkspaceProgress((current) => ({ ...current, [sessionID]: progress }))
+    setWorkspaceProgressActions((current) => {
+      if (actions?.retry || actions?.dismiss) return { ...current, [sessionID]: actions }
+      const next = { ...current }
+      delete next[sessionID]
+      return next
+    })
+  }
+  const startWorkspaceTransition = (request: SessionWorkspaceTransitionRequest) => {
+    if (workspaceProgress()[request.sessionID]?.phase === "loading") return
+    const retry = () => startWorkspaceTransition(request)
+    setVisibleWorkspaceProgress(request.sessionID, createWorkspaceTransitionLoadingProgress(request))
+    const run = async () => {
+      try {
+        if (request.operation === "leave") {
+          await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
+          const progress = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
+          await sync.session.sync(request.sessionID).catch(() => undefined)
+          setVisibleWorkspaceProgress(request.sessionID, progress, {
+            dismiss: () => clearWorkspaceProgress(request.sessionID),
+          })
+          showToast({ type: "info", title: "Left worktree", description: "Session returned to the main checkout." })
+          return
+        }
+
+        const result = await sdk.client.worktree.create({
+          directory: request.directory,
+          worktreeCreateInput: {
+            sessionID: request.sessionID,
+            bind: true,
+            name: request.name,
+          },
+        })
+        const setupFailure = worktreeSetupFailureMessage(result.data)
+        if (setupFailure) {
+          await sdk.client.worktree
+            .leave({ directory: request.directory, sessionID: request.sessionID })
+            .catch(() => undefined)
+          await sync.session.sync(request.sessionID).catch(() => undefined)
+          throw new Error(setupFailure)
+        }
+        const description = result.data?.name
+          ? `This session now runs in ${result.data.name}.`
+          : "This session now runs in the new worktree."
+        const progress = createWorkspaceTransitionSuccessProgress({ operation: "enter", description })
+        await sync.session.sync(request.sessionID).catch(() => undefined)
+        setVisibleWorkspaceProgress(request.sessionID, progress, {
+          dismiss: () => clearWorkspaceProgress(request.sessionID),
+        })
+        showToast({ type: "info", title: "Moved to worktree", description })
+      } catch (error) {
+        const message = requestErrorMessage(error)
+        setVisibleWorkspaceProgress(
+          request.sessionID,
+          createWorkspaceTransitionErrorProgress({
+            operation: request.operation,
+            message,
+          }),
+          {
+            retry,
+            dismiss: () => clearWorkspaceProgress(request.sessionID),
+          },
+        )
+        showToast({
+          type: "error",
+          title: request.operation === "leave" ? "Leave worktree failed" : "Move to worktree failed",
+          description: message,
+        })
+      }
+    }
+    void run()
+  }
+  const setNewSessionWorkspaceProgress = (input: {
+    sessionID: string
+    progress: SessionWorkspaceProgress | null
+    actions?: SessionWorkspaceProgressActions
+  }) => {
+    if (!input.progress) {
+      clearWorkspaceProgress(input.sessionID)
+      return
+    }
+    setVisibleWorkspaceProgress(input.sessionID, input.progress, input.actions)
+  }
   // A fresh rewind (new rollback event id) always shows its banner, even if a
   // previous banner was dismissed.
   createEffect(
@@ -965,21 +1087,10 @@ function SessionPageContent() {
             }}
           >
             <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-              <Show when={worktreeTransition()}>
-                {(transition) => (
-                  <Show when={transition().sessionID === params.id}>
-                    <div class="absolute inset-0 z-40 flex flex-col bg-background-base">
-                      <WorktreeTransitionContent
-                        mode={transition().mode}
-                        sessionID={transition().sessionID}
-                        directory={transition().directory}
-                        onClose={clearWorktreeTransition}
-                      />
-                    </div>
-                  </Show>
-                )}
-              </Show>
-              <SessionTopBar />
+              <SessionTopBar
+                onWorkspaceTransition={startWorkspaceTransition}
+                workspaceTransitionPending={workspaceTransitionPending}
+              />
               <Show when={showRollbackBanner()}>
                 <RollbackBanner
                   sessionID={params.id!}
@@ -992,7 +1103,7 @@ function SessionPageContent() {
                 <Switch>
                   <Match when={!isNewSession()}>
                     <Show
-                      when={activeMessage() || (timeline()?.length ?? 0) > 0}
+                      when={activeMessage() || (timeline()?.length ?? 0) > 0 || visibleWorkspaceProgress()}
                       fallback={
                         <Show
                           when={messagesReady()}
@@ -1063,6 +1174,8 @@ function SessionPageContent() {
                           paramsDir={params.dir!}
                           timeline={timeline}
                           pendingTimeline={pendingTimeline}
+                          workspaceTransition={visibleWorkspaceProgress}
+                          workspaceTransitionActions={visibleWorkspaceProgressActions}
                           visibleUserMessages={visibleUserMessages}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
@@ -1126,6 +1239,8 @@ function SessionPageContent() {
               newSessionCurrentDirectory={() => sync.data.path.directory}
               onNewSessionWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
               onNewSessionWorkspaceSelectionReset={() => setStore("newSessionWorkspaceSelection", undefined)}
+              onNewSessionStartProgress={setNewSessionWorkspaceProgress}
+              workspaceTransitionPending={workspaceTransitionPending}
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}

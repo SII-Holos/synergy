@@ -79,6 +79,26 @@ export const WorkflowInfo = z
     z.object({
       kind: z.literal("lightloop"),
       taskDescription: z.string(),
+      stopRequest: z
+        .object({
+          summary: z.string(),
+          completed: z.array(z.string()).optional(),
+          evidence: z.array(z.string()).optional(),
+          remaining: z.array(z.string()).optional(),
+          requestedAt: z.number(),
+          requesterSessionID: z.string(),
+          requesterMessageID: z.string(),
+          reviewTaskID: z.string().optional(),
+          reviewSessionID: z.string().optional(),
+        })
+        .optional(),
+      review: z
+        .object({
+          attempts: z.number(),
+          lastReason: z.string().optional(),
+          lastReviewedAt: z.number().optional(),
+        })
+        .optional(),
     }),
     z.object({
       kind: z.literal("lattice"),
