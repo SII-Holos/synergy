@@ -131,24 +131,22 @@ async function updateExisting(input: {
 
   return {
     title: nextTitle,
-      output: [
+    output: [
       `${label} updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
       `ID: ${input.id}`,
-        `Title: ${nextTitle}`,
-        `Kind: ${kind}`,
-        ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
-      ].join("\n"),
-      metadata: {
-        id: input.id,
-        action: input.action,
-        title: nextTitle,
-        kind,
-        ...(nextKind === "blueprint"
-          ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 }
-          : undefined),
-      } as Record<string, any>,
-    }
+      `Title: ${nextTitle}`,
+      `Kind: ${kind}`,
+      ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
+    ].join("\n"),
+    metadata: {
+      id: input.id,
+      action: input.action,
+      title: nextTitle,
+      kind,
+      ...(nextKind === "blueprint" ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 } : undefined),
+    } as Record<string, any>,
   }
+}
 
 export const NoteWriteTool = Tool.define("note_write", {
   description: DESCRIPTION,
