@@ -574,6 +574,7 @@ class McpSupervisorImpl {
       const normalized = Config.normalizeMcp(merged as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
 
       this.add(scopedKey, normalized)
+      await Bus.publish(ToolsChanged, { server: scopedKey })
       log.info("plugin MCP registered", { pluginId, serverKey, scopedKey, startup: normalized.startup })
     }
   }
@@ -588,6 +589,7 @@ class McpSupervisorImpl {
     await Promise.all(handles.map((h) => this.disconnect(h.name)))
     for (const h of handles) {
       this.handles.delete(h.name)
+      await Bus.publish(ToolsChanged, { server: h.name })
     }
   }
 

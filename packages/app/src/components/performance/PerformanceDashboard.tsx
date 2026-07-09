@@ -298,6 +298,12 @@ function SummaryCards(props: { summary: PerformanceSummary | null | undefined; i
       />
       <MetricCard label="Memory" value={formatChartBytes(resources()?.rssBytes)} icon="performance.memory" />
       <MetricCard
+        label="Tool child RSS"
+        value={`${formatChartBytes(resources()?.childProcessRssBytes)} · ${resources()?.childProcessCount ?? 0} active`}
+        icon="performance.memory"
+        tone={(resources()?.childProcessRssBytes ?? 0) > 0 ? "warning" : "default"}
+      />
+      <MetricCard
         label="Event loop p95"
         value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
         icon="performance.latency"
@@ -509,6 +515,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
       { title: "Slow providers", icon: "performance.providers" as const, items: top?.slowProviders ?? [] },
       { title: "Slow storage", icon: "performance.storage" as const, items: top?.slowStorage ?? [] },
       { title: "Slow library", icon: "performance.library" as const, items: top?.slowLibrary ?? [] },
+      { title: "Child process RSS", icon: "performance.memory" as const, items: top?.childProcesses ?? [] },
     ]
   })
   return (

@@ -20,7 +20,10 @@ export namespace PerformanceDashboard {
       ...row,
       labels: parseLabels(row.labels_json),
     }))
-    const resources = PerformanceStore.latestResource({ scopeID: input.scopeID })
+    const resources = PerformanceStore.latestResource({ scopeID: input.scopeID, processRole: "server" })
+    const resourceRows = PerformanceStore.resourceSince(since, { scopeID: input.scopeID })
+    const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
+    const childProcesses = rankChildProcesses(resourceRows)
     const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
@@ -66,13 +69,15 @@ export namespace PerformanceDashboard {
         heapTotalBytes: resources?.memory_heap_total_bytes ?? undefined,
         cpuUtilizationRatio: resources?.cpu_utilization_ratio ?? undefined,
         eventLoopLagP95Ms: PerformanceMetrics.percentile(
-          PerformanceStore.resourceSince(since, { scopeID: input.scopeID }).map((row) => row.event_loop_lag_ms ?? 0),
+          serverResourceRows.map((row) => row.event_loop_lag_ms ?? 0),
           95,
         ),
         appReadBytes: resources?.app_read_bytes ?? undefined,
         appWrittenBytes: resources?.app_written_bytes ?? undefined,
         appReadOps: resources?.app_read_ops ?? undefined,
         appWriteOps: resources?.app_write_ops ?? undefined,
+        childProcessCount: childProcesses.length,
+        childProcessRssBytes: childProcesses.reduce((sum, item) => sum + item.value, 0),
       },
       sessions: {
         turnCount: turns.length,
@@ -125,6 +130,7 @@ export namespace PerformanceDashboard {
         slowProviders: rank(llm, "providerID", "provider", "modelID", "model"),
         slowStorage: rank(storage, "operation"),
         slowLibrary: rank(library, "operation"),
+        childProcesses,
         slowFrontend: rank(
           [...frontendResources, ...frontendLongTasks],
           "routeName",
@@ -153,6 +159,34 @@ export namespace PerformanceDashboard {
           traceId: row.trace_id ?? undefined,
           sessionID: row.session_id ?? undefined,
           tool: row.tool ?? undefined,
+        }
+      })
+  }
+
+  function rankChildProcesses(rows: PerformanceStore.StoredResource[]): PerformanceSchema.RankedItem[] {
+    const latest = new Map<string, PerformanceStore.StoredResource>()
+    for (const row of rows) {
+      if (!row.process_role.startsWith("tool")) continue
+      if (row.memory_rss_bytes === undefined || row.memory_rss_bytes === null) continue
+      const id = row.process_id ?? (row.pid === undefined || row.pid === null ? undefined : `pid:${row.pid}`)
+      if (!id) continue
+      const existing = latest.get(id)
+      if (!existing || row.time > existing.time) latest.set(id, row)
+    }
+    return Array.from(latest.values())
+      .sort((a, b) => (b.memory_rss_bytes ?? 0) - (a.memory_rss_bytes ?? 0))
+      .slice(0, 5)
+      .map((row, index) => {
+        const labels = parseLabels(row.labels_json)
+        return {
+          id: `${row.sample_id}-${index}`,
+          label: String(labels.command ?? labels.description ?? row.process_id ?? row.pid ?? "tool child process"),
+          module: "process" as const,
+          value: row.memory_rss_bytes ?? 0,
+          unit: "bytes" as const,
+          processId: row.process_id ?? undefined,
+          pid: row.pid ?? undefined,
+          status: row.process_role,
         }
       })
   }

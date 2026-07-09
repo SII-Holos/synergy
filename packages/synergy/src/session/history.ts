@@ -302,13 +302,30 @@ export namespace SessionHistory {
     // (e.g. the loop's msgs.push of materialized inbox items) never touch the
     // cached list.
     const derived = MessageV2.deriveSemantics(raw)
-    return input.limit ? derived.slice(-input.limit) : derived
+    return sliceWithReferencedRoots(derived, input.limit)
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
     const raw = await rawMessages({ sessionID: input.sessionID })
     const result = input.raw ? raw : applyEvents(raw, await readEvents(input.sessionID))
-    return input.limit ? result.slice(-input.limit) : result
+    return sliceWithReferencedRoots(result, input.limit)
+  }
+
+  function sliceWithReferencedRoots(messages: MessageV2.WithParts[], limit: number | undefined) {
+    if (!limit) return messages
+    const window = messages.slice(-limit)
+    if (window.length === messages.length) return window
+
+    const included = new Set(window.map((msg) => msg.info.id))
+    const missingRootIDs = new Set<string>()
+    for (const msg of window) {
+      const rootID = msg.info.rootID
+      if (!rootID || included.has(rootID)) continue
+      missingRootIDs.add(rootID)
+    }
+    if (missingRootIDs.size === 0) return window
+
+    return messages.filter((msg) => included.has(msg.info.id) || missingRootIDs.has(msg.info.id))
   }
 
   export async function readEvents(sessionID: string) {

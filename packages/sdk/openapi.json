@@ -18710,6 +18710,14 @@
           },
           "status": {
             "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           }
         },
         "required": ["id", "label", "value", "unit"]
@@ -18936,6 +18944,14 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "childProcessCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "childProcessRssBytes": {
+                "type": "number"
               }
             }
           },
@@ -19175,6 +19191,12 @@
                   "$ref": "#/components/schemas/PerfRankedItem"
                 }
               },
+              "childProcesses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
               "slowFrontend": {
                 "type": "array",
                 "items": {
@@ -19189,6 +19211,7 @@
               "slowProviders",
               "slowStorage",
               "slowLibrary",
+              "childProcesses",
               "slowFrontend"
             ]
           },
