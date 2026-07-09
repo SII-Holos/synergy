@@ -116,7 +116,7 @@ describe("LightLoopContinuationPolicy", () => {
     expect(deliveries).toHaveLength(0)
   })
 
-  test("handle continues when a partial stop request has no reviewer session", async () => {
+  test("handle continues when stop request has no reviewer session (legacy or migration robustness)", async () => {
     const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
     ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
       deliveries.push(input)

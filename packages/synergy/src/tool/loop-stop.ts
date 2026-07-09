@@ -38,32 +38,6 @@ export const LoopStopTool = Tool.define("loop_stop", {
       }
     }
 
-    const requestedAt = Date.now()
-
-    let stopRequestRecorded = false
-    try {
-      await Session.update(ctx.sessionID, (draft) => {
-        if (draft.workflow?.kind !== "lightloop") return
-        draft.workflow = {
-          ...draft.workflow,
-          stopRequest: {
-            summary,
-            completed: params.completed,
-            evidence: params.evidence,
-            remaining: params.remaining,
-            requestedAt,
-            requesterSessionID: ctx.sessionID,
-            requesterMessageID: ctx.messageID,
-          },
-        }
-        stopRequestRecorded = true
-      })
-      if (!stopRequestRecorded) throw new Error("Failed to record Light Loop stop request")
-    } catch (error) {
-      await clearStopRequest(ctx.sessionID).catch(() => {})
-      throw error
-    }
-
     const { Cortex } = await import("../cortex")
 
     const taskDescription = session.workflow.taskDescription
@@ -94,44 +68,45 @@ export const LoopStopTool = Tool.define("loop_stop", {
       .filter(Boolean)
       .join("\n")
 
-    let task: { id: string; sessionID: string }
-    try {
-      task = await Cortex.launch({
-        description: `[Review] Review LightLoop: ${taskDescription.slice(0, 80)}`,
-        prompt: reviewPrompt,
-        agent: "lightloop-reviewer",
-        executionRole: "delegated_subagent",
-        category: "general",
-        parentSessionID: ctx.sessionID,
-        parentMessageID: ctx.messageID,
-        notifyParentOnComplete: false,
-        visibility: "hidden",
-      })
-    } catch (error) {
-      await clearStopRequest(ctx.sessionID).catch(() => {})
-      throw error
-    }
+    // Launch reviewer before persisting stop request — nothing to roll back on failure
+    const task = await Cortex.launch({
+      description: `[Review] Review LightLoop: ${taskDescription.slice(0, 80)}`,
+      prompt: reviewPrompt,
+      agent: "lightloop-reviewer",
+      executionRole: "delegated_subagent",
+      category: "general",
+      parentSessionID: ctx.sessionID,
+      parentMessageID: ctx.messageID,
+      notifyParentOnComplete: false,
+      visibility: "hidden",
+    })
 
-    // Persist reviewer session/task IDs into stop request
+    // Atomic single write: stopRequest + reviewTaskID + reviewSessionID together.
+    // No window where stopRequest exists without reviewSessionID.
+    const requestedAt = Date.now()
+    let stopRequestRecorded = false
     try {
-      let recorded = false
       await Session.update(ctx.sessionID, (draft) => {
         if (draft.workflow?.kind !== "lightloop") return
-        if (!draft.workflow.stopRequest) return
         draft.workflow = {
           ...draft.workflow,
           stopRequest: {
-            ...draft.workflow.stopRequest,
+            summary,
+            completed: params.completed,
+            evidence: params.evidence,
+            remaining: params.remaining,
+            requestedAt,
+            requesterSessionID: ctx.sessionID,
+            requesterMessageID: ctx.messageID,
             reviewTaskID: task.id,
             reviewSessionID: task.sessionID,
           },
         }
-        recorded = true
+        stopRequestRecorded = true
       })
-      if (!recorded) throw new Error("Failed to record Light Loop reviewer session")
+      if (!stopRequestRecorded) throw new Error("Failed to record Light Loop stop request")
     } catch (error) {
       await Cortex.cancel(task.id).catch(() => {})
-      await clearStopRequest(ctx.sessionID).catch(() => {})
       throw error
     }
 
@@ -143,10 +118,3 @@ export const LoopStopTool = Tool.define("loop_stop", {
     }
   },
 })
-
-async function clearStopRequest(sessionID: string): Promise<void> {
-  await Session.update(sessionID, (draft) => {
-    if (draft.workflow?.kind !== "lightloop") return
-    draft.workflow = { ...draft.workflow, stopRequest: undefined }
-  })
-}

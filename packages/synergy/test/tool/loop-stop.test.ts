@@ -80,51 +80,47 @@ describe("loop_stop", () => {
     })
   })
 
-  test("repairs a partial stop request that has no reviewer session id", async () => {
+  test("records stop request with reviewer IDs in a single atomic write after successful launch", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = sessionWithLightLoop(true)
-        ;(session as any).workflow.stopRequest = {
-          summary: "old done",
-          requestedAt: Date.now(),
-          requesterSessionID: "ses_test_loop",
-          requesterMessageID: "msg_123",
-          reviewTaskID: "ctx_partial",
-        }
+        const updateCalls: Array<{ stopRequest: any }> = []
         ;(Session.get as any) = mock(async () => session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
+          updateCalls.push({ stopRequest: (session.workflow as any)?.stopRequest })
         })
-        ;(Cortex.launch as any) = mock(async () => ({ id: "ctx_repaired", sessionID: "ses_reviewer_repaired" }))
+        ;(Cortex.launch as any) = mock(async () => ({ id: "ctx_new", sessionID: "ses_reviewer_new" }))
 
         const tool = await LoopStopTool.init()
-        const result = await tool.execute({ summary: "done now" }, ctx("ses_test_loop"))
+        const result = await tool.execute({ summary: "all done" }, ctx("ses_test_loop"))
 
         expect(result.title).toBe("Light Loop review requested")
-        expect(result.metadata.reviewTaskID).toBe("ctx_repaired")
-        expect(result.metadata.reviewSessionID).toBe("ses_reviewer_repaired")
-        expect((session.workflow as any).stopRequest.summary).toBe("done now")
-        expect((session.workflow as any).stopRequest.reviewTaskID).toBe("ctx_repaired")
-        expect((session.workflow as any).stopRequest.reviewSessionID).toBe("ses_reviewer_repaired")
+        expect(result.metadata.reviewTaskID).toBe("ctx_new")
+        expect(result.metadata.reviewSessionID).toBe("ses_reviewer_new")
+        // Single atomic write: stopRequest + reviewSessionID + reviewTaskID all together
+        expect(updateCalls).toHaveLength(1)
+        const stopReq = updateCalls[0]!.stopRequest
+        expect(stopReq.summary).toBe("all done")
+        expect(stopReq.reviewTaskID).toBe("ctx_new")
+        expect(stopReq.reviewSessionID).toBe("ses_reviewer_new")
+        expect(stopReq.requesterSessionID).toBe("ses_test_loop")
       },
     })
   })
 
-  test("cancels launched reviewer and clears stop request when reviewer ids cannot be recorded", async () => {
+  test("cancels launched reviewer when the single atomic session update fails", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = sessionWithLightLoop(true)
-        let updateCalls = 0
         const cancelled: string[] = []
         ;(Session.get as any) = mock(async () => session)
-        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
-          updateCalls++
-          if (updateCalls === 2) throw new Error("persist failed")
-          fn(session)
+        ;(Session.update as any) = mock(async (_sid: string, _fn: (draft: any) => void) => {
+          throw new Error("persist failed")
         })
         ;(Cortex.launch as any) = mock(async () => ({ id: "ctx_launched", sessionID: "ses_reviewer_launched" }))
         ;(Cortex.cancel as any) = mock(async (taskID: string) => {
@@ -135,51 +131,21 @@ describe("loop_stop", () => {
         await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow("persist failed")
 
         expect(cancelled).toEqual(["ctx_launched"])
+        // stopRequest was never written because persist failed
         expect((session.workflow as any).stopRequest).toBeUndefined()
       },
     })
   })
 
-  test("does not launch reviewer when stop request cannot be recorded", async () => {
+  test("does not persist stop request when reviewer launch fails (launch happens first)", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = sessionWithLightLoop(true)
-        const launch = mock(async () => ({ id: "ctx_should_not_launch", sessionID: "ses_should_not_launch" }))
-        let updateCalls = 0
+        const updateFn = mock(async () => {})
         ;(Session.get as any) = mock(async () => session)
-        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
-          updateCalls++
-          if (updateCalls === 1) {
-            fn({ id: session.id, workflow: { kind: "plan" } })
-            return
-          }
-          fn(session)
-        })
-        ;(Cortex.launch as any) = launch
-
-        const tool = await LoopStopTool.init()
-        await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow(
-          "Failed to record Light Loop stop request",
-        )
-
-        expect(launch).not.toHaveBeenCalled()
-        expect((session.workflow as any).stopRequest).toBeUndefined()
-      },
-    })
-  })
-
-  test("clears stop request and preserves launch error when reviewer launch fails", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = sessionWithLightLoop(true)
-        ;(Session.get as any) = mock(async () => session)
-        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
-          fn(session)
-        })
+        ;(Session.update as any) = updateFn
         ;(Cortex.launch as any) = mock(async () => {
           throw new Error("reviewer launch failed")
         })
@@ -187,6 +153,8 @@ describe("loop_stop", () => {
         const tool = await LoopStopTool.init()
         await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow("reviewer launch failed")
 
+        // Session.update was never called — stopRequest was never written
+        expect(updateFn).not.toHaveBeenCalled()
         expect((session.workflow as any).stopRequest).toBeUndefined()
       },
     })
