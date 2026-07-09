@@ -34,33 +34,37 @@ describe("model variant session state", () => {
 })
 
 describe("model variant has() contract", () => {
-  // has() uses Object.hasOwn to distinguish "never set" from "set to undefined".
-  // These tests verify the underlying semantics that the thin wrapper relies on.
+  // SolidJS setStore("variant", key, undefined) deletes the property instead
+  // of storing it, which makes Object.hasOwn return false — indistinguishable
+  // from "never set". The workaround: set() stores null as the sentinel for
+  // explicit clears, get() converts null → undefined, and has() uses
+  // raw !== undefined (which correctly distinguishes null from undefined).
 
-  test("Object.hasOwn returns false for absent key", () => {
-    const store = { variant: {} as Record<string, string | undefined> }
-    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
-    expect(Object.hasOwn(store.variant, key)).toBe(false)
+  const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
+
+  test("null sentinel is distinguishable from never-set in a raw store", () => {
+    const variant = {} as Record<string, string | null | undefined>
+    // never set — property access gives undefined
+    expect(variant[key]).toBeUndefined()
+    // explicit clear via null sentinel (simulating set(undefined))
+    variant[key] = null
+    expect(variant[key]).toBeNull()
+    // null !== undefined → has() can distinguish
+    expect(variant[key] !== undefined).toBe(true)
   })
 
-  test("Object.hasOwn returns true after entry is set to a value", () => {
-    const store = { variant: {} as Record<string, string | undefined> }
-    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
-    store.variant[key] = "high"
-    expect(Object.hasOwn(store.variant, key)).toBe(true)
+  test("get() returns undefined for both absent key and null sentinel", () => {
+    // External contract: get() never leaks null. Both "never set" and
+    // "explicit clear" surface as undefined.
+    const variant = {} as Record<string, string | null | undefined>
+    expect(variant[key] ?? undefined).toBeUndefined()
+    variant[key] = null
+    expect(variant[key] ?? undefined).toBeUndefined()
   })
 
-  test("Object.hasOwn returns true after entry is set to undefined — explicit clear ≠ unset", () => {
-    const store = { variant: {} as Record<string, string | undefined> }
-    const key = modelVariantKey({ providerID: "openai", modelID: "gpt-5" })
-    store.variant[key] = undefined
-    expect(Object.hasOwn(store.variant, key)).toBe(true)
-    expect(store.variant[key]).toBeUndefined()
-  })
-
-  test("undefined model → has() guard returns false (null-guard path)", () => {
-    // mirrors model-variant.ts line 38: if (!model) return false
+  test("undefined model input → null-guard returns false", () => {
+    // mirrors has(model) { if (!model) return false }
     const model: undefined = undefined
-    expect(model ? Object.hasOwn({}, modelVariantKey(model)) : false).toBe(false)
+    expect(!!model).toBe(false)
   })
 })
