@@ -5,6 +5,7 @@ import { SessionReviewTab } from "@/components/session"
 import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
+import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
 function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
@@ -15,12 +16,21 @@ function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const view = createMemo(() => layout.view(sessionKey()))
-  const diffs = createMemo(() => (params.id ? sync.data.session_diff[params.id] : undefined))
+  const turnDiffs = createMemo(() => {
+    const sessionID = params.id
+    const messageID = props.tab.source
+    if (!sessionID || !messageID) return undefined
+    const message = sync.data.message[sessionID]?.find((item) => item.id === messageID) as UserMessage | undefined
+    return message?.summary?.diffs
+  })
+  const sessionDiffs = createMemo(() => (params.id ? sync.data.session_diff[params.id] : undefined))
+  const diffs = createMemo(() => turnDiffs() ?? sessionDiffs())
   const selectedFile = createMemo(() => props.tab.resourceId)
 
   const loadDiffs = () => {
     const id = params.id
     if (!id) return
+    if (turnDiffs() !== undefined) return
     if (sync.data.session_diff[id] !== undefined) return
     void sync.session.diff(id)
   }
@@ -34,20 +44,23 @@ function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
         <div class="flex h-full items-center justify-center px-6 text-13-regular text-text-weak">Loading changes…</div>
       }
     >
-      {(loadedDiffs) => (
-        <SessionReviewTab
-          diffs={() => loadedDiffs()}
-          view={view}
-          diffStyle={layout.review.diffStyle()}
-          onDiffStyleChange={layout.review.setDiffStyle}
-          selectedFile={selectedFile}
-          onViewFile={(path) => {
-            const value = file.tab(path)
-            tabs().open(value)
-            file.load(path)
-          }}
-        />
-      )}
+      {(loadedDiffs) => {
+        const diffsArr = () => (Array.isArray(loadedDiffs()) ? (loadedDiffs() as FileDiff[]) : ([] as FileDiff[]))
+        return (
+          <SessionReviewTab
+            diffs={diffsArr}
+            view={view}
+            diffStyle={layout.review.diffStyle()}
+            onDiffStyleChange={layout.review.setDiffStyle}
+            selectedFile={selectedFile}
+            onViewFile={(path) => {
+              const value = file.tab(path)
+              tabs().open(value)
+              file.load(path)
+            }}
+          />
+        )
+      }}
     </Show>
   )
 }
