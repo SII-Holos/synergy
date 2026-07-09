@@ -453,6 +453,16 @@ export namespace SessionManager {
       }
       result[runtime.sessionID] = runtime.status
     }
+    if (scopeID) {
+      const { SessionRecovery } = await import("./recovery")
+      const recovered = await SessionRecovery.recoverableStatuses(scopeID).catch((error) => {
+        log.warn("failed to resolve recoverable session statuses", { scopeID, error })
+        return {}
+      })
+      for (const [sessionID, status] of Object.entries(recovered)) {
+        result[sessionID] ??= status
+      }
+    }
     return result
   }
 

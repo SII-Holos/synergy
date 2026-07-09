@@ -11,6 +11,7 @@ import { FileWatcher } from "@/file/watcher"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
+import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
 
 export namespace GlobalRuntime {
@@ -24,6 +25,9 @@ export namespace GlobalRuntime {
         fn: async () => {
           log.info("starting")
           await Plugin.init()
+          await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
+            log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
+          })
           await startChannels()
           await HolosRuntime.init()
           FileWatcher.init()

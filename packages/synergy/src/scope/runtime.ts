@@ -7,6 +7,7 @@ import { FileWatcher } from "@/file/watcher"
 import { LSP } from "@/lsp"
 import { Plugin } from "@/plugin"
 import { Vcs } from "@/project/vcs"
+import { SessionRecovery } from "@/session/recovery"
 import { Scope } from "."
 import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
@@ -25,6 +26,9 @@ export namespace ScopeRuntime {
           fn: async () => {
             log.info("starting", { scopeID: scope.id, type: scope.type, directory: scope.directory })
             await Plugin.init()
+            await SessionRecovery.reconcileRuntimeState({ scopeID: scope.id, apply: true }).catch((error) => {
+              log.warn("session runtime recovery failed", { scopeID: scope.id, error })
+            })
             Format.init()
             await LSP.init()
             FileWatcher.init()
