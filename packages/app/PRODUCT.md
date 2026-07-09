@@ -29,6 +29,7 @@ Let blueprints read as plans with status, activity, and next action, not as pass
 When an agent successfully creates or replaces a Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; ordinary note writes should stay in the message flow without opening the side panel.
 When that Blueprint is created or replaced from an active Plan workflow, wait until the current turn is idle, then show a compact one-time composer control to equip the Blueprint in the current session. The control should not auto-start the BlueprintLoop, and dismissing or muting it must not close Plan by itself.
 Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
+Note and Blueprint detail document surfaces should stay stable while the user reads or edits: metadata refreshes, autosave responses, and BlueprintLoop state changes must not reset scroll position, selection, or the editor instance.
 Sidebar session icons should preserve Blueprint identity while a BlueprintLoop is active: running, waiting, and auditing Blueprint sessions should remain visually distinct from ordinary running sessions and return to normal session treatment when the loop is terminal.
 Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
@@ -76,6 +77,8 @@ Desktop cold start should show a native Synergy shell immediately instead of a b
 Desktop managed-local project selection should use native OS folder picking for Add/Open Project because the Electron shell and managed server share local filesystem authority. Web, remote-server, and desktop external-server project selection must browse the server filesystem instead of exposing local desktop paths; that server browser should use an explicit search action, clear base/query state, and bounded server-side browse rather than keystroke-driven recursive scanning.
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+
+Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
 
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 

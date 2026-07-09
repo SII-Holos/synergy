@@ -26,7 +26,7 @@ export namespace Scope {
 
   export const Event = {
     Updated: BusEvent.define("scope.updated", Info),
-    Removed: BusEvent.define("scope.removed", z.object({ id: z.string() })),
+    Removed: BusEvent.define("scope.removed", z.object({ id: z.string(), directory: z.string().optional() })),
   }
 
   export function contains(scope: Scope, targetPath: string): boolean {
@@ -424,7 +424,7 @@ export namespace Scope {
     GlobalBus.emit("event", {
       payload: {
         type: Event.Removed.type,
-        properties: { id: scopeID },
+        properties: { id: scopeID, directory: result.worktree },
       },
     })
     return result
