@@ -7442,6 +7442,70 @@
         ]
       }
     },
+    "/session/import": {
+      "post": {
+        "operationId": "session.import",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Import session data",
+        "description": "Import a Synergy session export JSON or gzipped JSON file into the current scope.",
+        "responses": {
+          "200": {
+            "description": "Imported session data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {}
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.import({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/cortex/tasks": {
       "get": {
         "operationId": "cortex.list",
@@ -27832,6 +27896,45 @@
         "default": "standard",
         "type": "string",
         "enum": ["compact", "standard", "full"]
+      },
+      "SessionImportImportedSession": {
+        "type": "object",
+        "properties": {
+          "sourceSessionID": {
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/Session"
+          }
+        },
+        "required": ["sourceSessionID", "session"]
+      },
+      "SessionImportResult": {
+        "type": "object",
+        "properties": {
+          "rootSessionID": {
+            "type": "string"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionImportImportedSession"
+            }
+          },
+          "sessionCount": {
+            "type": "number"
+          },
+          "messageCount": {
+            "type": "number"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
       },
       "CortexTask": {
         "type": "object",
