@@ -6,7 +6,13 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { SessionEndpoint } from "./endpoint"
 import { SessionNav, type ScopeNavIndex } from "./nav"
-import type { Info } from "./types"
+import type { Info, StatusInfo } from "./types"
+import { MessageV2 } from "./message-v2"
+import { SessionProgress } from "./progress"
+import { Session } from "./index"
+import { BlueprintLoopStore } from "../blueprint/loop-store"
+import type { Info as BlueprintLoopInfo } from "../blueprint/types"
+import { NoteStore } from "../note"
 
 export namespace SessionRecovery {
   export interface Location {
@@ -38,6 +44,350 @@ export namespace SessionRecovery {
     scanned: number
     repaired: number
     entries: Array<{ sessionID: string; scopeID: string; action: string }>
+  }
+
+  export interface RuntimeReconcileReport {
+    scopes: string[]
+    sessionsScanned: number
+    loopsScanned: number
+    changed: number
+    entries: Array<{ scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string }>
+  }
+
+  const ACTIVE_LOOP_STATUSES = new Set<BlueprintLoopInfo["status"]>(["armed", "running", "waiting", "auditing"])
+  const TERMINAL_LOOP_STATUSES = new Set<BlueprintLoopInfo["status"]>(["completed", "failed", "cancelled"])
+
+  function isActiveLoop(loop: BlueprintLoopInfo | undefined) {
+    return !!loop && ACTIVE_LOOP_STATUSES.has(loop.status)
+  }
+
+  function isTerminalLoop(loop: BlueprintLoopInfo | undefined) {
+    return !!loop && TERMINAL_LOOP_STATUSES.has(loop.status)
+  }
+
+  function isWorkflowRecoveryCandidate(session: Info) {
+    return session.workflow?.kind === "lightloop" || session.workflow?.kind === "lattice"
+  }
+
+  function isSessionRecoveryCandidate(session: Info) {
+    if (session.time.archived) return false
+    return session.pendingReply === true || !!session.blueprint?.loopID || isWorkflowRecoveryCandidate(session)
+  }
+
+  async function scopeIDsForRuntimeRecovery(scopeID?: string): Promise<string[]> {
+    if (scopeID) return [scopeID]
+    const ids = new Set<string>()
+    for (const id of await Storage.scan(["sessions"]).catch(() => [])) ids.add(id)
+    for (const id of await Storage.scan(["blueprint_loops"]).catch(() => [])) ids.add(id)
+    return [...ids].sort()
+  }
+
+  async function sessionInfos(scopeID: string): Promise<Info[]> {
+    const sid = Identifier.asScopeID(scopeID)
+    const ids = await Storage.scan(StoragePath.sessionsRoot(sid)).catch(() => [])
+    if (ids.length === 0) return []
+    const keys = ids.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
+    const results = await Storage.readMany<Info>(keys)
+    return results.filter((item): item is Info => !!item && !!item.scope)
+  }
+
+  async function pendingReplyFor(scopeID: string, sessionID: string): Promise<boolean> {
+    const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
+    messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
+    return SessionProgress.pendingReply(messages)
+  }
+
+  function reportChange(
+    report: RuntimeReconcileReport,
+    input: { scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string },
+  ) {
+    report.changed++
+    report.entries.push(input)
+  }
+
+  async function reconcilePendingReply(input: {
+    scopeID: string
+    session: Info
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    if (!input.session.pendingReply) return
+    const pendingReply = await pendingReplyFor(input.scopeID, input.session.id).catch(() => true)
+    if (pendingReply) return
+
+    if (input.apply) {
+      await Session.update(input.session.id, (draft) => {
+        draft.pendingReply = undefined
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      sessionID: input.session.id,
+      action: "pending_reply_cleared",
+    })
+  }
+
+  async function reconcileNoteActiveLoop(input: {
+    scopeID: string
+    loop: BlueprintLoopInfo
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    const note = await NoteStore.getAny(input.scopeID, input.loop.noteID).catch(() => undefined)
+    if (!note || note.kind !== "blueprint") return
+    if (note.blueprint?.activeLoopID === input.loop.id) return
+
+    if (input.apply) {
+      await NoteStore.updateAny(input.scopeID, input.loop.noteID, {
+        blueprint: { activeLoopID: input.loop.id },
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      loopID: input.loop.id,
+      action: "note_active_loop_restored",
+    })
+  }
+
+  async function clearNoteActiveLoop(input: {
+    scopeID: string
+    loop: BlueprintLoopInfo
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    const note = await NoteStore.getAny(input.scopeID, input.loop.noteID).catch(() => undefined)
+    if (!note || note.kind !== "blueprint" || note.blueprint?.activeLoopID !== input.loop.id) return
+
+    if (input.apply) {
+      await NoteStore.updateAny(input.scopeID, input.loop.noteID, {
+        blueprint: { activeLoopID: null },
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      loopID: input.loop.id,
+      action: "note_terminal_loop_cleared",
+    })
+  }
+
+  async function ensureSessionLoopBinding(input: {
+    scopeID: string
+    sessionID: string | undefined
+    loopID: string
+    loopRole: "execution" | "audit"
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    if (!input.sessionID) return
+    const session = await Storage.read<Info>(
+      StoragePath.sessionInfo(Identifier.asScopeID(input.scopeID), Identifier.asSessionID(input.sessionID)),
+    ).catch(() => undefined)
+    if (!session || session.time.archived) return
+    if (session.blueprint?.loopID === input.loopID && session.blueprint?.loopRole === input.loopRole) return
+
+    if (input.apply) {
+      await Session.update(input.sessionID, (draft) => {
+        draft.blueprint = { ...draft.blueprint, loopID: input.loopID, loopRole: input.loopRole }
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      sessionID: input.sessionID,
+      loopID: input.loopID,
+      action: `session_${input.loopRole}_loop_restored`,
+    })
+  }
+
+  async function clearSessionLoopBinding(input: {
+    scopeID: string
+    sessionID: string | undefined
+    loopID: string
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    if (!input.sessionID) return
+    const session = await Storage.read<Info>(
+      StoragePath.sessionInfo(Identifier.asScopeID(input.scopeID), Identifier.asSessionID(input.sessionID)),
+    ).catch(() => undefined)
+    if (!session || session.blueprint?.loopID !== input.loopID) return
+
+    if (input.apply) {
+      await Session.update(input.sessionID, (draft) => {
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      sessionID: input.sessionID,
+      loopID: input.loopID,
+      action: "session_terminal_loop_cleared",
+    })
+  }
+
+  async function reconcileSessionBlueprintReference(input: {
+    scopeID: string
+    session: Info
+    loops: Map<string, BlueprintLoopInfo>
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    const loopID = input.session.blueprint?.loopID
+    if (!loopID) return
+    const loop = input.loops.get(loopID)
+    if (isActiveLoop(loop)) return
+
+    if (input.apply) {
+      await Session.update(input.session.id, (draft) => {
+        draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+      })
+    }
+    reportChange(input.report, {
+      scopeID: input.scopeID,
+      sessionID: input.session.id,
+      loopID,
+      action: loop ? "session_inactive_loop_cleared" : "session_missing_loop_cleared",
+    })
+  }
+
+  async function reconcileNoteBlueprintReferences(input: {
+    scopeID: string
+    loops: Map<string, BlueprintLoopInfo>
+    apply: boolean
+    report: RuntimeReconcileReport
+  }) {
+    const notes = await NoteStore.list(input.scopeID, "all").catch(() => [])
+    for (const note of notes) {
+      if (note.kind !== "blueprint") continue
+      const loopID = note.blueprint?.activeLoopID
+      if (!loopID) continue
+      const loop = input.loops.get(loopID)
+      if (isActiveLoop(loop)) continue
+
+      if (input.apply) {
+        await NoteStore.updateAny(input.scopeID, note.id, {
+          blueprint: { activeLoopID: null },
+        })
+      }
+      reportChange(input.report, {
+        scopeID: input.scopeID,
+        noteID: note.id,
+        loopID,
+        action: loop ? "note_inactive_loop_cleared" : "note_missing_loop_cleared",
+      })
+    }
+  }
+
+  async function reconcileRuntimeScope(input: { scopeID: string; apply: boolean; report: RuntimeReconcileReport }) {
+    const [sessions, loops] = await Promise.all([
+      sessionInfos(input.scopeID),
+      BlueprintLoopStore.list(input.scopeID).catch(() => [] as BlueprintLoopInfo[]),
+    ])
+    input.report.sessionsScanned += sessions.length
+    input.report.loopsScanned += loops.length
+
+    const loopsByID = new Map(loops.map((loop) => [loop.id, loop]))
+    const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
+    const sessionCandidates = new Map<string, Info>()
+    for (const session of sessions) {
+      if (isSessionRecoveryCandidate(session)) sessionCandidates.set(session.id, session)
+    }
+
+    for (const loop of loops) {
+      if (isActiveLoop(loop)) {
+        await reconcileNoteActiveLoop({ ...input, loop })
+        await ensureSessionLoopBinding({
+          ...input,
+          sessionID: loop.sessionID,
+          loopID: loop.id,
+          loopRole: "execution",
+        })
+        if (loop.status === "auditing") {
+          await ensureSessionLoopBinding({
+            ...input,
+            sessionID: loop.auditSessionID,
+            loopID: loop.id,
+            loopRole: "audit",
+          })
+        }
+      } else if (isTerminalLoop(loop)) {
+        await clearNoteActiveLoop({ ...input, loop })
+        await clearSessionLoopBinding({ ...input, sessionID: loop.sessionID, loopID: loop.id })
+        await clearSessionLoopBinding({ ...input, sessionID: loop.auditSessionID, loopID: loop.id })
+      }
+      const execution = sessionsByID.get(loop.sessionID)
+      if (execution) sessionCandidates.set(execution.id, execution)
+      if (loop.auditSessionID) {
+        const audit = sessionsByID.get(loop.auditSessionID)
+        if (audit) sessionCandidates.set(audit.id, audit)
+      }
+    }
+
+    for (const session of sessionCandidates.values()) {
+      await reconcilePendingReply({ ...input, session })
+      await reconcileSessionBlueprintReference({ ...input, session, loops: loopsByID })
+    }
+    await reconcileNoteBlueprintReferences({ ...input, loops: loopsByID })
+  }
+
+  export async function reconcileRuntimeState(
+    input: {
+      scopeID?: string
+      apply?: boolean
+    } = {},
+  ): Promise<RuntimeReconcileReport> {
+    const report: RuntimeReconcileReport = {
+      scopes: await scopeIDsForRuntimeRecovery(input.scopeID),
+      sessionsScanned: 0,
+      loopsScanned: 0,
+      changed: 0,
+      entries: [],
+    }
+    for (const scopeID of report.scopes) {
+      await reconcileRuntimeScope({ scopeID, apply: input.apply === true, report }).catch((error) => {
+        report.entries.push({ scopeID, action: `scope_reconcile_failed:${String(error)}` })
+      })
+    }
+    return report
+  }
+
+  export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {
+    const { resolve, toStatus } = await import("./working")
+    const [sessions, loops] = await Promise.all([
+      sessionInfos(scopeID),
+      BlueprintLoopStore.list(scopeID).catch(() => [] as BlueprintLoopInfo[]),
+    ])
+    const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
+    const candidates = new Map<string, Info>()
+    const activeLoopSessionIDs = new Set<string>()
+    for (const session of sessions) {
+      if (isSessionRecoveryCandidate(session)) candidates.set(session.id, session)
+    }
+    for (const loop of loops) {
+      if (!isActiveLoop(loop)) continue
+      const execution = sessionsByID.get(loop.sessionID)
+      if (execution) {
+        candidates.set(execution.id, execution)
+        activeLoopSessionIDs.add(execution.id)
+      }
+      if (loop.auditSessionID) {
+        const audit = sessionsByID.get(loop.auditSessionID)
+        if (audit) {
+          candidates.set(audit.id, audit)
+          activeLoopSessionIDs.add(audit.id)
+        }
+      }
+    }
+
+    const result: Record<string, StatusInfo> = {}
+    for (const session of candidates.values()) {
+      const working = await resolve(session.id).catch(() => undefined)
+      if (working) {
+        result[session.id] = toStatus(working)
+      } else if (activeLoopSessionIDs.has(session.id)) {
+        result[session.id] = { type: "recovering", description: "BlueprintLoop interrupted" }
+      }
+    }
+    return result
   }
 
   export async function resolve(input: { sessionID: string; scopeID?: string }): Promise<Location> {
