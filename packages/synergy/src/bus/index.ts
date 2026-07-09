@@ -119,15 +119,9 @@ export namespace Bus {
     const stats = streamingPublishStats.get(type)
     if (!stats) {
       streamingPublishStats.set(type, {
-        count: 0,
+        count: 1,
         started: now,
         lastLogged: now,
-      })
-      log.debug("streaming publish stats", {
-        type,
-        count: 1,
-        windowMs: 0,
-        ratePerSecond: 0,
       })
       return
     }
@@ -140,7 +134,7 @@ export namespace Bus {
       type,
       count: stats.count,
       windowMs,
-      ratePerSecond: Math.round((stats.count / windowMs) * 100_000) / 100,
+      ratePerSecond: Math.round((stats.count / (windowMs / 1000)) * 100) / 100,
     })
     stats.count = 0
     stats.started = now
