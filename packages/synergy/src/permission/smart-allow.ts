@@ -66,13 +66,7 @@ export namespace SmartAllow {
     const filePath = typeof input.args.filePath === "string" ? input.args.filePath : ""
     const url = typeof input.args.url === "string" ? input.args.url : ""
     const evidence = input.redactedEvidence ? input.redactedEvidence.summary.join("|").slice(0, 200) : ""
-    const context = normalizeContext(input)
-    const contextKey = context
-      ? [context.userMessage ?? "", ...(context.recentHistory ?? []), context.agentContext ?? ""]
-          .join("|")
-          .slice(0, 400)
-      : ""
-    return `${input.policyAction}:${input.tool}:${cmd}:${path}:${filePath}:${url}:${input.capabilities.join(",")}:${evidence}:${contextKey}`
+    return `${input.policyAction}:${input.tool}:${cmd}:${path}:${filePath}:${url}:${input.capabilities.join(",")}:${evidence}`
   }
 
   export function hasHardBoundary(capabilities: Capability[]): boolean {
