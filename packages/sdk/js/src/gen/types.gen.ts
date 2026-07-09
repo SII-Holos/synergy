@@ -4291,6 +4291,19 @@ export type SessionExportSizeEstimate = {
  */
 export type SessionExportMode = "compact" | "standard" | "full"
 
+export type SessionImportImportedSession = {
+  sourceSessionID: string
+  session: Session
+}
+
+export type SessionImportResult = {
+  rootSessionID: string
+  sessions: Array<SessionImportImportedSession>
+  sessionCount: number
+  messageCount: number
+  warnings: Array<string>
+}
+
 export type CortexTask = {
   id: string
   sessionID: string
@@ -9951,6 +9964,36 @@ export type SessionExportDownloadResponses = {
    */
   200: unknown
 }
+
+export type SessionImportData = {
+  body?: {
+    file: unknown
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/import"
+}
+
+export type SessionImportErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionImportError = SessionImportErrors[keyof SessionImportErrors]
+
+export type SessionImportResponses = {
+  /**
+   * Imported session data
+   */
+  200: SessionImportResult
+}
+
+export type SessionImportResponse = SessionImportResponses[keyof SessionImportResponses]
 
 export type CortexListData = {
   body?: never

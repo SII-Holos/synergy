@@ -3,6 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { SessionExport } from "../session/session-export"
+import { SessionImport } from "../session/session-import"
 
 export const SessionExportRoute = new Hono()
   .get(
@@ -71,5 +72,35 @@ export const SessionExportRoute = new Hono()
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Encoding": "identity",
       })
+    },
+  )
+  .post(
+    "/import",
+    describeRoute({
+      summary: "Import session data",
+      description: "Import a Synergy session export JSON or gzipped JSON file into the current scope.",
+      operationId: "session.import",
+      responses: {
+        200: {
+          description: "Imported session data",
+          content: {
+            "application/json": {
+              schema: resolver(SessionImport.Result),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("form", z.object({ file: z.any() })),
+    async (c) => {
+      const { file } = c.req.valid("form")
+      if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
+      try {
+        const result = await SessionImport.fromBuffer(await file.arrayBuffer())
+        return c.json(result)
+      } catch (error) {
+        return c.json({ message: error instanceof Error ? error.message : String(error) }, 400)
+      }
     },
   )

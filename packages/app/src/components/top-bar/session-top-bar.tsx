@@ -7,6 +7,7 @@ import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { DialogSessionRename, ModelSelectorPopover, useConfirm } from "@/components/dialog"
 import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog/confirm-copy"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
+import { DialogSessionImport } from "@/components/dialog/dialog-session-import"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
@@ -29,6 +30,7 @@ function SessionActionMenu(props: {
   onRename: () => void
   onWorktreeToggle: () => void
   onExport: () => void
+  onImport: () => void
   onArchive: () => void
 }) {
   const [open, setOpen] = createSignal(false)
@@ -81,6 +83,10 @@ function SessionActionMenu(props: {
         <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
           <Icon name={getSemanticIcon("action.export")} size="small" />
           <span>Export session data</span>
+        </button>
+        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
+          <Icon name={getSemanticIcon("action.import")} size="small" />
+          <span>Import session data</span>
         </button>
         <button
           type="button"
@@ -269,6 +275,7 @@ export function SessionTopBar(props: {
               onRename={showRenameDialog}
               onWorktreeToggle={toggleWorktree}
               onExport={() => dialog.show(() => <DialogSessionExport />)}
+              onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
             />
           </Show>
@@ -293,6 +300,7 @@ export function SessionTopBar(props: {
               onRename={showRenameDialog}
               onWorktreeToggle={toggleWorktree}
               onExport={() => dialog.show(() => <DialogSessionExport />)}
+              onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
             />
           </Show>
