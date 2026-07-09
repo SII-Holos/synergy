@@ -305,7 +305,8 @@ export namespace SessionInbox {
     sessionID: string,
     payload: NonNullable<StoredItem["message"]>,
   ): Promise<{ agent: string; model: { providerID: string; modelID: string } }> {
-    let agentName = payload.agent
+    const session = await Session.get(sessionID).catch(() => undefined)
+    let agentName = payload.agent ?? session?.agentOverride
     if (!agentName) {
       const messages = await Session.messages({ sessionID })
       for (let index = messages.length - 1; index >= 0; index--) {
@@ -318,7 +319,7 @@ export namespace SessionInbox {
 
     const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
-    const model = payload.model ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
+    const model = payload.model ?? session?.modelOverride ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
     return {
       agent: agent.name,
       model: model ?? { providerID: "system", modelID: "fallback" },

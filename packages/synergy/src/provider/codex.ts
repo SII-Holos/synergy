@@ -558,6 +558,8 @@ export namespace CodexProvider {
     }
   }
 
+  const TEXT_ONLY_MODELS = new Set(["gpt-5.3-codex-spark"])
+
   function fallbackModel(modelID: string): ModelsDev.Model {
     return {
       id: modelID,
@@ -571,7 +573,7 @@ export namespace CodexProvider {
       cost: { input: 0, output: 0 },
       limit: codexModelLimit(modelID),
       modalities: {
-        input: ["text", "image", "pdf"],
+        input: TEXT_ONLY_MODELS.has(modelID) ? ["text"] : ["text", "image"],
         output: ["text"],
       },
       options: {},

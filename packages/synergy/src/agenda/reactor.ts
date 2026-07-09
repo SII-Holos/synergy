@@ -250,6 +250,7 @@ export namespace AgendaReactor {
       scope,
       title: `Agenda: ${item.title} ${date}`,
       agenda: { itemID: item.id },
+      controlProfile: item.controlProfile,
       interaction: SessionInteraction.unattended("agenda"),
       preAuthorizedActions: item.wake !== false ? ["session_send"] : undefined,
       completionNotice: { silent: item.silent === true },
