@@ -159,6 +159,43 @@ describe("git worktree integration", () => {
     })
   })
 
+  test("POST /experimental/worktree/session/:id/enter binds an existing worktree", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const session = await Session.create({ title: "Route Enter Worktree" })
+          const created = await Worktree.create({ name: "route-enter", bind: false, baseRef: "current" })
+
+          const response = await app.request(
+            `/experimental/worktree/session/${session.id}/enter?directory=${encodeURIComponent(scope.worktree)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target: created.id }),
+            },
+          )
+
+          expect(response.status).toBe(200)
+          const updated = await response.json()
+          expect(updated.workspace?.type).toBe("git_worktree")
+          expect(updated.workspace?.path).toBe(created.path)
+          expect(updated.workspace?.worktreeID).toBe(created.id)
+
+          const listed = await Worktree.list()
+          const managed = listed.find((item) => item.id === created.id)
+          expect(managed?.bindings).toContain(session.id)
+
+          await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
   test("POST /session cleans up the session if workspace creation fails", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
@@ -184,7 +221,7 @@ describe("git worktree integration", () => {
     })
   })
 
-  test("HTTP worktree create and leave reject running sessions", async () => {
+  test("HTTP worktree create, enter, and leave reject running sessions", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -194,6 +231,7 @@ describe("git worktree integration", () => {
         using(async () => {
           const app = Server.App()
           const session = await Session.create({ title: "Busy Session" })
+          const created = await Worktree.create({ name: "busy-enter", bind: false, baseRef: "current" })
           SessionManager.registerRuntime(session.id)
           SessionManager.acquire(session.id)
 
@@ -206,6 +244,17 @@ describe("git worktree integration", () => {
             expect(create.status).toBe(400)
             expect((await create.json()).name).toBe("WorktreeSessionBusyError")
 
+            const enter = await app.request(
+              `/experimental/worktree/session/${session.id}/enter?directory=${encodeURIComponent(scope.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ target: created.id }),
+              },
+            )
+            expect(enter.status).toBe(400)
+            expect((await enter.json()).name).toBe("WorktreeSessionBusyError")
+
             const leave = await app.request(
               `/experimental/worktree/session/${session.id}/leave?directory=${encodeURIComponent(scope.worktree)}`,
               { method: "POST" },
@@ -214,6 +263,7 @@ describe("git worktree integration", () => {
             expect((await leave.json()).name).toBe("WorktreeSessionBusyError")
           } finally {
             await SessionManager.release(session.id)
+            await Worktree.remove({ sessionID: "none", target: created.id, force: true }).catch(() => undefined)
             await Session.remove(session.id)
           }
         })(),

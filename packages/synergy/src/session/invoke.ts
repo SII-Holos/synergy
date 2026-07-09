@@ -73,6 +73,7 @@ import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
+import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -576,6 +577,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -616,8 +618,9 @@ Autonomously advance the task until it is complete. Before calling loop_stop(), 
 - Are there any remaining gaps, edge cases, or follow-up work implied by the task?
 
 If the task is NOT fully complete, continue working now.
-If the task IS fully complete and verified, call loop_stop().
+If the task IS fully complete and verified, call loop_stop() to request a completion review.
 Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
+loop_stop() does not end the Light Loop directly — a reviewer will audit your work first.
 </light-loop-context>`)
             break
         }

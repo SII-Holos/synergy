@@ -141,8 +141,11 @@ export namespace SynergyLinkStore {
 
   export async function saveState(state: SynergyLinkState): Promise<void> {
     const rootPath = root()
-    await ensureRoot(rootPath)
-    await writeFile(statePathForRoot(rootPath), JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n")
+    await writeRootFile(
+      rootPath,
+      statePathForRoot(rootPath),
+      JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n",
+    )
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {
@@ -161,13 +164,27 @@ export namespace SynergyLinkStore {
 
   export async function saveMigrationLog(log: Record<string, number>): Promise<void> {
     const rootPath = root()
-    await ensureRoot(rootPath)
-    await writeFile(migrationLogPathForRoot(rootPath), JSON.stringify(log, null, 2) + "\n")
+    await writeRootFile(rootPath, migrationLogPathForRoot(rootPath), JSON.stringify(log, null, 2) + "\n")
   }
 
   export function hydrateStateForMigration(parsed: unknown): SynergyLinkState {
     return hydrateState(isPartialState(parsed) ? parsed : undefined)
   }
+}
+
+async function writeRootFile(rootPath: string, filepath: string, content: string): Promise<void> {
+  await SynergyLinkStore.ensureRoot(rootPath)
+  try {
+    await writeFile(filepath, content)
+  } catch (error) {
+    if (!isEnoent(error)) throw error
+    await SynergyLinkStore.ensureRoot(rootPath)
+    await writeFile(filepath, content)
+  }
+}
+
+function isEnoent(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
 }
 
 function statePathForRoot(rootPath: string): string {
