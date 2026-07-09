@@ -4,6 +4,9 @@ import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
 import { LoopError } from "../../src/blueprint/error"
+import { Bus } from "../../src/bus"
+import { NoteEvent } from "../../src/note/event"
+import { NoteStore } from "../../src/note"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
@@ -90,6 +93,44 @@ describe("BlueprintLoopStore transitions", () => {
         })
         expect(second.id).not.toBe(first.id)
         expect(second.status).toBe("armed")
+      },
+    })
+  })
+
+  test("publishes Blueprint note metadata updates with blueprint-only changed fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Blueprint note",
+          kind: "blueprint",
+          blueprint: {},
+        })
+        const updates: Array<{
+          note: { id: string; blueprint?: { activeLoopID?: string; runCount?: number } }
+          changed: string[]
+        }> = []
+        const unsub = Bus.subscribe(NoteEvent.Updated, (event) => {
+          if (event.properties.note.id === note.id) updates.push(event.properties)
+        })
+        try {
+          const loop = await BlueprintLoopStore.create({
+            noteID: note.id,
+            title: "Run Blueprint",
+            sessionID: "ses_blueprint",
+          })
+          await BlueprintLoopStore.updateStatus(scope.id, loop.id, { status: "cancelled" })
+
+          expect(updates.map((event) => event.changed)).toEqual([["blueprint"], ["blueprint"]])
+          expect(updates[0].note.blueprint?.activeLoopID).toBe(loop.id)
+          expect(updates[0].note.blueprint?.runCount).toBe(1)
+          expect(updates[1].note.blueprint?.activeLoopID).toBeUndefined()
+        } finally {
+          unsub()
+        }
       },
     })
   })
