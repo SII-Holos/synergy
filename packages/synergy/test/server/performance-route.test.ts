@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
@@ -8,13 +8,19 @@ import { PerformanceStore } from "../../src/performance/store"
 import { Server } from "../../src/server/server"
 
 const homes: string[] = []
+let prevHome: string | undefined
 
 beforeEach(() => {
+  prevHome = process.env.SYNERGY_TEST_HOME
   const home = mkdtempSync(path.join(tmpdir(), "synergy-perf-route-"))
   homes.push(home)
   process.env.SYNERGY_TEST_HOME = home
   PerformanceStore.close()
   PerformanceConfig.refresh()
+})
+
+afterEach(() => {
+  process.env.SYNERGY_TEST_HOME = prevHome
 })
 
 describe("performance routes", () => {

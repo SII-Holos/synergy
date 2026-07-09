@@ -6,7 +6,6 @@ import { MiniMaxProvider } from "../../src/provider/minimax"
 import { GitHubProvider } from "../../src/provider/github"
 
 const originalFetch = globalThis.fetch
-const originalSleep = Bun.sleep
 const originalGHToken = process.env.GH_TOKEN
 const originalGITHUBToken = process.env.GITHUB_TOKEN
 
@@ -29,13 +28,11 @@ function asFetch(fn: (input: RequestInfo | URL, init?: RequestInit) => Promise<R
 
 async function reset() {
   globalThis.fetch = originalFetch
-  ;(Bun as any).sleep = originalSleep
   for (const provider of [
     AnthropicOAuthProvider.PROVIDER_ID,
     CopilotProvider.PROVIDER_ID,
     CopilotProvider.ENTERPRISE_PROVIDER_ID,
     MiniMaxProvider.PROVIDER_ID,
-    GitHubProvider.PROVIDER_ID,
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
@@ -46,9 +43,7 @@ async function reset() {
 }
 
 beforeEach(async () => {
-  ;(Bun as any).sleep = async () => {}
   await reset()
-  ;(Bun as any).sleep = async () => {}
 })
 afterEach(reset)
 
