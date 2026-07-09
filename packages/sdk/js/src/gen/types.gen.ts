@@ -3410,6 +3410,10 @@ export type Session = {
     providerID: string
     modelID: string
   }
+  /**
+   * Per-session agent override set by session control
+   */
+  agentOverride?: string
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {

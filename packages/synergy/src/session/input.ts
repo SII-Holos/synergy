@@ -150,7 +150,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
-  let agentName = input.agent
+  let agentName = input.agent ?? session?.agentOverride
   if (!agentName) {
     // Inherit the current session agent from the last user message,
     // so system notifications (cortex completion, agenda delivery, etc.)
@@ -189,7 +189,11 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
     },
     tools: input.tools,
     agent: agent.name,
-    model: input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID)),
+    model:
+      input.model ??
+      session?.modelOverride ??
+      (await Agent.getAvailableModel(agent)) ??
+      (await lastModel(input.sessionID)),
     system: input.system,
     variant: input.variant,
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
