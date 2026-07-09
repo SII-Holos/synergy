@@ -83,6 +83,13 @@ describe("InMemorySnapshotStore", () => {
     expect(store.byHash("b.ts", tag2)).toBeNull()
   })
 
+  test("reports retained snapshot bytes", () => {
+    const store = new InMemorySnapshotStore()
+    store.record(PATH, "alpha\n")
+    store.record("b.ts", "bravo\n")
+    expect(store.stats()).toEqual({ paths: 2, versions: 2, totalBytes: 12 })
+  })
+
   test("seenLines stored and retrieved correctly", () => {
     const store = new InMemorySnapshotStore()
     store.record(PATH, "L1\nL2\n", [1, 2])

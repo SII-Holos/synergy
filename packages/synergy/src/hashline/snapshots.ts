@@ -83,6 +83,18 @@ export class InMemorySnapshotStore extends SnapshotStore {
     return hash
   }
 
+  stats(): { paths: number; versions: number; totalBytes: number } {
+    let paths = 0
+    let versions = 0
+    let totalBytes = 0
+    for (const [, history] of this.#versions.entries()) {
+      paths++
+      versions += history.length
+      for (const version of history) totalBytes += version.text.length
+    }
+    return { paths, versions, totalBytes }
+  }
+
   recordSeenLines(path: string, hash: string, lines: Iterable<number>): void {
     const version = this.#versions.get(path)?.find((snapshot) => snapshot.hash === hash)
     if (version) mergeSeenLines(version, lines)
