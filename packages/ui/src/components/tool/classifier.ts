@@ -246,6 +246,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   task_output: "task",
   task_cancel: "task",
   loop_stop: "task",
+  light_loop_approve: "task",
+  light_loop_reject: "task",
   dagwrite: "dag",
   dagread: "dag",
   dagpatch: "dag",
