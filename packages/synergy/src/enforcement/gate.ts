@@ -999,6 +999,12 @@ export namespace EnforcementGate {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
+
+      // LightLoop review tools — session state coordination
+      if (toolName === "light_loop_approve" || toolName === "light_loop_reject") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }
