@@ -307,6 +307,27 @@ export type PerfDashboardSummary = {
     traceFiles: number
     recentErrors: number
     pendingSessions: number
+    sessionRuntimes: {
+      totalCount: number
+      runningCount: number
+      idleCount: number
+      childCount: number
+      userCount: number
+      waiterCount: number
+    }
+    cortexTasks: {
+      totalCount: number
+      pendingCount: number
+      queuedCount: number
+      runningCount: number
+      completedCount: number
+      errorCount: number
+      cancelledCount: number
+      retainedPromptChars: number
+      retainedOutputChars: number
+      retainedErrorChars: number
+      retainedProgressToolCount: number
+    }
   }
   top: {
     slowRoutes: Array<PerfRankedItem>

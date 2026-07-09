@@ -10,6 +10,7 @@ Open **Settings → Runtime → Performance** to inspect the default recent moni
 - HTTP request count, error rate, and p50/p95/p99 latency;
 - session turn latency, LLM calls, and tool calls;
 - CPU, memory, event-loop lag, and app-owned disk IO;
+- session runtime counts and retained Cortex task counts, including retained prompt/output/error character totals;
 - browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
 - slow routes, sessions, tools, providers, storage operations, and trace drill-downs.
 
@@ -73,7 +74,7 @@ The server exposes local-first endpoints under `/global/performance`:
 - `POST /global/performance/browser-metrics`
 - `GET /global/performance/events`
 
-Stable error codes use the `PERF_*` prefix. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.config.get()` and `client.performance.config.update()` for that endpoint.
+Stable error codes use the `PERF_*` prefix. `GET /global/performance/summary` includes current runtime retention counters under `runtime.sessionRuntimes` and `runtime.cortexTasks`. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.config.get()` and `client.performance.config.update()` for that endpoint.
 
 ## External OSS tooling
 
