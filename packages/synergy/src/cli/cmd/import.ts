@@ -31,6 +31,10 @@ export const ImportCommand = cmd({
           }, ${result.messageCount} message${result.messageCount === 1 ? "" : "s"})`,
         )
         process.stdout.write(EOL)
+        for (const warning of result.warnings) {
+          process.stdout.write(`Warning: ${warning}`)
+          process.stdout.write(EOL)
+        }
       } catch (error) {
         process.stderr.write(`Import failed: ${error instanceof Error ? error.message : String(error)}`)
         process.stderr.write(EOL)

@@ -40,13 +40,24 @@ export function DialogSessionImport() {
       })
       const result = response.data as SessionImportResult | undefined
       if (!result) throw new Error("No import result returned")
-      showToast({
-        type: "success",
-        title: "Session imported",
-        description: `${result.sessionCount} session${result.sessionCount === 1 ? "" : "s"}, ${
+      const descParts = [
+        `${result.sessionCount} session${result.sessionCount === 1 ? "" : "s"}, ${
           result.messageCount
         } message${result.messageCount === 1 ? "" : "s"}`,
+      ]
+      if (result.warnings.length > 0) {
+        descParts.push(`${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`)
+      }
+      showToast({
+        type: result.warnings.length > 0 ? "warning" : "success",
+        title: "Session imported",
+        description: descParts.join(" — "),
       })
+      if (result.warnings.length > 0) {
+        for (const warning of result.warnings) {
+          console.warn(`[session-import] ${warning}`)
+        }
+      }
       dialog.close()
       navigate(`/${params.dir}/session/${result.rootSessionID}`)
     } catch (error: any) {

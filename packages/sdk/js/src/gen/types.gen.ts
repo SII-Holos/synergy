@@ -4240,6 +4240,7 @@ export type SessionImportResult = {
   sessions: Array<SessionImportImportedSession>
   sessionCount: number
   messageCount: number
+  warnings: Array<string>
 }
 
 export type CortexTask = {

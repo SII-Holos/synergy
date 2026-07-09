@@ -12,8 +12,47 @@ import { Todo } from "./todo"
 import { SessionExport } from "./session-export"
 import { SessionEvent } from "./event"
 import { SessionNav } from "./nav"
+import { Log } from "@/util/log"
 
 export namespace SessionImport {
+  const log = Log.create({ service: "session-import" })
+
+  function validateScope(report: SessionExport.Report, targetScope: Scope): string[] {
+    const warnings: string[] = []
+    const sourceScopes = collectSourceScopes(report)
+
+    if (sourceScopes.size === 0) return warnings
+
+    const targetType = targetScope.type
+    const targetDir = targetScope.directory
+
+    for (const [scopeID, source] of sourceScopes) {
+      if (source.type !== targetType) {
+        warnings.push(
+          `Session originally belonged to a "${source.type}" scope (${scopeID}) but is being imported into a "${targetType}" scope. Workspace paths may not match.`,
+        )
+      }
+      if (source.directory && source.directory !== targetDir) {
+        warnings.push(
+          `Session originally used directory "${source.directory}" but the target scope directory is "${targetDir}". Relative paths in tool results may be incorrect.`,
+        )
+      }
+    }
+
+    return warnings
+  }
+
+  function collectSourceScopes(report: SessionExport.Report): Map<string, { type: string; directory: string }> {
+    const scopes = new Map<string, { type: string; directory: string }>()
+    for (const session of report.sessions) {
+      const scope = session.info.scope as Scope | undefined
+      if (!scope) continue
+      const id = scope.id ?? "unknown"
+      if (scopes.has(id)) continue
+      scopes.set(id, { type: scope.type, directory: scope.directory ?? "" })
+    }
+    return scopes
+  }
   const LegacyExport = z.object({
     info: Session.Info,
     messages: z.array(MessageV2.WithParts),
@@ -33,6 +72,7 @@ export namespace SessionImport {
       sessions: z.array(ImportedSession),
       sessionCount: z.number(),
       messageCount: z.number(),
+      warnings: z.array(z.string()),
     })
     .meta({ ref: "SessionImportResult" })
   export type Result = z.infer<typeof Result>
@@ -139,6 +179,12 @@ export namespace SessionImport {
         navEntry: navIndex.entries.find((entry) => entry.id === item.session.id),
       })
     }
+    const warnings = validateScope(report, scope)
+    if (warnings.length > 0) {
+      for (const warning of warnings) {
+        log.warn(warning)
+      }
+    }
 
     const rootSessionID = idMap.get(report.rootSessionID) ?? imported[0]?.session.id
     if (!rootSessionID) throw new Error("Session import did not create a root session")
@@ -147,6 +193,7 @@ export namespace SessionImport {
       sessions: imported,
       sessionCount: imported.length,
       messageCount,
+      warnings,
     }
   }
 

@@ -27627,9 +27627,15 @@
           },
           "messageCount": {
             "type": "number"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
-        "required": ["rootSessionID", "sessions", "sessionCount", "messageCount"]
+        "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
       },
       "CortexTask": {
         "type": "object",

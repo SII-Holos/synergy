@@ -111,9 +111,9 @@ describe("SessionImport", () => {
         const result = await SessionImport.fromBuffer(compressed)
         const importedRoot = await Session.get(result.rootSessionID)
         const importedChild = result.sessions.find((item) => item.sourceSessionID === child.id)?.session
-
         expect(result.sessionCount).toBe(2)
         expect(result.messageCount).toBe(4)
+        expect(result.warnings).toEqual([])
         expect(importedRoot.id).not.toBe(root.id)
         expect((importedRoot.scope as Scope).id).toBe(scope.id)
         expect(importedRoot.title).toBe("Export Root")
@@ -145,6 +145,38 @@ describe("SessionImport", () => {
         expect(list.data.map((item) => item.id)).toContain(importedRoot.id)
         const nav = await SessionNav.queryScope(scope.id)
         expect(nav.items.map((item) => item.id)).toContain(importedRoot.id)
+      },
+    })
+  })
+
+  test("warns when importing across different scopes", async () => {
+    await using sourceTmp = await tmpdir({ git: true })
+    await using targetTmp = await tmpdir({ git: true })
+    const sourceScope = await sourceTmp.scope()
+    const targetScope = await targetTmp.scope()
+
+    const report = await ScopeContext.provide({
+      scope: sourceScope,
+      fn: async () => {
+        const root = await Session.create({ title: "Cross Scope Export" })
+        await writeExchange(root.id, "test message")
+        return SessionExport.generate({ sessionID: root.id, mode: "full" })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: targetScope,
+      fn: async () => {
+        const result = await SessionImport.fromReport(report)
+        expect(result.sessionCount).toBe(1)
+        expect(result.messageCount).toBe(2)
+        expect(result.warnings.length).toBeGreaterThanOrEqual(1)
+        const warningText = result.warnings.join(" ")
+        expect(warningText).toContain("originally used directory")
+
+        const root = await Session.get(result.rootSessionID)
+        expect((root.scope as Scope).id).toBe(targetScope.id)
+        expect(root.workspace?.path).toBe(targetScope.directory)
       },
     })
   })
