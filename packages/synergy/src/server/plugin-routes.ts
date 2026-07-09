@@ -7,12 +7,15 @@ import { pathToFileURL } from "url"
 import { errors } from "./error"
 import { approvedPluginTrustDecision, derivePluginSource, resolveInstalledPluginPolicy } from "../plugin/trust"
 import { Installation } from "../global/installation"
-import { Plugin } from "../plugin/index"
 import {
   isAllowedPluginAssetPath,
   normalizePluginArtifactPath,
+  rewritePluginSolidImports,
+  hasUnsupportedSolidRuntimeImport,
+  hasBundledSolidRuntime,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
+import { Plugin } from "../plugin/index"
 import { computeRisk, pluginRisk, registryPermissionSummary } from "@ericsanchezok/synergy-util/capability"
 
 import { diffPermissions } from "../plugin/consent/diff"
@@ -369,6 +372,31 @@ export const PluginRoute = new Hono()
         const raw = await Bun.file(real).text()
         const sanitized = sanitizeSvg(raw)
         return c.body(sanitized, { headers: { "Content-Type": mimeType } })
+      }
+
+      // 7. JavaScript plugin UI bundles — rewrite Solid runtime imports to the host's
+      // shared runtime so the browser/Electron can import them directly without a
+      // client-side blob URL (which violates Electron's CSP in production builds).
+      if (ext === ".js" || ext === ".mjs" || ext === ".cjs") {
+        const raw = await Bun.file(real).text()
+        if (hasBundledSolidRuntime(raw)) {
+          return c.json(
+            { message: `Plugin ${pluginId} bundles Solid runtime. Rebuild it with synergy-plugin build.` },
+            400,
+          )
+        }
+        if (hasUnsupportedSolidRuntimeImport(raw)) {
+          return c.json(
+            {
+              message:
+                `Plugin ${pluginId} imports an unsupported Solid runtime subpath. ` +
+                `Use solid-js, solid-js/web, solid-js/store, solid-js/h, solid-js/h/jsx-runtime, or solid-js/h/jsx-dev-runtime.`,
+            },
+            400,
+          )
+        }
+        const rewritten = rewritePluginSolidImports(raw)
+        return c.body(rewritten, { headers: { "Content-Type": mimeType } })
       }
 
       return c.body(Bun.file(real).stream(), { headers: { "Content-Type": mimeType } })
