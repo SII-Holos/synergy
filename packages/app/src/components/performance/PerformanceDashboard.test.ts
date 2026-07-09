@@ -54,6 +54,7 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
       slowProviders: [],
       slowStorage: [],
       slowLibrary: [],
+      childProcesses: [],
       slowFrontend: [],
     },
     issues: [],
