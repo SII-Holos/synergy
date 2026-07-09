@@ -1,4 +1,6 @@
 import { Diagnostics } from "../observability/diagnostics"
+import { Cortex } from "../cortex"
+import { SessionManager } from "../session/manager"
 import { PerformanceMetrics } from "./metrics"
 import { PerformanceIssues } from "./issues"
 import { PerformanceSchema } from "./schema"
@@ -24,6 +26,8 @@ export namespace PerformanceDashboard {
     const childProcesses = rankChildProcesses(resourceRows)
     const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
+    const runtimeStats = SessionManager.runtimeStats()
+    const cortexStats = Cortex.retentionStats()
     const http = metrics.filter((row) => row.name === "http.request.duration")
     const httpDurations = http.map((row) => row.value)
     const httpErrors = http.filter((row) => row.labels.status && Number(row.labels.status) >= 500).length
@@ -104,6 +108,20 @@ export namespace PerformanceDashboard {
         traceFiles: diagnostics?.traces.files.length ?? 0,
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
+        sessionRuntimes: runtimeStats,
+        cortexTasks: {
+          totalCount: cortexStats.totalCount,
+          pendingCount: cortexStats.byStatus.pending,
+          queuedCount: cortexStats.byStatus.queued,
+          runningCount: cortexStats.byStatus.running,
+          completedCount: cortexStats.byStatus.completed,
+          errorCount: cortexStats.byStatus.error,
+          cancelledCount: cortexStats.byStatus.cancelled,
+          retainedPromptChars: cortexStats.retainedPromptChars,
+          retainedOutputChars: cortexStats.retainedOutputChars,
+          retainedErrorChars: cortexStats.retainedErrorChars,
+          retainedProgressToolCount: cortexStats.retainedProgressToolCount,
+        },
       },
       top: {
         slowRoutes: rank(http, "path"),

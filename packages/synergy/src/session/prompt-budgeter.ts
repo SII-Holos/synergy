@@ -22,6 +22,7 @@ export namespace PromptBudgeter {
     model: Provider.Model
     system: string[]
     systemCacheBreakpoint?: number
+    lateSystem?: string[]
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
@@ -29,6 +30,7 @@ export namespace PromptBudgeter {
   export interface PromptPlan {
     system: string[]
     systemCacheBreakpoint?: number
+    lateSystem?: string[]
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
@@ -94,9 +96,11 @@ export namespace PromptBudgeter {
       restoredEmptySystem: system.length === 0,
     })
 
+    const lateSystem = [...(input.lateSystem ?? [])]
     return {
       system: normalizedSystem,
       systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
+      lateSystem,
       messages: ProviderTransform.message(input.messages, input.model),
       toolDefinitions: input.toolDefinitions,
     }
@@ -167,7 +171,7 @@ export namespace PromptBudgeter {
     await Token.warmup(modelID)
     const systemCost = await estimateModelJSONCached(
       modelID,
-      plan.system.map((content) => ({ role: "system", content })),
+      [...plan.system, ...(plan.lateSystem ?? [])].map((content) => ({ role: "system", content })),
     )
     const messageCost = await estimateMessages(plan.messages, modelID)
     const toolCost = await estimateTools(plan.toolDefinitions, modelID)
@@ -180,20 +184,21 @@ export namespace PromptBudgeter {
   }
 
   async function estimateMessages(messages: ModelMessage[], modelID: string) {
-    const costs = await Promise.all(
-      messages.map(async (message) => {
-        const { sanitized, imageParts } = sanitizeForEstimation([message])
-        return (await estimateModelJSONCached(modelID, sanitized)) + imageParts * IMAGE_TOKEN_ESTIMATE
-      }),
-    )
-    return costs.reduce((sum, value) => sum + value, 0)
+    let total = 0
+    for (const message of messages) {
+      const { sanitized, imageParts } = sanitizeForEstimation([message])
+      total += (await estimateModelJSONCached(modelID, sanitized)) + imageParts * IMAGE_TOKEN_ESTIMATE
+    }
+    return total
   }
 
   async function estimateModelJSONCached(modelID: string, value: unknown) {
-    const key = estimateKey(modelID, value)
+    const serialized = serializeForEstimate(value)
+    if (serialized === undefined) return 0
+    const key = estimateKey(modelID, serialized)
     const cached = estimateCache.get(key)
     if (cached !== undefined) return cached
-    const estimated = await Token.estimateModelJSON(modelID, value)
+    const estimated = await Token.estimateModelJSON(modelID, serialized)
     estimateCache.set(key, estimated)
     if (estimateCache.size > ESTIMATE_CACHE_MAX) {
       const first = estimateCache.keys().next().value
@@ -202,11 +207,20 @@ export namespace PromptBudgeter {
     return estimated
   }
 
-  function estimateKey(modelID: string, value: unknown) {
+  function serializeForEstimate(value: unknown): string | undefined {
+    if (typeof value === "string") return value
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return undefined
+    }
+  }
+
+  function estimateKey(modelID: string, serialized: string) {
     // A cache key needs a fast non-cryptographic hash, not SHA-256. Bun.hash
     // (wyhash) is ~10x faster; collisions are irrelevant at this cache size and
     // would only yield a slightly-off token estimate that calibration corrects.
-    return `${modelID}\0${Bun.hash(JSON.stringify(value))}`
+    return `${modelID}\0${Bun.hash(serialized)}`
   }
 
   export async function decide(

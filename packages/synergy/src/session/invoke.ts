@@ -28,6 +28,7 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { SessionMemoryPressure } from "./memory-pressure"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
@@ -73,6 +74,7 @@ import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
+import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -166,10 +168,10 @@ export namespace SessionInvoke {
         },
       )
     }
-    // Keep the recalled memory/experience in the system prompt for every step
-    // so the prefix stays stable (maximizing cache hits) and the agent retains
-    // its knowledge context across the entire trajectory, including after
-    // compaction boundaries.
+    // Keep recalled memory/experience available for every step so the agent
+    // retains its knowledge context across the entire trajectory, including
+    // after compaction boundaries. Provider layout decides whether this
+    // advisory context stays in system or moves late for cacheability.
     if (step > 1 && isTopSession) {
       return getCachedResult(sessionID)
     }
@@ -542,7 +544,7 @@ export namespace SessionInvoke {
         })
         if (!turnPreparation) break
 
-        const [
+        let [
           toolDefinitions,
           [envParts, customParts],
           cortexExecutionContext,
@@ -557,8 +559,9 @@ export namespace SessionInvoke {
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
-        const systemParts: string[] = []
+        let systemParts: string[] = []
         let systemCacheBreakpoint: number | undefined
+        let lateSystemParts: string[] = []
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
@@ -575,6 +578,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -615,8 +619,9 @@ Autonomously advance the task until it is complete. Before calling loop_stop(), 
 - Are there any remaining gaps, edge cases, or follow-up work implied by the task?
 
 If the task is NOT fully complete, continue working now.
-If the task IS fully complete and verified, call loop_stop().
+If the task IS fully complete and verified, call loop_stop() to request a completion review.
 Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
+loop_stop() does not end the Light Loop directly — a reviewer will audit your work first.
 </light-loop-context>`)
             break
         }
@@ -653,9 +658,9 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
           }
         }
 
-        // Layer 3: Dynamic — memory/experience context (varies per step)
+        // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
         if (memoryResult) {
-          systemParts.push(memoryResult.context)
+          lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
           if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
@@ -668,42 +673,42 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
           }
         }
 
-        // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
-        systemParts.push(...envParts)
+        // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
+        lateSystemParts.push(...envParts)
 
-        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
         const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
-        if (gitHealthBlock) systemParts.push(gitHealthBlock)
+        if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
-        // Layer 4.55: Configurable — git commit coauthor footer reminder
+        // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
         if ((await Config.current()).experimental?.coauthor_reminder !== false) {
-          systemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
         }
 
-        // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
-        if (agendaReminder) systemParts.push(agendaReminder)
+        // Layer 5: Dynamic advisory context — upcoming agenda wake-ups
+        if (agendaReminder) lateSystemParts.push(agendaReminder)
 
-        // Layer 6: Dynamic — cortex reminders and time context (always at the end)
-        if (cortexReminder) systemParts.push(cortexReminder)
+        // Layer 6: Dynamic advisory context — cortex reminders and time context
+        if (cortexReminder) lateSystemParts.push(cortexReminder)
 
-        // Layer 7: Dynamic — planning reminder when agent self-executes without a DAG
+        // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
         const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
-        if (planningReminder) systemParts.push(planningReminder)
+        if (planningReminder) lateSystemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
           const elapsed = R.time.created - lastFinished.time.completed
           if (elapsed > 0) {
-            systemParts.push(
+            lateSystemParts.push(
               `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
             )
           }
         }
-        const modelSessionMessages = WorkflowUserWrapper.projectMessages({
+        let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
         })
-        const preparedMessages = [
+        let preparedMessages = [
           ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
@@ -716,7 +721,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         ]
 
         const promptPlanTimer = log.time("promptBudgeter.buildPlan")
-        const promptPlan = await PromptBudgeter.buildPlan({
+        let promptPlan = await PromptBudgeter.buildPlan({
           sessionID,
           agent: agent.name,
           messageID: R.id,
@@ -724,6 +729,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
           system: systemParts,
           systemCacheBreakpoint,
           messages: preparedMessages,
+          lateSystem: lateSystemParts,
           toolDefinitions,
         }).catch(async (error) => {
           await completeAssistantWithError({ sessionID, processor, model, error })
@@ -734,7 +740,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
 
         const calibration = buildCalibration(msgs)
         const promptDecideTimer = log.time("promptBudgeter.decide")
-        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+        let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
         }).catch(async (error) => {
@@ -762,11 +768,18 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
             type: "compaction",
             auto: true,
           })
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptPlan = undefined
+          promptDecision = undefined
           continue
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const resolvedTools = await ToolResolver.resolveWithAvailability({
+        let resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
@@ -781,6 +794,26 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         })
         toolResolveTimer.stop()
         if (!resolvedTools) break
+
+        let streamInput: LLM.StreamInput | undefined
+        function releaseTurnReferences(mutateStreamInput: boolean) {
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptDecision = undefined
+          if (mutateStreamInput && streamInput) {
+            streamInput.system = []
+            streamInput.lateSystem = undefined
+            streamInput.messages = []
+            streamInput.tools = {}
+            streamInput.activeToolIDs = undefined
+          }
+          promptPlan = undefined
+          resolvedTools = undefined
+          streamInput = undefined
+        }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         // Count LLM calls for an active Lattice run in memory; flushed to the
@@ -818,22 +851,21 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         })
         let turnSpanEnded = false
         let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+        streamInput = {
+          user: R,
+          agent,
+          abort: combinedAbort,
+          sessionID,
+          system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+          lateSystem: promptPlan.lateSystem,
+          messages: promptPlan.messages,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
+          model,
+        }
         try {
-          result = await Promise.race([
-            processor.process({
-              user: R,
-              agent,
-              abort: combinedAbort,
-              sessionID,
-              system: promptPlan.system,
-              systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-              messages: promptPlan.messages,
-              tools: resolvedTools.tools,
-              activeToolIDs: resolvedTools.activeToolIDs,
-              model,
-            }),
-            deadlinePromise,
-          ])
+          result = await Promise.race([processor.process(streamInput), deadlinePromise])
         } catch (error) {
           if (error !== deadlineError) {
             PerformanceSpans.end(turnSpan, { status: "error", error })
@@ -854,6 +886,7 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         } finally {
           clearTimeout(turnTimer)
           processTimer.stop()
+          releaseTurnReferences(!turnDeadline.signal.aborted)
           if (!turnSpanEnded) {
             PerformanceSpans.end(turnSpan, {
               attributes: {
@@ -865,24 +898,33 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
           }
         }
 
-        // post-LLM jobs
-        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
-        const postCtx: LoopJob.Context = {
-          ...jobCtx,
-          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
-          lastAssistant: processor.message,
-          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
-            ? processor.message
-            : jobCtx.lastFinished,
-          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
-            ? postParts
-            : jobCtx.lastFinishedParts,
+        let postRequestedStop = false
+        {
+          // post-LLM jobs
+          const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+          const postCtx: LoopJob.Context = {
+            ...jobCtx,
+            messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+            lastAssistant: processor.message,
+            lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+              ? processor.message
+              : jobCtx.lastFinished,
+            lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+              ? postParts
+              : jobCtx.lastFinishedParts,
+          }
+          const postJobs = LoopJob.collect("post", postCtx)
+          if (postJobs.length > 0) {
+            const postResult = await LoopJob.execute(postJobs, postCtx)
+            postRequestedStop = postResult === "stop"
+          }
         }
-        const postJobs = LoopJob.collect("post", postCtx)
-        if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, postCtx)
-          if (postResult === "stop") break
-        }
+        await SessionMemoryPressure.maybeCollect({
+          sessionID,
+          messageID: processor.message.id,
+          phase: "session.turn.after_post_jobs",
+        })
+        if (postRequestedStop) break
 
         if (result === "stop") {
           // If the failure was caused by exceeding context limits, inject a
@@ -1810,6 +1852,10 @@ Do not stop early, do not pretend the task is complete, and do not hide missing 
         }
       }
     }
+    // This deliberately uses the cheap four-chars-per-token heuristic instead
+    // of PromptBudgeter.measure's model-aware tokenizer path. Calibration runs
+    // between tool steps and starts from provider-reported actual input tokens,
+    // so only the small post-calibration delta is approximate.
     const deltaTokens = Math.ceil(deltaChars / 4)
 
     return { actualInput, outputTokens, deltaTokens }

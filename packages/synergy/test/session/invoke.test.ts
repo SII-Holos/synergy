@@ -126,6 +126,7 @@ function installBasicLoopMocks(options?: {
     return {
       system: input.system,
       systemCacheBreakpoint: input.systemCacheBreakpoint,
+      lateSystem: input.lateSystem,
       messages: input.messages,
       toolDefinitions: input.toolDefinitions,
     }
@@ -243,11 +244,11 @@ describe("SessionInvoke workspace execution context", () => {
     let worktreeID: string | undefined
     let worktreePath = ""
     let assistantPath: MessageV2.Assistant["path"] | undefined
-    let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       onProcess: async (input, assistant) => {
         assistantPath = assistant.path
-        systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -265,9 +266,9 @@ describe("SessionInvoke workspace execution context", () => {
       await SessionInvoke.loop.force(sessionID)
 
       expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
-      expect(systemPrompt).toContain(`Working directory: ${worktreePath}`)
-      expect(systemPrompt).toContain(`Workspace path: ${worktreePath}`)
-      expect(systemPrompt).toContain(`Original checkout: ${tmp.path}`)
+      expect(lateSystemPrompt).toContain(`Working directory: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Workspace path: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Original checkout: ${tmp.path}`)
     } finally {
       restore()
       SessionManager.unregisterRuntime(sessionID)
@@ -521,6 +522,7 @@ describe("SessionInvoke system prompt assembly", () => {
     const originalEmbeddingGenerate = Embedding.generate
 
     let capturedSystem: string[] | undefined
+    let capturedLateSystem: string[] | undefined
 
     try {
       ;(Provider.getModel as any) = mock(async () => ({
@@ -555,9 +557,11 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
         capturedSystem = input.system
+        capturedLateSystem = input.lateSystem
         return {
           system: input.system,
           systemCacheBreakpoint: input.systemCacheBreakpoint,
+          lateSystem: input.lateSystem,
           messages: [{ role: "user", content: "stub message" }],
           toolDefinitions: [],
         }
@@ -612,11 +616,13 @@ describe("SessionInvoke system prompt assembly", () => {
           await SessionInvoke.loop.force(promptSessionID)
 
           const systemPrompt = capturedSystem?.join("\n") ?? ""
-          expect(systemPrompt).toContain("<coauthor-reminder>")
-          expect(systemPrompt).toContain(
+          const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain(
             "Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>",
           )
-          expect(systemPrompt).toContain("</coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("</coauthor-reminder>")
         },
       })
     } finally {
@@ -899,9 +905,11 @@ describe("SessionInvoke coauthor reminder prompt", () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       onProcess: async (input) => {
         systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -914,8 +922,9 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
           await SessionInvoke.loop.force(session.id)
 
-          expect(systemPrompt).toContain("<coauthor-reminder>")
-          expect(systemPrompt).toContain("Co-authored-by: synergy-agent")
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("Co-authored-by: synergy-agent")
         },
       })
     } finally {
@@ -928,10 +937,12 @@ describe("SessionInvoke coauthor reminder prompt", () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       config: { experimental: { coauthor_reminder: false } },
       onProcess: async (input) => {
         systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -946,6 +957,8 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
           expect(systemPrompt).not.toContain("<coauthor-reminder>")
           expect(systemPrompt).not.toContain("Co-authored-by: synergy-agent")
+          expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
         },
       })
     } finally {

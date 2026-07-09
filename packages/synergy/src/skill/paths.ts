@@ -4,10 +4,12 @@ import { Global } from "@/global"
 import { Flag } from "@/flag/flag"
 
 export namespace SkillPaths {
+  function uniq(paths: string[]) {
+    return Array.from(new Set(paths.filter((dir): dir is string => !!dir).map((dir) => path.resolve(dir))))
+  }
+
   function uniqExisting(paths: string[]) {
-    return Array.from(new Set(paths.filter((dir): dir is string => !!dir && existsSync(dir)))).map((dir) =>
-      path.resolve(dir),
-    )
+    return uniq(paths.filter((dir) => existsSync(dir)))
   }
 
   export function claudeRoots(instanceDirectory: string) {
@@ -43,16 +45,22 @@ export namespace SkillPaths {
   }
 
   export function runtimeSkillRootsSync(instanceDirectory: string) {
-    const synergy = nativeRuntimeRootsSync(instanceDirectory)
-    const claude = claudeRoots(instanceDirectory)
-    const openclaw = openClawRoots(instanceDirectory)
-    const codex = codexRoots(instanceDirectory)
+    return uniqExisting(runtimeSkillRootCandidatesSync(instanceDirectory))
+  }
 
-    return uniqExisting([
+  export function runtimeSkillRootCandidatesSync(instanceDirectory: string) {
+    const synergy = nativeRuntimeRootsSync(instanceDirectory)
+
+    return uniq([
       ...synergy.flatMap((root) => [path.join(root, "skill"), path.join(root, "skills")]),
-      ...claude.map((root) => path.join(root, "skills")),
-      ...openclaw,
-      ...codex,
+      path.join(instanceDirectory, ".claude", "skills"),
+      path.join(Global.Path.home, ".claude", "skills"),
+      path.join(instanceDirectory, "skills"),
+      path.join(instanceDirectory, ".agents", "skills"),
+      path.join(Global.Path.home, ".agents", "skills"),
+      path.join(Global.Path.home, ".openclaw", "skills"),
+      path.join(instanceDirectory, ".codex", "skills"),
+      path.join(Global.Path.home, ".codex", "skills"),
     ])
   }
 

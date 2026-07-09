@@ -354,11 +354,11 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
         <div>
           <h3 class="text-14-semibold text-text-strong">Runtime health and support</h3>
           <p class="mt-1 text-11-regular text-text-weak">
-            Diagnostics-derived support signals for lock health, trace evidence, recent errors, and pending sessions.
+            Diagnostics-derived support signals for lock health, trace evidence, session runtimes, and retained tasks.
           </p>
         </div>
       </div>
-      <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
+      <div class="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <For each={runtimeSupportItems(props.summary)}>
           {(item) => (
             <div class="performance-card-soft rounded-lg px-3 py-2">

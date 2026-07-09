@@ -34,6 +34,8 @@ import os from "node:os"
 // ---------------------------------------------------------------------------
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
+const GIT_HEALTH_TEST_TIMEOUT = 30_000
+const gitHealthTest = test.serial
 
 beforeAll(async () => {
   const mod = await import("../../src/project/git-health")
@@ -117,7 +119,7 @@ function expectValidIssue(issue: unknown): void {
 // ===========================================================================
 
 describe("GitHealth.check — non-git directory", () => {
-  test("returns empty array for a plain directory (no .git)", async () => {
+  gitHealthTest("returns empty array for a plain directory (no .git)", async () => {
     const repo = makeRepo()
     try {
       const issues = await GitHealth.check(repo.path)
@@ -128,7 +130,7 @@ describe("GitHealth.check — non-git directory", () => {
     }
   })
 
-  test("returns empty array for a directory that does not exist", async () => {
+  gitHealthTest("returns empty array for a directory that does not exist", async () => {
     const issues = await GitHealth.check("/tmp/does-not-exist-git-health-test")
     expect(issues).toBeArray()
     expect(issues).toHaveLength(0)
@@ -137,7 +139,7 @@ describe("GitHealth.check — non-git directory", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — clean repo", () => {
-  test("returns empty array or info-level issues only for a fresh repo", async () => {
+  gitHealthTest("returns empty array or info-level issues only for a fresh repo", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -156,7 +158,7 @@ describe("GitHealth.check — clean repo", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — dirty working tree, many changed lines", () => {
-  test("detects diff_lines issue when a tracked file has 300+ changed lines", async () => {
+  gitHealthTest("detects diff_lines issue when a tracked file has 300+ changed lines", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -185,7 +187,7 @@ describe("GitHealth.check — dirty working tree, many changed lines", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — dirty working tree, many changed files", () => {
-  test("detects diff_files issue when 30+ files are modified", async () => {
+  gitHealthTest("detects diff_files issue when 30+ files are modified", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -211,7 +213,7 @@ describe("GitHealth.check — dirty working tree, many changed files", () => {
     }
   })
 
-  test("does not flag diff_files for under 10 modified files", async () => {
+  gitHealthTest("does not flag diff_files for under 10 modified files", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -236,7 +238,7 @@ describe("GitHealth.check — dirty working tree, many changed files", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — many untracked files", () => {
-  test("detects untracked issue when 50+ untracked files exist", async () => {
+  gitHealthTest("detects untracked issue when 50+ untracked files exist", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -256,7 +258,7 @@ describe("GitHealth.check — many untracked files", () => {
     }
   })
 
-  test("does not flag untracked for a small number of untracked files", async () => {
+  gitHealthTest("does not flag untracked for a small number of untracked files", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -277,7 +279,7 @@ describe("GitHealth.check — many untracked files", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — large tracked file", () => {
-  test("detects large_files issue when a tracked file exceeds the size threshold", async () => {
+  gitHealthTest("detects large_files issue when a tracked file exceeds the size threshold", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -303,7 +305,7 @@ describe("GitHealth.check — large tracked file", () => {
     }
   })
 
-  test("does not flag large_files for small tracked files", async () => {
+  gitHealthTest("does not flag large_files for small tracked files", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -322,29 +324,33 @@ describe("GitHealth.check — large tracked file", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — extra branches", () => {
-  test("detects extra_branches issue when 25+ extra branches exist", async () => {
-    const repo = makeRepo()
-    try {
-      await gitInit(repo.path)
-      await gitEmptyCommit(repo.path, "root")
+  gitHealthTest(
+    "detects extra_branches issue when 25+ extra branches exist",
+    async () => {
+      const repo = makeRepo()
+      try {
+        await gitInit(repo.path)
+        await gitEmptyCommit(repo.path, "root")
 
-      // Create 25 branches pointing at the same root commit
-      for (let i = 1; i <= 25; i++) {
-        await $`git branch stale-branch-${i}`.cwd(repo.path).quiet()
+        // Create 25 branches pointing at the same root commit
+        for (let i = 1; i <= 25; i++) {
+          await $`git branch stale-branch-${i}`.cwd(repo.path).quiet()
+        }
+
+        const issues = await GitHealth.check(repo.path)
+        const extraBranchesIssue = issues.find((i: Issue) => i.dimension === "extra_branches")
+        expect(extraBranchesIssue).toBeDefined()
+        expectValidIssue(extraBranchesIssue)
+        expect(extraBranchesIssue!.level).toBeOneOf(["warn", "critical"])
+        expect(extraBranchesIssue!.detail).toHaveProperty("count")
+      } finally {
+        repo.cleanup()
       }
+    },
+    GIT_HEALTH_TEST_TIMEOUT,
+  )
 
-      const issues = await GitHealth.check(repo.path)
-      const extraBranchesIssue = issues.find((i: Issue) => i.dimension === "extra_branches")
-      expect(extraBranchesIssue).toBeDefined()
-      expectValidIssue(extraBranchesIssue)
-      expect(extraBranchesIssue!.level).toBeOneOf(["warn", "critical"])
-      expect(extraBranchesIssue!.detail).toHaveProperty("count")
-    } finally {
-      repo.cleanup()
-    }
-  })
-
-  test("does not flag extra_branches for a repo with few branches", async () => {
+  gitHealthTest("does not flag extra_branches for a repo with few branches", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -364,7 +370,7 @@ describe("GitHealth.check — extra branches", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — detached HEAD", () => {
-  test("detects detached_head issue when HEAD is detached", async () => {
+  gitHealthTest("detects detached_head issue when HEAD is detached", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -383,7 +389,7 @@ describe("GitHealth.check — detached HEAD", () => {
     }
   })
 
-  test("does not flag detached_head when on a named branch", async () => {
+  gitHealthTest("does not flag detached_head when on a named branch", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -400,7 +406,7 @@ describe("GitHealth.check — detached HEAD", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.check — gc needed", () => {
-  test("detects gc_needed issue when many loose objects exist", async () => {
+  gitHealthTest("detects gc_needed issue when many loose objects exist", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -425,7 +431,7 @@ describe("GitHealth.check — gc needed", () => {
     }
   })
 
-  test("does not flag gc_needed for a clean repo", async () => {
+  gitHealthTest("does not flag gc_needed for a clean repo", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -442,12 +448,12 @@ describe("GitHealth.check — gc needed", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth caching — check(), lastReport(), invalidate()", () => {
-  test("lastReport returns undefined before any check", () => {
+  gitHealthTest("lastReport returns undefined before any check", () => {
     const last = GitHealth.lastReport()
     expect(last).toBeUndefined()
   })
 
-  test("lastReport returns previous check results after check()", async () => {
+  gitHealthTest("lastReport returns previous check results after check()", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -467,7 +473,7 @@ describe("GitHealth caching — check(), lastReport(), invalidate()", () => {
     }
   })
 
-  test("second check() call returns cached results without re-scan", async () => {
+  gitHealthTest("second check() call returns cached results without re-scan", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -489,7 +495,7 @@ describe("GitHealth caching — check(), lastReport(), invalidate()", () => {
     }
   })
 
-  test("after invalidate(), next check() re-scans and finds new issues", async () => {
+  gitHealthTest("after invalidate(), next check() re-scans and finds new issues", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -515,7 +521,7 @@ describe("GitHealth caching — check(), lastReport(), invalidate()", () => {
     }
   })
 
-  test("lastReport returns undefined after invalidate", () => {
+  gitHealthTest("lastReport returns undefined after invalidate", () => {
     GitHealth.invalidate()
     const last = GitHealth.lastReport()
     expect(last).toBeUndefined()
@@ -524,7 +530,7 @@ describe("GitHealth caching — check(), lastReport(), invalidate()", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.inject()", () => {
-  test("returns a string containing <git-health> block with issue details", async () => {
+  gitHealthTest("returns a string containing <git-health> block with issue details", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -543,7 +549,7 @@ describe("GitHealth.inject()", () => {
     }
   })
 
-  test("returns undefined when there are no issues (clean repo)", async () => {
+  gitHealthTest("returns undefined when there are no issues (clean repo)", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -556,7 +562,7 @@ describe("GitHealth.inject()", () => {
     }
   })
 
-  test("inject() populates lastReport", async () => {
+  gitHealthTest("inject() populates lastReport", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -576,7 +582,7 @@ describe("GitHealth.inject()", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.injectCached()", () => {
-  test("returns undefined immediately before a refresh has populated the cache", async () => {
+  gitHealthTest("returns undefined immediately before a refresh has populated the cache", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -593,7 +599,7 @@ describe("GitHealth.injectCached()", () => {
     }
   })
 
-  test("returns the last completed refresh without rescanning synchronously", async () => {
+  gitHealthTest("returns the last completed refresh without rescanning synchronously", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -613,7 +619,7 @@ describe("GitHealth.injectCached()", () => {
     }
   })
 
-  test("refresh de-duplicates concurrent scans for the same directory", async () => {
+  gitHealthTest("refresh de-duplicates concurrent scans for the same directory", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -630,7 +636,7 @@ describe("GitHealth.injectCached()", () => {
     }
   })
 
-  test("after invalidate, cached injection skips stale diagnostics until refresh completes", async () => {
+  gitHealthTest("after invalidate, cached injection skips stale diagnostics until refresh completes", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
@@ -658,7 +664,7 @@ describe("GitHealth.injectCached()", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth cwd parameter", () => {
-  test("check(path) uses the specified directory instead of cwd", async () => {
+  gitHealthTest("check(path) uses the specified directory instead of cwd", async () => {
     const repoA = makeRepo()
     const repoB = makeRepo()
     try {
@@ -687,37 +693,41 @@ describe("GitHealth cwd parameter", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth — multiple issues at once", () => {
-  test("returns multiple issues when the repo has several problems", async () => {
-    const repo = makeRepo()
-    try {
-      await gitInit(repo.path)
-      await gitEmptyCommit(repo.path, "root")
+  gitHealthTest(
+    "returns multiple issues when the repo has several problems",
+    async () => {
+      const repo = makeRepo()
+      try {
+        await gitInit(repo.path)
+        await gitEmptyCommit(repo.path, "root")
 
-      // Problem 1: Detached HEAD
-      await $`git checkout --detach`.cwd(repo.path).quiet()
+        // Problem 1: Detached HEAD
+        await $`git checkout --detach`.cwd(repo.path).quiet()
 
-      // Problem 2: Many untracked files
-      for (let i = 1; i <= 50; i++) {
-        writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+        // Problem 2: Many untracked files
+        for (let i = 1; i <= 50; i++) {
+          writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+        }
+
+        // Problem 3: Many stale branches
+        // Re-attach briefly to create branches, then detach again
+        await $`git checkout -b temp-branch`.cwd(repo.path).quiet()
+        for (let i = 1; i <= 25; i++) {
+          await $`git branch stale-branch-${i}`.cwd(repo.path).quiet()
+        }
+        await $`git checkout --detach`.cwd(repo.path).quiet()
+
+        const issues = await GitHealth.check(repo.path)
+        expect(issues.length).toBeGreaterThanOrEqual(3)
+
+        const dimensions = issues.map((i: Issue) => i.dimension)
+        expect(dimensions).toContain("detached_head")
+        expect(dimensions).toContain("untracked")
+        expect(dimensions).toContain("extra_branches")
+      } finally {
+        repo.cleanup()
       }
-
-      // Problem 3: Many stale branches
-      // Re-attach briefly to create branches, then detach again
-      await $`git checkout -b temp-branch`.cwd(repo.path).quiet()
-      for (let i = 1; i <= 25; i++) {
-        await $`git branch stale-branch-${i}`.cwd(repo.path).quiet()
-      }
-      await $`git checkout --detach`.cwd(repo.path).quiet()
-
-      const issues = await GitHealth.check(repo.path)
-      expect(issues.length).toBeGreaterThanOrEqual(3)
-
-      const dimensions = issues.map((i: Issue) => i.dimension)
-      expect(dimensions).toContain("detached_head")
-      expect(dimensions).toContain("untracked")
-      expect(dimensions).toContain("extra_branches")
-    } finally {
-      repo.cleanup()
-    }
-  })
+    },
+    GIT_HEALTH_TEST_TIMEOUT,
+  )
 })
