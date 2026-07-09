@@ -113,8 +113,8 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
           outdir: uiOutdir,
           target: "browser",
           naming: path.basename(uiOutputPath),
-          external: ["solid-js", "solid-js/web", "solid-js/store"],
-          jsx: { runtime: "automatic", importSource: "solid-js" },
+          external: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/h"],
+          jsx: { runtime: "automatic", importSource: "solid-js/h" },
         })
       } finally {
         fs.rmSync(tempUiDir, { recursive: true, force: true })
