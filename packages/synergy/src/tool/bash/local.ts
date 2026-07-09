@@ -97,7 +97,7 @@ export function detectDetachedDaemonRisk(command: string): DetachedDaemonRisk | 
     {
       kind: "screen_detached",
       pattern: "screen -dm",
-      regex: /\bscreen\s+-dm\b/,
+      regex: /\bscreen\s+-dm(?:\w|$)/,
     },
     {
       kind: "nohup",
