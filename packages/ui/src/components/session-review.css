@@ -65,6 +65,14 @@
     }
   }
 
+  [data-slot="session-review-accordion-item"][data-selected="true"] [data-slot="accordion-trigger"] {
+    background-color: var(--surface-base-hover) !important;
+  }
+
+  [data-slot="session-review-accordion-item"][data-selected="true"] [data-slot="session-review-filename"] {
+    color: var(--text-interactive-base);
+  }
+
   [data-slot="accordion-content"] {
     -webkit-user-select: text;
     user-select: text;

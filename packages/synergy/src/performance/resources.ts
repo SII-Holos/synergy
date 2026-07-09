@@ -4,6 +4,7 @@ import { PerformanceIssues } from "./issues"
 import { PerformanceMetrics } from "./metrics"
 import { PerformanceSchema } from "./schema"
 import { PerformanceStore } from "./store"
+import { ProcessRegistry } from "@/process/registry"
 
 export namespace PerformanceResources {
   let timer: Timer | undefined
@@ -55,6 +56,55 @@ export namespace PerformanceResources {
       labels: {},
     })
     PerformanceStore.insertResource(sample)
+    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+    PerformanceMetrics.record({
+      name: "process.active.count",
+      value: childProcesses.length,
+      unit: "count",
+      module: "process",
+      source: "process",
+      labels: { role: "tool-child" },
+    })
+    for (const child of childProcesses) {
+      if (child.rssBytes === undefined) continue
+      const labels: Record<string, string | number | boolean> = {
+        command: truncateLabel(child.command),
+        backgrounded: child.backgrounded,
+        ageMs: child.ageMs,
+        outputChars: child.outputChars,
+        truncated: child.truncated,
+      }
+      if (child.description) labels.description = truncateLabel(child.description)
+      const childSample = PerformanceSchema.ResourceSample.parse({
+        sampleId: PerformanceClock.id("res"),
+        time: now,
+        iso: PerformanceClock.iso(now),
+        source: "process",
+        process: {
+          pid: child.pid,
+          processId: child.id,
+          role: child.backgrounded ? "tool-background" : "tool",
+        },
+        memory: { rssBytes: child.rssBytes },
+        eventLoop: { sampleWindowMs: config.resourceSampleIntervalMs },
+        io: { osAvailable: true },
+        labels,
+      })
+      PerformanceStore.insertResource(childSample)
+      PerformanceMetrics.record({
+        name: "process.child.memory.rss",
+        value: child.rssBytes,
+        unit: "bytes",
+        module: "process",
+        source: "process",
+        processId: child.id,
+        pid: child.pid,
+        labels: {
+          command: truncateLabel(child.command),
+          backgrounded: child.backgrounded,
+        },
+      })
+    }
     PerformanceMetrics.record({
       name: "process.memory.rss",
       value: memory.rss,
@@ -162,5 +212,9 @@ export namespace PerformanceResources {
   export function stop() {
     if (timer) clearInterval(timer)
     timer = undefined
+  }
+
+  function truncateLabel(value: string) {
+    return value.length > 512 ? value.slice(0, 509) + "..." : value
   }
 }

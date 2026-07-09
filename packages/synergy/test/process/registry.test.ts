@@ -105,4 +105,38 @@ describe("ProcessRegistry lifecycle", () => {
     const finished = ProcessRegistry.getFinished(proc.id)
     expect(finished!.status).toBe("killed")
   })
+
+  test("resource snapshot reports inspected child process RSS", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
+    const proc = ProcessRegistry.create({ command: "node server.js" })
+    proc.pid = 1234
+    ProcessRegistry.markBackgrounded(proc)
+
+    const snapshot = ProcessRegistry.resourceSnapshot({ now: proc.startedAt + 1000 })
+
+    restore()
+    expect(snapshot).toHaveLength(1)
+    expect(snapshot[0]).toMatchObject({
+      id: proc.id,
+      pid: 1234,
+      command: "node server.js",
+      backgrounded: true,
+      ageMs: 1000,
+      alive: true,
+      rssBytes: 4096,
+    })
+  })
+
+  test("settleStaleProcesses moves missing child processes to finished", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: false }))
+    const proc = ProcessRegistry.create({ command: "missing child" })
+    proc.pid = 999999
+    ProcessRegistry.markBackgrounded(proc)
+
+    ProcessRegistry.settleStaleProcesses()
+
+    restore()
+    expect(ProcessRegistry.get(proc.id)).toBeUndefined()
+    expect(ProcessRegistry.getFinished(proc.id)?.status).toBe("failed")
+  })
 })

@@ -890,8 +890,20 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "loop_stop":
       return {
         icon: "flag",
-        title: "Stop Loop",
+        title: "Request Review",
         subtitle: (input.summary as string) || "",
+      }
+    case "light_loop_approve":
+      return {
+        icon: "circle-check",
+        title: "Approve Light Loop",
+        subtitle: (input.summary as string) || (input.sessionID as string) || "",
+      }
+    case "light_loop_reject":
+      return {
+        icon: "rotate-ccw",
+        title: "Reject Light Loop",
+        subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "context7_resolve-library-id":
       return {

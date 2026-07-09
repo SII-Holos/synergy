@@ -176,6 +176,8 @@ export namespace PerformanceSchema {
       sessionID: z.string().optional(),
       tool: z.string().optional(),
       status: z.string().optional(),
+      processId: z.string().optional(),
+      pid: z.number().int().optional(),
     })
     .meta({ ref: "PerfRankedItem" })
   export type RankedItem = z.infer<typeof RankedItem>
@@ -220,6 +222,8 @@ export namespace PerformanceSchema {
         appWrittenBytes: z.number().optional(),
         appReadOps: z.number().int().optional(),
         appWriteOps: z.number().int().optional(),
+        childProcessCount: z.number().int().optional(),
+        childProcessRssBytes: z.number().optional(),
       }),
       sessions: z.object({
         turnCount: z.number().int(),
@@ -244,6 +248,27 @@ export namespace PerformanceSchema {
         traceFiles: z.number().int(),
         recentErrors: z.number().int(),
         pendingSessions: z.number().int(),
+        sessionRuntimes: z.object({
+          totalCount: z.number().int(),
+          runningCount: z.number().int(),
+          idleCount: z.number().int(),
+          childCount: z.number().int(),
+          userCount: z.number().int(),
+          waiterCount: z.number().int(),
+        }),
+        cortexTasks: z.object({
+          totalCount: z.number().int(),
+          pendingCount: z.number().int(),
+          queuedCount: z.number().int(),
+          runningCount: z.number().int(),
+          completedCount: z.number().int(),
+          errorCount: z.number().int(),
+          cancelledCount: z.number().int(),
+          retainedPromptChars: z.number().int(),
+          retainedOutputChars: z.number().int(),
+          retainedErrorChars: z.number().int(),
+          retainedProgressToolCount: z.number().int(),
+        }),
       }),
       top: z.object({
         slowRoutes: z.array(RankedItem),
@@ -252,6 +277,7 @@ export namespace PerformanceSchema {
         slowProviders: z.array(RankedItem),
         slowStorage: z.array(RankedItem),
         slowLibrary: z.array(RankedItem),
+        childProcesses: z.array(RankedItem),
         slowFrontend: z.array(RankedItem),
       }),
       issues: z.array(Issue),

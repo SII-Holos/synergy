@@ -1024,6 +1024,8 @@ export namespace Session {
       metadata: z.custom<ProviderMetadata>().optional(),
     }),
     (input) => {
+      const usageCacheHitTokens = usageNumber(input.usage, ["prompt_cache_hit_tokens", "promptCacheHitTokens"])
+      const usageCacheMissTokens = usageNumber(input.usage, ["prompt_cache_miss_tokens", "promptCacheMissTokens"])
       const providerCacheHitTokens = providerMetadataNumber(input.metadata, [
         ["deepseek", "prompt_cache_hit_tokens"],
         ["openaiCompatible", "prompt_cache_hit_tokens"],
@@ -1036,13 +1038,14 @@ export namespace Session {
         ["openai-compatible", "prompt_cache_miss_tokens"],
         ["openai", "prompt_cache_miss_tokens"],
       ])
-      const cachedInputTokens = input.usage.cachedInputTokens ?? providerCacheHitTokens ?? 0
+      const cachedInputTokens = input.usage.cachedInputTokens ?? usageCacheHitTokens ?? providerCacheHitTokens ?? 0
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
       const adjustedInputTokens =
+        usageCacheMissTokens ??
         providerCacheMissTokens ??
         (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
 
@@ -1079,6 +1082,15 @@ export namespace Session {
       }
     },
   )
+
+  function usageNumber(usage: LanguageModelUsage, keys: string[]): number | undefined {
+    const record = usage as unknown as Record<string, unknown>
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === "number" && Number.isFinite(value)) return value
+    }
+    return undefined
+  }
 
   function providerMetadataNumber(metadata: ProviderMetadata | undefined, paths: string[][]): number | undefined {
     for (const path of paths) {

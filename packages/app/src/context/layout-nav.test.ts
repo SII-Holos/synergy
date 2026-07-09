@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import type { NavEntry, NavListState } from "./layout"
-import { applySessionToNavList, mergeNavListByID, navUpdateFromSession, orderNavEntries } from "./layout-nav"
+import type { NavEntry, NavListState, ScopeNavEntry } from "./layout"
+import {
+  applySessionToNavList,
+  mergeNavListByID,
+  navUpdateFromSession,
+  orderNavEntries,
+  removeScopeFromIndex,
+} from "./layout-nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
   return {
@@ -18,6 +24,18 @@ function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
 
 function list(items: NavEntry[]): NavListState {
   return { items, nextCursor: null, total: items.length }
+}
+
+function scopeEntry(input: Partial<ScopeNavEntry> & Pick<ScopeNavEntry, "scopeID" | "directory">): ScopeNavEntry {
+  return {
+    scopeID: input.scopeID,
+    scopeType: input.scopeType ?? "project",
+    directory: input.directory,
+    latestActivityAt: input.latestActivityAt ?? 0,
+    sessionCount: input.sessionCount ?? 0,
+    name: input.name,
+    icon: input.icon,
+  }
 }
 
 describe("orderNavEntries", () => {
@@ -166,5 +184,40 @@ describe("applySessionToNavList", () => {
     expect(updated.pinned).toBe(2)
     expect(updated.completionNotice.unread).toBe(true)
     expect(updated.lastActivityAt).toBe(50)
+  })
+})
+
+describe("removeScopeFromIndex", () => {
+  test("removes the archived scope and returns its directory", () => {
+    const result = removeScopeFromIndex(
+      [
+        scopeEntry({ scopeID: "home", scopeType: "home", directory: "home" }),
+        scopeEntry({ scopeID: "scope-a", directory: "/repo/a" }),
+        scopeEntry({ scopeID: "scope-b", directory: "/repo/b" }),
+      ],
+      "scope-a",
+    )
+
+    expect(result.removed).toBe(true)
+    expect(result.directory).toBe("/repo/a")
+    expect(result.entries.map((entry) => entry.scopeID)).toEqual(["home", "scope-b"])
+  })
+
+  test("reports missing scope without changing the index contents", () => {
+    const entries = [scopeEntry({ scopeID: "scope-a", directory: "/repo/a" })]
+    const result = removeScopeFromIndex(entries, "scope-missing")
+
+    expect(result.removed).toBe(false)
+    expect(result.directory).toBeUndefined()
+    expect(result.entries).toEqual(entries)
+  })
+
+  test("returns the event directory when the scope is missing from the index", () => {
+    const entries = [scopeEntry({ scopeID: "scope-a", directory: "/repo/a" })]
+    const result = removeScopeFromIndex(entries, "scope-missing", "/repo/missing")
+
+    expect(result.removed).toBe(false)
+    expect(result.directory).toBe("/repo/missing")
+    expect(result.entries).toEqual(entries)
   })
 })

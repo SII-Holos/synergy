@@ -94,6 +94,77 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("limited message windows include referenced root users", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Windowed Root" })
+        const rootID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: rootID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          isRoot: true,
+          rootID,
+          visible: true,
+          origin: { type: "user" },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: rootID,
+          type: "text",
+          text: "run a long task",
+          origin: "user",
+        })
+
+        const assistantIDs: string[] = []
+        for (let i = 0; i < 5; i++) {
+          const id = Identifier.ascending("message")
+          assistantIDs.push(id)
+          await Session.updateMessage({
+            id,
+            sessionID: session.id,
+            role: "assistant",
+            time: { created: Date.now(), completed: Date.now() },
+            parentID: rootID,
+            rootID,
+            modelID: "test",
+            providerID: "test",
+            mode: "build",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            summary: false,
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID: id,
+            type: "text",
+            text: `assistant ${i}`,
+            origin: "system",
+          })
+        }
+
+        const expectedIDs = [rootID, ...assistantIDs.slice(-3)]
+        const limited = await Session.messages({ sessionID: session.id, limit: 3 })
+        const rawLimited = await Session.messages({ sessionID: session.id, limit: 3, raw: true })
+
+        expect(limited.map((msg) => msg.info.id)).toEqual(expectedIDs)
+        expect(rawLimited.map((msg) => msg.info.id)).toEqual(expectedIDs)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("child sessions inherit unattended interaction from parent", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

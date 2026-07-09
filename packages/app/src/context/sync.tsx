@@ -73,6 +73,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       setMeta("complete", sessionID, messages.length < limit)
     }
 
+    const upsertSession = (session: Session) => {
+      reconcileCortexFromSession(session)
+      const match = Binary.search(store.session, session.id, (s) => s.id)
+      if (match.found) {
+        // reconcile so a re-fetch of an already-present session preserves object
+        // identity and doesn't invalidate downstream memos (issue #319).
+        setStore("session", match.index, reconcile(session))
+        return
+      }
+      setStore(
+        "session",
+        produce((draft) => {
+          draft.splice(match.index, 0, session)
+        }),
+      )
+    }
+
+    const loadSession = async (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && getSession(sessionID) !== undefined) return
+
+      await retry(() => sdk.client.session.get({ sessionID })).then((session) => {
+        if (!session.data) return
+        upsertSession(session.data)
+      })
+    }
+
     const loadMessages = async (sessionID: string, limit: number) => {
       if (meta.loading[sessionID]) return
 
@@ -270,11 +296,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               })
               .catch(() => {})
 
-          const hasSession = getSession(sessionID) !== undefined
+          const session = getSession(sessionID)
+          const hasSession = session !== undefined
+          const needsDerivedHistoryRefresh = session?.history?.rollback?.canUnrollback === true
           hydrateMessages(sessionID)
 
           const hasMessages = store.message[sessionID] !== undefined
-          const ready = hasSession && hasMessages
+          const ready = hasSession && hasMessages && !needsDerivedHistoryRefresh
           const pending = ready ? undefined : inflight.get(sessionID)
           const baseReq =
             pending ??
@@ -282,27 +310,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               ? Promise.resolve()
               : (() => {
                   const limit = meta.limit[sessionID] ?? chunk
-                  const sessionReq = hasSession
-                    ? Promise.resolve()
-                    : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
-                        if (!session.data) return
-                        const data = session.data
-                        reconcileCortexFromSession(data)
-                        const match = Binary.search(store.session, sessionID, (s) => s.id)
-                        if (match.found) {
-                          // reconcile so a re-fetch of an already-present session
-                          // preserves object identity and doesn't invalidate
-                          // downstream memos (issue #319).
-                          setStore("session", match.index, reconcile(data))
-                          return
-                        }
-                        setStore(
-                          "session",
-                          produce((draft) => {
-                            draft.splice(match.index, 0, data)
-                          }),
-                        )
-                      })
+                  const sessionReq =
+                    hasSession && !needsDerivedHistoryRefresh
+                      ? Promise.resolve()
+                      : loadSession(sessionID, { force: needsDerivedHistoryRefresh })
                   const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
                   const promise = Promise.all([sessionReq, messagesReq])
                     .then(() => {})
@@ -327,10 +338,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // Force a fresh re-fetch of a session's messages and volatile state,
         // bypassing the "already loaded" short-circuit in sync(). Used by the
         // empty-state Refresh button to recover if the initial load missed
-        // messages (issue #328 / #316).
+        // messages or session metadata such as derived rollback state (issue
+        // #328 / #316).
         async refresh(sessionID: string) {
           const limit = meta.limit[sessionID] ?? chunk
-          await Promise.all([loadMessages(sessionID, limit), refreshVolatile(sessionID)])
+          await Promise.all([
+            loadSession(sessionID, { force: true }).catch(() => {}),
+            loadMessages(sessionID, limit),
+            refreshVolatile(sessionID),
+          ])
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return

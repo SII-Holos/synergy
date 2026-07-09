@@ -123,12 +123,6 @@ type State = {
   }
 }
 
-export interface NoteUpdateSignal {
-  id: string
-  version: number
-  type: "created" | "updated" | "deleted"
-}
-
 function findSessionByID(sessions: Session[], sessionID: string): Session | undefined {
   const result = Binary.search(sessions, sessionID, (s) => s.id)
   return result.found ? sessions[result.index] : undefined
@@ -232,15 +226,10 @@ function createGlobalSync() {
   const bootstrapQueue: string[] = []
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
-  const [noteVersion, setNoteVersion] = createSignal(0)
   // Bumped on every (re)connect resync so component-level resources that are not
   // in the normalized store — e.g. blueprint loop state, which the server cannot
   // replay after a restart — refetch their state (issue #331).
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
-  const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
-  function bumpNoteVersion() {
-    setNoteVersion((v) => v + 1)
-  }
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -864,21 +853,6 @@ function createGlobalSync() {
       }
       return
     }
-    if (event?.type === "note.created" || event?.type === "note.updated" || event?.type === "note.deleted") {
-      bumpNoteVersion()
-      if (event.type === "note.deleted") {
-        const props = event.properties as { id: string; scopeID: string }
-        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
-      } else {
-        const props = event.properties as { note: { id: string; version: number } }
-        setNoteUpdate({
-          id: props.note.id,
-          version: props.note.version,
-          type: event.type as "created" | "updated",
-        })
-      }
-    }
-
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
       const item = event.properties.item as AgendaItem
       const result = Binary.search(globalStore.agenda, item.id, (a) => a.id)
@@ -992,6 +966,16 @@ function createGlobalSync() {
       }
       case "session.inbox.updated": {
         setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+        break
+      }
+      case "mcp.ready":
+      case "mcp.failed":
+      case "mcp.tools.changed":
+      case "mcp.prompts.changed":
+      case "mcp.resources.changed": {
+        void createScopedClient(scopeKey)
+          .mcp.status()
+          .then((x) => setStore("mcp", x.data!))
         break
       }
       case "message.updated": {
@@ -1443,9 +1427,7 @@ function createGlobalSync() {
     markActiveSession,
     touchMessageBucket,
     bootstrap,
-    noteVersion,
     reconnectVersion,
-    noteUpdate,
     get agenda() {
       return globalStore.agenda
     },
