@@ -109,6 +109,9 @@ export namespace AgendaTypes {
 
   export type SessionMode = "ephemeral" | "persistent"
 
+  export const ControlProfile = z.enum(["guarded", "autonomous", "full_access"]).meta({ ref: "ControlProfileId" })
+  export type ControlProfile = z.infer<typeof ControlProfile>
+
   /**
    * Infer session mode from triggers, with an optional per-item override.
    *
@@ -202,6 +205,7 @@ export namespace AgendaTypes {
       // Advanced execution options
       agent: z.string().optional().describe("Agent to use, defaults to configured default"),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+      controlProfile: ControlProfile.optional().describe("Control profile used by sessions created for this item"),
       sessionMode: z
         .enum(["ephemeral", "persistent"])
         .optional()
@@ -385,6 +389,7 @@ export namespace AgendaTypes {
       autoDone: z.boolean().optional(),
       agent: z.string().optional(),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      controlProfile: ControlProfile.optional(),
       sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
       sessionRefs: z.array(SessionRef).optional(),
       timeout: z.number().optional(),
@@ -408,6 +413,7 @@ export namespace AgendaTypes {
       silent: z.boolean().optional(),
       agent: z.string().optional(),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      controlProfile: ControlProfile.optional(),
       sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
       sessionRefs: z.array(SessionRef).optional(),
       timeout: z.number().optional(),

@@ -7,5 +7,6 @@ Common actions:
 - Resume: agenda_update(id="agd_xxx", status="active")
 - Mark done: agenda_update(id="agd_xxx", status="done")
 - Change prompt: agenda_update(id="agd_xxx", prompt="new instructions...")
+- Change control profile: agenda_update(id="agd_xxx", controlProfile="full_access")
 
 To change the trigger/schedule itself, pass a new triggers array: agenda_update(id="agd_xxx", triggers=[{type:"cron", expr:"0 6 * * *", tz:"Asia/Shanghai"}])
