@@ -501,6 +501,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const agent = currentAgent.name
     const variant = selectedVariant
+    if (createdSessionForSubmit && variant) {
+      local.model.variant.setForSession(activeSession.id, variant, model, sessionScopeKey)
+    }
     const clearInput = () => {
       prompt.resetDraft()
       input.setStore("mode", "normal")
