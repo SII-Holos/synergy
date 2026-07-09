@@ -995,7 +995,15 @@ describe.serial("Cortex", () => {
               parentMessageID: "msg_test01234567890abc",
               model: { providerID: "test-provider", modelID: "test-model" },
               notifyParentOnComplete: false,
-              output: { mode: "structured", schema: planSchema },
+              output: {
+                mode: "structured",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["choice"],
+                  properties: { choice: { type: "string" } },
+                },
+              },
             })
 
             const completed = await waitUntilTerminal(task.id)
