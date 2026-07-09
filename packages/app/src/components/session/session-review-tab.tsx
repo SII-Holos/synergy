@@ -25,6 +25,21 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
   let frame: number | undefined
   let pending: { x: number; y: number } | undefined
 
+  const focusSelectedFileRow = (retries = 0) => {
+    const selected = props.selectedFile?.()
+    if (!selected) return
+
+    const row = scroll?.querySelector<HTMLElement>(
+      `[data-slot="session-review-accordion-item"][data-file="${CSS.escape(selected)}"]`,
+    )
+    if (!row) {
+      if (retries < 5) requestAnimationFrame(() => focusSelectedFileRow(retries + 1))
+      return
+    }
+    row.scrollIntoView({ block: "nearest" })
+    row.querySelector<HTMLElement>("[data-slot='accordion-trigger']")?.focus({ preventScroll: true })
+  }
+
   const openSelectedFile = () => {
     const selected = props.selectedFile?.()
     if (!selected) return
@@ -40,13 +55,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
       props.view().review.setOpen(next)
     }
 
-    requestAnimationFrame(() => {
-      const row = scroll?.querySelector<HTMLElement>(
-        `[data-slot="session-review-accordion-item"][data-file="${CSS.escape(selected)}"]`,
-      )
-      row?.scrollIntoView({ block: "nearest" })
-      row?.querySelector<HTMLElement>("[data-slot='accordion-trigger']")?.focus({ preventScroll: true })
-    })
+    requestAnimationFrame(() => focusSelectedFileRow())
   }
 
   const restoreScroll = (retries = 0) => {
