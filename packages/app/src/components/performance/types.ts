@@ -37,6 +37,7 @@ export type PerformanceSummary = Omit<PerfDashboardSummary, "resources" | "top">
   }
   top: PerfDashboardSummary["top"] & {
     slowLibrary?: PerformanceRankedItem[]
+    childProcesses?: PerformanceRankedItem[]
     slowFrontend?: PerformanceRankedItem[]
   }
 }

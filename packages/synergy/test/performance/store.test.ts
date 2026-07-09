@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "fs"
+import { Database } from "bun:sqlite"
+import { mkdirSync, mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
 import { Observability } from "../../src/observability"
@@ -14,6 +15,7 @@ import { PerformanceResources } from "../../src/performance/resources"
 import { PerformanceStore } from "../../src/performance/store"
 import { PerformanceWriter } from "../../src/performance/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
+import { ProcessRegistry } from "../../src/process/registry"
 
 const homes: string[] = []
 const originalTestHome = process.env.SYNERGY_TEST_HOME
@@ -27,6 +29,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  ProcessRegistry.reset()
   PerformanceStore.close()
   PerformanceConfig.refresh()
   if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
@@ -115,6 +118,89 @@ describe.serial("performance observability store", () => {
     const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
     expect(summary.top.slowProviders[0]?.label).toBe("openai")
     expect(summary.top.slowLibrary[0]?.label).toBe("select")
+  })
+
+  test("dashboard summary separates server RSS from child process RSS contributors", async () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 8 * 1024 * 1024 }))
+    try {
+      const child = ProcessRegistry.create({ command: "next dev -p 8090", description: "Next dev server" })
+      child.pid = 4321
+      ProcessRegistry.markBackgrounded(child)
+
+      PerformanceResources.snapshot()
+      PerformanceStore.flush()
+
+      const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+      expect(summary.resources.rssBytes).toBeGreaterThan(0)
+      expect(summary.resources.rssBytes).not.toBe(8 * 1024 * 1024)
+      expect(summary.resources.childProcessCount).toBe(1)
+      expect(summary.resources.childProcessRssBytes).toBe(8 * 1024 * 1024)
+      expect(summary.top.childProcesses[0]).toMatchObject({
+        label: "next dev -p 8090",
+        value: 8 * 1024 * 1024,
+        unit: "bytes",
+        processId: child.id,
+        pid: 4321,
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  test("upgrades legacy resource sample tables for process attribution", () => {
+    mkdirSync(PerformanceStore.dir(), { recursive: true })
+    const conn = new Database(PerformanceStore.pathName(), { create: true })
+    try {
+      conn.exec(`
+        CREATE TABLE perf_resource_samples (
+          sample_id TEXT PRIMARY KEY,
+          time INTEGER NOT NULL,
+          iso TEXT NOT NULL,
+          source TEXT NOT NULL,
+          pid INTEGER,
+          cpu_user_micros REAL,
+          cpu_system_micros REAL,
+          cpu_utilization_ratio REAL,
+          memory_rss_bytes INTEGER,
+          memory_heap_total_bytes INTEGER,
+          memory_heap_used_bytes INTEGER,
+          memory_external_bytes INTEGER,
+          memory_array_buffers_bytes INTEGER,
+          event_loop_lag_ms REAL,
+          event_loop_sample_window_ms INTEGER,
+          app_read_bytes INTEGER,
+          app_written_bytes INTEGER,
+          app_read_ops INTEGER,
+          app_write_ops INTEGER,
+          os_read_bytes INTEGER,
+          os_written_bytes INTEGER,
+          os_available INTEGER NOT NULL DEFAULT 0,
+          scope_id TEXT,
+          session_id TEXT,
+          trace_id TEXT
+        );
+      `)
+      conn
+        .prepare(
+          `INSERT INTO perf_resource_samples (sample_id,time,iso,source,pid,memory_rss_bytes,event_loop_sample_window_ms,os_available)
+           VALUES ('legacy_server', 1, '1970-01-01T00:00:00.001Z', 'process', 123, 4096, 1000, 1)`,
+        )
+        .run()
+    } finally {
+      conn.close(false)
+    }
+
+    const rows = PerformanceStore.resourceSince(0)
+    expect(rows.find((row) => row.sample_id === "legacy_server")).toMatchObject({
+      process_role: "server",
+      process_id: null,
+      labels_json: "{}",
+    })
+    expect(PerformanceStore.meta().find((row) => row.key === "schemaVersion")?.value).toBe("2")
+
+    PerformanceResources.snapshot()
+    PerformanceStore.flush()
+    expect(PerformanceStore.latestResource({ processRole: "server" })?.memory_rss_bytes).toBeGreaterThan(0)
   })
 
   test("trace detail projects observability events without raw event data", async () => {

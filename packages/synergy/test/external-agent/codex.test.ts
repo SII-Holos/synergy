@@ -5,7 +5,7 @@ import {
   resolveCodexCommandPath,
 } from "../../src/external-agent/adapter/codex"
 import { ExternalAgent } from "../../src/external-agent/bridge"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -84,13 +84,12 @@ describe("Codex external adapter CLI args", () => {
   test("uses configured path for discovery and version checks", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "synergy-codex-test-"))
     cleanupDirs.push(dir)
-    const binary = process.platform === "win32" ? path.join(dir, "codex-wrapper.cmd") : path.join(dir, "codex-wrapper")
-    await Bun.write(
-      binary,
-      process.platform === "win32" ? "@echo codex-test 1.2.3\r\n" : "#!/bin/sh\necho codex-test 1.2.3\n",
-    )
-    if (process.platform !== "win32") {
-      await Bun.spawn(["chmod", "+x", binary]).exited
+    const binary = path.join(dir, process.platform === "win32" ? "codex-wrapper.cmd" : "codex-wrapper")
+    if (process.platform === "win32") {
+      await Bun.write(binary, "@echo off\necho codex-test 1.2.3\n")
+    } else {
+      await Bun.write(binary, "#!/bin/sh\necho codex-test 1.2.3\n")
+      await chmod(binary, 0o755)
     }
 
     const adapter = ExternalAgent.getAdapter("codex", `codex-test-${Date.now()}-discover`) as any

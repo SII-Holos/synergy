@@ -1,1 +1,9 @@
-Stop the active light loop. Use this when the light loop task is fully complete.
+Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified.
+
+Parameters:
+- summary: Concise summary of what was completed (required)
+- completed: List of completed deliverable or requirement statements
+- evidence: Concrete verification evidence (test results, file paths, checks)
+- remaining: Any known remaining work or limitations
+
+This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish.
