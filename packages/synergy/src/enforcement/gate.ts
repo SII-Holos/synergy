@@ -495,10 +495,12 @@ export namespace EnforcementGate {
       synergyRoot,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
+    const trustedRootList = trustedRoots ?? []
 
     const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
+      trustedRoots: trustedRootList,
     })
 
     if (!resolved.valid) {
@@ -507,8 +509,8 @@ export namespace EnforcementGate {
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
     // Accumulated sandbox-approved paths across all evaluate() calls
-    const approvedReadPaths = new Set<string>()
-    const approvedWritePaths = new Set<string>()
+    const approvedReadPaths = new Set<string>(trustedRootList)
+    const approvedWritePaths = new Set<string>(trustedRootList)
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
@@ -994,6 +996,12 @@ export namespace EnforcementGate {
 
       // Blueprint loop management tools — session state coordination
       if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // LightLoop review tools — session state coordination
+      if (toolName === "light_loop_approve" || toolName === "light_loop_reject") {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
