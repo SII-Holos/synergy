@@ -132,6 +132,7 @@ describe("plan blueprint offer model", () => {
       key: "ses_background:part_1:note_123",
       noteID: "note_123",
       title: "Implementation plan",
+      runCount: 0,
     })
   })
 
