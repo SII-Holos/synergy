@@ -452,6 +452,7 @@ export namespace Cortex {
         lastMessage: task.progress.lastMessage
           ? compactString(task.progress.lastMessage, 240)
           : task.progress.lastMessage,
+        recentTools: task.progress.recentTools,
       }
     }
     tasks.set(taskID, task)
@@ -536,7 +537,6 @@ export namespace Cortex {
       void (async () => {
         tasks.delete(taskID)
         acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(task.sessionID)
         log.info("task cleaned up", { taskID })
       })()
     }, TASK_CLEANUP_DELAY_MS)

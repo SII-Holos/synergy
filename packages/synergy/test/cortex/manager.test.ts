@@ -688,7 +688,7 @@ describe.serial("Cortex", () => {
             expect(SessionManager.getRuntime(completed!.sessionID)).toBeUndefined()
             expect(completed!.prompt.length).toBeLessThan(largePrompt.length)
             expect(completed!.prompt).toContain("characters omitted")
-            expect(completed!.progress?.recentTools).toBeUndefined()
+            expect(completed!.progress?.recentTools).toEqual([])
             expect(completed!.output?.mode).toBe("final_response")
             if (completed!.output?.mode === "final_response") {
               expect(completed!.output.value.length).toBeLessThan(largeResult.length)
@@ -965,6 +965,122 @@ describe.serial("Cortex", () => {
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
             expect(completed?.output).toEqual({ mode: "final_response", value: "final prose" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+  })
+
+  describe("memory retention", () => {
+    test("structured output is preserved untouched after compaction", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeStructuredToolResult(input.sessionID, { value: { choice: "drake" } })
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured retention",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: planSchema },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.output).toEqual({ mode: "structured", value: { choice: "drake" } })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("error tasks retain bounded error after compaction", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const errorText = "error details ".repeat(5_000)
+          ;(SessionInvoke.invokeInternal as any) = mock(async () => {
+            throw new Error(errorText)
+          })
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Error task",
+              prompt: "Explode",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("error")
+            expect(completed?.error).toBeDefined()
+            expect(completed!.error!.length).toBeLessThan(errorText.length)
+            expect(completed!.error).toContain("characters omitted")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("retentionStats reports zero after all tasks cleaned up", () => {
+      expect(Cortex.retentionStats()).toEqual({
+        totalCount: 0,
+        byStatus: { pending: 0, queued: 0, running: 0, completed: 0, error: 0, cancelled: 0 },
+        retainedPromptChars: 0,
+        retainedOutputChars: 0,
+        retainedErrorChars: 0,
+        retainedProgressToolCount: 0,
+      })
+    })
+
+    test("completed task retains recentTools in compacted progress", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "done")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Recent tools test",
+              prompt: "Test",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.progress?.recentTools).toBeDefined()
+            expect(Array.isArray(completed?.progress?.recentTools)).toBe(true)
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
