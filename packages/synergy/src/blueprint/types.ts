@@ -14,6 +14,7 @@ export const Info = z
     executionAgent: z.string().optional(),
     auditAgent: z.string(),
     auditSessionID: z.string().optional(),
+    auditTaskID: z.string().optional(),
     scopeID: z.string(),
     status: LoopStatus,
     runMode: z.enum(["current", "new", "worktree"]).optional(),

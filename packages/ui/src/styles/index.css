@@ -39,6 +39,7 @@
 @import "../components/switch.css" layer(components);
 @import "../components/session-review.css" layer(components);
 @import "../components/session-turn.css" layer(components);
+@import "../components/turn-change-summary-panel.css" layer(components);
 @import "../components/mailbox-message.css" layer(components);
 @import "../components/command-result-output.css" layer(components);
 @import "../components/sticky-accordion-header.css" layer(components);

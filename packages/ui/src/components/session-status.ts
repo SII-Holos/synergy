@@ -102,6 +102,9 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "blueprint_loop_finish":
       case "blueprint_loop_restart":
         return "Working with Blueprint"
+      case "light_loop_approve":
+      case "light_loop_reject":
+        return "Reviewing Light Loop"
       case "session_list":
       case "session_read":
       case "session_search":

@@ -124,6 +124,7 @@ export namespace BlueprintLoopStore {
       error?: string
       audit?: Info["audit"]
       auditSessionID?: string | null
+      auditTaskID?: string | null
       userPrompt?: string | null
     },
   ): Promise<Info> {
@@ -144,15 +145,18 @@ export namespace BlueprintLoopStore {
       draft.time.updated = Date.now()
       if (isTerminal) {
         draft.time.completed = Date.now()
+        draft.auditTaskID = undefined
       }
       if (patch.status === "running" && !draft.time.started) {
         draft.time.started = Date.now()
       }
       if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
         draft.auditSessionID = undefined
+        draft.auditTaskID = undefined
       }
       if (patch.audit) draft.audit = patch.audit
       if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
+      if (patch.auditTaskID !== undefined) draft.auditTaskID = patch.auditTaskID ?? undefined
       if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
       if (patch.error !== undefined) draft.error = patch.error
     })

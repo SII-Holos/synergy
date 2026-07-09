@@ -29,6 +29,7 @@ Let blueprints read as plans with status, activity, and next action, not as pass
 When an agent successfully creates or replaces a Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; ordinary note writes should stay in the message flow without opening the side panel.
 When that Blueprint is created or replaced from an active Plan workflow, wait until the current turn is idle, then show a compact one-time composer control to equip the Blueprint in the current session. The control should not auto-start the BlueprintLoop, and dismissing or muting it must not close Plan by itself.
 Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
+Note and Blueprint detail document surfaces should stay stable while the user reads or edits: metadata refreshes, autosave responses, and BlueprintLoop state changes must not reset scroll position, selection, or the editor instance.
 Sidebar session icons should preserve Blueprint identity while a BlueprintLoop is active: running, waiting, and auditing Blueprint sessions should remain visually distinct from ordinary running sessions and return to normal session treatment when the loop is terminal.
 Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
@@ -77,6 +78,8 @@ Desktop managed-local project selection should use native OS folder picking for 
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
+Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.
@@ -86,6 +89,7 @@ When the current running assistant step has no visible message part yet, the tim
 Tool audit icons are a quiet exception rail, not a status badge on every tool card. Show them for pending user approval, user decisions, denials, sandbox blocks, and notable autonomous or smart auto-approvals. Hide ordinary low-risk and Guarded baseline auto-approvals so read/search/tool plumbing does not compete with the work itself. The server approval metadata is the source of truth for audit visibility; the UI should not infer visibility from risk or mode.
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
+Turn-level file changes summarize in the message flow; detailed file diff inspection belongs in the session Review workbench surface.
 
 Special user-message renderers should keep workflow prompts lightweight in the message stream. Plan, Lattice, Light Loop, BlueprintLoop starts, and workflow continuation controls may use the same compact right-aligned prompt-bubble treatment with a small source badge; control messages should show a short human-readable summary by default rather than raw loop IDs, internal prompt text, or heavy centered event cards.
 
