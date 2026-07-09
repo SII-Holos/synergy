@@ -157,10 +157,17 @@ export namespace MCP {
 
   export async function connect(name: string) {
     ensureStarted()
+    await McpSupervisor.ready()
     const cfg = await Config.current()
     const config = cfg.mcp ?? {}
     const mcp = config[name]
     if (!mcp) {
+      const existing = McpSupervisor.get(name)
+      if (existing) {
+        existing.retryCount = 0
+        await McpSupervisor.connect(name)
+        return
+      }
       log.error("MCP config not found", { name })
       return
     }
