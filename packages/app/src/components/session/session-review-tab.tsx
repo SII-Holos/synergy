@@ -2,6 +2,7 @@ import { createEffect, on, onCleanup } from "solid-js"
 import { SessionReview } from "@ericsanchezok/synergy-ui/session-review"
 import type { FileDiff } from "@ericsanchezok/synergy-sdk/client"
 import type { useLayout } from "@/context/layout"
+import { computeReviewOpenForSelectedFile } from "./review-open-model"
 
 type DiffStyle = "unified" | "split"
 
@@ -30,8 +31,13 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     if (!props.diffs().some((diff) => diff.file === selected)) return
 
     const current = props.view().review.open() ?? []
-    if (!current.includes(selected)) {
-      props.view().review.setOpen([...current, selected])
+    const next = computeReviewOpenForSelectedFile(
+      selected,
+      props.diffs().map((d) => d.file),
+      current,
+    )
+    if (next) {
+      props.view().review.setOpen(next)
     }
 
     requestAnimationFrame(() => {

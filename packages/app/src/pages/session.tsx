@@ -22,13 +22,14 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { Session, SessionInboxItem, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { FileDiff, Session, SessionInboxItem, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
 import { getDraggableId } from "@/utils/solid-dnd"
 
+import { SessionReviewTab } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
@@ -190,9 +191,13 @@ function SessionPageContent() {
     turnStart: 0,
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
+    mobileReviewOpen: false,
+    mobileReviewSelectedFile: undefined as string | undefined,
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
+  const hasReview = createMemo(() => reviewCount() > 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
@@ -1014,13 +1019,20 @@ function SessionPageContent() {
                         workspaceOpen={sideOpen}
                         onRewind={openRewindConfirm}
                         onReviewChanges={(input) => {
-                          void workbench.openPanel("session-review", {
-                            reuseExisting: true,
-                            init: {
-                              ...(input.file ? { resourceId: input.file } : {}),
-                              source: input.messageID,
-                            },
-                          })
+                          if (isDesktop()) {
+                            void workbench.openPanel("session-review", {
+                              reuseExisting: true,
+                              init: {
+                                ...(input.file ? { resourceId: input.file } : {}),
+                                source: input.messageID,
+                              },
+                            })
+                          } else {
+                            setStore({
+                              mobileReviewOpen: true,
+                              mobileReviewSelectedFile: input.file,
+                            })
+                          }
                         }}
                         onPendingGuide={(item) => void guidePending(item)}
                         onPendingRemove={(item) => void removePending(item)}
@@ -1114,6 +1126,47 @@ function SessionPageContent() {
 
         <Show when={isDesktop()}>
           <WorkbenchSurface surface="bottom" />
+        </Show>
+        <Show when={!isDesktop() && store.mobileReviewOpen}>
+          <div
+            class="md:hidden absolute inset-x-0 bottom-0 z-40 flex flex-col bg-background-stronger border-t border-border-weak-base rounded-t-xl shadow-[0_-4px_24px_rgba(0,0,0,0.15)]"
+            style={{ height: "50vh" }}
+          >
+            <div class="flex items-center justify-between px-4 h-11 shrink-0">
+              <span class="text-13-medium text-text-strong">{reviewCount()} Files Changed</span>
+              <button
+                type="button"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                aria-label="Close review"
+                onClick={() => setStore("mobileReviewOpen", false)}
+              >
+                <Icon name={getSemanticIcon("action.close")} size="small" />
+              </button>
+            </div>
+            <div class="flex-1 min-h-0 overflow-auto">
+              <Show
+                when={params.id && sync.data.session_diff[params.id]}
+                fallback={<div class="px-4 py-4 text-13-regular text-text-weak">Loading changes…</div>}
+              >
+                {(rawDiffs) => {
+                  const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
+                  return (
+                    <SessionReviewTab
+                      diffs={() => diffsArr}
+                      view={view}
+                      diffStyle="unified"
+                      selectedFile={() => store.mobileReviewSelectedFile}
+                      onViewFile={(path) => {
+                        const value = file.tab(path)
+                        tabs().open(value)
+                        file.load(path)
+                      }}
+                    />
+                  )
+                }}
+              </Show>
+            </div>
+          </div>
         </Show>
       </div>
     </>
