@@ -107,16 +107,6 @@ export function useSessionCommands(params: {
       },
     },
     {
-      // TODO: redesign sidebar — disabled for now
-      id: "review.toggle",
-      title: "Toggle review",
-      description: "Show or hide the review panel",
-      category: "View",
-      keybind: "mod+shift+r",
-      disabled: true,
-      onSelect: () => {},
-    },
-    {
       id: "terminal.new",
       title: "New terminal",
       description: "Create a new terminal tab",

@@ -29,6 +29,7 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string) => void
+  selectedFile?: string
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
@@ -96,7 +97,12 @@ export const SessionReview = (props: SessionReviewProps) => {
         <Accordion multiple value={open()} onChange={handleChange}>
           <For each={props.diffs}>
             {(diff) => (
-              <Accordion.Item value={diff.file} data-slot="session-review-accordion-item">
+              <Accordion.Item
+                value={diff.file}
+                data-slot="session-review-accordion-item"
+                data-file={diff.file}
+                data-selected={props.selectedFile === diff.file ? "true" : undefined}
+              >
                 <StickyAccordionHeader>
                   <Accordion.Trigger>
                     <div data-slot="session-review-trigger-content">

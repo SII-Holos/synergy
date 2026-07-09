@@ -129,7 +129,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           width: 280,
         },
         review: {
-          opened: true,
           diffStyle: "split" as ReviewDiffStyle,
         },
         session: {
@@ -1111,18 +1110,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       review: {
-        opened: createMemo(() => false),
         diffStyle: createMemo(() => (store.review?.diffStyle ?? "split") as ReviewDiffStyle),
         setDiffStyle(diffStyle: ReviewDiffStyle) {
           if (!store.review) {
-            setStore("review", { opened: true, diffStyle })
+            setStore("review", { diffStyle })
             return
           }
           setStore("review", "diffStyle", diffStyle)
         },
-        open() {},
-        close() {},
-        toggle() {},
       },
       session: {
         width: createMemo(() => store.session?.width ?? 600),
@@ -1263,15 +1258,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           async open(tab: string) {
             const current = store.sessionTabs[sessionKey] ?? { all: [] }
-
-            if (tab === "review") {
-              if (!store.sessionTabs[sessionKey]) {
-                setStore("sessionTabs", sessionKey, { all: [], active: tab })
-                return
-              }
-              setStore("sessionTabs", sessionKey, "active", tab)
-              return
-            }
 
             if (tab === "context") {
               const all = [tab, ...current.all.filter((x) => x !== tab)]
