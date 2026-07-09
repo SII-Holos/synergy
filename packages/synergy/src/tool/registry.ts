@@ -30,6 +30,8 @@ import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { LoopStopTool } from "./loop-stop"
+import { LightLoopApproveTool } from "./light-loop-approve"
+import { LightLoopRejectTool } from "./light-loop-reject"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayPatchTool } from "./pathway-patch"
@@ -387,6 +389,8 @@ export namespace ToolRegistry {
       BlueprintLoopFinishTool,
       LoopStopTool,
       BlueprintLoopRestartTool,
+      LightLoopApproveTool,
+      LightLoopRejectTool,
       PathwayReadTool,
       PathwayPatchTool,
       SessionListTool,

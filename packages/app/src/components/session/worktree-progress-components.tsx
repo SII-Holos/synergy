@@ -2,16 +2,11 @@ import { For, Match, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { WorkspaceProgressStep } from "./worktree-session"
 
-export type SessionStartProgressStepState = "pending" | "active" | "complete"
+export type WorktreeProgressStepState = WorkspaceProgressStep["state"]
 
-export type SessionStartProgress = {
-  title: string
-  description: string
-  steps: Array<{ id: string; label: string; detail?: string; state: SessionStartProgressStepState }>
-}
-
-export function StepIcon(props: { state: SessionStartProgressStepState }) {
+export function StepIcon(props: { state: WorktreeProgressStepState }) {
   return (
     <span class="wtd-step-icon" data-state={props.state}>
       <Switch>
@@ -29,7 +24,7 @@ export function StepIcon(props: { state: SessionStartProgressStepState }) {
   )
 }
 
-export function StepList(props: { steps: SessionStartProgress["steps"] }) {
+export function StepList(props: { steps: WorkspaceProgressStep[] }) {
   return (
     <div class="wtd-step-list">
       <For each={props.steps}>

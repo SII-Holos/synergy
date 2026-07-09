@@ -123,6 +123,54 @@ async function writeStructuredToolResult(sessionID: string, input: Record<string
   return { info: message, parts: [part] }
 }
 
+async function writeRunningToolProgress(sessionID: string) {
+  const parentID = Identifier.ascending("message")
+  const message = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "assistant",
+    parentID,
+    rootID: parentID,
+    mode: "test",
+    agent: "developer",
+    path: {
+      cwd: ScopeContext.current.directory,
+      root: ScopeContext.current.directory,
+    },
+    cost: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    },
+    modelID: "test-model",
+    providerID: "test-provider",
+    time: {
+      created: Date.now(),
+      completed: Date.now(),
+    },
+    sessionID,
+  })
+  const part = await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: message.id,
+    sessionID,
+    type: "tool",
+    callID: "call_progress_tool",
+    tool: "bash",
+    state: {
+      status: "running",
+      input: { cmd: "pwd" },
+      title: "Running pwd",
+      metadata: {},
+      time: {
+        start: Date.now(),
+      },
+    },
+  })
+  return { info: message, parts: [part] }
+}
+
 async function waitUntilTerminal(taskID: string) {
   for (let i = 0; i < 50; i++) {
     const task = Cortex.get(taskID)
@@ -463,6 +511,71 @@ describe.serial("Cortex", () => {
           expect(task.progress?.lastUpdate).toBeDefined()
 
           await Cortex.cancel(task.id)
+        },
+      })
+    })
+
+    test("emits visible task updates when child session progress changes", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const progressUpdates: CortexTypes.Task[] = []
+          const unsubscribe = Bus.subscribe(Cortex.Event.TasksUpdated, (event) => {
+            for (const task of event.properties.tasks) {
+              if (task.progress?.lastTool === "bash") progressUpdates.push(task)
+            }
+          })
+          let releaseInvoke: (() => void) | undefined
+          let taskID: string | undefined
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeRunningToolProgress(input.sessionID)
+              await writeAssistantText(input.sessionID, "partial status")
+              await new Promise<void>((resolve) => {
+                releaseInvoke = resolve
+              })
+              return writeAssistantText(input.sessionID, "done")
+            },
+          )
+
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Progress task",
+              prompt: "Run a tool",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+            taskID = task.id
+
+            let progressTask: CortexTypes.Task | undefined
+            for (let i = 0; i < 30; i++) {
+              progressTask = progressUpdates.find((item) => item.id === task.id)
+              if (progressTask) break
+              await Bun.sleep(25)
+            }
+
+            expect(progressTask?.status).toBe("running")
+            expect(progressTask?.progress?.toolCalls).toBe(1)
+            expect(progressTask?.progress?.lastTool).toBe("bash")
+            expect(progressTask?.progress?.lastToolStatus).toBe("running")
+            expect(progressTask?.progress?.lastMessage).toBe("partial status")
+
+            releaseInvoke?.()
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+          } finally {
+            releaseInvoke?.()
+            if (taskID && Cortex.get(taskID)?.status === "running") await Cortex.cancel(taskID)
+            unsubscribe()
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
         },
       })
     })
