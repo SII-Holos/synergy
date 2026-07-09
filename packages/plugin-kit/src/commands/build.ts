@@ -103,6 +103,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
         target: "browser",
         naming: path.basename(uiOutputPath),
         external: ["solid-js", "solid-js/web", "solid-js/store"],
+        jsx: { runtime: "automatic", importSource: "solid-js" },
       })
       if (!frontendResult.success) {
         for (const log of frontendResult.logs) {
