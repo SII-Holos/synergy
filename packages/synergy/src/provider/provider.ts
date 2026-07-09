@@ -44,40 +44,6 @@ import { ProviderProfile } from "./profile"
 export namespace Provider {
   const log = Log.create({ service: "provider" })
 
-  /** Execute an HTTP request via curl subprocess.
-   *  When proxyUrl is set, uses that proxy. Otherwise bypasses the system proxy.
-   */
-  async function fetchViaCurl(
-    url: URL,
-    opts: { method: string; headers: Record<string, string>; body?: string; proxyUrl?: string },
-  ): Promise<Response> {
-    const args: string[] = ["-s", "-w", "\n%{http_code}\n"]
-    if (opts.method && opts.method !== "GET") args.push("-X", opts.method)
-    for (const [k, v] of Object.entries(opts.headers)) {
-      if (k.toLowerCase() !== "connection") args.push("-H", `${k}: ${v}`)
-    }
-    const bodyStr = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body)
-    if (bodyStr && opts.method !== "GET") args.push("-d", bodyStr)
-    // Proxy handling: use explicit proxy or bypass system proxy entirely
-    if (opts.proxyUrl) {
-      args.push("--proxy", opts.proxyUrl)
-    } else {
-      args.push("--noproxy", "*")
-    }
-    args.push("--connect-timeout", "15", "--max-time", "300")
-    args.push(url.toString())
-
-    const proc = Bun.spawnSync(["curl", ...args])
-    if (proc.exitCode !== 0) {
-      throw new Error(`curl exited with code ${proc.exitCode}: ${proc.stderr.toString().trim()}`)
-    }
-    const stdout = proc.stdout.toString()
-    const lastNewline = stdout.lastIndexOf("\n")
-    const httpCode = parseInt(stdout.slice(lastNewline + 1).trim(), 10)
-    const bodyText = stdout.slice(0, lastNewline)
-    return new Response(bodyText, { status: httpCode || 200, headers: new Headers() })
-  }
-
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
     "@ai-sdk/amazon-bedrock": createAmazonBedrock,
     "@ai-sdk/anthropic": createAnthropic,
@@ -627,18 +593,22 @@ export namespace Provider {
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
-        // Proxy override: use a specific proxy or bypass the system proxy via curl
+        // Proxy override: temporarily override env vars so Bun's fetch respects them
         const proxyUrl = options["proxy"]
         const noProxy = options["noProxy"] === true
-        if (proxyUrl || noProxy) {
-          const inputUrl = typeof input === "string" ? input : input.url
-          const h = new Headers(opts.headers ?? {})
-          return fetchViaCurl(new URL(inputUrl), {
-            method: opts.method ?? "POST",
-            headers: Object.fromEntries(h.entries()),
-            body: (opts as any)?.body,
-            proxyUrl: proxyUrl as string | undefined,
-          })
+        let previousProxy: string | undefined
+        let previousNoProxy: string | undefined
+        let previousAnyProxy: string | undefined
+        if (proxyUrl) {
+          previousProxy = process.env.https_proxy
+          previousAnyProxy = (process.env as any).HTTPS_PROXY
+          process.env.https_proxy = proxyUrl
+          ;(process.env as any).HTTPS_PROXY = proxyUrl
+        } else if (noProxy) {
+          previousNoProxy = process.env.NO_PROXY
+          previousAnyProxy = (process.env as any).no_proxy
+          process.env.NO_PROXY = "*"
+          ;(process.env as any).no_proxy = "*"
         }
 
         // Provider-level options take precedence; otherwise use the configured
@@ -719,6 +689,19 @@ export namespace Provider {
           fetchTimer.stop({ status: "exception" })
           log.error("fetch.request.failed", { url: safeUrl, error })
           throw error
+        } finally {
+          // Restore proxy env vars after this request
+          if (proxyUrl) {
+            if (previousProxy !== undefined) process.env.https_proxy = previousProxy
+            else delete process.env.https_proxy
+            if (previousAnyProxy !== undefined) (process.env as any).HTTPS_PROXY = previousAnyProxy
+            else delete (process.env as any).HTTPS_PROXY
+          } else if (noProxy) {
+            if (previousNoProxy !== undefined) process.env.NO_PROXY = previousNoProxy
+            else delete process.env.NO_PROXY
+            if (previousAnyProxy !== undefined) (process.env as any).no_proxy = previousAnyProxy
+            else delete (process.env as any).no_proxy
+          }
         }
         // First byte arrived — stop the TTFB timer so it cannot abort a
         // healthy long-lived stream later on.
