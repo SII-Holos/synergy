@@ -8,6 +8,7 @@ import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
+import { PermissionNext } from "../../src/permission/next"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -416,6 +417,62 @@ describe.serial("Cortex", () => {
           expect(task.status).toBe("running")
 
           await Cortex.cancel(task.id)
+        },
+      })
+    })
+
+    test("delegated sessions only deny recursive coordination tools when the agent profile does not allow them", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parentSession = await Session.create({})
+          const coordinationTools = [
+            "task",
+            "task_output",
+            "task_list",
+            "task_cancel",
+            "dagwrite",
+            "dagread",
+            "dagpatch",
+          ]
+
+          const supervisorTask = await Cortex.launch({
+            description: "Supervisor audit",
+            prompt: "Audit work",
+            agent: "supervisor",
+            executionRole: "delegated_subagent",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_test01234567890abc",
+            visibility: "hidden",
+            notifyParentOnComplete: false,
+          })
+          const supervisorSession = await Session.get(supervisorTask.sessionID)
+          for (const tool of coordinationTools) {
+            expect(
+              PermissionNext.evaluate(tool, "*", PermissionNext.sessionRuleset(supervisorSession)).action,
+            ).not.toBe("deny")
+          }
+
+          const ordinaryTask = await Cortex.launch({
+            description: "Implementation",
+            prompt: "Implement work",
+            agent: "implementation-engineer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_test01234567890abd",
+            visibility: "hidden",
+            notifyParentOnComplete: false,
+          })
+          const ordinarySession = await Session.get(ordinaryTask.sessionID)
+          for (const tool of coordinationTools) {
+            expect(PermissionNext.evaluate(tool, "*", PermissionNext.sessionRuleset(ordinarySession)).action).toBe(
+              "deny",
+            )
+          }
+
+          await Cortex.cancel(supervisorTask.id)
+          await Cortex.cancel(ordinaryTask.id)
         },
       })
     })

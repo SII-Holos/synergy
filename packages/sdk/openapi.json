@@ -3735,6 +3735,84 @@
         ]
       }
     },
+    "/experimental/worktree/session/{sessionID}/enter": {
+      "post": {
+        "operationId": "worktree.enter",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enter worktree",
+        "description": "Bind an existing git worktree to a session.",
+        "responses": {
+          "200": {
+            "description": "Session moved to worktree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeEnterInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.enter({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/worktree/session/{sessionID}/leave": {
       "post": {
         "operationId": "worktree.leave",
@@ -21380,6 +21458,20 @@
             "description": "Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)",
             "type": "boolean"
           },
+          "visibleTo": {
+            "description": "Agent or delegation group names allowed to delegate to this subagent",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
+            "description": "Additional delegation catalogs this agent may use when dispatching subagents",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "options": {
             "type": "object",
             "propertyNames": {
@@ -24973,6 +25065,63 @@
               },
               "taskDescription": {
                 "type": "string"
+              },
+              "stopRequest": {
+                "type": "object",
+                "properties": {
+                  "summary": {
+                    "type": "string"
+                  },
+                  "completed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "remaining": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requestedAt": {
+                    "type": "number"
+                  },
+                  "requesterSessionID": {
+                    "type": "string"
+                  },
+                  "requesterMessageID": {
+                    "type": "string"
+                  },
+                  "reviewTaskID": {
+                    "type": "string"
+                  },
+                  "reviewSessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
+              },
+              "review": {
+                "type": "object",
+                "properties": {
+                  "attempts": {
+                    "type": "number"
+                  },
+                  "lastReason": {
+                    "type": "string"
+                  },
+                  "lastReviewedAt": {
+                    "type": "number"
+                  }
+                },
+                "required": ["attempts"]
               }
             },
             "required": ["kind", "taskDescription"]
@@ -25190,6 +25339,20 @@
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
+      },
+      "WorktreeEnterInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["target"]
       },
       "VcsInfo": {
         "type": "object",
@@ -31874,6 +32037,12 @@
               "type": "string"
             }
           },
+          "delegationGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "topP": {
             "type": "number"
           },
@@ -31954,6 +32123,12 @@
             "type": "boolean"
           },
           "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
             "type": "array",
             "items": {
               "type": "string"
@@ -32502,6 +32677,9 @@
             "type": "object",
             "properties": {
               "id": {
+                "type": "string"
+              },
+              "directory": {
                 "type": "string"
               }
             },

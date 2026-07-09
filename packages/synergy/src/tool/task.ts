@@ -5,6 +5,7 @@ import { Session } from "../session"
 import { Bus } from "../bus"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
+import { AgentDelegation } from "../agent/delegation"
 import { defer } from "@/util/defer"
 import { PermissionNext } from "@/permission/next"
 import { Category } from "../cortex/category"
@@ -86,12 +87,7 @@ async function bindDagNode(sessionID: string, nodeID: string | undefined, task: 
 export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
   const caller = ctx?.agent
   const agents = await Agent.list().then((items) =>
-    items.filter(
-      (agent) =>
-        agent.mode !== "primary" &&
-        !agent.hidden &&
-        (!caller || !agent.visibleTo || agent.visibleTo.includes(caller.name)),
-    ),
+    items.filter((agent) => AgentDelegation.canDelegateTo(agent, caller)),
   )
 
   const accessibleAgents = caller
@@ -119,7 +115,8 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
-      if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
+      const callerInfo = caller ?? (ctx.agent ? await Agent.get(ctx.agent) : undefined)
+      if (!AgentDelegation.canDelegateTo(agent, callerInfo ?? ctx.agent)) {
         throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
       }
 

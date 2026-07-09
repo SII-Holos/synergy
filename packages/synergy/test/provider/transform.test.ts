@@ -73,6 +73,61 @@ describe("ProviderTransform.options - setCacheKey", () => {
     const result = ProviderTransform.options(openaiModel, sessionID, {})
     expect(result.promptCacheKey).toBe(sessionID)
   })
+
+  test("sets promptCacheKey for OpenAI-Codex provider", () => {
+    const codexModel = {
+      ...mockModel,
+      providerID: "openai-codex",
+      api: {
+        id: "gpt-5-codex",
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+    }
+    const result = ProviderTransform.options(codexModel, sessionID, {})
+    expect(result.promptCacheKey).toBe(sessionID)
+  })
+
+  test("sets promptCacheKey and store=false for Azure models", () => {
+    const azureModel = {
+      ...mockModel,
+      providerID: "azure",
+      api: {
+        id: "gpt-5",
+        url: "https://example.openai.azure.com",
+        npm: "@ai-sdk/azure",
+      },
+    }
+    const result = ProviderTransform.options(azureModel, sessionID, {})
+    expect(result.promptCacheKey).toBe(sessionID)
+    expect(result.store).toBe(false)
+  })
+
+  test("openai-compatible models only receive promptCacheKey when setCacheKey is enabled", () => {
+    const compatibleModel = {
+      ...mockModel,
+      providerID: "deepseek",
+      api: {
+        id: "deepseek-chat",
+        url: "https://api.deepseek.com",
+        npm: "@ai-sdk/openai-compatible",
+      },
+    }
+
+    expect(ProviderTransform.options(compatibleModel, sessionID, {}).promptCacheKey).toBeUndefined()
+    expect(ProviderTransform.options(compatibleModel, sessionID, { setCacheKey: true }).promptCacheKey).toBe(sessionID)
+  })
+
+  test("maps OpenAI and Azure options into provider-specific providerOptions", () => {
+    const options = { promptCacheKey: sessionID, store: false }
+    const openaiModel = { ...mockModel, providerID: "openai", api: { ...mockModel.api, npm: "@ai-sdk/openai" } }
+    const azureModel = { ...mockModel, providerID: "azure", api: { ...mockModel.api, npm: "@ai-sdk/azure" } }
+
+    expect(ProviderTransform.providerOptions(openaiModel, options).openai).toBe(options)
+    const azureOptions = ProviderTransform.providerOptions(azureModel, options)
+    expect(azureOptions.openai).toBe(options)
+    expect(azureOptions.azure).toBe(options)
+  })
 })
 
 describe("ProviderTransform.message - Anthropic cache boundary", () => {
@@ -122,6 +177,24 @@ describe("ProviderTransform.message - Anthropic cache boundary", () => {
     expect(result[0].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[1].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  test("keeps Anthropic cache control on stable boundary when late advisory system blocks follow", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "system", content: "memory changes" },
+      { role: "system", content: "env time changes" },
+      { role: "user", content: "hello" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mockModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })

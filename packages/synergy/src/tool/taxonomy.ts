@@ -125,6 +125,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   blueprint_loop_finish: entry("orchestration.task", { stateful: true }),
   loop_stop: entry("orchestration.task", { stateful: true }),
   blueprint_loop_restart: entry("orchestration.task", { stateful: true }),
+  light_loop_approve: entry("orchestration.task", { stateful: true }),
+  light_loop_reject: entry("orchestration.task", { stateful: true }),
   skill: entry("knowledge.skill"),
 
   // orchestration
