@@ -166,7 +166,7 @@ export namespace SessionImport {
         superplan: info.superplan,
         workspace: info.workspace,
         forkedFrom: info.forkedFrom,
-        completionNotice: { silent: info.completionNotice.silent },
+        completionNotice: info.completionNotice,
       })
       await writeSessionInfo(scopeID, info)
 
