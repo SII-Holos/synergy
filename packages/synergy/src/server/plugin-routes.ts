@@ -313,7 +313,12 @@ export const PluginRoute = new Hono()
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const versionHash = c.req.param("versionHash")
-      const rawFilePath = c.req.param("*")
+      // Fallback: Hono's "*" wildcard param may be empty on some versions; parse from path instead.
+      let rawFilePath = c.req.param("*")
+      if (!rawFilePath) {
+        const prefix = `/plugin/assets/${encodeURIComponent(pluginId)}/${encodeURIComponent(versionHash)}/`
+        rawFilePath = c.req.path.startsWith(prefix) ? decodeURIComponent(c.req.path.slice(prefix.length)) : ""
+      }
       if (!rawFilePath) return c.json({ message: "Missing asset path" }, 400)
 
       let filePath: string

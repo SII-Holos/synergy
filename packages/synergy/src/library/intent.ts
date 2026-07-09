@@ -1,6 +1,18 @@
 const MIN_INTENT_LENGTH = 10
 const MAX_INTENT_LENGTH = 300
 
+type SanitizeReason =
+  | "ok"
+  | "tool-hallucination"
+  | "excessive-tool-output"
+  | "assistant-reasoning"
+  | "junk"
+
+export type SanitizeResult = {
+  value: string
+  reason: SanitizeReason
+}
+
 const JUNK_PATTERNS = [/^(n\/a|none|null|undefined|unknown|na|nil|empty|\.\.\.|-+|\?+|!+|~+)$/i, /^[^a-zA-Z0-9]+$/]
 
 const XML_TAG_RE = /<[^>]*>/g
@@ -50,13 +62,33 @@ function truncate(text: string, maxLen: number): string {
 }
 
 export namespace Intent {
-  export function sanitize(raw: string, fallback: string): string {
+  function reasonFor(raw: string): SanitizeReason {
     const cleaned = clean(raw)
-    if (isToolHallucination(cleaned)) return fallback
-    if (hasExcessiveToolOutput(cleaned)) return fallback
-    if (isAssistantReasoning(cleaned)) return fallback
-    if (isJunk(cleaned)) return fallback
-    return truncate(cleaned, MAX_INTENT_LENGTH)
+    if (isToolHallucination(cleaned)) return "tool-hallucination"
+    if (hasExcessiveToolOutput(cleaned)) return "excessive-tool-output"
+    if (isAssistantReasoning(cleaned)) return "assistant-reasoning"
+    if (isJunk(cleaned)) return "junk"
+    return "ok"
+  }
+
+  export function sanitize(raw: string, fallback: string): string {
+    return sanitizeWithReason(raw, fallback).value
+  }
+
+  export function sanitizeWithReason(raw: string, fallback: string): SanitizeResult {
+    const cleaned = clean(raw)
+    const reason = reasonFor(cleaned)
+    if (reason === "ok") {
+      return {
+        value: truncate(cleaned, MAX_INTENT_LENGTH),
+        reason,
+      }
+    }
+
+    return {
+      value: fallback,
+      reason,
+    }
   }
 
   export function isValid(intent: string): boolean {
