@@ -74,6 +74,7 @@ import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { PerformanceSpans } from "@/performance/spans"
+import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -577,6 +578,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
