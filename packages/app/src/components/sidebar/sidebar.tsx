@@ -24,7 +24,7 @@ import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
-import { listAppPanels, subscribeAppPanels } from "@/plugin"
+import { listNavigation, subscribeNavigation, type NavigationEntry } from "@/plugin"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -80,14 +80,15 @@ export function Sidebar(props: SidebarProps) {
   const recentEntries = createMemo(() => layout.nav.recentEntries())
   const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
-  const [appPanelRegistryVersion, setAppPanelRegistryVersion] = createSignal(0)
-  const pluginAppPanels = createMemo(() => {
-    appPanelRegistryVersion()
-    return listAppPanels()
+  const [navigationRegistryVersion, setNavigationRegistryVersion] = createSignal(0)
+  const sidebarNavigation = createMemo(() => {
+    navigationRegistryVersion()
+    return listNavigation("sidebar")
   })
-  const isPluginsSectionActive = () =>
-    location.pathname === "/plugins/marketplace" || /^\/plugins\/[^/]+$/.test(location.pathname)
-  const appPanelPath = (pluginId: string, panelId: string) => `/plugins/panels/${pluginId}/${panelId}`
+  const isNavigationActive = (entry: NavigationEntry) =>
+    entry.active?.(location.pathname) ?? location.pathname === entry.path
+  const navigationIcon = (entry: NavigationEntry) =>
+    entry.icon ?? (entry.iconToken ? getSemanticIcon(entry.iconToken) : getSemanticIcon("plugins.main"))
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
@@ -104,7 +105,7 @@ export function Sidebar(props: SidebarProps) {
   let scopeListRef!: HTMLDivElement
   let prevSnapshot = new Map<string, number>()
 
-  onCleanup(subscribeAppPanels(() => setAppPanelRegistryVersion((version) => version + 1)))
+  onCleanup(subscribeNavigation(() => setNavigationRegistryVersion((version) => version + 1)))
 
   createEffect(
     on(
@@ -411,80 +412,20 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Global feature buttons */}
       <div class="sb-globals">
-        <Tooltip value="Agenda" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": location.pathname === "/agenda",
-            }}
-            onClick={() => navigate("/agenda")}
-          >
-            <Icon name={getSemanticIcon("agenda.main")} size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Agenda</span>
-            </Show>
-          </button>
-        </Tooltip>
-        <Tooltip value="Library" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": location.pathname === "/library",
-            }}
-            onClick={() => navigate("/library")}
-          >
-            <Icon name={getSemanticIcon("library.main")} size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Library</span>
-            </Show>
-          </button>
-        </Tooltip>
-        <Tooltip value="Performance" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": location.pathname === "/performance",
-            }}
-            onClick={() => navigate("/performance")}
-          >
-            <Icon name={getSemanticIcon("performance.main")} size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Performance</span>
-            </Show>
-          </button>
-        </Tooltip>
-        <Tooltip value="Plugins" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": isPluginsSectionActive(),
-            }}
-            onClick={() => navigate("/plugins/marketplace")}
-          >
-            <Icon name={getSemanticIcon("plugins.main")} size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Plugins</span>
-            </Show>
-          </button>
-        </Tooltip>
-        <For each={pluginAppPanels()}>
-          {(panel) => (
-            <Tooltip value={panel.label} placement="right">
+        <For each={sidebarNavigation()}>
+          {(entry) => (
+            <Tooltip value={entry.label} placement="right">
               <button
                 type="button"
                 classList={{
                   "sb-global-btn": true,
-                  "sb-global-active": location.pathname === appPanelPath(panel.pluginId, panel.panelId),
+                  "sb-global-active": isNavigationActive(entry),
                 }}
-                onClick={() => navigate(appPanelPath(panel.pluginId, panel.panelId))}
+                onClick={() => navigate(entry.path)}
               >
-                <Icon name={panel.icon} size="normal" />
+                <Icon name={navigationIcon(entry)} size="normal" />
                 <Show when={isExpanded()}>
-                  <span class="sb-action-label">{panel.label}</span>
+                  <span class="sb-action-label">{entry.label}</span>
                 </Show>
               </button>
             </Tooltip>

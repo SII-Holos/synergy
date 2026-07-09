@@ -42,13 +42,13 @@ function countUiContributions(manifest: PluginManifestType): number {
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
     (ui.workbenchPanels?.length ?? 0) +
-    (ui.appPanels?.length ?? 0) +
+    (ui.navigation?.length ?? 0) +
     (ui.settings?.length ?? 0) +
     (ui.messageSlots?.length ?? 0) +
+    (ui.composerSlots?.length ?? 0) +
     (ui.themes?.length ?? 0) +
     (ui.icons?.length ?? 0) +
-    (ui.commands?.length ?? 0) +
-    (ui.appRoutes?.length ?? 0)
+    (ui.commands?.length ?? 0)
   )
 }
 
@@ -61,21 +61,10 @@ export const PluginDevCommand = cmd({
   command: "dev [path]",
   describe: "start plugin development mode with file watching",
   builder: (yargs: Argv) =>
-    yargs
-      .positional("path", {
-        type: "string",
-        describe: "path to plugin directory (defaults to cwd)",
-      })
-      .option("sandbox-preview", {
-        type: "boolean",
-        default: false,
-        describe: "print Synergy sandbox preview URLs for UI panels",
-      })
-      .option("port", {
-        type: "number",
-        default: 3000,
-        describe: "Synergy server port for preview URLs",
-      }),
+    yargs.positional("path", {
+      type: "string",
+      describe: "path to plugin directory (defaults to cwd)",
+    }),
   async handler(args) {
     const pluginDir = path.resolve((args.path as string) ?? process.cwd())
     const manifestPath = path.join(pluginDir, "plugin.json")
@@ -105,37 +94,6 @@ export const PluginDevCommand = cmd({
     if (uiContribs > 0) {
       UI.println()
       UI.println(`UI: ${uiContribs} contribution${uiContribs !== 1 ? "s" : ""}`)
-    }
-
-    if (args["sandbox-preview"]) {
-      for (const panel of manifest.contributes?.ui?.workbenchPanels ?? []) {
-        if (panel.sandbox) {
-          UI.println(
-            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/workbenchPanels/${encodeURIComponent(panel.id)}`,
-          )
-        }
-      }
-      for (const panel of manifest.contributes?.ui?.appPanels ?? []) {
-        if (panel.sandbox) {
-          UI.println(
-            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/appPanels/${encodeURIComponent(panel.id)}`,
-          )
-        }
-      }
-      for (const section of manifest.contributes?.ui?.settings ?? []) {
-        if (section.sandbox) {
-          UI.println(
-            `  ${section.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/settings/${encodeURIComponent(section.id)}`,
-          )
-        }
-      }
-      for (const route of manifest.contributes?.ui?.appRoutes ?? []) {
-        if (route.sandbox) {
-          UI.println(
-            `  ${route.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/appRoutes/${encodeURIComponent(route.id)}`,
-          )
-        }
-      }
     }
 
     const srcDir = path.join(pluginDir, "src")

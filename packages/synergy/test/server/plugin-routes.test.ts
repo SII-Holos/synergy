@@ -223,7 +223,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
       overallRisk: "low",
       warnings: [],
     },
-    appRoutes: [],
+    navigation: [],
     tools: [],
     ui: { contributions: 0, errors: [] },
     stores: { config: true, secrets: "none" },

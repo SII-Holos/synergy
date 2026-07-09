@@ -56,7 +56,7 @@ Workspace file and shell bridge calls require an active plugin tool context. Plu
 
 ```bash
 synergy-plugin validate --runtime-discovery
-synergy plugin dev --sandbox-preview
+synergy plugin dev
 synergy plugin status <id>
 ```
 

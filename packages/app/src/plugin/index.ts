@@ -1,3 +1,5 @@
+import "./builtin-navigation"
+
 export {
   type WorkbenchPanelEntry,
   type WorkbenchPanelSurface,
@@ -9,16 +11,6 @@ export {
   clearWorkbenchPanels,
   subscribeWorkbenchPanels,
 } from "./registries/workbench-panel-registry"
-
-export {
-  type AppPanelContentProps,
-  type AppPanelEntry,
-  registerAppPanel,
-  listAppPanels,
-  getAppPanel,
-  clearAppPanels,
-  subscribeAppPanels,
-} from "./registries/app-panel-registry"
 
 export {
   type SettingsSection,
@@ -48,14 +40,28 @@ export {
 } from "./registries/message-slot-registry"
 
 export {
-  type AppRouteContentProps,
-  type AppRouteEntry,
-  registerAppRoute,
-  listAppRoutes,
-  getAppRoute,
-  clearAppRoutes,
-  subscribeAppRoutes,
-} from "./registries/app-route-registry"
+  type ComposerSlotName,
+  type ComposerSlotProps,
+  type ComposerSlotEntry,
+  registerComposerSlot,
+  getComposerSlotsByName,
+  clearComposerSlots,
+  subscribeComposerSlots,
+} from "./registries/composer-slot-registry"
+
+export {
+  type NavigationPlacement,
+  type NavigationContentProps,
+  type NavigationEntry,
+  registerNavigation,
+  listNavigation,
+  getNavigation,
+  getPluginNavigation,
+  getBuiltinNavigation,
+  getNavigationByPath,
+  clearNavigation,
+  subscribeNavigation,
+} from "./registries/navigation-registry"
 
 export {
   type PluginCommandContext,
@@ -75,26 +81,26 @@ export {
   type ToolFallbackMeta,
   type ToolRendererProps,
   type ToolRenderer,
-  registerToolRenderer,
-  getToolRenderer,
-  getToolFallback,
-  hasToolRenderer,
-  onToolLoaded,
-  clearAllToolRenderers,
 } from "./registries/tool-registry"
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
 export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
 export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
-export { PluginToolBridge, PluginCommandBridge, PluginMessageSlotBridge, PluginThemeConfigBridge } from "./bridge"
+export {
+  PluginToolBridge,
+  PluginCommandBridge,
+  PluginMessageSlotBridge,
+  PluginComposerSlotBridge,
+  PluginThemeConfigBridge,
+} from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
 export { fetchUIContributions } from "./api"
-export { PluginAppPanelPage, PluginAppRoutePage } from "./pages"
+export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 
 // Consent UI components
-export { PermissionDiffList, PermissionRiskBadge, TrustTierExplanation, InstallConsentDialog } from "./consent"
-export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff, TrustTier } from "./consent"
+export { PermissionDiffList, PermissionRiskBadge, InstallConsentDialog } from "./consent"
+export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./consent"
 
 // Marketplace components
 export { VerifiedBadge, MarketplacePage, PluginDetailPage } from "./marketplace"

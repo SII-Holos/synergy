@@ -102,6 +102,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
         outdir: uiOutdir,
         target: "browser",
         naming: path.basename(uiOutputPath),
+        external: ["solid-js", "solid-js/web", "solid-js/store"],
       })
       if (!frontendResult.success) {
         for (const log of frontendResult.logs) {

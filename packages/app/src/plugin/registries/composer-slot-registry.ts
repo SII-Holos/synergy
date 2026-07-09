@@ -1,48 +1,52 @@
 import type { Component } from "solid-js"
 
-export type MessageSlotName = string
+export type ComposerSlotName =
+  | "composer.above"
+  | "composer.below"
+  | "composer.toolbar.left"
+  | "composer.toolbar.right"
+  | "composer.add-menu"
+  | "composer.start-option"
 
-export interface MessageSlotProps {
-  slot: MessageSlotName
+export interface ComposerSlotProps {
+  slot: ComposerSlotName
   sessionId?: string
-  messageId?: string
 }
 
-export interface MessageSlotEntry {
+export interface ComposerSlotEntry {
   id: string
-  slot: MessageSlotName
+  slot: ComposerSlotName
   order?: number
-  component?: Component<MessageSlotProps>
-  loader?: () => Promise<{ default: Component<MessageSlotProps> }>
+  component?: Component<ComposerSlotProps>
+  loader?: () => Promise<{ default: Component<ComposerSlotProps> }>
   pluginId: string
 }
 
-const entries: MessageSlotEntry[] = []
+const entries: ComposerSlotEntry[] = []
 const listeners = new Set<() => void>()
 
 function notify() {
   for (const listener of listeners) listener()
 }
 
-export function registerMessageSlot(entry: MessageSlotEntry): () => void {
+export function registerComposerSlot(entry: ComposerSlotEntry): () => void {
   entries.push(entry)
   notify()
   return () => {
     const index = entries.indexOf(entry)
-    if (index !== -1) {
-      entries.splice(index, 1)
-      notify()
-    }
+    if (index === -1) return
+    entries.splice(index, 1)
+    notify()
   }
 }
 
-export function getMessageSlotsByName(slot: MessageSlotName): MessageSlotEntry[] {
+export function getComposerSlotsByName(slot: ComposerSlotName): ComposerSlotEntry[] {
   return entries
     .filter((entry) => entry.slot === slot)
     .toSorted((a, b) => (a.order ?? 1000) - (b.order ?? 1000) || a.id.localeCompare(b.id))
 }
 
-export function clearMessageSlots(pluginId?: string): void {
+export function clearComposerSlots(pluginId?: string): void {
   if (!pluginId) {
     if (entries.length === 0) return
     entries.length = 0
@@ -59,7 +63,7 @@ export function clearMessageSlots(pluginId?: string): void {
   if (changed) notify()
 }
 
-export function subscribeMessageSlots(listener: () => void): () => void {
+export function subscribeComposerSlots(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }

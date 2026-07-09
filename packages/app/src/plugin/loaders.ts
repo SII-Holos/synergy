@@ -1,5 +1,141 @@
+import * as SolidRuntime from "solid-js"
+import * as SolidStoreRuntime from "solid-js/store"
+import * as SolidWebRuntime from "solid-js/web"
+
+const PLUGIN_SOLID_RUNTIME_KEY = "__SYNERGY_PLUGIN_SOLID_RUNTIME__"
+
+type SharedSolidRuntime = {
+  solid: typeof SolidRuntime
+  web: typeof SolidWebRuntime
+  store: typeof SolidStoreRuntime
+}
+
+type SharedSolidRuntimeName = keyof SharedSolidRuntime
+
+const SHARED_SOLID_IMPORTS: Record<string, SharedSolidRuntimeName> = {
+  "solid-js": "solid",
+  "solid-js/web": "web",
+  "solid-js/store": "store",
+}
+
+const rewrittenPluginModuleUrls = new Map<string, string>()
+
+function sharedSolidRuntime(): SharedSolidRuntime {
+  const global = globalThis as typeof globalThis & { [PLUGIN_SOLID_RUNTIME_KEY]?: SharedSolidRuntime }
+  global[PLUGIN_SOLID_RUNTIME_KEY] ??= {
+    solid: SolidRuntime,
+    web: SolidWebRuntime,
+    store: SolidStoreRuntime,
+  }
+  return global[PLUGIN_SOLID_RUNTIME_KEY]
+}
+
+function runtimeAccessor(name: SharedSolidRuntimeName) {
+  return `globalThis.${PLUGIN_SOLID_RUNTIME_KEY}.${name}`
+}
+
+function namedBindings(specifier: string) {
+  return specifier
+    .slice(1, -1)
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part && !part.startsWith("type "))
+    .map((part) => {
+      const match = /^(.*?)\s+as\s+(.*?)$/.exec(part)
+      if (!match) return part
+      return `${match[1].trim()}: ${match[2].trim()}`
+    })
+    .join(", ")
+}
+
+function splitImportClause(clause: string) {
+  const trimmed = clause.trim()
+  if (!trimmed) return []
+  if (trimmed.startsWith("{")) return [trimmed]
+
+  const namedStart = trimmed.indexOf("{")
+  if (namedStart === -1) return [trimmed]
+  return [trimmed.slice(0, namedStart).replace(/,$/, "").trim(), trimmed.slice(namedStart).trim()].filter(Boolean)
+}
+
+function rewriteImportClause(clause: string | undefined, runtimeName: SharedSolidRuntimeName) {
+  const source = runtimeAccessor(runtimeName)
+  if (!clause) return `void ${source};`
+
+  const statements: string[] = []
+  for (const item of splitImportClause(clause)) {
+    if (item.startsWith("* as ")) {
+      statements.push(`const ${item.slice(5).trim()} = ${source};`)
+      continue
+    }
+    if (item.startsWith("{")) {
+      const bindings = namedBindings(item)
+      statements.push(bindings ? `const { ${bindings} } = ${source};` : `void ${source};`)
+      continue
+    }
+    statements.push(`const ${item} = ${source}.default;`)
+  }
+
+  return statements.join("\n") || `void ${source};`
+}
+
+function rewriteSharedSolidImports(source: string) {
+  return source.replace(
+    /(^|\n)([ \t]*)import\s+(type\s+)?(?:([^"';]+?)\s+from\s+)?["'](solid-js(?:\/web|\/store)?)["']\s*;?/g,
+    (
+      statement,
+      lineStart: string,
+      indent: string,
+      typeOnly: string | undefined,
+      clause: string | undefined,
+      specifier: string,
+    ) => {
+      const runtimeName = SHARED_SOLID_IMPORTS[specifier]
+      if (!runtimeName) return statement
+      if (typeOnly) return lineStart
+      const rewritten = rewriteImportClause(clause, runtimeName)
+      return `${lineStart}${indent}${rewritten.replace(/\n/g, `\n${indent}`)}`
+    },
+  )
+}
+
+function hasUnsupportedSolidRuntimeImport(source: string) {
+  return /(?:from\s+["']solid-js\/(?!web["']|store["'])|import\s+["']solid-js\/(?!web["']|store["'])|import\s*\(\s*["']solid-js(?:\/|["']))/.test(
+    source,
+  )
+}
+
+function hasBundledSolidRuntime(source: string) {
+  return source.includes("node_modules/solid-js/dist/") || source.includes("Stale read from <")
+}
+
+async function resolvedPluginModuleUrl(pluginId: string, assetsBaseUrl: string) {
+  const cached = rewrittenPluginModuleUrls.get(assetsBaseUrl)
+  if (cached) return cached
+
+  sharedSolidRuntime()
+  const response = await fetch(assetsBaseUrl)
+  if (!response.ok) throw new Error(`Failed to fetch plugin UI bundle: HTTP ${response.status}`)
+
+  const source = await response.text()
+  if (hasBundledSolidRuntime(source)) {
+    throw new Error(`Plugin ${pluginId} bundles Solid runtime. Rebuild it with synergy-plugin build.`)
+  }
+  if (hasUnsupportedSolidRuntimeImport(source)) {
+    throw new Error(
+      `Plugin ${pluginId} imports an unsupported Solid runtime subpath. Use solid-js, solid-js/web, or solid-js/store.`,
+    )
+  }
+
+  const rewritten = rewriteSharedSolidImports(source)
+  const blob = new Blob([`${rewritten}\n//# sourceURL=${assetsBaseUrl}`], { type: "text/javascript" })
+  const url = URL.createObjectURL(blob)
+  rewrittenPluginModuleUrls.set(assetsBaseUrl, url)
+  return url
+}
+
 /** Current UI API version this host supports. */
-export const CURRENT_UI_API_VERSION = "2.0.0"
+export const CURRENT_UI_API_VERSION = "3.0"
 
 /** Check if a plugin's required UI API version is compatible with the host. */
 export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string): boolean {
@@ -17,7 +153,7 @@ export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string
  * @param pluginId        - Unique plugin identifier
  * @param assetsBaseUrl   - Fully resolved URL for the plugin UI asset.
  * @param exportName      - Named export to pull from the bundle (use "default" for default export)
- * @param uiApiVersion    - Minimum UI API version the plugin requires (e.g. "2.0.0")
+ * @param uiApiVersion    - Minimum UI API version the plugin requires (e.g. "3.0")
  */
 export async function loadPluginExport<T = unknown>(
   pluginId: string,
@@ -29,7 +165,8 @@ export async function loadPluginExport<T = unknown>(
     throw new Error(`Plugin ${pluginId} requires UI API ${uiApiVersion} but host is ${CURRENT_UI_API_VERSION}`)
   }
   try {
-    const mod = (await import(/* @vite-ignore */ assetsBaseUrl)) as Record<string, unknown>
+    const moduleUrl = await resolvedPluginModuleUrl(pluginId, assetsBaseUrl)
+    const mod = (await import(/* @vite-ignore */ moduleUrl)) as Record<string, unknown>
     const exported = mod[exportName]
     if (exported === undefined) {
       throw new Error(`Export "${exportName}" not found in plugin ${pluginId} bundle at ${assetsBaseUrl}`)

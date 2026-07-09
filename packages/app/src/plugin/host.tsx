@@ -3,10 +3,10 @@ import {
   createContext,
   createEffect,
   createSignal,
-  onMount,
-  useContext,
+  onCleanup,
   type Component,
   type ParentProps,
+  useContext,
 } from "solid-js"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
@@ -15,15 +15,15 @@ import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
-import { registerAppPanel } from "./registries/app-panel-registry"
-import { registerAppRoute } from "./registries/app-route-registry"
+import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
 import { registerIcon } from "./registries/icon-registry"
-import { registerMessageSlot } from "./registries/message-slot-registry"
+import { registerMessageSlot, type MessageSlotProps } from "./registries/message-slot-registry"
+import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 import { registerPartRenderer } from "./registries/part-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
 import { registerUICommand, type PluginUICommand } from "./registries/ui-command-registry"
-import { registerWorkbenchPanel } from "./registries/workbench-panel-registry"
+import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
 
 export type PluginUIStatus = PluginLifecycleState
 
@@ -43,36 +43,12 @@ interface PluginHostValue {
 
 const PluginHostContext = createContext<PluginHostValue>()
 
-type UIArea =
-  | "toolRenderers"
-  | "partRenderers"
-  | "workbenchPanels"
-  | "appPanels"
-  | "settings"
-  | "messageSlots"
-  | "themes"
-  | "icons"
-  | "appRoutes"
-  | "commands"
-
 function pluginSurfaceId(pluginId: string, surfaceId: string) {
   return `${pluginId}:${surfaceId}`
 }
 
-function sandboxUrl(pluginId: string, surface: UIArea, surfaceId: string) {
-  return `/plugin/${pluginId}/sandbox/${surface}/${surfaceId}`
-}
-
-function permissionGranted(contribution: PluginContribution, area: UIArea) {
-  return contribution.permissions?.ui?.[area] === true
-}
-
-function canLoadSolidBundle(contribution: PluginContribution) {
-  return contribution.trustTier === "trusted-import" && contribution.permissions?.ui?.trustedImport === true
-}
-
-function canLoadSandboxIframe(contribution: PluginContribution) {
-  return contribution.permissions?.ui?.sandboxIframe === true
+function pluginNavigationPath(pluginId: string, navigationId: string) {
+  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(navigationId)}`
 }
 
 function registerPluginSurfaces(contributions: PluginContribution[]) {
@@ -89,27 +65,12 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
   const pluginToolId = (pluginId: string, toolId: string) =>
     PluginToolId.is(toolId) ? toolId : PluginToolId.format(pluginId, toolId)
 
-  const registerIfPermitted = (
-    contribution: PluginContribution,
-    area: UIArea,
-    register: (disposers: Array<() => void>) => void,
-  ) => {
-    if (!permissionGranted(contribution, area)) {
-      addError(contribution.pluginId, `UI permission missing for ${area}`)
-      return
-    }
-    const disposers = disposersByPlugin.get(contribution.pluginId)
-    if (!disposers) return
-    register(disposers)
-  }
-
   const loadComponent = <Props extends object>(
     contribution: PluginContribution,
     modulePath: string | undefined,
     exportName: string | undefined,
   ) => {
     if (!modulePath) return undefined
-    if (!canLoadSolidBundle(contribution)) return undefined
     return () =>
       loadPluginExport<Component<Props>>(
         contribution.pluginId,
@@ -125,7 +86,6 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
     exportName: string | undefined,
   ) => {
     if (!modulePath) return undefined
-    if (!canLoadSolidBundle(contribution)) return undefined
     return () =>
       loadPluginExport<PluginUICommand>(
         contribution.pluginId,
@@ -135,306 +95,224 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
       )
   }
 
-  const needsSandbox = (surface: { sandbox?: boolean }) => surface.sandbox === true
-  const hasSandboxEntry = (surface: { sandboxEntry?: string; entry?: string }, uiEntry: string | undefined) =>
-    Boolean(surface.sandboxEntry ?? surface.entry ?? uiEntry)
-
   for (const contribution of contributions) {
     const ui = contribution.ui
     if (!ui) continue
-    disposersByPlugin.set(contribution.pluginId, [])
 
-    if (ui.toolRenderers?.length) {
-      registerIfPermitted(contribution, "toolRenderers", (disposers) => {
-        for (const renderer of ui.toolRenderers ?? []) {
-          const toolId = pluginToolId(contribution.pluginId, renderer.tool)
-          if (toolRendererRegistry.has(toolId)) continue
-          const loader =
-            canLoadSolidBundle(contribution) && ui.entry
-              ? () =>
-                  loadPluginExport<ToolRenderer>(
-                    contribution.pluginId,
-                    assetUrl(contribution, ui.entry!),
-                    renderer.exportName ?? "default",
-                    ui.minUIApiVersion ?? "",
-                  )
-              : undefined
-          if (!loader && !renderer.fallback) {
-            addError(contribution.pluginId, `Tool renderer "${renderer.tool}" requires permissions.ui.trustedImport`)
-            continue
-          }
-          disposers.push(
-            toolRendererRegistry.register(toolId, {
-              loader,
-              fallback: renderer.fallback,
-            }),
-          )
-        }
-      })
+    disposersByPlugin.set(contribution.pluginId, [])
+    const disposers = disposersByPlugin.get(contribution.pluginId)!
+
+    if (contribution.permissions?.ui !== true) {
+      addError(
+        contribution.pluginId,
+        "This plugin declares UI surfaces but permissions.ui is not enabled. Enable the UI permission or remove contributes.ui.",
+      )
+      continue
     }
 
-    if (ui.partRenderers?.length) {
-      registerIfPermitted(contribution, "partRenderers", (disposers) => {
-        if (!canLoadSolidBundle(contribution) || !ui.entry) {
+    for (const renderer of ui.toolRenderers ?? []) {
+      const toolId = pluginToolId(contribution.pluginId, renderer.tool)
+      if (toolRendererRegistry.has(toolId)) continue
+      const loader = ui.entry
+        ? () =>
+            loadPluginExport<ToolRenderer>(
+              contribution.pluginId,
+              assetUrl(contribution, ui.entry!),
+              renderer.exportName ?? "default",
+              ui.minUIApiVersion ?? "",
+            )
+        : undefined
+      if (!loader && !renderer.fallback) {
+        addError(
+          contribution.pluginId,
+          `Tool renderer "${renderer.tool}" needs contributes.ui.entry or a declarative fallback.`,
+        )
+        continue
+      }
+      disposers.push(
+        toolRendererRegistry.register(toolId, {
+          loader,
+          fallback: renderer.fallback,
+        }),
+      )
+    }
+
+    for (const renderer of ui.partRenderers ?? []) {
+      if (!ui.entry) {
+        addError(contribution.pluginId, `Part renderer "${renderer.type}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerPartRenderer(renderer.type, undefined, () =>
+          loadPluginExport<Component>(
+            contribution.pluginId,
+            assetUrl(contribution, ui.entry!),
+            renderer.exportName ?? "default",
+            ui.minUIApiVersion ?? "",
+          ),
+        ),
+      )
+    }
+
+    for (const panel of ui.workbenchPanels ?? []) {
+      const loader = loadComponent<WorkbenchPanelContentProps>(contribution, ui.entry, panel.exportName)
+      if (!loader) {
+        addError(contribution.pluginId, `Workbench panel "${panel.id}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerWorkbenchPanel({
+          id: pluginSurfaceId(contribution.pluginId, panel.id),
+          label: panel.label,
+          icon: panel.icon,
+          surface: panel.surface,
+          cardinality: panel.cardinality,
+          requiresSession: panel.requiresSession,
+          loader,
+          pluginId: contribution.pluginId,
+          exportName: panel.exportName,
+          order: panel.order,
+        }),
+      )
+    }
+
+    for (const navigation of ui.navigation ?? []) {
+      const loader = loadComponent<NavigationContentProps>(contribution, ui.entry, navigation.exportName)
+      if (!loader) {
+        addError(contribution.pluginId, `Navigation surface "${navigation.id}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerNavigation({
+          id: pluginSurfaceId(contribution.pluginId, navigation.id),
+          navigationId: navigation.id,
+          label: navigation.label,
+          icon: navigation.icon,
+          placement: navigation.placement,
+          path: pluginNavigationPath(contribution.pluginId, navigation.id),
+          order: navigation.order,
+          loader,
+          pluginId: contribution.pluginId,
+          exportName: navigation.exportName,
+        }),
+      )
+    }
+
+    for (const section of ui.settings ?? []) {
+      const loader = loadComponent(contribution, ui.entry, section.exportName)
+      if (!loader && !section.formSchema) {
+        addError(contribution.pluginId, `Settings section "${section.id}" needs a form schema or contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerSettingsSection({
+          id: pluginSurfaceId(contribution.pluginId, section.id),
+          label: section.label,
+          icon: section.icon,
+          group: section.group,
+          formSchema: section.formSchema,
+          order: section.order,
+          visibility: section.visibility,
+          loader,
+          pluginId: contribution.pluginId,
+          exportName: section.exportName,
+        }),
+      )
+    }
+
+    for (const slot of ui.messageSlots ?? []) {
+      if (!ui.entry) {
+        addError(contribution.pluginId, `Message slot "${slot.id}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerMessageSlot({
+          id: pluginSurfaceId(contribution.pluginId, slot.id),
+          slot: slot.slot,
+          loader: () =>
+            loadPluginExport<Component<MessageSlotProps>>(
+              contribution.pluginId,
+              assetUrl(contribution, ui.entry!),
+              slot.exportName ?? "default",
+              ui.minUIApiVersion ?? "",
+            ),
+          pluginId: contribution.pluginId,
+        }),
+      )
+    }
+
+    for (const slot of ui.composerSlots ?? []) {
+      if (!ui.entry) {
+        addError(contribution.pluginId, `Composer slot "${slot.id}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerComposerSlot({
+          id: pluginSurfaceId(contribution.pluginId, slot.id),
+          slot: slot.slot,
+          order: slot.order,
+          loader: () =>
+            loadPluginExport<Component<ComposerSlotProps>>(
+              contribution.pluginId,
+              assetUrl(contribution, ui.entry!),
+              slot.exportName ?? "default",
+              ui.minUIApiVersion ?? "",
+            ),
+          pluginId: contribution.pluginId,
+        }),
+      )
+    }
+
+    for (const theme of ui.themes ?? []) {
+      disposers.push(
+        registerPluginTheme({
+          id: pluginSurfaceId(contribution.pluginId, theme.id),
+          label: theme.label,
+          cssUrl: assetUrl(contribution, theme.path),
+          pluginId: contribution.pluginId,
+        }),
+      )
+    }
+
+    for (const icon of ui.icons ?? []) {
+      let disposed = false
+      let disposeIcon: (() => void) | undefined
+      disposers.push(() => {
+        disposed = true
+        disposeIcon?.()
+      })
+      fetch(assetUrl(contribution, icon.path))
+        .then((response) => (response.ok ? response.text() : ""))
+        .then((svgContent) => {
+          if (disposed || !svgContent) return
+          disposeIcon = registerIcon({ name: icon.name, svgContent, pluginId: contribution.pluginId })
+        })
+        .catch((error) => {
+          if (disposed) return
           addError(
             contribution.pluginId,
-            "Part renderers require permissions.ui.trustedImport and contributes.ui.entry",
+            `Icon "${icon.name}" failed to load: ${error instanceof Error ? error.message : String(error)}`,
           )
-          return
-        }
-        for (const renderer of ui.partRenderers ?? []) {
-          disposers.push(
-            registerPartRenderer(renderer.type, undefined, () =>
-              loadPluginExport<Component>(
-                contribution.pluginId,
-                assetUrl(contribution, ui.entry!),
-                renderer.exportName ?? "default",
-                ui.minUIApiVersion ?? "",
-              ),
-            ),
-          )
-        }
-      })
+        })
     }
 
-    if (ui.workbenchPanels?.length) {
-      registerIfPermitted(contribution, "workbenchPanels", (disposers) => {
-        for (const panel of ui.workbenchPanels ?? []) {
-          const loader = loadComponent(contribution, ui.entry, panel.exportName)
-          const sandbox = needsSandbox(panel)
-          if (sandbox && !canLoadSandboxIframe(contribution)) {
-            addError(contribution.pluginId, `Workbench panel "${panel.id}" requires permissions.ui.sandboxIframe`)
-            continue
-          }
-          if (sandbox && !hasSandboxEntry(panel, ui.entry)) {
-            addError(
-              contribution.pluginId,
-              `Workbench panel "${panel.id}" requires sandboxEntry or contributes.ui.entry`,
-            )
-            continue
-          }
-          if (!sandbox && !loader) {
-            addError(contribution.pluginId, `Workbench panel "${panel.id}" requires permissions.ui.trustedImport`)
-            continue
-          }
-          disposers.push(
-            registerWorkbenchPanel({
-              id: pluginSurfaceId(contribution.pluginId, panel.id),
-              label: panel.label,
-              icon: panel.icon,
-              surface: panel.surface,
-              cardinality: panel.cardinality,
-              requiresSession: panel.requiresSession,
-              loader,
-              sandbox,
-              sandboxUrl: sandbox ? sandboxUrl(contribution.pluginId, "workbenchPanels", panel.id) : undefined,
-              pluginId: contribution.pluginId,
-              exportName: panel.exportName,
-              order: panel.order,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.appPanels?.length) {
-      registerIfPermitted(contribution, "appPanels", (disposers) => {
-        for (const panel of ui.appPanels ?? []) {
-          const loader = loadComponent(contribution, ui.entry, panel.exportName)
-          const sandbox = needsSandbox(panel)
-          if (sandbox && !canLoadSandboxIframe(contribution)) {
-            addError(contribution.pluginId, `App panel "${panel.id}" requires permissions.ui.sandboxIframe`)
-            continue
-          }
-          if (sandbox && !hasSandboxEntry(panel, ui.entry)) {
-            addError(contribution.pluginId, `App panel "${panel.id}" requires sandboxEntry or contributes.ui.entry`)
-            continue
-          }
-          if (!sandbox && !loader) {
-            addError(contribution.pluginId, `App panel "${panel.id}" requires permissions.ui.trustedImport`)
-            continue
-          }
-          disposers.push(
-            registerAppPanel({
-              id: pluginSurfaceId(contribution.pluginId, panel.id),
-              panelId: panel.id,
-              label: panel.label,
-              icon: panel.icon,
-              order: panel.order,
-              loader,
-              sandbox,
-              sandboxUrl: sandbox ? sandboxUrl(contribution.pluginId, "appPanels", panel.id) : undefined,
-              pluginId: contribution.pluginId,
-              exportName: panel.exportName,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.settings?.length) {
-      registerIfPermitted(contribution, "settings", (disposers) => {
-        for (const section of ui.settings ?? []) {
-          const loader = loadComponent(contribution, ui.entry, section.exportName)
-          const sandbox = needsSandbox(section)
-          if (sandbox && !canLoadSandboxIframe(contribution)) {
-            addError(contribution.pluginId, `Settings section "${section.id}" requires permissions.ui.sandboxIframe`)
-            continue
-          }
-          if (sandbox && !hasSandboxEntry(section, ui.entry)) {
-            addError(
-              contribution.pluginId,
-              `Settings section "${section.id}" requires sandboxEntry or contributes.ui.entry`,
-            )
-            continue
-          }
-          if (!sandbox && !loader && !section.formSchema) {
-            addError(contribution.pluginId, `Settings section "${section.id}" requires a form schema or trusted UI`)
-            continue
-          }
-          disposers.push(
-            registerSettingsSection({
-              id: pluginSurfaceId(contribution.pluginId, section.id),
-              label: section.label,
-              icon: section.icon,
-              group: section.group,
-              formSchema: section.formSchema,
-              order: section.order,
-              loader,
-              sandbox,
-              sandboxUrl: sandbox ? sandboxUrl(contribution.pluginId, "settings", section.id) : undefined,
-              pluginId: contribution.pluginId,
-              exportName: section.exportName,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.messageSlots?.length) {
-      registerIfPermitted(contribution, "messageSlots", (disposers) => {
-        if (!canLoadSolidBundle(contribution) || !ui.entry) {
-          addError(contribution.pluginId, "Message slots require permissions.ui.trustedImport and contributes.ui.entry")
-          return
-        }
-        for (const slot of ui.messageSlots ?? []) {
-          disposers.push(
-            registerMessageSlot({
-              id: pluginSurfaceId(contribution.pluginId, slot.id),
-              slot: slot.slot,
-              loader: () =>
-                loadPluginExport<Component>(
-                  contribution.pluginId,
-                  assetUrl(contribution, ui.entry!),
-                  slot.exportName ?? "default",
-                  ui.minUIApiVersion ?? "",
-                ),
-              pluginId: contribution.pluginId,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.themes?.length) {
-      registerIfPermitted(contribution, "themes", (disposers) => {
-        for (const theme of ui.themes ?? []) {
-          disposers.push(
-            registerPluginTheme({
-              id: pluginSurfaceId(contribution.pluginId, theme.id),
-              label: theme.label,
-              cssUrl: assetUrl(contribution, theme.path),
-              pluginId: contribution.pluginId,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.icons?.length) {
-      registerIfPermitted(contribution, "icons", (disposers) => {
-        for (const icon of ui.icons ?? []) {
-          let disposed = false
-          let disposeIcon: (() => void) | undefined
-          disposers.push(() => {
-            disposed = true
-            disposeIcon?.()
-          })
-          fetch(assetUrl(contribution, icon.path))
-            .then((response) => (response.ok ? response.text() : ""))
-            .then((svgContent) => {
-              if (disposed || !svgContent) return
-              disposeIcon = registerIcon({ name: icon.name, svgContent, pluginId: contribution.pluginId })
-            })
-            .catch((error) => {
-              if (disposed) return
-              addError(
-                contribution.pluginId,
-                `Icon "${icon.name}" failed to load: ${error instanceof Error ? error.message : String(error)}`,
-              )
-            })
-        }
-      })
-    }
-
-    if (ui.appRoutes?.length) {
-      registerIfPermitted(contribution, "appRoutes", (disposers) => {
-        for (const route of ui.appRoutes ?? []) {
-          const loader = loadComponent(contribution, route.entry ?? ui.entry, route.exportName)
-          const sandbox = needsSandbox(route)
-          if (sandbox && !canLoadSandboxIframe(contribution)) {
-            addError(contribution.pluginId, `App route "${route.id}" requires permissions.ui.sandboxIframe`)
-            continue
-          }
-          if (sandbox && !hasSandboxEntry(route, ui.entry)) {
-            addError(
-              contribution.pluginId,
-              `App route "${route.id}" requires sandboxEntry, entry, or contributes.ui.entry`,
-            )
-            continue
-          }
-          if (!sandbox && !loader) {
-            addError(contribution.pluginId, `App route "${route.id}" requires permissions.ui.trustedImport`)
-            continue
-          }
-          disposers.push(
-            registerAppRoute({
-              id: pluginSurfaceId(contribution.pluginId, route.id),
-              routeId: route.id,
-              label: route.label,
-              icon: route.icon,
-              loader,
-              sandbox,
-              sandboxUrl: sandbox ? sandboxUrl(contribution.pluginId, "appRoutes", route.id) : undefined,
-              pluginId: contribution.pluginId,
-              exportName: route.exportName,
-            }),
-          )
-        }
-      })
-    }
-
-    if (ui.commands?.length) {
-      registerIfPermitted(contribution, "commands", (disposers) => {
-        for (const command of ui.commands ?? []) {
-          const loader = loadCommand(contribution, ui.entry, command.exportName)
-          if (!loader) {
-            addError(contribution.pluginId, `Command "${command.id}" requires permissions.ui.trustedImport`)
-            continue
-          }
-          disposers.push(
-            registerUICommand({
-              id: pluginSurfaceId(contribution.pluginId, command.id),
-              commandId: command.id,
-              label: command.label,
-              description: command.description,
-              icon: command.icon,
-              pluginId: contribution.pluginId,
-              loader,
-            }),
-          )
-        }
-      })
+    for (const command of ui.commands ?? []) {
+      const loader = loadCommand(contribution, ui.entry, command.exportName)
+      if (!loader) {
+        addError(contribution.pluginId, `Command "${command.id}" needs contributes.ui.entry.`)
+        continue
+      }
+      disposers.push(
+        registerUICommand({
+          id: pluginSurfaceId(contribution.pluginId, command.id),
+          commandId: command.id,
+          label: command.label,
+          description: command.description,
+          icon: command.icon,
+          pluginId: contribution.pluginId,
+          loader,
+        }),
+      )
     }
   }
 
@@ -474,8 +352,7 @@ export function PluginHostProvider(props: ParentProps) {
         setErrors(registered.uiErrors)
       })
     } catch (error) {
-      setErrors((prev) => [
-        ...prev,
+      setErrors([
         {
           pluginId: "",
           message: `Failed to fetch contributions: ${error instanceof Error ? error.message : String(error)}`,
@@ -485,14 +362,12 @@ export function PluginHostProvider(props: ParentProps) {
     }
   }
 
-  onMount(() => {
-    void reload()
-  })
-
   createEffect(() => {
     const url = server.url
     if (url) void reload()
   })
+
+  onCleanup(disposeRegisteredSurfaces)
 
   const value: PluginHostValue = {
     plugins: pluginContributions,

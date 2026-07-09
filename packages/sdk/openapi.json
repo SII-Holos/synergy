@@ -14393,74 +14393,6 @@
         ]
       }
     },
-    "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}": {
-      "get": {
-        "operationId": "plugin.sandbox",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "surface",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "surfaceId",
-            "required": true
-          }
-        ],
-        "summary": "Serve plugin sandbox iframe shell",
-        "description": "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
-        "responses": {
-          "200": {
-            "description": "Sandbox HTML page"
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.sandbox({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/plugin/{pluginId}/interact": {
       "post": {
         "operationId": "plugin.interact",
@@ -20229,6 +20161,11 @@
           }
         ]
       },
+      "ControlProfileId": {
+        "description": "Control profile used by sessions created for this item",
+        "type": "string",
+        "enum": ["guarded", "autonomous", "full_access"]
+      },
       "AgendaSessionRef": {
         "type": "object",
         "properties": {
@@ -20429,6 +20366,9 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "controlProfile": {
+            "$ref": "#/components/schemas/ControlProfileId"
           },
           "sessionMode": {
             "description": "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
@@ -21605,11 +21545,6 @@
             "$ref": "#/components/schemas/PermissionActionConfig"
           }
         ]
-      },
-      "ControlProfileId": {
-        "description": "Default control profile applied to all agents",
-        "type": "string",
-        "enum": ["guarded", "autonomous", "full_access"]
       },
       "AgentConfig": {
         "type": "object",
@@ -29870,6 +29805,9 @@
             },
             "required": ["providerID", "modelID"]
           },
+          "controlProfile": {
+            "$ref": "#/components/schemas/ControlProfileId"
+          },
           "sessionMode": {
             "type": "string",
             "enum": ["ephemeral", "persistent"]
@@ -29949,6 +29887,9 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "controlProfile": {
+            "$ref": "#/components/schemas/ControlProfileId"
           },
           "sessionMode": {
             "type": "string",
@@ -30221,6 +30162,9 @@
             "type": "string"
           },
           "auditSessionID": {
+            "type": "string"
+          },
+          "auditTaskID": {
             "type": "string"
           },
           "scopeID": {
@@ -31078,10 +31022,6 @@
           "version": {
             "type": "string"
           },
-          "trustTier": {
-            "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
-          },
           "health": {
             "type": "string",
             "enum": ["loaded", "disabled"]
@@ -31121,7 +31061,7 @@
             ]
           }
         },
-        "required": ["pluginId", "version", "trustTier"]
+        "required": ["pluginId", "version"]
       },
       "PluginInteractResult": {
         "type": "object",
@@ -31258,7 +31198,7 @@
             },
             "required": ["base", "tools", "overallRisk", "warnings"]
           },
-          "appRoutes": {
+          "navigation": {
             "type": "array",
             "items": {
               "type": "string"
@@ -31387,7 +31327,7 @@
           "manifestValid",
           "integrity",
           "permissions",
-          "appRoutes",
+          "navigation",
           "tools",
           "ui",
           "stores",
@@ -32987,6 +32927,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.mcp.tools.changed": {
         "type": "object",
         "properties": {
@@ -34149,32 +34115,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.pty.created": {
         "type": "object",
         "properties": {
@@ -34529,6 +34469,9 @@
             "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
@@ -34686,9 +34629,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

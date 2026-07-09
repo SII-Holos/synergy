@@ -12,7 +12,6 @@ export interface PluginContribution {
   pluginId: string
   name: string
   version: string
-  trustTier: "declarative" | "trusted-import" | "sandbox"
   ui: PluginUIContributions | null
   permissions: PluginPermissions | null
 }

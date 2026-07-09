@@ -1,14 +1,16 @@
-# Sandbox UI Guide
+# Solid UI Runtime Guide
 
-Sandbox UI is used for plugin surfaces that should not run as trusted host imports.
-
-Declare a sandboxed panel or settings section:
+Synergy plugin Web UI surfaces are Solid components loaded by the host from the plugin UI entry. Declare a UI entry whenever the plugin renders Solid surfaces such as navigation pages, settings components, workbench panels, message slots, composer slots, commands, part renderers, or tool renderers without a declarative fallback.
 
 ```jsonc
 {
+  "permissions": {
+    "ui": true,
+  },
   "contributes": {
     "ui": {
       "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
       "workbenchPanels": [
         {
           "id": "panel",
@@ -16,31 +18,28 @@ Declare a sandboxed panel or settings section:
           "icon": "layout-panel-left",
           "surface": "side",
           "cardinality": "singleton",
-          "sandbox": true,
-          "sandboxEntry": "./ui/index.js",
+          "exportName": "Panel",
         },
       ],
-    },
-  },
-  "permissions": {
-    "ui": {
-      "workbenchPanels": true,
-      "sandboxIframe": true,
     },
   },
 }
 ```
 
-The host records the surface and exposes the sandbox shell at:
+Plugin UI code imports Solid normally:
 
-```text
-/plugin/:pluginId/sandbox/:panelId
+```tsx
+import type { Component } from "solid-js"
+import { Show } from "solid-js"
+import type { PluginWorkbenchPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+
+export const Panel: Component<PluginWorkbenchPanelProps> = (props) => {
+  return <Show when={props.panelId}>{props.panelId}</Show>
+}
 ```
 
-Static JS, CSS, SVG, and asset files are served from:
+The plugin kit keeps `solid-js`, `solid-js/web`, and `solid-js/store` external to the plugin bundle so the Web host can render every plugin surface with the same Solid runtime as first-party surfaces. Static JS, CSS, SVG, theme, icon, and asset files are served from:
 
 ```text
 /plugin/assets/:pluginId/:version/*
 ```
-
-The runtime plugin still follows the normal object descriptor contract. Sandbox UI does not change server-side permission enforcement.

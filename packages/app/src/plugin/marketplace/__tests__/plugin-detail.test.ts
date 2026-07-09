@@ -69,7 +69,7 @@ describe("plugin detail model", () => {
         pluginId: "synergy-meme-plugin",
         name: "Meme Generator",
         version: "1.0.0",
-        trustTier: "sandbox",
+        trustTier: "trusted-import",
         hasManifest: true,
         pluginDir: "/plugins/synergy-meme-plugin",
         cliCommands: [],
@@ -85,7 +85,7 @@ describe("plugin detail model", () => {
         pluginId: "synergy-meme-plugin",
         name: "Meme Generator",
         version: "1.0.0",
-        trustTier: "sandbox",
+        trustTier: "trusted-import",
         hasManifest: true,
         pluginDir: "/plugins/synergy-meme-plugin",
         manifest: {

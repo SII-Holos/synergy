@@ -95,7 +95,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
     const list = installedPlugins() ?? []
     if (!q) return list
     return list.filter((plugin) =>
-      [plugin.pluginId, plugin.name, plugin.version, plugin.trustTier].some((value) => normalize(value).includes(q)),
+      [plugin.pluginId, plugin.name, plugin.version].some((value) => normalize(value).includes(q)),
     )
   })
 
@@ -346,8 +346,6 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
           </Show>
         </span>
         <span class="plugin-marketplace-row-meta">
-          <span>{props.plugin.trustTier}</span>
-          <span aria-hidden="true">·</span>
           <span>{props.plugin.pluginId}</span>
         </span>
       </span>

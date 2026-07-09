@@ -57,20 +57,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
       "resourceDomains": [],
       "frameDomains": [],
     },
-    "ui": {
-      "toolRenderers": false,
-      "partRenderers": false,
-      "workbenchPanels": false,
-      "appPanels": false,
-      "settings": false,
-      "messageSlots": false,
-      "themes": false,
-      "icons": false,
-      "appRoutes": false,
-      "commands": false,
-      "trustedImport": false,
-      "sandboxIframe": false,
-    },
+    "ui": true,
     "hooks": {
       "events": "selected",
       "eventNames": [],
@@ -184,7 +171,7 @@ result and returns the real payload as `result.output.value` when `result.output
   "contributes": {
     "ui": {
       "entry": "./dist/ui/index.js",
-      "minUIApiVersion": "2.0.0",
+      "minUIApiVersion": "3.0",
       "toolRenderers": [{ "tool": "greet", "exportName": "default" }],
       "partRenderers": [{ "type": "custom-part", "exportName": "CustomPart" }],
       "workbenchPanels": [
@@ -197,33 +184,41 @@ result and returns the real payload as `result.output.value` when `result.output
           "requiresSession": true,
         },
       ],
-      "appPanels": [
+      "navigation": [
         {
           "id": "dashboard",
           "label": "Dashboard",
           "icon": "layout-dashboard",
+          "placement": "sidebar",
           "exportName": "DashboardPanel",
           "order": 100,
         },
+        {
+          "id": "details",
+          "label": "Details",
+          "icon": "sparkles",
+          "placement": "page",
+          "exportName": "DetailsPage",
+        },
       ],
       "settings": [{ "id": "settings", "label": "Settings", "icon": "settings", "group": "plugins" }],
-      "messageSlots": [{ "id": "after-tools", "slot": "after-tools", "exportName": "AfterToolsSlot" }],
+      "messageSlots": [{ "id": "after-tools", "slot": "message.after-tools", "exportName": "AfterToolsSlot" }],
+      "composerSlots": [{ "id": "composer-above", "slot": "composer.above", "exportName": "ComposerAbove" }],
       "themes": [{ "id": "theme", "label": "Theme", "path": "./themes/default.css" }],
       "icons": [{ "name": "logo", "path": "./icons/logo.svg" }],
-      "appRoutes": [{ "id": "details", "label": "Details", "icon": "sparkles", "exportName": "DetailsRoute" }],
       "commands": [{ "id": "run", "label": "Run", "exportName": "runCommand" }],
     },
   },
 }
 ```
 
-`entry` is the built JavaScript bundle loaded by the Web host. The normal source path is `src/ui.tsx`; build writes it to the manifest entry path.
+`entry` is the built Solid JavaScript bundle loaded by the Web host. The normal source path is `src/ui.tsx`; build writes it to the manifest entry path. `minUIApiVersion` is required whenever `entry` is present.
 
-`appPanels` create top-level sidebar entries at `/plugins/panels/:pluginId/:panelId`. They are app-level surfaces and are not tied to a session.
-`workbenchPanels` are session workspace panels for the side or bottom workbench. `appRoutes` create routable app pages at `/plugins/routes/:pluginId/:routeId` and do not appear in the sidebar unless the plugin also declares an `appPanel`.
-`messageSlots` render in the message timeline around reasoning and tool sections; valid slots are `before-reasoning`, `after-reasoning`, `before-tools`, and `after-tools`.
+`permissions.ui: true` is required for all UI contributions. `themes` and `icons` may exist without `entry`; Solid-rendered surfaces such as navigation, settings components, workbench panels, message slots, composer slots, commands, part renderers, and tool renderers without fallback require `entry`.
 
-Trusted Solid UI bundle surfaces require the matching `permissions.ui.*` key plus `permissions.ui.trustedImport`. Sandboxed iframe surfaces require the matching `permissions.ui.*` key plus `permissions.ui.sandboxIframe`.
+`navigation` contributes app-level destinations. `placement: "sidebar"` creates a top-level sidebar entry and page at `/plugins/:pluginId/:navigationId`; `placement: "page"` creates the same route without a sidebar button.
+
+`workbenchPanels` are session workspace panels for the side or bottom workbench. `messageSlots` render around timeline anchors such as `message.before-user`, `message.after-tools`, `message.after-message`, and `message.footer`. `composerSlots` render around composer anchors such as `composer.above`, `composer.toolbar.left`, and `composer.start-option`.
 
 The Web host registers all schema-declared surfaces listed above. Internal API calls should use generated SDK methods; asset/script URLs remain browser-native.
 

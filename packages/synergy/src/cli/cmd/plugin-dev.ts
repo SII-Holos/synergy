@@ -6,7 +6,6 @@ import { Plugin } from "@/plugin"
 import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
-import { Server } from "@/server/server"
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })
@@ -46,8 +45,9 @@ function printPermissionPreview(manifest: PluginManifestType) {
       uiParts.push(`${ui.partRenderers.length} part renderer${ui.partRenderers.length !== 1 ? "s" : ""}`)
     if (ui.workbenchPanels?.length)
       uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
-    if (ui.appPanels?.length) uiParts.push(`${ui.appPanels.length} app panel${ui.appPanels.length !== 1 ? "s" : ""}`)
-    if (ui.appRoutes?.length) uiParts.push(`${ui.appRoutes.length} app route${ui.appRoutes.length !== 1 ? "s" : ""}`)
+    if (ui.navigation?.length) uiParts.push(`${ui.navigation.length} nav item${ui.navigation.length !== 1 ? "s" : ""}`)
+    if (ui.composerSlots?.length)
+      uiParts.push(`${ui.composerSlots.length} composer slot${ui.composerSlots.length !== 1 ? "s" : ""}`)
     if (uiParts.length > 0) {
       UI.println(`  → UI: ${uiParts.join(", ")}`)
     }
@@ -65,83 +65,15 @@ function countUiContributions(manifest: PluginManifestType): number {
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
     (ui.workbenchPanels?.length ?? 0) +
-    (ui.appPanels?.length ?? 0) +
+    (ui.navigation?.length ?? 0) +
     (ui.settings?.length ?? 0) +
     (ui.messageSlots?.length ?? 0) +
+    (ui.composerSlots?.length ?? 0) +
     (ui.themes?.length ?? 0) +
     (ui.icons?.length ?? 0) +
-    (ui.commands?.length ?? 0) +
-    (ui.appRoutes?.length ?? 0)
+    (ui.commands?.length ?? 0)
   )
 }
-
-// ---------------------------------------------------------------------------
-// Sandbox preview — exported for testability
-// ---------------------------------------------------------------------------
-
-export interface SandboxSurface {
-  id: string
-  label: string
-  surface: "workbenchPanels" | "appPanels" | "settings" | "appRoutes"
-}
-
-/** Build the sandbox preview URL for a plugin panel. */
-export function buildSandboxPreviewUrl(
-  pluginId: string,
-  surface: SandboxSurface["surface"],
-  surfaceId: string,
-  port: number = Server.DEFAULT_PORT,
-): string {
-  return `http://localhost:${port}/plugin/${encodeURIComponent(pluginId)}/sandbox/${surface}/${encodeURIComponent(surfaceId)}`
-}
-
-/** Extract sandbox-eligible panels from a plugin manifest. */
-export function resolveSandboxSurfaces(manifest: PluginManifestType): SandboxSurface[] {
-  const ui = manifest.contributes?.ui
-  if (!ui) return []
-
-  const surfaces: SandboxSurface[] = []
-
-  for (const panel of ui.workbenchPanels ?? []) {
-    if (panel.sandbox) {
-      surfaces.push({ id: panel.id, label: panel.label, surface: "workbenchPanels" })
-    }
-  }
-
-  for (const panel of ui.appPanels ?? []) {
-    if (panel.sandbox) {
-      surfaces.push({ id: panel.id, label: panel.label, surface: "appPanels" })
-    }
-  }
-
-  for (const section of ui.settings ?? []) {
-    if (section.sandbox) {
-      surfaces.push({ id: section.id, label: section.label, surface: "settings" })
-    }
-  }
-
-  for (const route of ui.appRoutes ?? []) {
-    if (route.sandbox) {
-      surfaces.push({ id: route.id, label: route.label, surface: "appRoutes" })
-    }
-  }
-
-  return surfaces
-}
-
-function printSandboxPreview(surfaces: SandboxSurface[], manifest: PluginManifestType, port: number) {
-  if (surfaces.length === 0) {
-    UI.println(`  ${UI.Style.TEXT_WARNING}No sandbox panels found in manifest${UI.Style.TEXT_NORMAL}`)
-    return
-  }
-
-  UI.println(`  ${UI.Style.TEXT_HIGHLIGHT}Sandbox preview URLs:${UI.Style.TEXT_NORMAL}`)
-  for (const surface of surfaces) {
-    const url = buildSandboxPreviewUrl(manifest.name, surface.surface, surface.id, port)
-    UI.println(`    ${surface.label} (${surface.surface}): ${UI.Style.TEXT_SUCCESS}${url}${UI.Style.TEXT_NORMAL}`)
-  }
-}
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Health snapshot — exported for testability
@@ -233,16 +165,10 @@ export const PluginDevCommand = cmd({
   command: "dev [path]",
   describe: "start plugin development mode with file watching and auto-reload",
   builder: (yargs: Argv) =>
-    yargs
-      .positional("path", {
-        type: "string",
-        describe: "path to plugin directory (defaults to cwd)",
-      })
-      .option("sandbox-preview", {
-        type: "boolean",
-        default: false,
-        describe: "output sandbox iframe preview URLs for UI panels",
-      }),
+    yargs.positional("path", {
+      type: "string",
+      describe: "path to plugin directory (defaults to cwd)",
+    }),
   async handler(args) {
     const pluginDir = path.resolve((args.path as string) ?? process.cwd())
     const manifestPath = path.join(pluginDir, "plugin.json")
@@ -301,12 +227,6 @@ export const PluginDevCommand = cmd({
         uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
       UI.println(`UI: ${uiParts.join(", ")}`)
     }
-    // Sandbox preview
-    const sandboxPreview: boolean = (args as any)["sandbox-preview"] ?? false
-    if (sandboxPreview) {
-      const surfaces = resolveSandboxSurfaces(manifest)
-      printSandboxPreview(surfaces, manifest, Server.DEFAULT_PORT)
-    }
 
     // Watch mode
     const srcDir = path.join(pluginDir, "src")
@@ -341,10 +261,6 @@ export const PluginDevCommand = cmd({
                 UI.println(`${UI.Style.TEXT_SUCCESS}done${UI.Style.TEXT_NORMAL}`)
                 printRuntimeStatus(manifest)
                 printHealthDashboard(manifest)
-                if (sandboxPreview) {
-                  const surfaces = resolveSandboxSurfaces(manifest)
-                  printSandboxPreview(surfaces, manifest, Server.DEFAULT_PORT)
-                }
                 UI.println()
               })
               .catch((err: unknown) => {

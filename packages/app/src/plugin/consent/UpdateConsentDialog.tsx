@@ -5,8 +5,7 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { PermissionDiffList } from "./PermissionDiffList"
 import { PermissionRiskBadge } from "./PermissionRiskBadge"
-import { TrustTierExplanation } from "./TrustTierExplanation"
-import type { PluginPermissionDiff, TrustTier, PermissionSeverity } from "./schema"
+import type { PluginPermissionDiff, PermissionSeverity } from "./schema"
 
 interface UpdateConsentDialogProps {
   pluginId: string
@@ -14,7 +13,6 @@ interface UpdateConsentDialogProps {
   oldVersion: string
   newVersion: string
   diff: PluginPermissionDiff
-  trustTier: TrustTier
   onApprove: () => void
   onDeny: () => void
   open: boolean
@@ -79,13 +77,6 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
             </div>
           </div>
         </div>
-
-        {/* Trust tier */}
-        <Show when={props.trustTier !== "declarative"}>
-          <div class="rounded-lg border border-border-weak-base p-3">
-            <TrustTierExplanation tier={props.trustTier} />
-          </div>
-        </Show>
 
         {/* Risk change */}
         <Show when={props.diff.riskBefore || props.diff.riskAfter}>

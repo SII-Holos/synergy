@@ -1,14 +1,13 @@
-import { Show, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { SessionReviewTab } from "@/components/session"
 import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
-import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
-function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
+export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
   const params = useParams()
   const sync = useSync()
   const layout = useLayout()
@@ -63,27 +62,4 @@ function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
       }}
     </Show>
   )
-}
-
-export function WorkspaceSessionReviewTool() {
-  let unregister: VoidFunction | undefined
-
-  onMount(() => {
-    unregister = registerWorkbenchPanel({
-      id: "session-review",
-      label: "Review",
-      icon: getSemanticIcon("command.review"),
-      surface: "side",
-      cardinality: "singleton",
-      requiresSession: true,
-      pluginId: "builtin",
-      order: 15,
-      component: SessionReviewWorkbenchContent,
-      title: () => "Review",
-    })
-  })
-
-  onCleanup(() => unregister?.())
-
-  return null
 }

@@ -87,6 +87,7 @@ import {
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
+import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -1536,6 +1537,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           keybindFor={(id) => command.keybind(id)}
         />
       </Show>
+      <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
       <form
         onSubmit={handleSubmit}
         onDragOver={handleDragOver}
@@ -1663,6 +1665,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </div>
         <div class="prompt-input-toolbar flex flex-wrap items-center justify-between gap-2">
           <div class="prompt-input-toolbar-main min-w-0 flex flex-wrap items-center gap-1">
+            <ComposerSlotOutlet slot="composer.toolbar.left" sessionId={params.id} class="contents" />
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="prompt-input-toolbar-chip flex items-center gap-2">
@@ -1770,7 +1773,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     onCancel={cancelLattice}
                   />
                 </Show>
+                <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
                 <PromptAddMenu sections={addMenuSections()} />
+                <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
                 <PromptStartModeSelector groups={newSessionStartOptions()} />
               </Match>
             </Switch>
@@ -1788,6 +1793,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 if (files.length > 0) void addAttachments(files)
               }}
             />
+            <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
             <Show when={!sdk.connected()}>
               <Tooltip placement="top" value="Connection lost — responses may be delayed">
                 <div class="flex items-center justify-center size-5">
@@ -1948,6 +1954,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </div>
       </form>
+      <ComposerSlotOutlet slot="composer.below" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
     </div>
   )
 }

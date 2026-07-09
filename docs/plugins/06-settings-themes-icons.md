@@ -1,34 +1,52 @@
-# Settings, Themes, Icons, App Routes, And Commands
+# Settings, Themes, Icons, Navigation, And Commands
 
-These surfaces are declared under `contributes.ui` and registered by the Web plugin host.
+These surfaces are declared under `contributes.ui` and registered by the Web plugin host. Any UI contribution requires `permissions.ui: true`.
 
 ## Settings
 
 ```jsonc
 {
-  "settings": [
-    {
-      "id": "main",
-      "label": "My Plugin",
-      "icon": "settings",
-      "group": "plugins",
-      "exportName": "SettingsPanel",
+  "permissions": {
+    "ui": true,
+  },
+  "contributes": {
+    "ui": {
+      "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
+      "settings": [
+        {
+          "id": "main",
+          "label": "My Plugin",
+          "icon": "settings",
+          "group": "plugins",
+          "exportName": "SettingsPanel",
+        },
+      ],
     },
-  ],
+  },
 }
 ```
+
+Settings sections without `formSchema` render a Solid component from the shared UI entry. Declarative `formSchema` settings can render without a UI entry.
 
 ## Themes
 
 ```jsonc
 {
-  "themes": [
-    {
-      "id": "my-theme",
-      "label": "My Theme",
-      "path": "./themes/default.css",
+  "permissions": {
+    "ui": true,
+  },
+  "contributes": {
+    "ui": {
+      "themes": [
+        {
+          "id": "my-theme",
+          "label": "My Theme",
+          "path": "./themes/default.css",
+        },
+      ],
     },
-  ],
+  },
 }
 ```
 
@@ -38,48 +56,73 @@ Theme files are copied into `dist/themes/` during build and registered with a CS
 
 ```jsonc
 {
-  "icons": [
-    {
-      "name": "my-logo",
-      "path": "./icons/logo.svg",
+  "permissions": {
+    "ui": true,
+  },
+  "contributes": {
+    "ui": {
+      "icons": [
+        {
+          "name": "my-logo",
+          "path": "./icons/logo.svg",
+        },
+      ],
     },
-  ],
+  },
 }
 ```
 
 Icon SVG files are copied into `dist/icons/` and fetched by the host.
 
-## App Routes
+## Navigation
 
 ```jsonc
 {
-  "appRoutes": [
-    {
-      "id": "details",
-      "label": "My Plugin",
-      "icon": "sparkles",
-      "entry": "./dist/ui/details.js",
-      "exportName": "default",
+  "permissions": {
+    "ui": true,
+  },
+  "contributes": {
+    "ui": {
+      "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
+      "navigation": [
+        {
+          "id": "details",
+          "label": "My Plugin",
+          "icon": "sparkles",
+          "placement": "sidebar",
+          "exportName": "DetailsPage",
+        },
+      ],
     },
-  ],
+  },
 }
 ```
 
-App routes are registered under `/plugins/routes/:pluginId/:routeId` and load from the route `entry` or the shared `contributes.ui.entry`. They do not automatically create sidebar entries; use `appPanels` for a top-level sidebar panel.
+Navigation entries render at `/plugins/:pluginId/:navigationId`. `placement: "sidebar"` also contributes a top-level sidebar button; `placement: "page"` contributes only the page route.
 
 ## Commands
 
 ```jsonc
 {
-  "commands": [
-    {
-      "id": "refresh",
-      "label": "Refresh",
-      "description": "Refresh plugin data",
-      "icon": "refresh-cw",
-      "exportName": "refreshCommand",
+  "permissions": {
+    "ui": true,
+  },
+  "contributes": {
+    "ui": {
+      "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
+      "commands": [
+        {
+          "id": "refresh",
+          "label": "Refresh",
+          "description": "Refresh plugin data",
+          "icon": "refresh-cw",
+          "exportName": "refreshCommand",
+        },
+      ],
     },
-  ],
+  },
 }
 ```
 

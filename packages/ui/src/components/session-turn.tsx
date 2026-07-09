@@ -880,6 +880,7 @@ export function SessionTurn(
                     <Part part={shellModePart()!} message={msg()} defaultOpen />
                   </Match>
                   <Match when={true}>
+                    <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>
                     <Show when={showUserChrome()}>
                       {/* Mailbox source annotation */}
                       <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
@@ -910,6 +911,7 @@ export function SessionTurn(
                           </button>
                         </Show>
                       </div>
+                      {renderMessageSlot("message.after-user")}
                     </Show>
                     <Show
                       when={
@@ -928,10 +930,10 @@ export function SessionTurn(
                                 {(current) => (
                                   <>
                                     <Show when={index() === timelineSlotIndexes().firstReasoning}>
-                                      {renderMessageSlot("before-reasoning")}
+                                      {renderMessageSlot("message.before-reasoning")}
                                     </Show>
                                     <Show when={index() === timelineSlotIndexes().firstTool}>
-                                      {renderMessageSlot("before-tools")}
+                                      {renderMessageSlot("message.before-tools")}
                                     </Show>
                                     <div
                                       data-slot="session-turn-timeline-item"
@@ -945,10 +947,10 @@ export function SessionTurn(
                                       />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>
-                                      {renderMessageSlot("after-reasoning")}
+                                      {renderMessageSlot("message.after-reasoning")}
                                     </Show>
                                     <Show when={index() === timelineSlotIndexes().lastTool}>
-                                      {renderMessageSlot("after-tools")}
+                                      {renderMessageSlot("message.after-tools")}
                                     </Show>
                                   </>
                                 )}
@@ -1012,6 +1014,7 @@ export function SessionTurn(
                     <Show when={error()}>
                       <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                     </Show>
+                    {renderMessageSlot("message.after-message")}
                   </Match>
                 </Switch>
               </div>

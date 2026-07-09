@@ -17,7 +17,6 @@ import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
-import { SandboxIframe } from "@/plugin/sandbox"
 import type {
   WorkbenchPanelContentProps,
   WorkbenchPanelEntry,
@@ -55,14 +54,9 @@ function WorkbenchPanelContent(props: {
         </div>
       }
     >
-      <Show when={props.entry.sandbox && props.entry.sandboxUrl}>
-        <ErrorBoundary fallback={(error) => <div class="workbench-surface-error">{error.message}</div>}>
-          <SandboxIframe src={props.entry.sandboxUrl!} pluginId={props.entry.pluginId} panelId={props.entry.id} />
-        </ErrorBoundary>
-      </Show>
-      <Show when={!props.entry.sandbox}>
-        <Show when={comp()} fallback={<div class="workbench-surface-empty">Panel unavailable</div>}>
-          {(component) => (
+      <Show when={comp()} fallback={<div class="workbench-surface-empty">Panel unavailable</div>}>
+        {(component) => (
+          <ErrorBoundary fallback={(error) => <div class="workbench-surface-error">{error.message}</div>}>
             <Suspense
               fallback={
                 <div class="workbench-surface-loading">
@@ -72,18 +66,11 @@ function WorkbenchPanelContent(props: {
             >
               {(() => {
                 const Loaded = component()
-                return (
-                  <Loaded
-                    pluginId={props.entry.pluginId}
-                    panelId={props.entry.id}
-                    tab={props.tab}
-                    onRequestClose={props.onRequestClose}
-                  />
-                )
+                return <Loaded pluginId={props.entry.pluginId ?? ""} panelId={props.entry.id} tab={props.tab} />
               })()}
             </Suspense>
-          )}
-        </Show>
+          </ErrorBoundary>
+        )}
       </Show>
     </Show>
   )

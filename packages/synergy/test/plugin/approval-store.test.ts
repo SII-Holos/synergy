@@ -131,50 +131,14 @@ describe("computePermissionsHash", () => {
   test("does not differ when non-permission contribution metadata changes", () => {
     const a = minimalManifest({
       icon: "icons/market.svg",
-      contributes: {
-        tools: [
-          {
-            name: "greet",
-            description: "Greet a user",
-            icon: "message-circle",
-            capabilities: {
-              filesystem: "none" as const,
-              network: false,
-              shell: false,
-            },
-          },
-        ],
-        ui: {
-          appRoutes: [{ id: "hello", entry: "./ui/hello.js", label: "Hello", exportName: "default", sandbox: false }],
-        },
+      permissions: {
+        ui: true,
       },
     })
     const b = minimalManifest({
       icon: "icons/new-market.svg",
-      contributes: {
-        tools: [
-          {
-            name: "greet",
-            description: "Greet a person with updated copy",
-            icon: "sparkles",
-            capabilities: {
-              filesystem: "none" as const,
-              network: false,
-              shell: false,
-            },
-          },
-        ],
-        ui: {
-          appRoutes: [
-            {
-              id: "hello-renamed",
-              entry: "./ui/hello-renamed.js",
-              label: "Hello renamed",
-              exportName: "default",
-              sandbox: false,
-            },
-          ],
-        },
+      permissions: {
+        ui: true,
       },
     })
     expect(computePermissionsHash(a, [])).toBe(computePermissionsHash(b, []))
