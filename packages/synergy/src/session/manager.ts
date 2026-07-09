@@ -551,7 +551,27 @@ export namespace SessionManager {
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
         ).catch(() => undefined)
-        if (!info || info.time.archived || info.pendingReply !== true) continue
+        if (!info || !info.time || info.time.archived || info.pendingReply !== true) continue
+        sessionIDs.add(info.id)
+      }
+    }
+
+    return Array.from(sessionIDs)
+  }
+
+  export async function listInterruptedCortexDelegations(): Promise<string[]> {
+    const scopeRoots = await Storage.scan(["sessions"])
+    const sessionIDs = new Set<string>()
+
+    for (const scopeID of scopeRoots) {
+      const ids = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
+      for (const sessionID of ids) {
+        if (isRunning(sessionID)) continue
+        const info = await Storage.read<Info>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+        ).catch(() => undefined)
+        if (!info || !info.time || info.time.archived) continue
+        if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
         sessionIDs.add(info.id)
       }
     }
