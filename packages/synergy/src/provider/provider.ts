@@ -68,10 +68,7 @@ export namespace Provider {
   }
 
   /** Resolve a per-request undici dispatcher from proxy/noProxy options. */
-  function resolveProxyDispatcher(
-    proxyUrl: string | undefined,
-    noProxy: boolean,
-  ): import("undici").Dispatcher | undefined {
+  function resolveProxyDispatcher(proxyUrl: string | undefined, noProxy: boolean): any {
     if (proxyUrl) return new ProxyAgent({ uri: proxyUrl })
     if (noProxy) return new Agent()
     return undefined
