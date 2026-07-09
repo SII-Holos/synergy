@@ -154,7 +154,10 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
 
       const { Cortex } = await import("../cortex")
       const auditTask = loop.auditTaskID ? Cortex.get(loop.auditTaskID) : undefined
-      if (auditTask && (auditTask.status === "queued" || auditTask.status === "running")) {
+      if (
+        auditTask &&
+        (auditTask.status === "pending" || auditTask.status === "queued" || auditTask.status === "running")
+      ) {
         return {
           title: `Loop ${params.loopID} → already auditing`,
           output: `BlueprintLoop ${params.loopID} is already being audited.`,
@@ -175,7 +178,7 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
       currentStatus = loop.status
     }
     let auditSessionID: string | undefined
-
+    let auditTaskID: string | undefined
     if (params.status === "auditing") {
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
 Read the Blueprint Note via note_read and audit any start user instruction included below. Examine the execution evidence (session trajectory, produced artifacts or workspace changes, and domain-appropriate quality checks), and determine if the Blueprint outcome is complete.
@@ -194,6 +197,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
         notifyParentOnComplete: false,
       })
       auditSessionID = task.sessionID
+      auditTaskID = task.id
       const { Session } = await import("../session")
       await Session.update(auditSessionID, (draft) => {
         draft.blueprint = { ...draft.blueprint, loopID: params.loopID, loopRole: "audit" }
@@ -283,6 +287,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
         loopID: params.loopID,
         status: params.status,
         auditSessionID,
+        ...(auditTaskID ? { auditTaskID } : {}),
       } as Record<string, any>,
     }
   },

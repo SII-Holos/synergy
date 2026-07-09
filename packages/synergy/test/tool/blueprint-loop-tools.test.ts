@@ -12,12 +12,14 @@ import { tmpdir } from "../fixture/fixture"
 
 let originalLaunch: typeof Cortex.launch
 let originalCancelAll: typeof Cortex.cancelAll
+let originalGet: typeof Cortex.get
 let originalDeliver: typeof SessionManager.deliver
 let originalSignalAbort: typeof SessionManager.signalAbort
 
 beforeEach(() => {
   originalLaunch = Cortex.launch
   originalCancelAll = Cortex.cancelAll
+  originalGet = Cortex.get
   originalDeliver = SessionManager.deliver
   originalSignalAbort = SessionManager.signalAbort
 })
@@ -25,6 +27,7 @@ beforeEach(() => {
 afterEach(() => {
   ;(Cortex.launch as any) = originalLaunch
   ;(Cortex.cancelAll as any) = originalCancelAll
+  ;(Cortex.get as any) = originalGet
   ;(SessionManager.deliver as any) = originalDeliver
   ;(SessionManager.signalAbort as any) = originalSignalAbort
 })
@@ -134,6 +137,102 @@ describe("BlueprintLoop tools", () => {
         expect(launches).toHaveLength(1)
         expect(launches[0].prompt).toContain("Start user instruction")
         expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
+      },
+    })
+  })
+
+  test("returns already auditing when audit taskID is still active in Cortex", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        const firstAuditSession = await Session.create({})
+        const activeTaskID = Identifier.short("cortex")
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: firstAuditSession.id,
+          auditTaskID: activeTaskID,
+        })
+        await Session.update(firstAuditSession.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+
+        const activeCortexTask = auditTask(
+          {
+            description: "",
+            prompt: "",
+            agent: "supervisor",
+            parentSessionID: session.id,
+            parentMessageID: ctx(session.id, "synergy").messageID,
+            notifyParentOnComplete: false,
+            executionRole: "delegated_subagent",
+            category: "general",
+          },
+          firstAuditSession.id,
+          "running",
+        )
+        ;(Cortex.get as any) = mock((_taskID: string) => activeCortexTask)
+
+        const launches: Parameters<typeof Cortex.launch>[0][] = []
+        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
+          const auditSession = await Session.create({})
+          launches.push(input)
+          return auditTask(input, auditSession.id)
+        })
+
+        const tool = await BlueprintLoopFinishTool.init()
+        const result = await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+
+        expect(launches).toHaveLength(0)
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(updated.status).toBe("auditing")
+        expect(updated.auditSessionID).toBe(firstAuditSession.id)
+        expect(updated.auditTaskID).toBe(activeTaskID)
+        expect(result.metadata.status).toBe("auditing")
+        expect(result.metadata.auditTaskID).toBe(activeTaskID)
+      },
+    })
+  })
+
+  test("returns already auditing when legacy audit session is still running", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        const firstAuditSession = await Session.create({})
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: firstAuditSession.id,
+        })
+        await Session.update(firstAuditSession.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+
+        // Simulate that we have an active runtime for the audit session
+        const realIsRunning = SessionManager.isRunning
+        ;(SessionManager.isRunning as any) = mock((sid: string) => sid === firstAuditSession.id)
+
+        const launches: Parameters<typeof Cortex.launch>[0][] = []
+        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
+          const auditSession = await Session.create({})
+          launches.push(input)
+          return auditTask(input, auditSession.id)
+        })
+
+        try {
+          const tool = await BlueprintLoopFinishTool.init()
+          const result = await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+
+          expect(launches).toHaveLength(0)
+          const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+          expect(updated.status).toBe("auditing")
+          expect(updated.auditSessionID).toBe(firstAuditSession.id)
+          expect(result.metadata.status).toBe("auditing")
+        } finally {
+          ;(SessionManager.isRunning as any) = realIsRunning
+        }
       },
     })
   })
