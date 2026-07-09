@@ -27,7 +27,30 @@ export namespace PerformanceDashboard {
     const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
-    const cortexStats = Cortex.retentionStats()
+    const cortexTasks = Cortex.list()
+    const cortexStats = {
+      totalCount: cortexTasks.length,
+      byStatus: {
+        pending: cortexTasks.filter((t) => t.status === "pending").length,
+        queued: cortexTasks.filter((t) => t.status === "queued").length,
+        running: cortexTasks.filter((t) => t.status === "running").length,
+        completed: cortexTasks.filter((t) => t.status === "completed").length,
+        error: cortexTasks.filter((t) => t.status === "error").length,
+        cancelled: cortexTasks.filter((t) => t.status === "cancelled").length,
+      },
+      retainedPromptChars: cortexTasks.reduce((sum, t) => sum + t.prompt.length, 0),
+      retainedOutputChars: cortexTasks.reduce((sum, t) => {
+        if (!t.output) return sum
+        if (t.output.mode === "summary" || t.output.mode === "final_response") return sum + t.output.value.length
+        try {
+          return sum + JSON.stringify(t.output.value).length
+        } catch {
+          return sum
+        }
+      }, 0),
+      retainedErrorChars: cortexTasks.reduce((sum, t) => sum + (t.error?.length ?? 0), 0),
+      retainedProgressToolCount: cortexTasks.reduce((sum, t) => sum + (t.progress?.recentTools?.length ?? 0), 0),
+    }
     const http = metrics.filter((row) => row.name === "http.request.duration")
     const httpDurations = http.map((row) => row.value)
     const httpErrors = http.filter((row) => row.labels.status && Number(row.labels.status) >= 500).length
