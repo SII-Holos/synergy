@@ -34,6 +34,7 @@ export namespace Plugin {
   export const init = lifecycle.init
   export const notifyConfigHooks = lifecycle.notifyConfigHooks
   export const reload = lifecycle.reload
+  export const reloadMcpContributions = lifecycle.reloadMcpContributions
   export const manifest = lifecycle.manifest
 
   // Install

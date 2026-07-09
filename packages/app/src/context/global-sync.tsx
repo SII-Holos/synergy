@@ -968,6 +968,16 @@ function createGlobalSync() {
         setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
         break
       }
+      case "mcp.ready":
+      case "mcp.failed":
+      case "mcp.tools.changed":
+      case "mcp.prompts.changed":
+      case "mcp.resources.changed": {
+        void createScopedClient(scopeKey)
+          .mcp.status()
+          .then((x) => setStore("mcp", x.data!))
+        break
+      }
       case "message.updated": {
         touchMessageBucket(scopeKey, event.properties.info.sessionID)
         const messages = store.message[event.properties.info.sessionID]
