@@ -1,12 +1,7 @@
 const MIN_INTENT_LENGTH = 10
 const MAX_INTENT_LENGTH = 300
 
-type SanitizeReason =
-  | "ok"
-  | "tool-hallucination"
-  | "excessive-tool-output"
-  | "assistant-reasoning"
-  | "junk"
+type SanitizeReason = "ok" | "tool-hallucination" | "excessive-tool-output" | "assistant-reasoning" | "junk"
 
 export type SanitizeResult = {
   value: string
