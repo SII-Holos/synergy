@@ -8,7 +8,14 @@ import { SyncSequencer } from "./sequencer"
 
 export namespace Bus {
   const log = Log.create({ service: "bus" })
+  const STREAMING_PUBLISH_LOG_INTERVAL = 5_000
   type Subscription = (event: any) => void
+  type StreamingPublishStats = {
+    count: number
+    started: number
+    lastLogged: number
+  }
+  const streamingPublishStats = new Map<string, StreamingPublishStats>()
 
   export const ScopeRuntimeDisposed = BusEvent.define(
     "scope.runtime.disposed",
@@ -70,9 +77,13 @@ export namespace Bus {
       payload.epoch = sequencer.epoch
       sequencer.stamp(payload as { seq: number }, Date.now())
     }
-    log.debug("publishing", {
-      type: def.type,
-    })
+    if (def.streaming) {
+      recordStreamingPublish(def.type)
+    } else {
+      log.debug("publishing", {
+        type: def.type,
+      })
+    }
     const pending: Promise<void>[] = []
     const dispatch = (sub: Subscription) => {
       const task = Promise.resolve()
@@ -101,6 +112,39 @@ export namespace Bus {
     })
     if (def.streaming) return
     await Promise.all(pending)
+  }
+
+  function recordStreamingPublish(type: string) {
+    const now = Date.now()
+    const stats = streamingPublishStats.get(type)
+    if (!stats) {
+      streamingPublishStats.set(type, {
+        count: 0,
+        started: now,
+        lastLogged: now,
+      })
+      log.debug("streaming publish stats", {
+        type,
+        count: 1,
+        windowMs: 0,
+        ratePerSecond: 0,
+      })
+      return
+    }
+
+    stats.count++
+    if (now - stats.lastLogged < STREAMING_PUBLISH_LOG_INTERVAL) return
+
+    const windowMs = now - stats.started
+    log.debug("streaming publish stats", {
+      type,
+      count: stats.count,
+      windowMs,
+      ratePerSecond: Math.round((stats.count / windowMs) * 100_000) / 100,
+    })
+    stats.count = 0
+    stats.started = now
+    stats.lastLogged = now
   }
 
   export function subscribe<Definition extends BusEvent.Definition>(
