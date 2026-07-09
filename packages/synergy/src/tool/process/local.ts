@@ -34,6 +34,7 @@ export namespace LocalProcessBackend {
     }
 
     if (action === "list") {
+      ProcessRegistry.settleStaleProcesses()
       const all = ProcessRegistry.listAll()
       const processes = all.map((p) => ({
         processId: p.id,
@@ -67,6 +68,7 @@ export namespace LocalProcessBackend {
 
     switch (action) {
       case "poll": {
+        ProcessRegistry.settleStaleProcesses()
         if (proc && !proc.exited && params.block) {
           await waitForExit(processId, (params.timeout ?? ToolTimeout.DEFAULTS.processPollWaitMs / 1_000) * 1000)
         }

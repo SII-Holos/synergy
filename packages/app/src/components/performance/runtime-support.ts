@@ -10,6 +10,8 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
       { label: "Trace files", value: "0 files", tone: "default" },
       { label: "Recent errors", value: "0", tone: "default" },
       { label: "Pending sessions", value: "0", tone: "default" },
+      { label: "Session runtimes", value: "0 total", tone: "default" },
+      { label: "Cortex tasks", value: "0 retained", tone: "default" },
     ]
   }
   const lockState = runtime.alive === undefined ? "Unknown" : runtime.alive ? "Alive" : "Not running"
@@ -33,6 +35,16 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
       label: "Pending sessions",
       value: String(runtime.pendingSessions),
       tone: runtime.pendingSessions > 0 ? "warning" : "default",
+    },
+    {
+      label: "Session runtimes",
+      value: `${runtime.sessionRuntimes.totalCount} total · ${runtime.sessionRuntimes.runningCount} running`,
+      tone: "default",
+    },
+    {
+      label: "Cortex tasks",
+      value: `${runtime.cortexTasks.totalCount} retained · ${runtime.cortexTasks.runningCount} running`,
+      tone: "default",
     },
   ]
 }

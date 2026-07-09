@@ -474,6 +474,9 @@ import type {
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
+  WorktreeEnterErrors,
+  WorktreeEnterInput,
+  WorktreeEnterResponses,
   WorktreeLeaveErrors,
   WorktreeLeaveResponses,
   WorktreeListResponses,
@@ -5352,6 +5355,45 @@ export class Worktree extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<WorktreeCreateResponses, WorktreeCreateErrors, ThrowOnError>({
       url: "/experimental/worktree",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Enter worktree
+   *
+   * Bind an existing git worktree to a session.
+   */
+  public enter<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      worktreeEnterInput?: WorktreeEnterInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "worktreeEnterInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorktreeEnterResponses, WorktreeEnterErrors, ThrowOnError>({
+      url: "/experimental/worktree/session/{sessionID}/enter",
       ...options,
       ...params,
       headers: {

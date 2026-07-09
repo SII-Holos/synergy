@@ -89,6 +89,43 @@ describe("SmartAllow eligibility", () => {
   })
 })
 
+describe("SmartAllow prompt context", () => {
+  test("includes redacted session context for intent disambiguation", () => {
+    const prompt = SmartAllow.buildPrompt({
+      tool: "bash",
+      args: { command: "git push origin feature" },
+      capabilities: ["network", "shell_git_remote"],
+      workspace: "/repo",
+      policyAction: "ask",
+      userMessage: "Please open a PR for the fix.",
+      recentHistory: ["user: run the issue workflow", "assistant: created the branch"],
+      agentContext: "synergy: general coding agent",
+    })
+
+    expect(prompt).toContain("Session context")
+    expect(prompt).toContain("User request: Please open a PR for the fix.")
+    expect(prompt).toContain("- user: run the issue workflow")
+    expect(prompt).toContain("Agent: synergy: general coding agent")
+  })
+
+  test("redacts secret-like values from session context", () => {
+    const prompt = SmartAllow.buildPrompt({
+      tool: "bash",
+      args: { command: "echo done" },
+      capabilities: ["shell_exec"],
+      workspace: "/repo",
+      policyAction: "ask",
+      userMessage: "Use OPENAI_API_KEY=sk-this-is-a-real-looking-secret-value-for-tests",
+      recentHistory: ["assistant: saw token abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"],
+    })
+
+    expect(prompt).not.toContain("sk-this-is-a-real-looking-secret-value-for-tests")
+    expect(prompt).not.toContain("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    expect(prompt).toContain("OPENAI_API_KEY=<redacted>")
+    expect(prompt).toContain("<redacted:token>")
+  })
+})
+
 describe("SmartAllow circuit breaker", () => {
   beforeEach(() => {
     SmartAllow.resetCircuitBreaker()

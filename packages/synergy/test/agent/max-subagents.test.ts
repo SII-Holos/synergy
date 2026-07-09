@@ -105,4 +105,22 @@ describe("synergy-max subagents", () => {
       expect(action(agent, "write")).toBe("deny")
     }
   })
+
+  test("recursive coordinator profiles allow task and DAG tools while ordinary subagents do not", () => {
+    const coordinatorTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
+
+    for (const name of ["supervisor", "lightloop-reviewer"]) {
+      const agent = agents[name]
+      expect(agent, name).toBeDefined()
+      for (const permission of coordinatorTools) {
+        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+      }
+    }
+
+    const ordinary = agents["implementation-engineer"]
+    expect(ordinary).toBeDefined()
+    for (const permission of coordinatorTools) {
+      expect(action(ordinary, permission), `implementation-engineer:${permission}`).toBe("deny")
+    }
+  })
 })

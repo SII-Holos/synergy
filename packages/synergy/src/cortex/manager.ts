@@ -27,9 +27,11 @@ export namespace Cortex {
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
+  let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
   const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
+  const PROGRESS_UPDATE_EVENT_DELAY_MS = 200
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -241,7 +243,20 @@ export namespace Cortex {
       log.error("failed to persist task status", { taskID, status, error })
     })
 
-    Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+    publishVisibleTasksUpdate()
+  }
+
+  function publishVisibleTasksUpdate(): void {
+    void Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+  }
+
+  function scheduleProgressUpdate(task: CortexTypes.Task): void {
+    if (task.visibility === "hidden") return
+    if (progressUpdateTimer) return
+    progressUpdateTimer = setTimeout(() => {
+      progressUpdateTimer = undefined
+      publishVisibleTasksUpdate()
+    }, PROGRESS_UPDATE_EVENT_DELAY_MS)
   }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
@@ -301,6 +316,7 @@ export namespace Cortex {
             recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
           }
           tasks.set(task.id, current)
+          scheduleProgressUpdate(current)
           return
         }
 
@@ -313,6 +329,7 @@ export namespace Cortex {
             lastUpdate: now,
           }
           tasks.set(task.id, current)
+          scheduleProgressUpdate(current)
         }
       })
 
@@ -803,6 +820,10 @@ export namespace Cortex {
     tasks.clear()
     taskRuns.clear()
     acquiredTasks.clear()
+    if (progressUpdateTimer) {
+      clearTimeout(progressUpdateTimer)
+      progressUpdateTimer = undefined
+    }
     for (const waiters of taskWaiters.values()) {
       for (const waiter of waiters) {
         clearTimeout(waiter.timeout)

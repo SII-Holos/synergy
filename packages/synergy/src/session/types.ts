@@ -79,6 +79,26 @@ export const WorkflowInfo = z
     z.object({
       kind: z.literal("lightloop"),
       taskDescription: z.string(),
+      stopRequest: z
+        .object({
+          summary: z.string(),
+          completed: z.array(z.string()).optional(),
+          evidence: z.array(z.string()).optional(),
+          remaining: z.array(z.string()).optional(),
+          requestedAt: z.number(),
+          requesterSessionID: z.string(),
+          requesterMessageID: z.string(),
+          reviewTaskID: z.string().optional(),
+          reviewSessionID: z.string().optional(),
+        })
+        .optional(),
+      review: z
+        .object({
+          attempts: z.number(),
+          lastReason: z.string().optional(),
+          lastReviewedAt: z.number().optional(),
+        })
+        .optional(),
     }),
     z.object({
       kind: z.literal("lattice"),
@@ -200,6 +220,7 @@ export const Info = z
         })
         .optional()
         .describe("Per-session model override set by /model command"),
+      agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
