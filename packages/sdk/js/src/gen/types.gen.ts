@@ -4971,6 +4971,7 @@ export type BlueprintLoopInfo = {
   executionAgent?: string
   auditAgent: string
   auditSessionID?: string
+  auditTaskID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
