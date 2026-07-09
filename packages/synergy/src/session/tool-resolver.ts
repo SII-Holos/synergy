@@ -1252,7 +1252,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1263,7 +1263,7 @@ export namespace ToolResolver {
                   pluginToolCapabilities: pluginGateData.toolCapabilities,
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
-                  readRoots: [synergyRoot],
+                  readRoots: [synergyRoot, ...trustedRoots],
                   trustedRoots,
                   synergyRoot,
                 })
@@ -1326,7 +1326,7 @@ export namespace ToolResolver {
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...extRoots],
+                      extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots],
                       extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                       protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                       dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
@@ -1501,7 +1501,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
-                  const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
@@ -1513,6 +1513,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    readRoots: [Global.Path.root, ...trustedRoots],
                     synergyRoot: Global.Path.root,
                     trustedRoots,
                   })

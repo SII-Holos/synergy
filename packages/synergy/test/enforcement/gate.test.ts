@@ -1374,6 +1374,37 @@ describe("EnforcementGate trustedRoots", () => {
     ])
   })
 
+  test("trustedRoots seed sandbox policy read and write roots", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.claude/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.claude/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.claude/skills")
+  })
+
+  test("trustedRoots seed sandbox policy even when directories do not exist", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.nonexistent/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.nonexistent/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.nonexistent/skills")
+  })
+
   test("paths outside workspace and trustedRoots remain external writes", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/project",
