@@ -12,12 +12,16 @@ import { navMark } from "@/utils/perf"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { SessionWorkspaceProgress, SessionWorkspaceProgressActions } from "./worktree-session"
+import { WorktreeTransitionCard } from "./worktree-transition-card"
 
 export function SessionConversation(props: {
   sessionID: string
   paramsDir: string
   timeline: Accessor<Message[]>
   pendingTimeline?: Accessor<SessionInboxItem[]>
+  workspaceTransition?: Accessor<SessionWorkspaceProgress | null>
+  workspaceTransitionActions?: Accessor<SessionWorkspaceProgressActions | undefined>
   visibleUserMessages: Accessor<UserMessage[]>
   lastUserMessage: Accessor<UserMessage | undefined>
   activeMessage: Accessor<UserMessage | undefined>
@@ -41,6 +45,7 @@ export function SessionConversation(props: {
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
   onRewind?: (message: UserMessage) => void
+  onReviewChanges?: (input: { messageID: string; file?: string }) => void
   onPendingGuide?: (item: SessionInboxItem) => void
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
@@ -152,6 +157,7 @@ export function SessionConversation(props: {
                 lastUserMessageID={props.lastUserMessage()?.id}
                 onRewind={() => props.onRewind?.(msg as UserMessage)}
                 rollbackActive={props.rollbackActive}
+                onReviewChanges={props.onReviewChanges}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",
@@ -170,6 +176,17 @@ export function SessionConversation(props: {
           )
         }}
       </For>
+      <Show when={props.workspaceTransition?.()}>
+        {(progress) => (
+          <div class="w-full min-w-0 px-3 md:px-1">
+            <WorktreeTransitionCard
+              progress={progress()}
+              onRetry={props.workspaceTransitionActions?.()?.retry}
+              onDismiss={props.workspaceTransitionActions?.()?.dismiss}
+            />
+          </div>
+        )}
+      </Show>
       <Show when={props.pendingTimeline?.()?.length}>
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>

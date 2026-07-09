@@ -208,6 +208,7 @@ Converted:
 ### MCP tools not appearing
 
 - Run `runtime_reload(target: "mcp")` after config changes.
+- For MCP servers contributed by plugins, run `runtime_reload(target: "plugin")` after plugin manifest/package changes. Lazy plugin MCP servers must be connected before their tools appear in agent tool discovery.
 - Check server logs for errors during the tool list request — a failing MCP server may connect but return an empty or errored tool list.
 
 ## Reload
@@ -216,4 +217,4 @@ Converted:
 runtime_reload(target: "mcp")
 ```
 
-MCP reload cascades to command reload automatically.
+MCP reload cascades to command reload automatically and re-registers MCP servers contributed by currently loaded plugins.

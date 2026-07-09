@@ -202,6 +202,8 @@ describe("GET /global/session", () => {
   test("supports archived-only filtering with accurate total and search", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
+    const marker = `Archive Filter ${crypto.randomUUID()}`
+    const markerQuery = encodeURIComponent(marker)
 
     let active: Session.Info | undefined
     let archivedNeedle: Session.Info | undefined
@@ -210,9 +212,9 @@ describe("GET /global/session", () => {
     await ScopeContext.provide({
       scope,
       fn: async () => {
-        active = await Session.create({ title: "Cleanup Active" })
-        archivedNeedle = await Session.create({ title: "Cleanup Needle" })
-        archivedOther = await Session.create({ title: "Other Archived" })
+        active = await Session.create({ title: `${marker} Active` })
+        archivedNeedle = await Session.create({ title: `${marker} Needle` })
+        archivedOther = await Session.create({ title: `${marker} Other Archived` })
         await Session.update(archivedNeedle.id, (draft) => {
           draft.time.archived = 100
         })
@@ -228,14 +230,14 @@ describe("GET /global/session", () => {
         const app = Server.App()
         const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
 
-        const def = await app.request(`/global/session?${scopeQuery}`)
+        const def = await app.request(`/global/session?${scopeQuery}&search=${markerQuery}`)
         const defBody = await def.json()
         const defIDs = defBody.data.map((s: any) => s.id)
         expect(defIDs).toContain(active!.id)
         expect(defIDs).not.toContain(archivedNeedle!.id)
         expect(defIDs).not.toContain(archivedOther!.id)
 
-        const archived = await app.request(`/global/session?${scopeQuery}&archived=only`)
+        const archived = await app.request(`/global/session?${scopeQuery}&archived=only&search=${markerQuery}`)
         const archivedBody = await archived.json()
         const archivedIDs = archivedBody.data.map((s: any) => s.id)
         expect(archivedBody.total).toBe(2)
@@ -243,7 +245,9 @@ describe("GET /global/session", () => {
         expect(archivedIDs).toContain(archivedOther!.id)
         expect(archivedIDs).not.toContain(active!.id)
 
-        const searched = await app.request(`/global/session?${scopeQuery}&archived=only&search=Needle`)
+        const searched = await app.request(
+          `/global/session?${scopeQuery}&archived=only&search=${encodeURIComponent(`${marker} Needle`)}`,
+        )
         const searchedBody = await searched.json()
         expect(searchedBody.total).toBe(1)
         expect(searchedBody.data.map((s: any) => s.id)).toEqual([archivedNeedle!.id])

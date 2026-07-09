@@ -11,13 +11,11 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
-import { DiffChanges } from "./diff-changes"
-import { DiffPreview } from "./tool/diff-preview"
+import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import { Message, Part } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -26,15 +24,10 @@ import { MediaGenerationCard } from "./media-generation-card"
 import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import "./session-turn.css"
 import "./tool-renders"
-import { Accordion } from "./accordion"
-import { StickyAccordionHeader } from "./sticky-accordion-header"
-import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "./semantic-icon"
 import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
-import { Button } from "./button"
-import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
@@ -593,6 +586,7 @@ export function SessionTurn(
     onUserInteracted?: () => void
     onRewind?: () => void
     rollbackActive?: boolean
+    onReviewChanges?: (input: { messageID: string; file?: string }) => void
     classes?: {
       root?: string
       content?: string
@@ -856,25 +850,6 @@ export function SessionTurn(
     onUserInteracted: props.onUserInteracted,
   })
 
-  const diffInit = 20
-  const diffBatch = 20
-
-  const [store, setStore] = createStore({
-    diffsOpen: [] as string[],
-    diffLimit: diffInit,
-  })
-
-  createEffect(
-    on(
-      () => message()?.id,
-      () => {
-        setStore("diffsOpen", [])
-        setStore("diffLimit", diffInit)
-      },
-      { defer: true },
-    ),
-  )
-
   createEffect(
     on(permissionCount, (count, prev) => {
       if (!count) return
@@ -1001,74 +976,6 @@ export function SessionTurn(
                             </div>
                           )}
                         </Show>
-                        <Show when={!working() && hasDiffs()}>
-                          <Accordion
-                            data-slot="session-turn-accordion"
-                            multiple
-                            value={store.diffsOpen}
-                            onChange={(value) => {
-                              if (!Array.isArray(value)) return
-                              setStore("diffsOpen", value)
-                            }}
-                          >
-                            <For each={(msg().summary?.diffs ?? []).slice(0, store.diffLimit)}>
-                              {(diff, index) => {
-                                const diffKey = () => diff.file || `diff-${index()}`
-
-                                return (
-                                  <Accordion.Item value={diffKey()}>
-                                    <StickyAccordionHeader>
-                                      <Accordion.Trigger>
-                                        <div data-slot="session-turn-accordion-trigger-content">
-                                          <div data-slot="session-turn-file-info">
-                                            <FileIcon
-                                              node={{ path: diff.file, type: "file" }}
-                                              data-slot="session-turn-file-icon"
-                                            />
-                                            <div data-slot="session-turn-file-path">
-                                              <Show when={diff.file.includes("/")}>
-                                                <span data-slot="session-turn-directory">
-                                                  {getDirectory(diff.file)}&lrm;
-                                                </span>
-                                              </Show>
-                                              <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
-                                            </div>
-                                          </div>
-                                          <div data-slot="session-turn-accordion-actions">
-                                            <DiffChanges changes={diff} />
-                                            <Icon name="grip-vertical" size="small" />
-                                          </div>
-                                        </div>
-                                      </Accordion.Trigger>
-                                    </StickyAccordionHeader>
-                                    <Accordion.Content data-slot="session-turn-accordion-content">
-                                      <Show when={store.diffsOpen.includes(diffKey())}>
-                                        <DiffPreview diff={diff} variant="session" />
-                                      </Show>
-                                    </Accordion.Content>
-                                  </Accordion.Item>
-                                )
-                              }}
-                            </For>
-                          </Accordion>
-                          <Show when={(msg().summary?.diffs?.length ?? 0) > store.diffLimit}>
-                            <Button
-                              data-slot="session-turn-accordion-more"
-                              variant="ghost"
-                              size="small"
-                              onClick={() => {
-                                const total = msg().summary?.diffs?.length ?? 0
-                                setStore("diffLimit", (limit) => {
-                                  const next = limit + diffBatch
-                                  if (next > total) return total
-                                  return next
-                                })
-                              }}
-                            >
-                              Show more changes ({(msg().summary?.diffs?.length ?? 0) - store.diffLimit})
-                            </Button>
-                          </Show>
-                        </Show>
                         <Show when={!working() && markdownText()}>
                           <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
                             <div data-slot="assistant-message-meta">
@@ -1092,6 +999,13 @@ export function SessionTurn(
                               </button>
                             </div>
                           </div>
+                        </Show>
+                        <Show when={!working() && hasDiffs()}>
+                          <TurnChangeSummaryPanel
+                            diffs={msg().summary?.diffs ?? []}
+                            onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
+                            onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
+                          />
                         </Show>
                       </div>
                     </Show>

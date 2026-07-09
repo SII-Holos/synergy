@@ -11,6 +11,7 @@ import { FileWatcher } from "@/file/watcher"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
+import { SessionInvoke } from "@/session/invoke"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -28,6 +29,7 @@ export namespace GlobalRuntime {
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
+          await SessionInvoke.resumePending()
           await Agenda.start()
           await AgendaBootstrap.seed()
           log.info("started")

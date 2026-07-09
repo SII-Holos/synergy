@@ -3735,6 +3735,84 @@
         ]
       }
     },
+    "/experimental/worktree/session/{sessionID}/enter": {
+      "post": {
+        "operationId": "worktree.enter",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enter worktree",
+        "description": "Bind an existing git worktree to a session.",
+        "responses": {
+          "200": {
+            "description": "Session moved to worktree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeEnterInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.enter({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/worktree/session/{sessionID}/leave": {
       "post": {
         "operationId": "worktree.leave",
@@ -18696,6 +18774,14 @@
           },
           "status": {
             "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           }
         },
         "required": ["id", "label", "value", "unit"]
@@ -18922,6 +19008,14 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "childProcessCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "childProcessRssBytes": {
+                "type": "number"
               }
             }
           },
@@ -19009,9 +19103,118 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "sessionRuntimes": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "runningCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "idleCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "childCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "userCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "waiterCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "cortexTasks": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "pendingCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "queuedCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "runningCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "completedCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "cancelledCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "retainedPromptChars": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "retainedOutputChars": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "retainedErrorChars": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "retainedProgressToolCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "totalCount",
+                  "pendingCount",
+                  "queuedCount",
+                  "runningCount",
+                  "completedCount",
+                  "errorCount",
+                  "cancelledCount",
+                  "retainedPromptChars",
+                  "retainedOutputChars",
+                  "retainedErrorChars",
+                  "retainedProgressToolCount"
+                ]
               }
             },
-            "required": ["traceFiles", "recentErrors", "pendingSessions"]
+            "required": ["traceFiles", "recentErrors", "pendingSessions", "sessionRuntimes", "cortexTasks"]
           },
           "top": {
             "type": "object",
@@ -19052,6 +19255,12 @@
                   "$ref": "#/components/schemas/PerfRankedItem"
                 }
               },
+              "childProcesses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
               "slowFrontend": {
                 "type": "array",
                 "items": {
@@ -19066,6 +19275,7 @@
               "slowProviders",
               "slowStorage",
               "slowLibrary",
+              "childProcesses",
               "slowFrontend"
             ]
           },
@@ -21443,6 +21653,20 @@
           "hidden": {
             "description": "Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)",
             "type": "boolean"
+          },
+          "visibleTo": {
+            "description": "Agent or delegation group names allowed to delegate to this subagent",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
+            "description": "Additional delegation catalogs this agent may use when dispatching subagents",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "options": {
             "type": "object",
@@ -25037,6 +25261,63 @@
               },
               "taskDescription": {
                 "type": "string"
+              },
+              "stopRequest": {
+                "type": "object",
+                "properties": {
+                  "summary": {
+                    "type": "string"
+                  },
+                  "completed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "remaining": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requestedAt": {
+                    "type": "number"
+                  },
+                  "requesterSessionID": {
+                    "type": "string"
+                  },
+                  "requesterMessageID": {
+                    "type": "string"
+                  },
+                  "reviewTaskID": {
+                    "type": "string"
+                  },
+                  "reviewSessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
+              },
+              "review": {
+                "type": "object",
+                "properties": {
+                  "attempts": {
+                    "type": "number"
+                  },
+                  "lastReason": {
+                    "type": "string"
+                  },
+                  "lastReviewedAt": {
+                    "type": "number"
+                  }
+                },
+                "required": ["attempts"]
               }
             },
             "required": ["kind", "taskDescription"]
@@ -25196,6 +25477,10 @@
             },
             "required": ["providerID", "modelID"]
           },
+          "agentOverride": {
+            "description": "Per-session agent override set by session control",
+            "type": "string"
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -25254,6 +25539,20 @@
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
+      },
+      "WorktreeEnterInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["target"]
       },
       "VcsInfo": {
         "type": "object",
@@ -31977,6 +32276,12 @@
               "type": "string"
             }
           },
+          "delegationGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "topP": {
             "type": "number"
           },
@@ -32057,6 +32362,12 @@
             "type": "boolean"
           },
           "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
             "type": "array",
             "items": {
               "type": "string"
@@ -32606,6 +32917,9 @@
             "properties": {
               "id": {
                 "type": "string"
+              },
+              "directory": {
+                "type": "string"
               }
             },
             "required": ["id"]
@@ -32669,32 +32983,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -33330,11 +33618,17 @@
           "properties": {
             "type": "object",
             "properties": {
+              "scopeID": {
+                "type": "string"
+              },
               "note": {
                 "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
               }
             },
-            "required": ["note"]
+            "required": ["scopeID", "note", "meta"]
           }
         },
         "required": ["type", "properties"]
@@ -33349,11 +33643,24 @@
           "properties": {
             "type": "object",
             "properties": {
+              "scopeID": {
+                "type": "string"
+              },
               "note": {
                 "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
+                }
               }
             },
-            "required": ["note"]
+            "required": ["scopeID", "note", "meta", "changed"]
           }
         },
         "required": ["type", "properties"]
@@ -33398,9 +33705,15 @@
               },
               "scopeID": {
                 "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
               }
             },
-            "required": ["ids", "scopeID"]
+            "required": ["ids", "scopeID", "metas"]
           }
         },
         "required": ["type", "properties"]
@@ -33423,9 +33736,15 @@
               },
               "scopeID": {
                 "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
               }
             },
-            "required": ["ids", "scopeID"]
+            "required": ["ids", "scopeID", "metas"]
           }
         },
         "required": ["type", "properties"]
@@ -33830,6 +34149,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.pty.created": {
         "type": "object",
         "properties": {
@@ -34184,9 +34529,6 @@
             "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
@@ -34344,6 +34686,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

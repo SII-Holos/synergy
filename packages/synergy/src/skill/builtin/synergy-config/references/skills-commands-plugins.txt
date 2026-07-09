@@ -276,7 +276,7 @@ cd my-plugin && bun add some-package
 
 - Plugin `console.log` output appears in the Synergy server process logs (stdout/stderr).
 - If a plugin fails to load, check server startup logs for the error — load failures do not crash the server.
-- After changing configured plugin specs or plugin package files, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`, `agent`, and `skill`.
+- After changing configured plugin specs or plugin package files, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`, `agent`, and `skill`, and re-registers plugin-contributed MCP servers from plugin manifests.
 - Runtime entry must export an object descriptor with `id` and `init()`.
 - Worker/process plugins run through the plugin runner; tools and hooks are proxied through the runtime supervisor.
 
@@ -319,4 +319,5 @@ Each file exports one or more tool definitions using the internal tool API. Unli
 ### Plugins
 
 - **Plugin tools not appearing** — reload with `runtime_reload(target: "plugin")`; check server logs for load errors; verify the tool schema is valid JSON Schema
+- **Plugin MCP tools not appearing** — reload with `runtime_reload(target: "plugin")` after plugin changes, or `runtime_reload(target: "mcp")` after MCP-only changes. Lazy plugin MCP servers must be connected before their tools appear in agent tool discovery.
 - **Plugin auth not working** — auth loaders must return a valid credential format; check credential store for the resulting entry

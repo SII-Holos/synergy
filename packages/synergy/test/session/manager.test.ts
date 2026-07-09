@@ -144,6 +144,31 @@ describe("SessionManager.getSession", () => {
       })
     })
 
+    test("runtimeStats reports retained runtime counters", () => {
+      const userSessionID = "ses_runtime_stats_user"
+      const childSessionID = "ses_runtime_stats_child"
+      SessionManager.unregisterRuntime(userSessionID)
+      SessionManager.unregisterRuntime(childSessionID)
+      const before = SessionManager.runtimeStats()
+      try {
+        SessionManager.registerRuntime(userSessionID)
+        const child = SessionManager.registerChildRuntime(childSessionID)
+        child.abort = new AbortController()
+        child.waiters = [{ onComplete: () => {}, onCancel: () => {} }]
+
+        const stats = SessionManager.runtimeStats()
+        expect(stats.totalCount).toBe(before.totalCount + 2)
+        expect(stats.runningCount).toBe(before.runningCount + 1)
+        expect(stats.idleCount).toBe(before.idleCount + 1)
+        expect(stats.childCount).toBe(before.childCount + 1)
+        expect(stats.userCount).toBe(before.userCount + 1)
+        expect(stats.waiterCount).toBe(before.waiterCount + 1)
+      } finally {
+        SessionManager.unregisterRuntime(userSessionID)
+        SessionManager.unregisterRuntime(childSessionID)
+      }
+    })
+
     test("release emits updated session info after clearing working state", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
