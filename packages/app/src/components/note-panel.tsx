@@ -18,7 +18,14 @@ import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-ed
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveNoteConfirm, unarchiveNoteConfirm, deleteArchivedNoteConfirm } from "@/components/dialog/confirm-copy"
 import { SelectionCheckbox } from "@/components/library/shared"
-import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  BlueprintLoopInfo,
+  Event as SynergyEvent,
+  NoteInfo,
+  NoteMetaInfo,
+  NoteMetaScopeGroup,
+  NotePatchInput,
+} from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
@@ -32,6 +39,22 @@ import {
   isActiveBlueprintLoopStatus,
   type BlueprintRunMode,
 } from "@/components/note/blueprint-run-session"
+import {
+  clearCapturedDirty,
+  cloneDirtyRevisions,
+  dirtyConflicts,
+  EMPTY_DIRTY_REVISIONS,
+  hasDirtyFields,
+  noteChangedFields,
+  patchBlueprintLoops,
+  patchNoteGroups,
+  patchNoteGroupsMany,
+  removeNotesFromGroups,
+  shouldReplaceEditorContent,
+  type NoteChangedField,
+  type NoteDirtyField,
+  type NoteDirtyRevisions,
+} from "@/components/note/note-sync"
 import "./note-panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -784,8 +807,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     return map
   })
 
-  const [rawGroups, { refetch }] = createResource(
-    () => ({ dir: directory(), ver: globalSync.noteVersion(), showArchived: showArchived() }),
+  const [rawGroups, { refetch, mutate: mutateRawGroups }] = createResource(
+    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion(), showArchived: showArchived() }),
     async ({ dir, showArchived }) => {
       if (!dir) return []
       if (showArchived) {
@@ -820,7 +843,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     },
   )
 
-  const [loops, { refetch: refetchLoops }] = createResource(
+  const [loops, { mutate: mutateLoops }] = createResource(
     () => ({ dir: directory(), reconnect: globalSync.reconnectVersion() }),
     async ({ dir }) => {
       if (!dir) return [] as BlueprintLoopInfo[]
@@ -842,6 +865,64 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       map.set(loop.noteID, items)
     }
     return map
+  })
+
+  function patchNoteMeta(scopeID: string, meta: NoteMetaInfo) {
+    mutateRawGroups(
+      patchNoteGroups(rawGroups() ?? [], {
+        scopeID,
+        currentScopeID: currentScopeID(),
+        showArchived: showArchived(),
+        meta,
+      }),
+    )
+  }
+
+  const updateLoop = (loop: BlueprintLoopInfo) => {
+    mutateLoops(patchBlueprintLoops(loops() ?? [], loop, currentScopeID()))
+  }
+  const unsubNoteListEvents = sdk.event.listen((entry: { details: SynergyEvent }) => {
+    const event = entry.details
+    if (event.type === "note.created") {
+      patchNoteMeta(event.properties.scopeID, event.properties.meta)
+      return
+    }
+    if (event.type === "note.updated") {
+      patchNoteMeta(event.properties.scopeID, event.properties.meta)
+      return
+    }
+    if (event.type === "note.deleted") {
+      mutateRawGroups(removeNotesFromGroups(rawGroups() ?? [], [event.properties.id]))
+      return
+    }
+    if (event.type === "note.archived") {
+      mutateRawGroups(
+        patchNoteGroupsMany(rawGroups() ?? [], {
+          scopeID: event.properties.scopeID,
+          currentScopeID: currentScopeID(),
+          showArchived: showArchived(),
+          metas: event.properties.metas,
+        }),
+      )
+      return
+    }
+    if (event.type === "note.unarchived") {
+      mutateRawGroups(
+        patchNoteGroupsMany(rawGroups() ?? [], {
+          scopeID: event.properties.scopeID,
+          currentScopeID: currentScopeID(),
+          showArchived: showArchived(),
+          metas: event.properties.metas,
+        }),
+      )
+      return
+    }
+    if (event.type === "blueprint_loop.created" || event.type === "blueprint_loop.updated") {
+      updateLoop(event.properties.loop)
+    }
+  })
+  onCleanup(() => {
+    unsubNoteListEvents()
   })
 
   const noteStats = createMemo(() => {
@@ -990,7 +1071,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         noteCreateInput: { title: "" },
       })
       if (result.data) {
-        await refetch()
         openNote(result.data.id, dir)
       }
     } catch (e) {
@@ -1061,7 +1141,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         }
         setSelectedNotes(new Set<string>())
         setSelecting(false)
-        await refetch()
         setBatchBusy(false)
       },
     })
@@ -1080,7 +1159,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         }
         setSelectedNotes(new Set<string>())
         setSelecting(false)
-        await refetch()
         setBatchBusy(false)
       },
     })
@@ -1105,7 +1183,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         }
         setSelectedNotes(new Set<string>())
         setSelecting(false)
-        await refetch()
         setBatchBusy(false)
       },
     })
@@ -1322,32 +1399,30 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
           directory={selectedNoteDir() ?? directory() ?? "home"}
           onBack={() => {
             setView("list")
-            refetch()
-            refetchLoops()
           }}
           onDelete={() => {
             setView("list")
-            refetch()
-            refetchLoops()
           }}
+          loops={loopsByNote().get(selectedNoteId()!) ?? []}
         />
       </Show>
     </div>
   )
 }
 
-type NoteConflictState =
-  | {
-      type: "remote-update"
-      message: string
-      remote: NoteInfo
-    }
-  | {
-      type: "metadata-blocked"
-      message: string
-    }
+type NoteConflictState = {
+  type: "remote-update"
+  message: string
+  remote: NoteInfo
+}
 
-function NoteEditor(props: { id: string; directory: string; onBack: () => void; onDelete: () => void }) {
+function NoteEditor(props: {
+  id: string
+  directory: string
+  loops: BlueprintLoopInfo[]
+  onBack: () => void
+  onDelete: () => void
+}) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const sync = useSync()
@@ -1366,26 +1441,12 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     },
   )
 
-  // Re-fetch this note only when it was updated by another session/tab
-  createEffect(() => {
-    const update = globalSync.noteUpdate()
-    if (!update) return
-    if (update.id !== props.id) return
-    if (update.type === "deleted") return
-    const base = baseNote()
-    // No base note yet = initial load handled by the resource itself
-    if (!base) return
-    // Our own save already set baseNote to the latest version — skip echo
-    if (update.version <= base.version) return
-    void refetch()
-  })
-
   const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
   const [title, setTitle] = createSignal("")
   const [tags, setTags] = createSignal<string[]>([])
   const [tagInput, setTagInput] = createSignal("")
   const [saving, setSaving] = createSignal(false)
-  const [dirty, setDirty] = createSignal(false)
+  const [dirty, setDirty] = createSignal<NoteDirtyRevisions>(EMPTY_DIRTY_REVISIONS)
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
   const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
@@ -1395,6 +1456,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
   let saveInFlight: Promise<void> | undefined
+  let draftRevision = 0
 
   const noteLoaded = createMemo(() => !!baseNote())
   const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
@@ -1421,35 +1483,16 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       scopes: blueprintScopes(),
     }),
   )
-  const [noteLoops, { refetch: refetchLoops }] = createResource(
-    () => ({
-      id: props.id,
-      dir: directory(),
-      ver: globalSync.noteVersion(),
-      reconnect: globalSync.reconnectVersion(),
-    }),
-    async ({ id, dir }) => {
-      if (!dir) return [] as BlueprintLoopInfo[]
-      try {
-        const result = await sdk.client.blueprint.loop.list({ directory: dir })
-        return ((result.data ?? []) as BlueprintLoopInfo[])
-          .filter((loop) => loop.noteID === id)
-          .sort((a, b) => b.time.updated - a.time.updated)
-      } catch (error) {
-        console.error("Failed to load blueprint loops", error)
-        return [] as BlueprintLoopInfo[]
-      }
-    },
-  )
+  const noteLoops = createMemo(() => props.loops ?? [])
   const blueprintState = createMemo(() => {
     const base = baseNote()
     if (!base) return null
-    return getBlueprintVisualState(base, noteLoops() ?? [])
+    return getBlueprintVisualState(base, noteLoops())
   })
   const activeBlueprintRun = createMemo(() => {
     const base = baseNote()
     if (!base) return undefined
-    return activeBlueprintLoop(base, noteLoops() ?? [])
+    return activeBlueprintLoop(base, noteLoops())
   })
 
   function remoteConflict() {
@@ -1458,8 +1501,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     return current.remote
   }
 
-  function markDirty() {
-    setDirty(true)
+  const hasDirty = createMemo(() => hasDirtyFields(dirty()))
+
+  function markDirty(field: NoteDirtyField) {
+    const revision = ++draftRevision
+    setDirty((current) => ({ ...current, [field]: revision }))
     if (!remoteConflict()) setConflict(null)
   }
 
@@ -1469,25 +1515,73 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     debounceTimer = undefined
   }
 
-  function applySnapshot(snapshot: NoteInfo) {
+  function clearDirty() {
+    setDirty(cloneDirtyRevisions(EMPTY_DIRTY_REVISIONS))
+  }
+
+  function captureDirty() {
+    return cloneDirtyRevisions(dirty())
+  }
+
+  function replaceEditorContent(content: unknown) {
     const ed = editor()
+    if (!ed || ed.isDestroyed) return
+    if (!shouldReplaceEditorContent(ed.getJSON(), content)) return
+    const scrollParent = ed.view.dom.parentElement
+    const scrollTop = scrollParent?.scrollTop
+    const { from } = ed.state.selection
+    ed.commands.setContent(content as any, { emitUpdate: false })
+    const docSize = ed.state.doc.content.size
+    if (from > 0 && from < docSize) {
+      try {
+        ed.commands.setTextSelection(from)
+      } catch {
+        // selection may no longer exist in the replacement document
+      }
+    }
+    if (scrollParent && scrollTop !== undefined) {
+      scrollParent.scrollTop = scrollTop
+      queueMicrotask(() => {
+        scrollParent.scrollTop = scrollTop
+      })
+    }
+  }
+
+  function applySnapshot(
+    snapshot: NoteInfo,
+    options: { mode?: "replace" | "merge"; changed?: NoteChangedField[]; message?: string } = {},
+  ) {
+    const mode = options.mode ?? "replace"
+    const current = baseNote()
+    const changed = options.changed ?? (current ? noteChangedFields(current, snapshot) : ["content", "title", "tags"])
+    if (mode === "merge" && current && snapshot.version <= current.version) return true
+
+    if (mode === "merge") {
+      const conflicts = dirtyConflicts(dirty(), changed)
+      if (conflicts.length > 0) {
+        setConflict({
+          type: "remote-update",
+          message: options.message ?? "This note was updated elsewhere while you were editing.",
+          remote: snapshot,
+        })
+        return false
+      }
+      const currentDirty = dirty()
+      setBaseNote(snapshot)
+      if (!currentDirty.title) setTitle(snapshot.title)
+      if (!currentDirty.tags) setTags(snapshot.tags ?? [])
+      if (!currentDirty.content && changed.includes("content")) replaceEditorContent(snapshot.content)
+      setConflict(null)
+      return true
+    }
+
     setBaseNote(snapshot)
     setTitle(snapshot.title)
     setTags(snapshot.tags ?? [])
     setConflict(null)
-    setDirty(false)
-    if (ed && !ed.isDestroyed) {
-      const { from } = ed.state.selection
-      ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
-      const docSize = ed.state.doc.content.size
-      if (from > 0 && from < docSize) {
-        try {
-          ed.commands.setTextSelection(from)
-        } catch {
-          /* position may be invalid */
-        }
-      }
-    }
+    clearDirty()
+    replaceEditorContent(snapshot.content)
+    return true
   }
 
   function currentDraft() {
@@ -1521,33 +1615,38 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const dir = directory()
     const base = baseNote()
     const draft = currentDraft()
-    if (!dir || !base || !draft || !dirty() || remoteConflict()) return
+    const captured = captureDirty()
+    if (!dir || !base || !draft || !hasDirtyFields(captured) || remoteConflict()) return
+
+    const notePatchInput: NotePatchInput = { expectedVersion: base.version }
+    if (captured.title) notePatchInput.title = draft.title
+    if (captured.content) notePatchInput.content = draft.content
+    if (captured.tags) notePatchInput.tags = draft.tags
 
     setSaving(true)
     try {
       const result = await sdk.client.note.update({
         id: props.id,
         directory: dir,
-        notePatchInput: {
-          title: draft.title,
-          content: draft.content,
-          tags: draft.tags,
-          expectedVersion: base.version,
-        },
+        notePatchInput,
       })
       const saved = result.data as NoteInfo
       setBaseNote(saved)
-      setTags(saved.tags ?? [])
+      const currentDirty = dirty()
+      if (!currentDirty.title || currentDirty.title === captured.title) setTitle(saved.title)
+      if (!currentDirty.tags || currentDirty.tags === captured.tags) setTags(saved.tags ?? [])
+      setDirty((current) => clearCapturedDirty(current, captured))
       setConflict(null)
-      setDirty(false)
     } catch (error) {
       const remote = parseConflict(error)
       if (remote) {
-        setConflict({
-          type: "remote-update",
+        const current = baseNote()
+        const merged = applySnapshot(remote, {
+          mode: "merge",
+          changed: current ? noteChangedFields(current, remote) : undefined,
           message: "This note was updated elsewhere. Review the remote version or overwrite it with your draft.",
-          remote,
         })
+        if (merged && hasDirtyFields(dirty())) saveQueued = true
         return
       }
       console.error("Failed to save note", error)
@@ -1582,7 +1681,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   async function flushSave() {
     clearDebounce()
-    if (!dirty()) return
+    if (!hasDirty()) return
     await drainSaveQueue()
   }
 
@@ -1595,19 +1694,37 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       return
     }
     if (incoming.version <= current.version) return
-    if (!dirty()) {
+    if (!hasDirty()) {
       applySnapshot(incoming)
       return
     }
-    setConflict({
-      type: "remote-update",
+    applySnapshot(incoming, {
+      mode: "merge",
+      changed: noteChangedFields(current, incoming),
       message: "This note was updated elsewhere while you were editing.",
-      remote: incoming,
     })
+  })
+
+  const unsubEditorNoteEvents = sdk.event.listen((entry: { details: SynergyEvent }) => {
+    const event = entry.details
+    if (event.type === "note.updated") {
+      const incoming = event.properties.note
+      if (incoming.id !== props.id) return
+      const current = baseNote()
+      if (!current || incoming.version <= current.version) return
+      applySnapshot(incoming, {
+        mode: "merge",
+        changed: event.properties.changed,
+        message: "This note was updated elsewhere while you were editing.",
+      })
+      return
+    }
+    if (event.type === "note.deleted" && event.properties.id === props.id) props.onDelete()
   })
 
   onCleanup(() => {
     clearDebounce()
+    unsubEditorNoteEvents()
   })
 
   async function handleBack() {
@@ -1618,31 +1735,39 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   async function saveMetadata(patch: { pinned?: boolean; global?: boolean }) {
     const dir = directory()
-    const base = baseNote()
-    if (!dir || !base) return false
+    if (!dir || !baseNote()) return false
     setSaving(true)
     try {
-      const result = await sdk.client.note.update({
-        id: props.id,
-        directory: dir,
-        notePatchInput: {
-          pinned: patch.pinned,
-          global: patch.global,
-          expectedVersion: base.version,
-        },
-      })
-      applySnapshot(result.data as NoteInfo)
-      return true
-    } catch (error) {
-      const remote = parseConflict(error)
-      if (remote) {
-        setConflict({
-          type: "remote-update",
-          message: "This note changed before your metadata update could be saved.",
-          remote,
-        })
-        return false
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const base = baseNote()
+        if (!base) return false
+        try {
+          const result = await sdk.client.note.update({
+            id: props.id,
+            directory: dir,
+            notePatchInput: {
+              pinned: patch.pinned,
+              global: patch.global,
+              expectedVersion: base.version,
+            },
+          })
+          applySnapshot(result.data as NoteInfo)
+          return true
+        } catch (error) {
+          const remote = parseConflict(error)
+          if (!remote) throw error
+          const current = baseNote()
+          const merged = applySnapshot(remote, {
+            mode: "merge",
+            changed: current ? noteChangedFields(current, remote) : undefined,
+            message: "This note changed before your metadata update could be saved.",
+          })
+          if (attempt === 0 && merged && !remoteConflict()) continue
+          return false
+        }
       }
+      return false
+    } catch (error) {
       console.error("Failed to save note metadata", error)
       return false
     } finally {
@@ -1654,14 +1779,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const t = tag.trim().toLowerCase()
     if (!t || tags().includes(t)) return
     setTags([...tags(), t])
-    markDirty()
+    markDirty("tags")
     scheduleSave()
     setTagInput("")
   }
 
   function removeTag(tag: string) {
     setTags(tags().filter((t) => t !== tag))
-    markDirty()
+    markDirty("tags")
     scheduleSave()
   }
 
@@ -1682,33 +1807,23 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
     setTitle(e.currentTarget.value)
-    markDirty()
+    markDirty("title")
     scheduleSave()
   }
 
   async function togglePin() {
+    await flushSave()
+    if (remoteConflict()) return
     const current = baseNote()
     if (!current) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before changing note metadata.",
-      })
-      return
-    }
     await saveMetadata({ pinned: !current.pinned })
   }
 
   async function toggleGlobal() {
+    await flushSave()
+    if (remoteConflict()) return
     const current = baseNote()
     if (!current) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before changing note metadata.",
-      })
-      return
-    }
     await saveMetadata({ global: !current.global })
   }
 
@@ -1723,6 +1838,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     if (!remote) return
     setBaseNote(remote)
     setConflict(null)
+    if (hasDirty()) saveQueued = true
     await drainSaveQueue()
   }
 
@@ -1743,23 +1859,20 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const dir = directory()
     const base = baseNote()
     if (!dir || !base || isBlueprint() || convertingBlueprint()) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before converting this note to a Blueprint.",
-      })
-      return
-    }
+    await flushSave()
+    if (remoteConflict()) return
+    const latest = baseNote()
+    if (!latest) return
 
     setConvertingBlueprint(true)
     try {
       const result = await sdk.client.note.update({
-        id: base.id,
+        id: latest.id,
         directory: dir,
         notePatchInput: {
           kind: "blueprint",
           blueprint: {},
-          expectedVersion: base.version,
+          expectedVersion: latest.version,
         },
       })
       applySnapshot(result.data as NoteInfo)
@@ -1783,14 +1896,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const dir = directory()
     const base = baseNote()
     if (!dir || !base || !isBlueprint() || convertingBlueprint()) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before converting this Blueprint to a Note.",
-      })
-      return
-    }
-    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveBlueprintLoopStatus(loop.status))) {
+    await flushSave()
+    if (remoteConflict()) return
+    const latest = baseNote()
+    if (!latest) return
+    if (latest.blueprint?.activeLoopID || noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status))) {
       alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
       return
     }
@@ -1803,11 +1913,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         notePatchInput: {
           kind: "note",
           blueprint: null,
-          expectedVersion: base.version,
+          expectedVersion: latest.version,
         },
       })
       applySnapshot(result.data as NoteInfo)
-      await refetchLoops()
     } catch (error) {
       const remote = parseConflict(error)
       if (remote) {
@@ -1873,7 +1982,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     if (remoteConflict()) return
     const base = baseNote()
     if (!base || !isBlueprint()) return
-    const activeLoop = activeBlueprintLoop(base, noteLoops() ?? [])
+    const activeLoop = activeBlueprintLoop(base, noteLoops())
     if (activeLoop) {
       alert("This Blueprint already has an active run. Finish or cancel it before starting another run.")
       return
@@ -1903,8 +2012,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       createdLoopID = loop.id
       await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
       setShowRunMenu(false)
-      await refetchLoops()
-      await refetch()
     } catch (error) {
       if (createdLoopID) {
         await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
@@ -1912,7 +2019,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       if (target?.createdSession) {
         await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
       }
-      await Promise.all([refetchLoops(), refetch()]).catch(() => undefined)
+      await Promise.resolve(refetch()).catch(() => undefined)
       console.error("Failed to run blueprint", error)
       alert(requestErrorMessage(error, "Failed to run blueprint"))
     } finally {
@@ -1925,13 +2032,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function archiveNote() {
     const dir = directory()
     if (!dir) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before archiving this note.",
-      })
-      return
-    }
+    await flushSave()
+    if (remoteConflict()) return
     confirm.show({
       ...archiveNoteConfirm(1),
       onConfirm: async () => {
@@ -1944,15 +2046,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function restoreNote() {
     const dir = directory()
     if (!dir) return
-    if (dirty()) {
-      setConflict({
-        type: "metadata-blocked",
-        message: "Save or reload your draft before restoring this note.",
-      })
-      return
-    }
+    await flushSave()
+    if (remoteConflict()) return
     await sdk.client.note.batch({ ids: [props.id], action: "unarchive", directory: dir })
-    void refetch()
   }
 
   async function deleteArchivedNote() {
@@ -2120,13 +2216,13 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
               <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
-                {getRunCount(baseNote()!, noteLoops() ?? []) > 0
-                  ? `${getRunCount(baseNote()!, noteLoops() ?? [])} runs`
+                {getRunCount(baseNote()!, noteLoops()) > 0
+                  ? `${getRunCount(baseNote()!, noteLoops())} runs`
                   : "No runs yet"}
               </span>
               <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
-                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops() ?? []))}
+                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops()))}
               </span>
               <Show when={baseNote()!.blueprint?.defaultAgent}>
                 <span class="h-3 w-px bg-border-weaker-base" />
@@ -2214,7 +2310,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         <DocumentEditorCore
           content={baseNote()!.content}
           onUpdate={() => {
-            markDirty()
+            markDirty("content")
             scheduleSave()
           }}
           onEditorReady={(instance) => setEditor(instance)}

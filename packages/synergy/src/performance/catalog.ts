@@ -169,6 +169,10 @@ export namespace PerformanceCatalog {
       [],
     ),
     metric("process.memory.rss", "RSS memory", "bytes", "gauge", "latest", "process", "process", []),
+    metric("process.child.memory.rss", "Child process RSS memory", "bytes", "gauge", "latest", "process", "process", [
+      "command",
+      "backgrounded",
+    ]),
     metric("process.memory.heap_used", "Heap used", "bytes", "gauge", "latest", "process", "process", []),
     metric("process.memory.heap_total", "Heap total", "bytes", "gauge", "latest", "process", "process", [], {
       status: "derived",

@@ -46,6 +46,7 @@ export interface ControlProfile {
 export interface ResolutionContext {
   workspace: string
   workspaceType: string
+  trustedRoots?: string[]
 }
 
 export interface ProfileSummary {

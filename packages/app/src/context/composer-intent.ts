@@ -36,7 +36,7 @@ export function resolveAgent(
   return undefined
 }
 
-type RootMessageLike = { role: string; isRoot?: boolean; model?: ModelKey; agent?: string }
+type RootMessageLike = { role: string; isRoot?: boolean; model?: ModelKey; agent?: string; variant?: string }
 
 function lastRootMessage<T extends RootMessageLike>(messages: readonly T[] | undefined): T | undefined {
   if (!messages) return undefined
@@ -63,4 +63,16 @@ export function sessionDefaultModel(
 /** The session's default agent: the agent of the last root user message. */
 export function sessionDefaultAgent(messages: readonly RootMessageLike[] | undefined): string | undefined {
   return lastRootMessage(messages)?.agent
+}
+
+/** The session's default model variant, scoped to the current effective model. */
+export function sessionDefaultVariant(
+  model: ModelKey | undefined,
+  messages: readonly RootMessageLike[] | undefined,
+): string | undefined {
+  if (!model) return undefined
+  const message = lastRootMessage(messages)
+  if (!message?.variant || !message.model) return undefined
+  if (message.model.providerID !== model.providerID || message.model.modelID !== model.modelID) return undefined
+  return message.variant
 }

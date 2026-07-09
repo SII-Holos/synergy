@@ -218,6 +218,8 @@ export type PerfRankedItem = {
   sessionID?: string
   tool?: string
   status?: string
+  processId?: string
+  pid?: number
 }
 
 export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
@@ -283,6 +285,8 @@ export type PerfDashboardSummary = {
     appWrittenBytes?: number
     appReadOps?: number
     appWriteOps?: number
+    childProcessCount?: number
+    childProcessRssBytes?: number
   }
   sessions: {
     turnCount: number
@@ -307,6 +311,27 @@ export type PerfDashboardSummary = {
     traceFiles: number
     recentErrors: number
     pendingSessions: number
+    sessionRuntimes: {
+      totalCount: number
+      runningCount: number
+      idleCount: number
+      childCount: number
+      userCount: number
+      waiterCount: number
+    }
+    cortexTasks: {
+      totalCount: number
+      pendingCount: number
+      queuedCount: number
+      runningCount: number
+      completedCount: number
+      errorCount: number
+      cancelledCount: number
+      retainedPromptChars: number
+      retainedOutputChars: number
+      retainedErrorChars: number
+      retainedProgressToolCount: number
+    }
   }
   top: {
     slowRoutes: Array<PerfRankedItem>
@@ -315,6 +340,7 @@ export type PerfDashboardSummary = {
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
     slowLibrary: Array<PerfRankedItem>
+    childProcesses: Array<PerfRankedItem>
     slowFrontend: Array<PerfRankedItem>
   }
   issues: Array<PerfIssue>
@@ -1514,6 +1540,14 @@ export type AgentConfig = {
    * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
    */
   hidden?: boolean
+  /**
+   * Agent or delegation group names allowed to delegate to this subagent
+   */
+  visibleTo?: Array<string>
+  /**
+   * Additional delegation catalogs this agent may use when dispatching subagents
+   */
+  delegationGroups?: Array<string>
   options?: {
     [key: string]: unknown
   }
@@ -1547,6 +1581,8 @@ export type AgentConfig = {
     | "subagent"
     | "primary"
     | "all"
+    | Array<string>
+    | Array<string>
     | {
         [key: string]: unknown
       }
@@ -3306,6 +3342,22 @@ export type SessionWorkflowInfo =
   | {
       kind: "lightloop"
       taskDescription: string
+      stopRequest?: {
+        summary: string
+        completed?: Array<string>
+        evidence?: Array<string>
+        remaining?: Array<string>
+        requestedAt: number
+        requesterSessionID: string
+        requesterMessageID: string
+        reviewTaskID?: string
+        reviewSessionID?: string
+      }
+      review?: {
+        attempts: number
+        lastReason?: string
+        lastReviewedAt?: number
+      }
     }
   | {
       kind: "lattice"
@@ -3381,6 +3433,11 @@ export type Session = {
     loopRole?: "execution" | "audit"
   }
   workflow?: SessionWorkflowInfo
+}
+
+export type WorktreeEnterInput = {
+  target: string
+  force?: boolean
 }
 
 export type VcsInfo = {
@@ -4944,6 +5001,7 @@ export type BlueprintLoopInfo = {
   executionAgent?: string
   auditAgent: string
   auditSessionID?: string
+  auditTaskID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -5613,6 +5671,7 @@ export type Agent = {
   native?: boolean
   hidden?: boolean
   visibleTo?: Array<string>
+  delegationGroups?: Array<string>
   topP?: number
   temperature?: number
   color?: string
@@ -5640,6 +5699,7 @@ export type ModelRoleUsage = {
   mode: "subagent" | "primary" | "all"
   hidden?: boolean
   visibleTo?: Array<string>
+  delegationGroups?: Array<string>
   native?: boolean
   source?: "builtin" | "config" | "plugin" | "external"
   modelSource?: "role" | "explicit"
@@ -5844,6 +5904,7 @@ export type EventScopeRemoved = {
   type: "scope.removed"
   properties: {
     id: string
+    directory?: string
   }
 }
 
@@ -6101,14 +6162,19 @@ export type EventTodoUpdated = {
 export type EventNoteCreated = {
   type: "note.created"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
   }
 }
 
 export type EventNoteUpdated = {
   type: "note.updated"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
   }
 }
 
@@ -6125,6 +6191,7 @@ export type EventNoteArchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
@@ -6133,6 +6200,7 @@ export type EventNoteUnarchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
@@ -8241,6 +8309,40 @@ export type WorktreeCreateResponses = {
 }
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
+
+export type WorktreeEnterData = {
+  body?: WorktreeEnterInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/session/{sessionID}/enter"
+}
+
+export type WorktreeEnterErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeEnterError = WorktreeEnterErrors[keyof WorktreeEnterErrors]
+
+export type WorktreeEnterResponses = {
+  /**
+   * Session moved to worktree
+   */
+  200: Session
+}
+
+export type WorktreeEnterResponse = WorktreeEnterResponses[keyof WorktreeEnterResponses]
 
 export type WorktreeLeaveData = {
   body?: never
