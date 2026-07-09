@@ -7,12 +7,10 @@ import { StoragePath } from "@/storage/path"
 import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
-import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
 import { LatticeStore } from "../lattice/store"
 
 const log = Log.create({ service: "session.working" })
-
-const ACTIVE_BLUEPRINT_LOOP_STATUSES = new Set(["armed", "running", "waiting", "auditing"])
 
 export async function resolve(sessionID: string): Promise<WorkingInfo | undefined> {
   const runtime = SessionManager.getRuntime(sessionID)
@@ -49,7 +47,7 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
     break
   }
 
-  if (session.pendingReply && (await pendingReplyFor(scopeID, sessionID))) {
+  if (session.pendingReply && (await SessionProgress.pendingReplyFor({ scopeID, sessionID }))) {
     log.info("detected recovering session (pending reply)", { sessionID })
     return { status: "recovering" }
   }
@@ -70,13 +68,7 @@ async function hasActiveBlueprintLoop(input: { session: Info; scopeID: Identifie
   const loopID = input.session.blueprint?.loopID
   if (!loopID) return false
   const loop = await BlueprintLoopStore.get(input.scopeID, loopID).catch(() => undefined)
-  return !!loop && ACTIVE_BLUEPRINT_LOOP_STATUSES.has(loop.status)
-}
-
-async function pendingReplyFor(scopeID: string, sessionID: string): Promise<boolean> {
-  const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID })).catch(() => [])
-  messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
-  return SessionProgress.pendingReply(messages)
+  return !!loop && isActiveLoopStatus(loop.status)
 }
 
 export function toStatus(working: WorkingInfo): StatusInfo {

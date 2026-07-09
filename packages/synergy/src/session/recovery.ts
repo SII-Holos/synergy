@@ -7,10 +7,9 @@ import { StoragePath } from "@/storage/path"
 import { SessionEndpoint } from "./endpoint"
 import { SessionNav, type ScopeNavIndex } from "./nav"
 import type { Info, StatusInfo } from "./types"
-import { MessageV2 } from "./message-v2"
 import { SessionProgress } from "./progress"
 import { Session } from "./index"
-import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { NoteStore } from "../note"
 
@@ -54,11 +53,10 @@ export namespace SessionRecovery {
     entries: Array<{ scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string }>
   }
 
-  const ACTIVE_LOOP_STATUSES = new Set<BlueprintLoopInfo["status"]>(["armed", "running", "waiting", "auditing"])
   const TERMINAL_LOOP_STATUSES = new Set<BlueprintLoopInfo["status"]>(["completed", "failed", "cancelled"])
 
   function isActiveLoop(loop: BlueprintLoopInfo | undefined) {
-    return !!loop && ACTIVE_LOOP_STATUSES.has(loop.status)
+    return !!loop && isActiveLoopStatus(loop.status)
   }
 
   function isTerminalLoop(loop: BlueprintLoopInfo | undefined) {
@@ -91,12 +89,6 @@ export namespace SessionRecovery {
     return results.filter((item): item is Info => !!item && !!item.scope)
   }
 
-  async function pendingReplyFor(scopeID: string, sessionID: string): Promise<boolean> {
-    const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
-    messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
-    return SessionProgress.pendingReply(messages)
-  }
-
   function reportChange(
     report: RuntimeReconcileReport,
     input: { scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string },
@@ -112,7 +104,10 @@ export namespace SessionRecovery {
     report: RuntimeReconcileReport
   }) {
     if (!input.session.pendingReply) return
-    const pendingReply = await pendingReplyFor(input.scopeID, input.session.id).catch(() => true)
+    const pendingReply = await SessionProgress.pendingReplyFor({
+      scopeID: input.scopeID,
+      sessionID: input.session.id,
+    }).catch(() => true)
     if (pendingReply) return
 
     if (input.apply) {

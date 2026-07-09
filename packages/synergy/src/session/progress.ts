@@ -46,6 +46,17 @@ export namespace SessionProgress {
   }
 
   /**
+   * Resolve whether the given session still has a pending reply by loading its
+   * messages and delegating to {@link pendingReply}. Shared by session recovery
+   * and session working resolution.
+   */
+  export async function pendingReplyFor(input: { scopeID: string; sessionID: string }): Promise<boolean> {
+    const messages = await MessageV2.filterCompacted(MessageV2.stream(input)).catch(() => [] as MessageV2.WithParts[])
+    messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
+    return pendingReply(messages)
+  }
+
+  /**
    * Determine whether the root message R still needs a model call.
    * Returns true if there exists a user message U with U.rootID === R.id
    * (or U itself if root) that does NOT have a terminal assistant after it.

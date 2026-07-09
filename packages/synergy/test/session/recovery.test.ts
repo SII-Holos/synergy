@@ -213,3 +213,202 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
     })
   })
 })
+
+describe("SessionRecovery.recoverableStatuses", () => {
+  test("returns recovering statuses for sessions with active BlueprintLoops", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprintNote()
+        const loop = await BlueprintLoopStore.create({
+          noteID: note.id,
+          noteVersion: note.version,
+          title: note.title,
+          sessionID: session.id,
+          runMode: "current",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+
+        const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
+        expect(statuses[session.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
+      },
+    })
+  })
+
+  test("returns empty record when no sessions need recovery", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
+        expect(Object.keys(statuses)).toHaveLength(0)
+      },
+    })
+  })
+
+  test("includes audit session when loop is auditing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execSession = await Session.create({})
+        const auditSession = await Session.create({})
+        const note = await createBlueprintNote()
+        const loop = await BlueprintLoopStore.create({
+          noteID: note.id,
+          noteVersion: note.version,
+          title: note.title,
+          sessionID: execSession.id,
+          runMode: "current",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: auditSession.id,
+        })
+
+        const statuses = await SessionRecovery.recoverableStatuses(ScopeContext.current.scope.id)
+        expect(statuses[execSession.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
+        expect(statuses[auditSession.id]).toEqual({ type: "recovering", description: "BlueprintLoop interrupted" })
+      },
+    })
+  })
+})
+
+describe("SessionRecovery BlueprintLoop audit binding", () => {
+  test("restores audit session binding when loop is auditing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execSession = await Session.create({})
+        const auditSession = await Session.create({})
+        const note = await createBlueprintNote()
+        const loop = await BlueprintLoopStore.create({
+          noteID: note.id,
+          noteVersion: note.version,
+          title: note.title,
+          sessionID: execSession.id,
+          runMode: "current",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: auditSession.id,
+        })
+
+        // Wipe both session bindings to simulate crash before bind occurred
+        await Session.update(execSession.id, (draft) => {
+          draft.blueprint = undefined
+        })
+        await Session.update(auditSession.id, (draft) => {
+          draft.blueprint = undefined
+        })
+        await NoteStore.update(ScopeContext.current.scope.id, note.id, {
+          blueprint: { activeLoopID: null },
+        })
+
+        await SessionRecovery.reconcileRuntimeState({
+          scopeID: ScopeContext.current.scope.id,
+          apply: true,
+        })
+
+        const refreshedExec = await Session.get(execSession.id)
+        const refreshedAudit = await Session.get(auditSession.id)
+        const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
+        expect(refreshedExec.blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
+        expect(refreshedAudit.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+        expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
+      },
+    })
+  })
+})
+
+describe("SessionProgress.pendingReplyFor", () => {
+  test("returns false when session has no messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { SessionProgress } = await import("../../src/session/progress")
+        const session = await Session.create({})
+        const result = await SessionProgress.pendingReplyFor({
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: session.id,
+        })
+        expect(result).toBe(false)
+      },
+    })
+  })
+
+  test("returns true for session with pending user and no terminal assistant", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { SessionProgress } = await import("../../src/session/progress")
+        const session = await Session.create({})
+        await createPendingUserMessage(session.id)
+        const result = await SessionProgress.pendingReplyFor({
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: session.id,
+        })
+        expect(result).toBe(true)
+      },
+    })
+  })
+})
+
+describe("SessionWorking resolution after restart", () => {
+  test("returns recovering for lightloop session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lightloop", taskDescription: "Recovery test" }
+        })
+
+        const result = await SessionWorking.resolve(session.id)
+        assertExists(result)
+        expect(result.status).toBe("recovering")
+
+        // Verify no runtime was spun up
+        const runtime = SessionManager.getRuntime(session.id)
+        expect(runtime?.abort).toBeUndefined()
+      },
+    })
+  })
+
+  test("returns recovering for active BlueprintLoop session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprintNote()
+        const loop = await BlueprintLoopStore.create({
+          noteID: note.id,
+          noteVersion: note.version,
+          title: note.title,
+          sessionID: session.id,
+          runMode: "current",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+
+        const result = await SessionWorking.resolve(session.id)
+        assertExists(result)
+        expect(result.status).toBe("recovering")
+
+        const runtime = SessionManager.getRuntime(session.id)
+        expect(runtime?.abort).toBeUndefined()
+      },
+    })
+  })
+})
