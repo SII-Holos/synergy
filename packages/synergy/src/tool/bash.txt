@@ -39,18 +39,9 @@ Usage notes:
   - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
-  - Do NOT rely on bash auto-backgrounding for these.
-  - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
-  - Example with tmux:
-    ```bash
-    tmux new-session -d -s my-task 'python train.py 2>&1 | tee /path/to/logs/train.log'
-    ```
-  - Example with nohup:
-    ```bash
-    nohup python train.py > /path/to/logs/train.log 2>&1 &
-    ```
-  - Then monitor progress by reading the log file with the Read tool, or use tail/grep as needed.
-  - The bash tool's background mode is designed for short-to-medium interactive processes (builds, tests, installations), not long-running server-type workloads.
+  - Use the bash tool's tracked `background` / `yieldSeconds` flow so Synergy can show a processId and later poll, log, or kill the process.
+  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. These processes stay charged to the Synergy service cgroup and are blocked by default.
+  - Operator-managed runtimes that intentionally allow detached daemons can set `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`; the guard is also bypassed under `full_access` profiles.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)

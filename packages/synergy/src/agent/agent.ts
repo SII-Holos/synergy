@@ -14,6 +14,7 @@ import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
 import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
+import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -53,6 +54,7 @@ export namespace Agent {
       mode: z.enum(["subagent", "primary", "all"]),
       hidden: z.boolean().optional(),
       visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
       native: z.boolean().optional(),
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
@@ -154,6 +156,7 @@ export namespace Agent {
       native: z.boolean().optional(),
       hidden: z.boolean().optional(),
       visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -257,6 +260,8 @@ export namespace Agent {
       item.topP = value.top_p ?? item.topP
       item.mode = value.mode ?? item.mode
       item.hidden = value.hidden ?? item.hidden
+      item.visibleTo = value.visibleTo ?? item.visibleTo
+      item.delegationGroups = value.delegationGroups ?? item.delegationGroups
       item.name = value.name ?? item.name
       item.color = value.color ?? item.color
       item.steps = value.steps ?? item.steps
@@ -290,6 +295,8 @@ export namespace Agent {
         topP: agent.topP,
         steps: agent.steps,
         hidden: agent.hidden,
+        visibleTo: agent.visibleTo,
+        delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
     }
@@ -403,10 +410,14 @@ export namespace Agent {
       mode: agent.mode,
       hidden: agent.hidden,
       visibleTo: agent.visibleTo,
+      delegationGroups: agent.delegationGroups,
     }))
     if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
     if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
     if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
+    if (result["lightloop-reviewer"]) {
+      result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
+    }
 
     return result
   })
@@ -456,6 +467,7 @@ export namespace Agent {
           mode: agent.mode,
           hidden: agent.hidden,
           visibleTo: agent.visibleTo,
+          delegationGroups: agent.delegationGroups,
           native: agent.native,
           source: agent.source,
           modelSource: agent.modelSource,

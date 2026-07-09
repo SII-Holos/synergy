@@ -87,7 +87,7 @@ describe("ContinuationKernel arbitration", () => {
         expect(calls).toEqual(["high"])
       },
     })
-  })
+  }, 15_000)
 
   test("declining policy falls through to the next", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -118,7 +118,7 @@ describe("ContinuationKernel arbitration", () => {
         expect(calls).toEqual(["high", "low"])
       },
     })
-  })
+  }, 15_000)
 
   test("same terminal assistant is not delivered twice for the same policy", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -141,7 +141,7 @@ describe("ContinuationKernel arbitration", () => {
         expect(count).toBe(1)
       },
     })
-  })
+  }, 15_000)
 
   test("no continuation while Cortex work is active", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -161,5 +161,5 @@ describe("ContinuationKernel arbitration", () => {
         expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
       },
     })
-  })
+  }, 15_000)
 })

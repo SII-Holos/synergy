@@ -228,6 +228,19 @@ export async function init(input: { source?: "startup" | "plugin_reload" } = {})
   void pluginEventState()
 }
 
+export async function reloadMcpContributions() {
+  const loaded = await state().then((x) => [...x.loaded])
+  await Promise.all(
+    loaded.map(async (plugin) => {
+      const manifestMcp = plugin.manifest.contributes?.mcp
+      if (!manifestMcp) return
+      await startForPlugin(plugin.id, manifestMcp).catch((err) =>
+        log.error("plugin mcp start error", { id: plugin.id, err }),
+      )
+    }),
+  )
+}
+
 export async function notifyConfigHooks(input: {
   source: "startup" | "reload" | "plugin_reload"
   config?: Config.Info

@@ -77,6 +77,7 @@ import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { canSubmitPrompt } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
 import {
   blueprintRequestErrorMessage,
   isTerminalBlueprintLoopStatus,
@@ -172,6 +173,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
@@ -463,13 +465,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
-  const canSubmit = createMemo(() =>
-    canSubmitPrompt({
+  const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || workspaceTransitionPending())
+  const canSubmit = createMemo(() => {
+    if (submitPending()) return false
+    return canSubmitPrompt({
       text: promptText(),
       working: working(),
       hasBlueprintSlot: !!localArmedLoop(),
-    }),
-  )
+    })
+  })
   const submitStopsSession = createMemo(() => working() && !promptText().trim())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
@@ -651,11 +656,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const openLatticeDialog = (event?: Event) => {
-    if (blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive()) {
+    if (blueprintModeLocked() || planActive() || lightLoopActive()) {
       event?.preventDefault()
       return
     }
     latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
+  }
+
+  const selectLatticeFromMenu = (event?: Event) => {
+    const state = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
+    if (state.action === "cancel") {
+      void cancelLattice()
+      return
+    }
+
+    if (state.action === "open") {
+      openLatticeDialog(event)
+      return
+    }
+
+    event?.preventDefault()
   }
 
   const selectPlanFromMenu = (event?: Event) => {
@@ -733,6 +760,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           }
         }),
     }
+    const latticeMenuState = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
     return [
       {
         id: "context",
@@ -811,26 +846,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           {
             id: "lattice-mode",
             label: "Lattice",
-            description: latticeActive() ? "Recursive Blueprint run armed" : "Run a goal as a recursive Blueprint",
+            description: latticeMenuState.description,
             icon: getSemanticIcon("prompt.lattice"),
             selected: latticeActive(),
-            ariaDisabled: blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive(),
-            title: blueprintModeLocked()
-              ? "Lattice is unavailable while a Blueprint is equipped"
-              : latticeActive()
-                ? "Lattice is already enabled"
-                : planActive()
-                  ? "Lattice is unavailable while Plan is active"
-                  : lightLoopActive()
-                    ? "Lattice is unavailable while Light Loop is active"
-                    : undefined,
+            ariaDisabled: latticeMenuState.ariaDisabled,
+            title: latticeMenuState.title,
             iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": latticeActive(),
               "text-text-base": latticeActive(),
-              "opacity-60": blueprintModeLocked() || planActive() || lightLoopActive(),
+              "opacity-60": latticeMenuState.ariaDisabled,
             },
-            onSelect: openLatticeDialog,
+            onSelect: selectLatticeFromMenu,
           },
         ],
       },
@@ -1444,6 +1471,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
+    newSessionSubmitPending,
+    setNewSessionSubmitPending,
     store,
     setStore,
     addToHistory,
@@ -1881,22 +1910,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!canSubmit()}
+                  inactive={!submitPending() && !canSubmit()}
                   value={
-                    <Switch>
-                      <Match when={submitStopsSession()}>
-                        <div class="flex items-center gap-2">
-                          <span>Stop</span>
-                          <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
-                        </div>
-                      </Match>
-                      <Match when={true}>
-                        <div class="flex items-center gap-2">
-                          <span>Send</span>
-                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
-                        </div>
-                      </Match>
-                    </Switch>
+                    <Show
+                      when={!submitPending()}
+                      fallback={
+                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                      }
+                    >
+                      <Switch>
+                        <Match when={submitStopsSession()}>
+                          <div class="flex items-center gap-2">
+                            <span>Stop</span>
+                            <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                          </div>
+                        </Match>
+                        <Match when={true}>
+                          <div class="flex items-center gap-2">
+                            <span>Send</span>
+                            <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
+                          </div>
+                        </Match>
+                      </Switch>
+                    </Show>
                   }
                 >
                   <IconButton

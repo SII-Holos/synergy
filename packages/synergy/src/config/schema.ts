@@ -509,6 +509,14 @@ export const Agent = z
       .boolean()
       .optional()
       .describe("Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)"),
+    visibleTo: z
+      .array(z.string())
+      .optional()
+      .describe("Agent or delegation group names allowed to delegate to this subagent"),
+    delegationGroups: z
+      .array(z.string())
+      .optional()
+      .describe("Additional delegation catalogs this agent may use when dispatching subagents"),
     options: z.record(z.string(), z.any()).optional(),
     color: z
       .string()
@@ -543,6 +551,8 @@ export const Agent = z
       "top_p",
       "mode",
       "hidden",
+      "visibleTo",
+      "delegationGroups",
       "color",
       "steps",
       "maxSteps",

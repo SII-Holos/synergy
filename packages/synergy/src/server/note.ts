@@ -286,7 +286,7 @@ export const NoteRoute = new Hono()
         }
         if (action === "delete") {
           for (const id of ids) {
-            await NoteStore.remove(scopeID, id)
+            await NoteStore.removeAny(scopeID, id)
           }
           return c.json({ deleted: ids })
         }

@@ -6,14 +6,19 @@ export namespace NoteEvent {
   export const Created = BusEvent.define(
     "note.created",
     z.object({
+      scopeID: z.string(),
       note: NoteTypes.Info,
+      meta: NoteTypes.MetaInfo,
     }),
   )
 
   export const Updated = BusEvent.define(
     "note.updated",
     z.object({
+      scopeID: z.string(),
       note: NoteTypes.Info,
+      meta: NoteTypes.MetaInfo,
+      changed: z.array(NoteTypes.ChangedField),
     }),
   )
 
@@ -29,6 +34,7 @@ export namespace NoteEvent {
     z.object({
       ids: z.array(z.string()),
       scopeID: z.string(),
+      metas: z.array(NoteTypes.MetaInfo),
     }),
   )
   export const Unarchived = BusEvent.define(
@@ -36,6 +42,7 @@ export namespace NoteEvent {
     z.object({
       ids: z.array(z.string()),
       scopeID: z.string(),
+      metas: z.array(NoteTypes.MetaInfo),
     }),
   )
 }

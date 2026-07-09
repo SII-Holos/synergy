@@ -82,33 +82,38 @@ function autonomousRules() {
   })
 }
 
-function workspaceFs(workspace: string) {
+function uniqueRoots(roots: string[]) {
+  return Array.from(new Set(roots.filter(Boolean)))
+}
+
+function workspaceFs(workspace: string, trustedRoots: string[] = []) {
+  const roots = uniqueRoots([workspace, ...trustedRoots])
   return {
-    readRoots: [workspace],
-    writeRoots: [workspace],
+    readRoots: roots,
+    writeRoots: roots,
     protectedPaths: [],
   }
 }
 
-function autonomousFs(workspace: string) {
+function autonomousFs(workspace: string, trustedRoots: string[] = []) {
   return {
     readRoots: ["/"],
-    writeRoots: [workspace],
+    writeRoots: uniqueRoots([workspace, ...trustedRoots]),
     protectedPaths: [],
   }
 }
 
-function autonomousPolicy(workspace: string) {
+function autonomousPolicy(workspace: string, trustedRoots: string[] = []) {
   return {
-    filesystem: autonomousFs(workspace),
+    filesystem: autonomousFs(workspace, trustedRoots),
     network: { mode: "restricted" as const },
     sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
   }
 }
 
-function workspacePolicy(workspace: string) {
+function workspacePolicy(workspace: string, trustedRoots: string[] = []) {
   return {
-    filesystem: workspaceFs(workspace),
+    filesystem: workspaceFs(workspace, trustedRoots),
     network: { mode: "restricted" as const },
     sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
   }
@@ -228,11 +233,12 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
   const { workspace } = ctx
+  const trustedRoots = ctx.trustedRoots ?? []
   const effectiveSandbox = await resolveEffectiveSandbox(id)
 
   switch (id) {
     case "guarded": {
-      const policy = workspacePolicy(workspace)
+      const policy = workspacePolicy(workspace, trustedRoots)
       const profile = {
         valid: true,
         label: "Guarded",
@@ -247,7 +253,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
     }
 
     case "autonomous": {
-      const policy = autonomousPolicy(workspace)
+      const policy = autonomousPolicy(workspace, trustedRoots)
       const profile = {
         valid: true,
         label: "Autonomous",

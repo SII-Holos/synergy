@@ -6,6 +6,7 @@ import type {
   ToolTaskRunResult,
 } from "@ericsanchezok/synergy-plugin/tool"
 import { Agent } from "@/agent/agent"
+import { AgentDelegation } from "@/agent/delegation"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy } from "@/control-profile/approval"
@@ -97,7 +98,8 @@ export async function runPluginTask(input: {
   const taskPermission = await assertTaskPermission(input.pluginDir, request)
   const agent = await Agent.get(request.subagent)
   if (!agent) throw new Error(`Unknown delegated subagent: ${request.subagent}`)
-  if (input.context.agent && agent.visibleTo && !agent.visibleTo.includes(input.context.agent)) {
+  const caller = input.context.agent ? await Agent.get(input.context.agent) : undefined
+  if (!AgentDelegation.canDelegateTo(agent, caller ?? input.context.agent)) {
     throw new Error(`Agent "${request.subagent}" is not visible to "${input.context.agent}"`)
   }
 

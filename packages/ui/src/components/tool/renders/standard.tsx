@@ -1265,7 +1265,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "flag",
-          title: "Stop Loop",
+          title: "Request Review",
           subtitle: (props.input.summary as string) || "",
         }}
       >
@@ -1277,6 +1277,38 @@ ToolRegistry.register({
           )}
         </Show>
       </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "light_loop_approve",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "circle-check",
+          title: "Approve Light Loop",
+          subtitle: (props.input.summary as string) || (props.input.sessionID as string) || "",
+        }}
+      />
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "light_loop_reject",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "rotate-ccw",
+          title: "Reject Light Loop",
+          subtitle: (props.input.reason as string) || (props.input.sessionID as string) || "",
+        }}
+      />
     )
   },
 })
