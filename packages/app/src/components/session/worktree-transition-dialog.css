@@ -236,6 +236,32 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
+.wtd-card {
+  animation: wtd-card-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.wtd-card.wtd-card-exit {
+  animation: wtd-card-exit 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes wtd-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wtd-card-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
 .wtd-card-header {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
@@ -336,5 +362,9 @@
 @media (prefers-reduced-motion: reduce) {
   .wtd-step-row {
     transition: none;
+  }
+  .wtd-card,
+  .wtd-card.wtd-card-exit {
+    animation: none;
   }
 }

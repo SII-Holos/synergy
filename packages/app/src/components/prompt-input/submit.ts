@@ -286,34 +286,27 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     let sessionScopeKey = currentScopeKey
     let sessionCreateScopeKey = currentScopeKey
-    let client = sdk.client
 
-    if (isNewSession && !sdk.isHome) {
-      sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
-      if (sessionCreateScopeKey !== currentScopeKey) {
-        client = createSynergyClient({
-          baseUrl: sdk.url,
-          fetch: platform.fetch,
-          directory: sessionCreateScopeKey,
-          throwOnError: true,
-        })
-        globalSync.ensureScopeState(sessionCreateScopeKey)
-      }
-    }
-
-    const useSessionScopeClient = (scopeKey: string) => {
+    const resolveSessionClient = (scopeKey: string) => {
       sessionScopeKey = scopeKey
       if (scopeKey !== currentScopeKey) {
-        client = createSynergyClient({
+        globalSync.ensureScopeState(scopeKey)
+        return createSynergyClient({
           baseUrl: sdk.url,
           fetch: platform.fetch,
           directory: scopeKey,
           throwOnError: true,
         })
-        globalSync.ensureScopeState(scopeKey)
-      } else {
-        client = sdk.client
       }
+      return sdk.client
+    }
+    let client = resolveSessionClient(
+      isNewSession && !sdk.isHome
+        ? (input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey)
+        : currentScopeKey,
+    )
+    if (isNewSession && !sdk.isHome) {
+      sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
     }
 
     let createdSessionForSubmit = false
@@ -333,7 +326,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const sessionStartFailureMessage = (message: string) =>
       createdSessionForSubmit ? `Session was not started. ${message}` : message
 
-    let session = params.id ? sync.session.get(params.id) : undefined
+    let session: (typeof sync.session.get extends (...args: any[]) => infer R ? R : never) | null | undefined =
+      params.id ? sync.session.get(params.id) : undefined
     if (!session && isNewSession) {
       session = await client.session
         .create({
@@ -348,11 +342,12 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             title: "Failed to start session",
             description: errorMessage(err),
           })
-          return undefined
+          return null
         })
+      if (session === null) return
       if (session) {
         createdSessionForSubmit = true
-        useSessionScopeClient(sessionCreateScopeKey)
+        client = resolveSessionClient(sessionCreateScopeKey)
         input.props.onNewSessionWorkspaceSelectionReset?.()
         navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
 
@@ -529,9 +524,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     const finishNewSessionWorkspaceProgress = () => {
       if (!worktreeWorkspaceSelection) return
-      setNewSessionProgress(activeSession.id, createNewSessionWorkspaceSuccessProgress(), {
-        dismiss: () => setNewSessionProgress(activeSession.id, null),
-      })
+      setNewSessionProgress(
+        activeSession.id,
+        createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection }),
+        {
+          dismiss: () => setNewSessionProgress(activeSession.id, null),
+        },
+      )
     }
 
     if (worktreeWorkspaceSelection) updateNewSessionWorkspaceProgress(activeSession.id, "prompt")

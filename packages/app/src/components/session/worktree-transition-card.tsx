@@ -1,4 +1,4 @@
-import { Show } from "solid-js"
+import { Show, createSignal } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -25,8 +25,28 @@ export function WorktreeTransitionCard(props: {
   onRetry?: () => void
   onDismiss?: () => void
 }) {
+  const [exiting, setExiting] = createSignal(false)
+
+  const handleDismiss = () => {
+    setExiting(true)
+    const el = cardRef
+    if (el) {
+      el.addEventListener("animationend", () => props.onDismiss?.(), { once: true })
+    } else {
+      props.onDismiss?.()
+    }
+  }
+
+  let cardRef: HTMLDivElement | undefined
+
   return (
-    <div class="wtd-card" data-phase={props.progress.phase} data-operation={props.progress.operation}>
+    <div
+      ref={cardRef}
+      class="wtd-card"
+      classList={{ "wtd-card-exit": exiting() }}
+      data-phase={props.progress.phase}
+      data-operation={props.progress.operation}
+    >
       <div class="wtd-card-header">
         <span class="wtd-card-icon" data-state={props.progress.phase}>
           <Icon name={operationIcon(props.progress)} size="small" />
@@ -43,15 +63,13 @@ export function WorktreeTransitionCard(props: {
       <Show when={props.onRetry || props.onDismiss}>
         <div class="wtd-actions wtd-card-actions">
           <Show when={props.onDismiss}>
-            {(dismiss) => (
-              <Button type="button" variant="ghost" size="small" onClick={dismiss()}>
-                Dismiss
-              </Button>
-            )}
+            <Button variant="ghost" size="small" onClick={handleDismiss}>
+              Dismiss
+            </Button>
           </Show>
           <Show when={props.onRetry}>
             {(retry) => (
-              <Button type="button" variant="primary" size="small" onClick={retry()}>
+              <Button variant="primary" size="small" onClick={retry()}>
                 Retry
               </Button>
             )}

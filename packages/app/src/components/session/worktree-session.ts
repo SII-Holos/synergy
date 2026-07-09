@@ -98,6 +98,12 @@ function withStepStates<T extends { id: string; label: string; detail?: string }
   })) satisfies WorkspaceProgressStep[]
 }
 
+function workspaceStepForSelection(selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>) {
+  return selection.mode === "create"
+    ? { id: "workspace", label: "Create checkout", detail: "Preparing a new git worktree." }
+    : { id: "workspace", label: "Bind worktree", detail: "Using the selected checkout." }
+}
+
 export function createWorkspaceTransitionLoadingProgress(
   request: SessionWorkspaceTransitionRequest,
 ): SessionWorkspaceProgress {
@@ -195,11 +201,6 @@ export function createNewSessionWorkspaceProgress(input: {
   selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
   stage: NewSessionWorkspaceProgressStage
 }): SessionWorkspaceProgress {
-  const workspaceStep =
-    input.selection.mode === "create"
-      ? { id: "workspace", label: "Create checkout", detail: "Preparing a new git worktree." }
-      : { id: "workspace", label: "Bind worktree", detail: "Using the selected checkout." }
-
   return {
     operation: "start",
     phase: "loading",
@@ -208,7 +209,7 @@ export function createNewSessionWorkspaceProgress(input: {
     steps: withStepStates(
       [
         { id: "session", label: "Prepare session", detail: "Creating the conversation state." },
-        workspaceStep,
+        workspaceStepForSelection(input.selection),
         { id: "prompt", label: "Send prompt", detail: "Dispatching your first message." },
       ],
       input.stage,
@@ -216,7 +217,10 @@ export function createNewSessionWorkspaceProgress(input: {
   }
 }
 
-export function createNewSessionWorkspaceSuccessProgress(): SessionWorkspaceProgress {
+export function createNewSessionWorkspaceSuccessProgress(input: {
+  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
+}): SessionWorkspaceProgress {
+  const workspaceStep = workspaceStepForSelection(input.selection)
   return {
     operation: "start",
     phase: "success",
@@ -224,7 +228,7 @@ export function createNewSessionWorkspaceSuccessProgress(): SessionWorkspaceProg
     description: "The session is ready and your prompt was sent.",
     steps: [
       { id: "session", label: "Prepare session", detail: "Conversation state is ready.", state: "complete" },
-      { id: "workspace", label: "Prepare workspace", detail: "Workspace setup complete.", state: "complete" },
+      { ...workspaceStep, detail: "Workspace setup complete.", state: "complete" },
       { id: "prompt", label: "Send prompt", detail: "First prompt dispatched.", state: "complete" },
     ],
   }

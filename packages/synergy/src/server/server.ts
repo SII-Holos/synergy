@@ -1003,6 +1003,10 @@ export namespace Server {
           async (c) => {
             const sessionID = c.req.valid("param").sessionID
             const body = c.req.valid("json")
+            const existing = await Session.get(sessionID)
+            if (!existing) {
+              return c.json({ name: "SessionNotFound", data: { message: `Session not found: ${sessionID}` } }, 404)
+            }
             assertWorktreeSessionIdle(sessionID)
             await Worktree.enter({ sessionID, target: body.target, force: body.force })
             const session = await Session.get(sessionID)
