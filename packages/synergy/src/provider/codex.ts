@@ -559,6 +559,7 @@ export namespace CodexProvider {
   }
 
   function fallbackModel(modelID: string): ModelsDev.Model {
+    const isSpark = modelID.includes("spark")
     return {
       id: modelID,
       name: displayName(modelID),
@@ -571,7 +572,7 @@ export namespace CodexProvider {
       cost: { input: 0, output: 0 },
       limit: codexModelLimit(modelID),
       modalities: {
-        input: ["text", "image", "pdf"],
+        input: isSpark ? ["text"] : ["text", "image"],
         output: ["text"],
       },
       options: {},
