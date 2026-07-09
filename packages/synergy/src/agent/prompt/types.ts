@@ -4,4 +4,5 @@ export interface AgentInfo {
   mode: "primary" | "subagent" | "all"
   hidden?: boolean
   visibleTo?: string[]
+  delegationGroups?: string[]
 }

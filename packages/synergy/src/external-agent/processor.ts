@@ -8,10 +8,12 @@ import { SessionManager } from "@/session/manager"
 import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Plugin } from "@/plugin"
 import { SessionToolInput } from "@/session/tool-input"
+import { Truncate } from "@/tool/truncation"
 
 export namespace ExternalAgentProcessor {
   const log = Log.create({ service: "external-agent.processor" })
   const TOOL_OUTPUT_CHAR_LIMIT = 64_000
+  const COMPLETED_TOOL_OUTPUT_MAX_BYTES = 100 * 1024
 
   function formatAgentLabel(agent: string) {
     return agent
@@ -165,14 +167,17 @@ export namespace ExternalAgentProcessor {
                 },
               })
             } else {
+              const output = await normalizeCompletedToolOutput(event.result ?? bufferedOutput)
               await Session.updatePart({
                 ...part,
                 state: {
                   status: "completed",
                   input: part.state.status === "running" ? part.state.input : {},
-                  output: event.result ?? bufferedOutput,
+                  output: output.content,
+                  outputBytes: output.bytes,
+                  outputTruncated: output.truncated || undefined,
                   title: part.tool,
-                  metadata: {},
+                  metadata: output.metadata,
                   time: { start: startTime, end: Date.now() },
                 },
               })
@@ -286,6 +291,39 @@ export namespace ExternalAgentProcessor {
 
     const parts = await MessageV2.parts({ sessionID, messageID: assistantMessage.id })
     return { info: assistantMessage, parts }
+  }
+
+  async function normalizeCompletedToolOutput(value: string): Promise<{
+    content: string
+    bytes: number
+    truncated: boolean
+    metadata: Record<string, any>
+  }> {
+    const bytes = Buffer.byteLength(value, "utf8")
+    const result = await Truncate.output(value, {
+      maxBytes: COMPLETED_TOOL_OUTPUT_MAX_BYTES,
+      maxLines: 4000,
+      direction: "head",
+    })
+    if (!result.truncated) {
+      return {
+        content: value,
+        bytes,
+        truncated: false,
+        metadata: { outputBytes: bytes },
+      }
+    }
+    return {
+      content: result.content,
+      bytes,
+      truncated: true,
+      metadata: {
+        outputBytes: bytes,
+        outputMemoryLimitBytes: COMPLETED_TOOL_OUTPUT_MAX_BYTES,
+        truncated: true,
+        outputPath: result.outputPath,
+      },
+    }
   }
 
   async function finalizeTextPart(part: MessageV2.TextPart | undefined) {

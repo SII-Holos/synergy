@@ -106,14 +106,45 @@ describe("prompt-budgeter decision", () => {
       ],
       toolDefinitions: [],
     }
-    const estimate = mock(async (_modelID: string, value: unknown) => JSON.stringify(value).length)
+    const estimate = mock(async (_modelID: string, value: unknown) => String(value).length)
     ;(Token.estimateModelJSON as any) = estimate
 
     await PromptBudgeter.decide(plan, model.limit, model.id)
     const firstCallCount = estimate.mock.calls.length
     expect(firstCallCount).toBeGreaterThan(0)
+    expect(estimate.mock.calls.every((call) => typeof call[1] === "string")).toBe(true)
 
     await PromptBudgeter.decide(plan, model.limit, model.id)
     expect(estimate.mock.calls).toHaveLength(firstCallCount)
+  })
+
+  test("estimates history messages serially to bound peak tokenization allocations", async () => {
+    const model = createModel({ context: 100_000, output: 8_192 })
+    const unique = crypto.randomUUID()
+    const plan: PromptBudgeter.PromptPlan = {
+      system: [`system ${unique}`],
+      messages: [
+        { role: "user", content: `first ${unique}` },
+        { role: "assistant", content: `second ${unique}` },
+        { role: "user", content: `third ${unique}` },
+      ],
+      toolDefinitions: [],
+    }
+    let active = 0
+    let maxActive = 0
+    const estimate = mock(async (_modelID: string, value: unknown) => {
+      expect(typeof value).toBe("string")
+      active++
+      maxActive = Math.max(maxActive, active)
+      await Bun.sleep(5)
+      active--
+      return String(value).length
+    })
+    ;(Token.estimateModelJSON as any) = estimate
+
+    await PromptBudgeter.decide(plan, model.limit, model.id)
+
+    expect(estimate.mock.calls.length).toBeGreaterThanOrEqual(4)
+    expect(maxActive).toBe(1)
   })
 })

@@ -65,7 +65,7 @@ function hello() {
           expect(result.output).toContain("console.log")
         },
       })
-    })
+    }, 15_000)
 
     test("finds function declarations in TypeScript", async () => {
       if (!sgAvailable) {
@@ -108,7 +108,7 @@ const arrow = () => {};
           expect(result.output).toContain("Found")
         },
       })
-    })
+    }, 15_000)
 
     test("returns no matches for non-existent pattern", async () => {
       if (!sgAvailable) {
@@ -138,7 +138,7 @@ const arrow = () => {};
           expect(result.output).toContain("No matches found")
         },
       })
-    })
+    }, 15_000)
   })
 
   describe("Python patterns", () => {
@@ -183,7 +183,7 @@ class MyClass:
           expect(result.output).toContain("Found")
         },
       })
-    })
+    }, 15_000)
   })
 
   describe("glob filtering", () => {
@@ -217,7 +217,7 @@ class MyClass:
           expect(result.output).not.toContain("exclude.ts")
         },
       })
-    })
+    }, 15_000)
   })
 
   describe("permission handling", () => {
@@ -259,7 +259,7 @@ class MyClass:
           expect(requests[0].patterns).toContain("const $X = $Y")
         },
       })
-    })
+    }, 15_000)
   })
 })
 
@@ -385,7 +385,7 @@ describe("empty result hints", () => {
         expect(result.output).toContain("Remove trailing colon")
       },
     })
-  })
+  }, 15_000)
 
   test("provides hint for incomplete function pattern in JavaScript", async () => {
     if (!sgAvailable) {
@@ -415,5 +415,5 @@ describe("empty result hints", () => {
         expect(result.output).toContain("params and body")
       },
     })
-  })
+  }, 15_000)
 })

@@ -23,7 +23,7 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
 import { SessionManager } from "./manager"
 import type { Info } from "./types"
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
 import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
@@ -41,6 +41,7 @@ import { PerformanceIssues } from "@/performance/issues"
 import { PerformanceMetrics } from "@/performance/metrics"
 import { SkillPaths } from "@/skill/paths"
 import { PerformanceSpans } from "@/performance/spans"
+import { LightLoopReviewAccess } from "./light-loop-review-access"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -534,8 +535,9 @@ export namespace ToolResolver {
     envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
-    session?: Info,
+    input: Input,
   ) {
+    const session = input.session
     const profile = gate.getProfileInfo()
     const approval = profile.approval
     const policyDecision = ApprovalPolicy.decideCapabilities(profile, envelope.capabilities)
@@ -607,6 +609,7 @@ export namespace ToolResolver {
       const cfg = await Config.current()
       if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
         const redactedEvidence = SmartAllow.buildRedactedEvidence(args, envelope.capabilities)
+        const context = await smartAllowContext(input, ctx)
         const classification = await SmartAllow.classify({
           sessionID: ctx.sessionID,
           tool: toolName,
@@ -615,6 +618,7 @@ export namespace ToolResolver {
           workspace: ScopeContext.current.directory,
           policyAction: decision.action,
           redactedEvidence,
+          ...(context ?? {}),
         })
         if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID, decision.action)) {
           await setApprovalMetadata(ctx, {
@@ -748,6 +752,56 @@ export namespace ToolResolver {
     return (ctx.extra as any).approval
   }
 
+  async function smartAllowContext(input: Input, ctx: Tool.Context) {
+    const agentContext = [input.agent.name, input.agent.description].filter(Boolean).join(": ")
+    const userMessageID = (ctx.extra as { userMessageID?: unknown }).userMessageID
+    let userMessage: string | undefined
+
+    if (typeof userMessageID === "string") {
+      try {
+        const message = await MessageV2.get({ sessionID: input.sessionID, messageID: userMessageID })
+        if (message.info.role === "user") {
+          userMessage = SmartAllow.redactContextText(MessageV2.extractText(message.parts, { maxLength: 1_600 }), 1_000)
+        }
+      } catch (error) {
+        log.debug("smart allow user message context unavailable", {
+          sessionID: input.sessionID,
+          messageID: userMessageID,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    const newest: MessageV2.WithParts[] = []
+    try {
+      for await (const message of MessageV2.stream({ sessionID: input.sessionID })) {
+        newest.push(message)
+        if (newest.length >= 4) break
+      }
+    } catch (error) {
+      log.debug("smart allow recent history unavailable", {
+        sessionID: input.sessionID,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
+    const recentHistory = newest
+      .reverse()
+      .filter((message) => MessageV2.isPromptVisible(message))
+      .map((message) => {
+        const text = SmartAllow.redactContextText(MessageV2.extractText(message.parts, { maxLength: 1_000 }), 600)
+        return text ? `${message.info.role}: ${text}` : undefined
+      })
+      .filter((item): item is string => !!item)
+
+    if (!userMessage && recentHistory.length === 0 && !agentContext) return undefined
+    return {
+      ...(userMessage ? { userMessage } : {}),
+      ...(recentHistory.length ? { recentHistory } : {}),
+      ...(agentContext ? { agentContext: SmartAllow.redactContextText(agentContext, 500) } : {}),
+    }
+  }
+
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
       let profilePromise: Promise<ResolvedProfile> | undefined
@@ -782,6 +836,7 @@ export namespace ToolResolver {
             approvalWaitMs: 0,
             sessionAbort,
           } satisfies ToolTiming,
+          controlProfile: input.agent.controlProfile,
         },
         agent: input.agent.name,
         metadata: async (val: { title?: string; metadata?: any }) => {
@@ -889,7 +944,18 @@ export namespace ToolResolver {
     return true
   }
 
-  function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
+  async function isRecordedLightLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
+    if (!input.session?.id) return false
+    return (
+      (await LightLoopReviewAccess.resolve({
+        agent: input.agent.name,
+        reviewSessionID: input.session.id,
+        reviewSession: input.session,
+      })) !== undefined
+    )
+  }
+
+  async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const disabled = PermissionNext.disabled(
@@ -901,6 +967,7 @@ export namespace ToolResolver {
     const forcedGroups = forcedToolGroups(input.session)
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
+    const canUseLightLoopReviewTools = await isRecordedLightLoopReviewSession(input)
 
     const supportsImageInput = input.model.capabilities.input.image
 
@@ -974,6 +1041,20 @@ export namespace ToolResolver {
           }),
         )
         continue
+      }
+
+      if (def.id === "light_loop_approve" || def.id === "light_loop_reject") {
+        if (!canUseLightLoopReviewTools) {
+          diagnostics.set(
+            def.id,
+            SessionModePolicy.unavailable({
+              toolName: def.id,
+              reason: "permission",
+              session: input.session,
+            }),
+          )
+          continue
+        }
       }
 
       if (disabled.has(def.id) && !isEphemeral) {
@@ -1225,7 +1306,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1236,7 +1317,7 @@ export namespace ToolResolver {
                   pluginToolCapabilities: pluginGateData.toolCapabilities,
                   pluginApprovals: pluginGateData.approvals,
                   profileId,
-                  readRoots: [synergyRoot],
+                  readRoots: [synergyRoot, ...trustedRoots],
                   trustedRoots,
                   synergyRoot,
                 })
@@ -1254,7 +1335,7 @@ export namespace ToolResolver {
                   capabilities: envelope.capabilities,
                 })
                 if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
-                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
+                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput)
                 await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                   decision: envelope.decision,
                   capabilities: envelope.capabilities.map((cap) => cap.class),
@@ -1299,7 +1380,7 @@ export namespace ToolResolver {
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...extRoots],
+                      extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots],
                       extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                       protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                       dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
@@ -1474,7 +1555,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
-                  const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
@@ -1486,6 +1567,7 @@ export namespace ToolResolver {
                     pluginToolCapabilities: pluginGateData.toolCapabilities,
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
+                    readRoots: [Global.Path.root, ...trustedRoots],
                     synergyRoot: Global.Path.root,
                     trustedRoots,
                   })
@@ -1502,7 +1584,7 @@ export namespace ToolResolver {
                     capabilities: envelope.capabilities,
                   })
                   if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
-                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
+                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput)
                   await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                     decision: envelope.decision,
                     capabilities: envelope.capabilities.map((cap) => cap.class),
@@ -1658,7 +1740,7 @@ export namespace ToolResolver {
 
   export async function availability(input: Omit<Input, "processor">): Promise<Availability> {
     using _ = log.time("availability")
-    return applyAvailability(await collectDefinitions(input), input)
+    return await applyAvailability(await collectDefinitions(input), input)
   }
 
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
