@@ -55,7 +55,8 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
   await using tmp = await tmpdir({ git: true })
   const shell = Shell.acceptable()
   const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
-  const printTokenOrMissing = usesBash
+  const usesPosixShell = process.platform !== "win32" || usesBash
+  const printTokenOrMissing = usesPosixShell
     ? "printf '%s' \"${GH_TOKEN:-missing}\""
     : "if defined GH_TOKEN (<nul set /p dummy=%GH_TOKEN%) else (<nul set /p dummy=missing)"
   const chainedTokenCommand = `gh && ${printTokenOrMissing}`

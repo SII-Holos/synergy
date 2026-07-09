@@ -25,7 +25,7 @@ function isValidTransition(from: LoopStatus, to: LoopStatus): boolean {
   return TRANSITIONS[from]?.includes(to) ?? false
 }
 
-function isActiveLoopStatus(status: LoopStatus) {
+export function isActiveLoopStatus(status: LoopStatus) {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
 }
 

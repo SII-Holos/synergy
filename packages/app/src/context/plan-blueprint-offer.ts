@@ -3,11 +3,21 @@ import type { Message, Part, SessionStatus } from "@ericsanchezok/synergy-sdk/cl
 export interface BlueprintNoteFocusRequest {
   noteID: string
   title?: string
+  runCount?: number
   scopeID?: string
 }
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
 }
 
 export function blueprintNoteWriteFocusRequest(part: Part, sessionID: string): BlueprintNoteFocusRequest | undefined {
@@ -21,6 +31,9 @@ export function blueprintNoteWriteFocusRequest(part: Part, sessionID: string): B
   const action = stringValue(metadata.action) ?? stringValue(input.mode) ?? "create"
   if (action !== "create" && action !== "replace") return undefined
 
+  const runCount = numberValue(metadata.runCount)
+  if (runCount !== undefined && runCount > 0) return undefined
+
   const kind = stringValue(metadata.kind) ?? stringValue(input.kind)
   if (kind !== "blueprint") return undefined
 
@@ -30,6 +43,7 @@ export function blueprintNoteWriteFocusRequest(part: Part, sessionID: string): B
   return {
     noteID,
     title: stringValue(metadata.title) ?? stringValue(input.title),
+    runCount,
     scopeID: stringValue(metadata.scopeID),
   }
 }
@@ -38,6 +52,7 @@ export type PlanBlueprintOffer = {
   key: string
   noteID: string
   title: string
+  runCount: number
   scopeID?: string
 }
 
@@ -86,6 +101,7 @@ export function createPlanBlueprintOfferFromPart(input: {
     }),
     noteID: request.noteID,
     title: request.title?.trim() || "Blueprint",
+    runCount: request.runCount ?? 0,
     scopeID: request.scopeID,
   }
 }
@@ -157,6 +173,7 @@ export function shouldDisplayPlanBlueprintOffer(input: {
   if (input.workflowKind !== "plan") return false
   if (input.sessionStatus?.type !== "idle") return false
   if (input.slotOccupied) return false
+  if (offer.runCount !== 0) return false
   if (offer.scopeID && input.currentScopeID && offer.scopeID !== input.currentScopeID) return false
   return true
 }

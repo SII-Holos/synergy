@@ -11,8 +11,10 @@ const ZIZMOR_VERSION = "1.26.1"
 const ACTIONLINT_INSTALLER = `https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash`
 
 try {
-  await $`bash -c ${`mkdir -p "${tempDir}" && bash <(curl -sSfL "${ACTIONLINT_INSTALLER}") "${ACTIONLINT_VERSION}" "${tempDir}"`}`
-  await $`${path.join(tempDir, "actionlint")} -color`
+  const actionlint = (await hasCommand("actionlint"))
+    ? "actionlint"
+    : await downloadActionlint(ACTIONLINT_VERSION, tempDir)
+  await $`${actionlint} -color`
 } catch (error) {
   console.error(
     "actionlint failed or could not be downloaded. Install actionlint locally or ensure network access, then rerun bun run workflow:check.",
@@ -40,4 +42,9 @@ async function hasCommand(command: string) {
   } catch {
     return false
   }
+}
+
+async function downloadActionlint(version: string, targetDir: string) {
+  await $`bash -c ${`mkdir -p "${targetDir}" && bash <(curl -sSfL "${ACTIONLINT_INSTALLER}") "${version}" "${targetDir}"`}`
+  return path.join(targetDir, "actionlint")
 }
