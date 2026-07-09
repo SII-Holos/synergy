@@ -40,6 +40,9 @@ export namespace NoteStore {
     note.tags ??= []
     note.version ??= 1
     note.kind ??= "note"
+    note.time ??= { created: 0, updated: 0 }
+    note.time.created ??= note.time.updated ?? 0
+    note.time.updated ??= note.time.created
     note.content = NoteDocument.normalize(note.content)
     normalizeBlueprint(note)
     return note
@@ -62,6 +65,36 @@ export namespace NoteStore {
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
     const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
     return { ...meta, searchText: searchParts.join("\n"), previewHtml }
+  }
+
+  type StoredMetadata = Partial<Omit<Metadata, "time">> & { time?: Partial<Metadata["time"]> }
+
+  function normalizeMetadataEntry(entry: unknown, scopeID: string): Metadata | undefined {
+    if (!entry || typeof entry !== "object") return undefined
+    const raw = entry as StoredMetadata
+    if (typeof raw.id !== "string" || typeof raw.title !== "string") return undefined
+
+    const tags = Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : []
+    const created = typeof raw.time?.created === "number" ? raw.time.created : 0
+    const updated = typeof raw.time?.updated === "number" ? raw.time.updated : created
+    const searchText = typeof raw.searchText === "string" && raw.searchText.length > 0 ? raw.searchText : raw.title
+
+    const normalized: Metadata = {
+      id: raw.id,
+      title: raw.title,
+      pinned: raw.pinned === true,
+      global: typeof raw.global === "boolean" ? raw.global : scopeID === HOME_SCOPE_ID,
+      archived: raw.archived === true,
+      tags,
+      version: typeof raw.version === "number" ? raw.version : 1,
+      time: { created, updated },
+      searchText,
+    }
+    if (typeof raw.originScope === "string") normalized.originScope = raw.originScope
+    if (raw.kind === "note" || raw.kind === "blueprint") normalized.kind = raw.kind
+    if (typeof raw.previewHtml === "string") normalized.previewHtml = raw.previewHtml
+    if (raw.blueprint && typeof raw.blueprint === "object") normalized.blueprint = raw.blueprint
+    return normalizeMetadata(normalized, scopeID)
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -104,9 +137,13 @@ export namespace NoteStore {
   async function loadIndex(scopeID: string): Promise<Metadata[]> {
     const sid = Identifier.asScopeID(scopeID)
     try {
-      const entries = await Storage.read<Metadata[]>(indexPath(sid))
-      if (!Array.isArray(entries)) return rebuildIndex(scopeID)
-      return entries.map((entry) => normalizeMetadata(entry, scopeID))
+      const raw = await Storage.read<unknown>(indexPath(sid))
+      if (!Array.isArray(raw)) return rebuildIndex(scopeID)
+      const entries = raw
+        .map((entry) => normalizeMetadataEntry(entry, scopeID))
+        .filter((entry): entry is Metadata => entry !== undefined)
+      sortByPinAndTime(entries)
+      return entries
     } catch {
       return rebuildIndex(scopeID)
     }
