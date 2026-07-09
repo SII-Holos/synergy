@@ -79,3 +79,13 @@ Focused follow-up results after the DeepSeek gate:
 | `deepseek/deepseek-v4-pro`   |    4 |          94.21 |    97.06 |              6,082.5 |        3,081.5 |            -49.3% |
 
 DeepSeek turn 1 is not used as a benefit signal because each branch starts with a fresh session prefix. The useful signal is turns 2-4, where historical context is available for reuse.
+
+### DeepSeek metadata smoke result
+
+A focused July 2026 live smoke checked the metadata shape without starting a Synergy runtime:
+
+- Raw DeepSeek chat-completion responses include `usage.prompt_cache_hit_tokens`, `usage.prompt_cache_miss_tokens`, and `usage.prompt_tokens_details.cached_tokens`.
+- `@ai-sdk/openai-compatible` normalizes the hit count to `usage.cachedInputTokens` and returned an empty `providerMetadata.deepseek` object for the same request shape.
+- Synergy therefore treats normalized `cachedInputTokens` as the first cache-read source, keeps provider-metadata fallbacks for existing recordings, and also accepts direct `usage.prompt_cache_*` fields for raw or future provider wrappers.
+
+This smoke verifies the cache-token field path only. It does not replace the repeated-turn hit-rate measurements above.
