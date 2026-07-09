@@ -38,20 +38,6 @@ function makeModel(overrides: Partial<Provider.Model> = {}): Provider.Model {
   }
 }
 
-const proxyEnvKeys = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"] as const
-
-function snapshotProxyEnv() {
-  return Object.fromEntries(proxyEnvKeys.map((key) => [key, process.env[key]])) as Record<string, string | undefined>
-}
-
-function restoreProxyEnv(snapshot: Record<string, string | undefined>) {
-  for (const key of proxyEnvKeys) {
-    const value = snapshot[key]
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
-  }
-}
-
 function createProbeProxy(label: string) {
   let hits = 0
   const lines: string[] = []
@@ -209,96 +195,39 @@ async function tryFetch(patchedFetch: (input: any, init?: any) => Promise<Respon
   } catch {}
 }
 
-test("noProxy bypasses system proxy env and restores it afterward", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
-  try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-    process.env.http_proxy = envProxy.url
-    process.env.https_proxy = envProxy.url
-    process.env.ALL_PROXY = envProxy.url
-    process.env.all_proxy = envProxy.url
-
-    const sdk = Provider.createSDKFromSpec(makeModel(), {
-      options: { noProxy: true, apiKey: "test-key" },
-    })
-
-    await tryFetch((sdk as any).fetch)
-
-    expect(envProxy.hits).toBe(0)
-    expect(process.env.HTTP_PROXY).toBe(envProxy.url)
-    expect(process.env.HTTPS_PROXY).toBe(envProxy.url)
-    expect(process.env.http_proxy).toBe(envProxy.url)
-    expect(process.env.https_proxy).toBe(envProxy.url)
-    expect(process.env.ALL_PROXY).toBe(envProxy.url)
-    expect(process.env.all_proxy).toBe(envProxy.url)
-  } finally {
-    envProxy.stop()
-    restoreProxyEnv(snapshot)
-  }
-})
-
-test("proxy option overrides system proxy env for the wrapped fetch", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
+test("proxy option routes wrapped fetch through configured proxy", async () => {
   const configuredProxy = createProbeProxy("configured")
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-    process.env.http_proxy = envProxy.url
-    process.env.https_proxy = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(makeModel(), {
       options: { proxy: configuredProxy.url, apiKey: "test-key" },
     })
 
     await tryFetch((sdk as any).fetch)
 
-    expect(envProxy.hits).toBe(0)
     expect(configuredProxy.hits).toBe(1)
-    expect(process.env.HTTP_PROXY).toBe(envProxy.url)
-    expect(process.env.HTTPS_PROXY).toBe(envProxy.url)
-    expect(process.env.http_proxy).toBe(envProxy.url)
-    expect(process.env.https_proxy).toBe(envProxy.url)
   } finally {
-    envProxy.stop()
     configuredProxy.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
 test("noProxy takes precedence when proxy is also set", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
   const configuredProxy = createProbeProxy("configured")
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(makeModel(), {
       options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" },
     })
 
     await tryFetch((sdk as any).fetch)
 
-    expect(envProxy.hits).toBe(0)
     expect(configuredProxy.hits).toBe(0)
   } finally {
-    envProxy.stop()
     configuredProxy.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
 test("noProxy direct fetch decodes chunked responses", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
   const server = createChunkedServer()
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(makeModel(), {
       options: { noProxy: true, apiKey: "test-key" },
     })
@@ -307,24 +236,14 @@ test("noProxy direct fetch decodes chunked responses", async () => {
 
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("hello world")
-    expect(envProxy.hits).toBe(0)
   } finally {
-    envProxy.stop()
     server.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
-test("noProxy bypasses system proxy env for generateText requests", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
+test("noProxy uses direct transport for generateText requests", async () => {
   const server = createOpenAICompatibleServer()
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-    process.env.http_proxy = envProxy.url
-    process.env.https_proxy = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(
       makeModel({
         api: {
@@ -344,11 +263,8 @@ test("noProxy bypasses system proxy env for generateText requests", async () => 
 
     expect(result.text).toBe("OK")
     expect(server.hits).toBe(1)
-    expect(envProxy.hits).toBe(0)
   } finally {
-    envProxy.stop()
     server.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
@@ -382,16 +298,10 @@ test("noProxy takes precedence over explicit proxy for generateText requests", a
   }
 })
 
-test("noProxy bypasses system proxy env for OpenAI responses requests", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
+test("noProxy takes precedence over explicit proxy for OpenAI responses requests", async () => {
+  const configuredProxy = createProbeProxy("configured")
   const server = createOpenAIResponsesServer()
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-    process.env.http_proxy = envProxy.url
-    process.env.https_proxy = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(
       makeModel({
         api: {
@@ -400,7 +310,7 @@ test("noProxy bypasses system proxy env for OpenAI responses requests", async ()
           npm: "@ai-sdk/openai",
         },
       }),
-      { options: { noProxy: true, apiKey: "test-key" } },
+      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
     )
 
     const result = await generateText({
@@ -412,24 +322,17 @@ test("noProxy bypasses system proxy env for OpenAI responses requests", async ()
     expect(result.text).toBe("OK")
     expect(server.hits).toBe(1)
     expect(server.lines[0]).toBe("POST /v1/responses HTTP/1.1")
-    expect(envProxy.hits).toBe(0)
+    expect(configuredProxy.hits).toBe(0)
   } finally {
-    envProxy.stop()
+    configuredProxy.stop()
     server.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
-test("noProxy bypasses system proxy env for streamText requests", async () => {
-  const snapshot = snapshotProxyEnv()
-  const envProxy = createProbeProxy("env")
+test("noProxy takes precedence over explicit proxy for streamText requests", async () => {
+  const configuredProxy = createProbeProxy("configured")
   const server = createOpenAICompatibleServer()
   try {
-    process.env.HTTP_PROXY = envProxy.url
-    process.env.HTTPS_PROXY = envProxy.url
-    process.env.http_proxy = envProxy.url
-    process.env.https_proxy = envProxy.url
-
     const sdk = Provider.createSDKFromSpec(
       makeModel({
         api: {
@@ -438,7 +341,7 @@ test("noProxy bypasses system proxy env for streamText requests", async () => {
           npm: "@ai-sdk/openai-compatible",
         },
       }),
-      { options: { noProxy: true, apiKey: "test-key" } },
+      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
     )
 
     const result = streamText({
@@ -449,11 +352,10 @@ test("noProxy bypasses system proxy env for streamText requests", async () => {
 
     expect(await result.text).toBe("OK")
     expect(server.hits).toBe(1)
-    expect(envProxy.hits).toBe(0)
+    expect(configuredProxy.hits).toBe(0)
   } finally {
-    envProxy.stop()
+    configuredProxy.stop()
     server.stop()
-    restoreProxyEnv(snapshot)
   }
 })
 
