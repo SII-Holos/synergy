@@ -82,6 +82,27 @@ describe.serial("skill discovery", () => {
     }
   })
 
+  test("runtimeSkillRootsSync delegates to runtimeSkillRootCandidatesSync", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalHome = process.env.SYNERGY_TEST_HOME
+    process.env.SYNERGY_TEST_HOME = tmp.path
+
+    try {
+      const candidates = SkillPaths.runtimeSkillRootCandidatesSync(tmp.path).map(normalizedLocation)
+      const existing = SkillPaths.runtimeSkillRootsSync(tmp.path).map(normalizedLocation)
+
+      // Candidates include ALL well-known paths regardless of existence.
+      expect(candidates).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
+
+      // Existing only includes directories that exist. Without creating any directories,
+      // only synergy native roots (which exist because .synergy/ dirs are created by
+      // the project structure) should be present.
+      expect(existing.length).toBeLessThan(candidates.length)
+    } finally {
+      process.env.SYNERGY_TEST_HOME = originalHome
+    }
+  })
+
   test("discovers skills from .synergy/skill/ directory", async () => {
     await using tmp = await tmpdir({
       git: true,

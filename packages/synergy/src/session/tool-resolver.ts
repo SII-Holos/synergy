@@ -1225,7 +1225,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1474,7 +1474,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
-                  const trustedRoots = SkillPaths.runtimeSkillRootsSync(workspace)
+                  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({

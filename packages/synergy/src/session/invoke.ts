@@ -577,7 +577,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            trustedRoots: SkillPaths.runtimeSkillRootsSync(workspace),
+            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
