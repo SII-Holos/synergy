@@ -104,4 +104,25 @@ describe("SessionMessageCache", () => {
       else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
     }
   })
+
+  test("drops the active session cache when it exceeds the per-session byte budget", () => {
+    const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES_PER_SESSION
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES_PER_SESSION = "300"
+    try {
+      SessionMessageCache.enable(SID)
+      SessionMessageCache.set(SID, [
+        {
+          info: { id: "msg_1", sessionID: SID, role: "user" } as any,
+          parts: [{ id: "prt_1", sessionID: SID, messageID: "msg_1", type: "text", text: "x".repeat(350) } as any],
+        },
+      ])
+
+      expect(SessionMessageCache.isActive(SID)).toBe(true)
+      expect(SessionMessageCache.get(SID)).toBeUndefined()
+    } finally {
+      SessionMessageCache.disable(SID)
+      if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES_PER_SESSION
+      else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES_PER_SESSION = previous
+    }
+  })
 })

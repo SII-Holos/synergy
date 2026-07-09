@@ -214,6 +214,7 @@ export namespace SessionInvoke {
       if (LatticeModelCalls.peek(sessionID) > 0) {
         await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
       }
+      await SessionMemoryPressure.maybeCollect({ sessionID, phase: "session.exit" })
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)

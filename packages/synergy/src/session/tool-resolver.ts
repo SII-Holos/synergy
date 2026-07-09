@@ -1238,7 +1238,7 @@ export namespace ToolResolver {
           callID: options.toolCallId,
           kind: "diagnostic",
         })
-        const slot = input.processor.beginExecution(options.toolCallId)
+        const slot = input.processor.beginExecution(options.toolCallId, diagnostic.toolName)
         log.info("tool.execute.callback.slot", {
           tool: diagnostic.toolName,
           sessionID: input.sessionID,
@@ -1338,7 +1338,7 @@ export namespace ToolResolver {
                 callID: options.toolCallId,
                 kind: "ephemeral",
               })
-              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId, item.id)
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
               log.info("tool.execute.callback.slot", {
@@ -1453,7 +1453,7 @@ export namespace ToolResolver {
               })
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
-              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              const slot = runtimeInput.processor.beginExecution(options.toolCallId, item.id)
               log.info("tool.execute.callback.slot", {
                 tool: item.id,
                 sessionID: runtimeInput.sessionID,
@@ -1711,7 +1711,7 @@ export namespace ToolResolver {
                 })
                 const ctx = context(args, opts)
                 let toolTrace: ToolTrace | undefined
-                const slot = runtimeInput.processor.beginExecution(opts.toolCallId)
+                const slot = runtimeInput.processor.beginExecution(opts.toolCallId, key)
                 log.info("tool.execute.callback.slot", {
                   tool: key,
                   sessionID: runtimeInput.sessionID,

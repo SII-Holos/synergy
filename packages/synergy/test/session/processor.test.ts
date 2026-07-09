@@ -312,6 +312,31 @@ describe("SessionProcessor execution slot settlement", () => {
     expect(committed).toBe(true)
   })
 
+  test("settles a resolved slot even when no tool-call stream part arrives", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_slot_only",
+      async *stream(processor) {
+        yield { type: "start" }
+        processor
+          .beginExecution("call_slot_only", "synthetic")
+          .complete({ value: 7 }, completedOutcome("synthetic", "slot-only result"))
+        yield { type: "finish" }
+      },
+    })
+
+    const tools = parts.filter(
+      (part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === "call_slot_only",
+    )
+    expect(tools).toHaveLength(1)
+    const tool = tools[0]
+    expect(tool.state.status).toBe("completed")
+    if (tool.state.status === "completed") {
+      expect(tool.tool).toBe("synthetic")
+      expect(tool.state.input).toEqual({ value: 7 })
+      expect(tool.state.output).toBe("slot-only result")
+    }
+  })
+
   test("settles a synthetic tool error outcome instead of unresolved", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_slot_error",

@@ -47,6 +47,7 @@ export namespace SessionProcessor {
     | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
   export type ToolExecutionSlot = {
     callID: string
+    readonly tool?: string
     promise: Promise<ToolOutcome>
     resolve(outcome: ToolOutcome): void
     complete(input: unknown, result: ToolOutcomeCompletedResult): void
@@ -60,6 +61,7 @@ export namespace SessionProcessor {
   type ToolExecutionSlotInternal = Omit<ToolExecutionSlot, "outcome" | "status"> & {
     outcome: ToolOutcome | undefined
     status: "pending" | "resolved"
+    tool?: string
     registeredAt: number
     resolvedAt?: number
   }
@@ -305,7 +307,7 @@ export namespace SessionProcessor {
         ...(callID
           ? {
               callID,
-              tool: part?.tool,
+              tool: part?.tool ?? slot?.tool,
               partStatus: part?.state.status,
               hasPart: Boolean(part),
               hasSlot: Boolean(slot),
@@ -323,7 +325,7 @@ export namespace SessionProcessor {
                 const slot = executions.get(id)
                 return {
                   callID: id,
-                  tool: part?.tool,
+                  tool: part?.tool ?? slot?.tool,
                   partStatus: part?.state.status,
                   hasPart: Boolean(part),
                   hasSlot: Boolean(slot),
@@ -370,35 +372,76 @@ export namespace SessionProcessor {
       const slot = executions.get(toolCallId)
       const outcome = slot?.outcome
       const part = toolcalls[toolCallId]
-      if (!slot || !outcome || !part || part.state.status !== "running") {
+      const skipReason = !slot
+        ? "missing_slot"
+        : !outcome
+          ? "missing_outcome"
+          : part && part.state.status !== "running"
+            ? "part_not_running"
+            : !part && !slot.tool
+              ? "missing_part_tool"
+              : undefined
+      if (skipReason) {
         log.info("tool.execution.settle.skip", {
           sessionID: input.sessionID,
           messageID: input.assistantMessage.id,
           callID: toolCallId,
-          reason: !slot ? "missing_slot" : !outcome ? "missing_outcome" : !part ? "missing_part" : "part_not_running",
+          reason: skipReason,
           snapshot: toolSettlementSnapshot(toolCallId),
         })
         return undefined
       }
 
+      const activeSlot = slot as ToolExecutionSlotInternal
+      const activeOutcome = outcome as ToolOutcome
+      const tool = part?.tool ?? activeSlot.tool!
       log.info("tool.execution.settle.start", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
         callID: toolCallId,
-        tool: part.tool,
-        outcomeStatus: outcome.status,
+        tool,
+        outcomeStatus: activeOutcome.status,
+        syntheticPart: !part,
         snapshot: toolSettlementSnapshot(toolCallId),
       })
 
       const settlement = (async () => {
-        await settleToolPart(part, outcome)
+        let settlingPart = part
+        if (!settlingPart) {
+          settlingPart = (await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: input.assistantMessage.id,
+            sessionID: input.assistantMessage.sessionID,
+            type: "tool",
+            callID: toolCallId,
+            tool,
+            state: {
+              status: "running",
+              input: SessionToolInput.normalize(activeOutcome.input),
+              metadata: runningToolMetadata(tool, undefined),
+              time: {
+                start: activeSlot.registeredAt,
+              },
+            },
+          })) as MessageV2.ToolPart
+          toolcalls[toolCallId] = settlingPart
+          log.info("tool.execution.synthetic_part.created", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: toolCallId,
+            tool,
+            outcomeStatus: activeOutcome.status,
+            snapshot: toolSettlementSnapshot(toolCallId),
+          })
+        }
+        await settleToolPart(settlingPart, activeOutcome)
         executions.delete(toolCallId)
         delete toolcalls[toolCallId]
         log.info("tool.execution.settle.completed", {
           sessionID: input.sessionID,
           messageID: input.assistantMessage.id,
           callID: toolCallId,
-          tool: part.tool,
+          tool,
           snapshot: toolSettlementSnapshot(toolCallId),
         })
       })()
@@ -409,7 +452,7 @@ export namespace SessionProcessor {
             sessionID: input.sessionID,
             messageID: input.assistantMessage.id,
             callID: toolCallId,
-            tool: part.tool,
+            tool,
             error,
             snapshot: toolSettlementSnapshot(toolCallId),
           }),
@@ -612,13 +655,15 @@ export namespace SessionProcessor {
       }
     }
 
-    function beginExecution(callID: string): ToolExecutionSlot {
+    function beginExecution(callID: string, tool?: string): ToolExecutionSlot {
       const existing = executions.get(callID)
       if (existing) {
+        if (tool && !existing.tool) existing.tool = tool
         log.info("tool.execution.slot.reuse", {
           sessionID: input.sessionID,
           messageID: input.assistantMessage.id,
           callID,
+          tool: existing.tool,
           snapshot: toolSettlementSnapshot(callID),
         })
         return existing
@@ -652,6 +697,7 @@ export namespace SessionProcessor {
       }
       const slot: ToolExecutionSlotInternal = {
         callID: base.callID,
+        tool,
         promise: base.promise,
         resolve: base.resolve,
         complete: base.complete,
@@ -669,6 +715,7 @@ export namespace SessionProcessor {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
         callID,
+        tool,
         snapshot: toolSettlementSnapshot(callID),
       })
       void settleTrackedExecution(callID)

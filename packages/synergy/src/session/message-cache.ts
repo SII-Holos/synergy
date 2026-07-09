@@ -28,22 +28,32 @@ export namespace SessionMessageCache {
   const active = new Set<string>()
   const cache = new Map<string, MessageV2.WithParts[]>()
 
-  // Global memory bound (issue #350 P2-8). Each active loop holds its full raw
+  // Memory bounds (issue #350 P2-8). Each active loop holds its full raw
   // history in memory; N concurrent long sessions would otherwise grow without
   // limit. We track an approximate byte footprint per session and evict the
-  // least-recently-used entry once the total exceeds the budget. Eviction is
-  // transparent: a dropped entry is re-read from disk on the next `get` (the
-  // cache is an accelerator, never the source of truth — R3), so the only cost
-  // is one extra read for the coldest session under pressure.
+  // least-recently-used entry once the total exceeds the global budget. A
+  // separate per-session budget prevents one active long session from keeping an
+  // unbounded cache resident forever. Eviction is transparent: a dropped entry
+  // is re-read from disk on the next `get` (the cache is an accelerator, never
+  // the source of truth — R3), so the only cost is one extra read.
   const sizes = new Map<string, number>()
   const lru: string[] = []
   let totalBytes = 0
+  const STATS_GLOBAL_KEY = "__synergySessionMessageCacheStats"
   const DEFAULT_BYTE_BUDGET = 256 * 1024 * 1024
+  const DEFAULT_SESSION_BYTE_BUDGET = 32 * 1024 * 1024
   // Read on each eviction so SYNERGY_SESSION_CACHE_MAX_BYTES can be tuned (and
   // set by tests) without a restart; the cost is a trivial env parse on writes.
   function byteBudget() {
     const env = Number.parseInt(process.env.SYNERGY_SESSION_CACHE_MAX_BYTES ?? "", 10)
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_BYTE_BUDGET
+  }
+
+  // Per-session budget is checked on each write for the same reason: production
+  // can tune it without restarting, and tests can set it locally.
+  function sessionByteBudget() {
+    const env = Number.parseInt(process.env.SYNERGY_SESSION_CACHE_MAX_BYTES_PER_SESSION ?? "", 10)
+    return Number.isFinite(env) && env > 0 ? env : DEFAULT_SESSION_BYTE_BUDGET
   }
 
   /** Begin the single-writer window for a session (loop start). */
@@ -66,6 +76,20 @@ export namespace SessionMessageCache {
     return active.has(sessionID)
   }
 
+  export function stats() {
+    const entries = [...sizes.entries()]
+      .map(([sessionID, bytes]) => ({ sessionID, bytes, messages: cache.get(sessionID)?.length ?? 0 }))
+      .sort((a, b) => b.bytes - a.bytes)
+    return {
+      activeSessions: active.size,
+      cachedSessions: cache.size,
+      totalBytes,
+      budgetBytes: byteBudget(),
+      sessionBudgetBytes: sessionByteBudget(),
+      largest: entries.slice(0, 10),
+    }
+  }
+
   /** Cached raw list, or undefined when the window is closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
     if (!active.has(sessionID)) return undefined
@@ -79,6 +103,7 @@ export namespace SessionMessageCache {
     if (!active.has(sessionID)) return
     cache.set(sessionID, messages)
     setSize(sessionID, estimateList(messages))
+    if (dropIfSessionOverBudget(sessionID)) return
     touch(sessionID)
     evict(sessionID)
   }
@@ -102,6 +127,7 @@ export namespace SessionMessageCache {
     }
     cache.set(sessionID, next)
     addSize(sessionID, delta)
+    if (dropIfSessionOverBudget(sessionID)) return
     touch(sessionID)
     evict(sessionID)
   }
@@ -135,6 +161,7 @@ export namespace SessionMessageCache {
     next[mi] = { info: msg.info, parts }
     cache.set(sessionID, next)
     addSize(sessionID, delta)
+    if (dropIfSessionOverBudget(sessionID)) return
     touch(sessionID)
     evict(sessionID)
   }
@@ -168,6 +195,13 @@ export namespace SessionMessageCache {
     if (current === undefined) return
     sizes.set(sessionID, Math.max(0, current + delta))
     totalBytes = Math.max(0, totalBytes + delta)
+  }
+
+  function dropIfSessionOverBudget(sessionID: string) {
+    const size = sizes.get(sessionID)
+    if (size === undefined || size <= sessionByteBudget()) return false
+    drop(sessionID)
+    return true
   }
 
   // Evict least-recently-used entries until under budget, never evicting the
@@ -224,4 +258,6 @@ export namespace SessionMessageCache {
     }
     return lo
   }
+
+  ;(globalThis as any)[STATS_GLOBAL_KEY] = stats
 }
