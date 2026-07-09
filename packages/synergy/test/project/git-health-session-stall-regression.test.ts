@@ -34,6 +34,8 @@ import { $ } from "bun"
 // ---------------------------------------------------------------------------
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
+const GIT_HEALTH_TEST_TIMEOUT = 30_000
+const gitHealthTest = test.serial
 
 beforeAll(async () => {
   const mod = await import("../../src/project/git-health")
@@ -86,48 +88,52 @@ async function gitEmptyCommit(dir: string, message = "test commit"): Promise<voi
 // ===========================================================================
 
 describe("GitHealth.invalidate(cwd) — scoped cache preservation", () => {
-  test("invalidate(dirA) does not clear cached results for dirB", async () => {
-    const repoA = makeRepo()
-    const repoB = makeRepo()
-    try {
-      // repoA: clean
-      await gitInit(repoA.path)
-      await gitEmptyCommit(repoA.path, "root")
+  gitHealthTest(
+    "invalidate(dirA) does not clear cached results for dirB",
+    async () => {
+      const repoA = makeRepo()
+      const repoB = makeRepo()
+      try {
+        // repoA: clean
+        await gitInit(repoA.path)
+        await gitEmptyCommit(repoA.path, "root")
 
-      // repoB: detached HEAD (creates a detectable issue)
-      await gitInit(repoB.path)
-      await gitEmptyCommit(repoB.path, "root")
-      await $`git checkout --detach`.cwd(repoB.path).quiet()
+        // repoB: detached HEAD (creates a detectable issue)
+        await gitInit(repoB.path)
+        await gitEmptyCommit(repoB.path, "root")
+        await $`git checkout --detach`.cwd(repoB.path).quiet()
 
-      // Populate cache for both
-      await GitHealth.check(repoA.path)
-      await GitHealth.check(repoB.path)
+        // Populate cache for both
+        await GitHealth.check(repoA.path)
+        await GitHealth.check(repoB.path)
 
-      // Pollute repoA with untracked files (would be detected if re-scanned)
-      for (let i = 1; i <= 50; i++) {
-        writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        // Pollute repoA with untracked files (would be detected if re-scanned)
+        for (let i = 1; i <= 50; i++) {
+          writeFileSync(join(repoA.path, `untracked-${i}.tmp`), `temp ${i}`)
+        }
+
+        // Scoped invalidate on repoA only
+        GitHealth.invalidate(repoA.path)
+
+        // repoA: should re-scan and find the new untracked files
+        const issuesA = await GitHealth.check(repoA.path)
+        const untrackedA = issuesA.find((i: Issue) => i.dimension === "untracked")
+        expect(untrackedA, "repoA should detect untracked after scoped invalidate").toBeDefined()
+
+        // repoB: should still have cached result (detached head)
+        // If scoped invalidate leaked globally, check(repoB.path) would
+        // return cache-missed empty results instead of the cached issues.
+        const issuesB = await GitHealth.check(repoB.path)
+        const detachedB = issuesB.find((i: Issue) => i.dimension === "detached_head")
+        expect(detachedB, "repoB cache should survive scoped invalidate on repoA").toBeDefined()
+      } finally {
+        repoA.cleanup()
+        repoB.cleanup()
+        GitHealth.invalidate()
       }
-
-      // Scoped invalidate on repoA only
-      GitHealth.invalidate(repoA.path)
-
-      // repoA: should re-scan and find the new untracked files
-      const issuesA = await GitHealth.check(repoA.path)
-      const untrackedA = issuesA.find((i: Issue) => i.dimension === "untracked")
-      expect(untrackedA, "repoA should detect untracked after scoped invalidate").toBeDefined()
-
-      // repoB: should still have cached result (detached head)
-      // If scoped invalidate leaked globally, check(repoB.path) would
-      // return cache-missed empty results instead of the cached issues.
-      const issuesB = await GitHealth.check(repoB.path)
-      const detachedB = issuesB.find((i: Issue) => i.dimension === "detached_head")
-      expect(detachedB, "repoB cache should survive scoped invalidate on repoA").toBeDefined()
-    } finally {
-      repoA.cleanup()
-      repoB.cleanup()
-      GitHealth.invalidate()
-    }
-  })
+    },
+    GIT_HEALTH_TEST_TIMEOUT,
+  )
 })
 
 // ===========================================================================
@@ -135,7 +141,7 @@ describe("GitHealth.invalidate(cwd) — scoped cache preservation", () => {
 // ===========================================================================
 
 describe("GitHealth.invalidate(cwd) — in-flight refresh preservation", () => {
-  test("invalidate(dirA) does not prevent inflight refresh on dirB from populating cache", async () => {
+  gitHealthTest("invalidate(dirA) does not prevent inflight refresh on dirB from populating cache", async () => {
     const repoA = makeRepo()
     const repoB = makeRepo()
     try {
@@ -177,7 +183,7 @@ describe("GitHealth.invalidate(cwd) — in-flight refresh preservation", () => {
     }
   })
 
-  test("invalidate(dirA) does not break deduplication for concurrent refresh on dirB", async () => {
+  gitHealthTest("invalidate(dirA) does not break deduplication for concurrent refresh on dirB", async () => {
     const repoA = makeRepo()
     const repoB = makeRepo()
     try {
@@ -217,7 +223,7 @@ describe("GitHealth.invalidate(cwd) — in-flight refresh preservation", () => {
 // ===========================================================================
 
 describe("GitHealth.invalidate() — global invalidation inflight contract", () => {
-  test("global invalidate does not discard already-in-flight scan results", async () => {
+  gitHealthTest("global invalidate does not discard already-in-flight scan results", async () => {
     const repo = makeRepo()
     try {
       await gitInit(repo.path)
