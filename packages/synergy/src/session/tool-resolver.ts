@@ -782,6 +782,7 @@ export namespace ToolResolver {
             approvalWaitMs: 0,
             sessionAbort,
           } satisfies ToolTiming,
+          controlProfile: input.agent.controlProfile,
         },
         agent: input.agent.name,
         metadata: async (val: { title?: string; metadata?: any }) => {
