@@ -19,6 +19,7 @@ const SHARED_SOLID_IMPORTS: Record<string, SharedSolidRuntimeName> = {
   "solid-js/web": "web",
   "solid-js/store": "store",
   "solid-js/jsx-runtime": "jsx",
+  "solid-js/jsx-dev-runtime": "jsx",
 }
 
 const rewrittenPluginModuleUrls = new Map<string, string>()
@@ -85,7 +86,7 @@ function rewriteImportClause(clause: string | undefined, runtimeName: SharedSoli
 
 function rewriteSharedSolidImports(source: string) {
   return source.replace(
-    /(^|\n)([ \t]*)import\s+(type\s+)?(?:([^"';]+?)\s+from\s+)?["'](solid-js(?:\/web|\/store|\/jsx-runtime)?)["']\s*;?/g,
+    /(^|\n)([ \t]*)import\s+(type\s+)?(?:([^"';]+?)\s+from\s+)?["'](solid-js(?:\/web|\/store|\/jsx-runtime|\/jsx-dev-runtime)?)["']\s*;?/g,
     (
       statement,
       lineStart: string,
@@ -104,7 +105,7 @@ function rewriteSharedSolidImports(source: string) {
 }
 
 function hasUnsupportedSolidRuntimeImport(source: string) {
-  return /(?:from\s+["']solid-js\/(?!web["']|store["']|jsx-runtime["'])|import\s+["']solid-js\/(?!web["']|store["']|jsx-runtime["'])|import\s*\(\s*["']solid-js(?:\/|["']))/.test(
+  return /(?:from\s+["']solid-js\/(?!web["']|store["']|jsx-runtime["']|jsx-dev-runtime["'])|import\s+["']solid-js\/(?!web["']|store["']|jsx-runtime["']|jsx-dev-runtime["'])|import\s*\(\s*["']solid-js(?:\/|["']))/.test(
     source,
   )
 }
@@ -127,7 +128,7 @@ async function resolvedPluginModuleUrl(pluginId: string, assetsBaseUrl: string) 
   }
   if (hasUnsupportedSolidRuntimeImport(source)) {
     throw new Error(
-      `Plugin ${pluginId} imports an unsupported Solid runtime subpath. Use solid-js, solid-js/web, solid-js/store, or solid-js/jsx-runtime.`,
+      `Plugin ${pluginId} imports an unsupported Solid runtime subpath. Use solid-js, solid-js/web, solid-js/store, solid-js/jsx-runtime, or solid-js/jsx-dev-runtime.`,
     )
   }
 
