@@ -347,7 +347,15 @@ Provider auth paths are distinct. The built-in `openai-codex` provider uses Chat
 
 `autonomous` is the unattended profile: it must never ask the user. Operations that cannot be automatically allowed must be automatically denied with a clear policy diagnostic. SmartAllow may auto-allow eligible false positives at high confidence, but failed SmartAllow checks deny instead of prompting.
 
+`guarded` is the interactive profile: it is the only standard profile that can ask the user for permission. Do not add ask flows to `autonomous`; if an unattended operation exceeds its policy, deny it.
+
 `smartAllow` reduces noise and false positives. In `guarded`, it can auto-allow safe asks before prompting. In `autonomous`, it can auto-allow eligible soft denies at a stricter threshold. It must use metadata or redacted evidence for secret-like files and must never send raw secret values to a model.
+
+External reads are allowed by default, including ordinary reads from a worktree session's original checkout. Do not treat non-sensitive `file_external_read` as a protected operation merely because it is outside the active workspace. Sensitive regions remain protected: credentials, secrets, private auth stores, and other explicit sensitive-path matches must still be denied or gated according to the active profile.
+
+Worktree isolation blocks writes, modifications, and execution outside the active worktree unless the active profile explicitly allows them. In particular, a worktree session may read ordinary files in the original checkout, but must not write to, modify, or run commands from the original checkout under `autonomous`.
+
+Skill roots are trusted runtime areas. Reading, writing, and running inside configured skill/plugin skill roots is allowed by the permission model; do not reclassify those paths as ordinary external writes or external execution unless they escape the trusted root.
 
 ### Config-aware work
 
@@ -369,9 +377,9 @@ then review both `README.md` and any related setup/help text.
 
 ### Agent Reality
 
-The repository has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
+The repository has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, and `session-historian` are visible to `synergy-max`.
 
-Built-in primary agent names are `synergy` and `synergy-max`. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
+Built-in primary agent names are `synergy` and `synergy-max`. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`. Hidden built-in review subagents include `supervisor` (BlueprintLoop audit) and `lightloop-reviewer` (LightLoop completion verification). They remain `mode: "subagent"` and `hidden: true`, so they are not primary-selectable and are not direct `task` targets for primary agents. Hidden reviewers may delegate specialist subagents internally through configured `delegationGroups`; `lightloop-reviewer` uses the supervisor delegation group.
 
 ### Tool implementation
 

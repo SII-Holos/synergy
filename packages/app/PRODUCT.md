@@ -29,6 +29,7 @@ Let blueprints read as plans with status, activity, and next action, not as pass
 When an agent successfully creates or replaces a Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; ordinary note writes should stay in the message flow without opening the side panel.
 When that Blueprint is created or replaced from an active Plan workflow, wait until the current turn is idle, then show a compact one-time composer control to equip the Blueprint in the current session. The control should not auto-start the BlueprintLoop, and dismissing or muting it must not close Plan by itself.
 Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
+Note and Blueprint detail document surfaces should stay stable while the user reads or edits: metadata refreshes, autosave responses, and BlueprintLoop state changes must not reset scroll position, selection, or the editor instance.
 Sidebar session icons should preserve Blueprint identity while a BlueprintLoop is active: running, waiting, and auditing Blueprint sessions should remain visually distinct from ordinary running sessions and return to normal session treatment when the loop is terminal.
 Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
@@ -53,7 +54,7 @@ Saved Holos agent lists should display each account's remote profile name, descr
 
 Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, Performance, and Plugins open in the main session-side canvas. Settings may be modal, and it should dim the whole app because it interrupts the current task.
 
-Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use switches for binary choices, guided scales for ordered multi-step values, and direct option controls for unordered choices. Do not expose inline restore-to-default options for ordinary preference controls; defaults should be reachable through the same control when needed. Reserve raw domain-file syntax for import/export or advanced configuration views. Agent, command, and instruction authoring are advanced Synergy configuration workflows; keep them out of first-class Settings navigation and let users handle them through conversation-assisted setup or Config Files.
+Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use switches for binary choices, guided scales for ordered multi-step values, and direct option controls for unordered choices. Do not expose inline restore-to-default options for ordinary preference controls; defaults should be reachable through the same control when needed. Reserve raw domain-file syntax for import/export or advanced configuration views. Default primary agent selection belongs in first-class Settings because it is a common routing preference; agent authoring, command authoring, and instruction authoring remain advanced Synergy configuration workflows handled through conversation-assisted setup or Config Files.
 Internal and developer settings such as formatter, lsp, and observability should be hidden by default and surfaced only through local developer mode; the ordinary Settings surface remains human-facing.
 
 Settings typography should use the global semantic UI type tokens, not local pixel sizes or historical `text-12-*` utility classes. Page titles, section titles, row titles, body copy, control text, and captions should map to fixed rem-based roles with regular, medium, and semibold weights only. Keep the density close to Manus: comfortable enough to read as product settings, still efficient enough for a daily developer tool.
@@ -77,6 +78,8 @@ Desktop managed-local project selection should use native OS folder picking for 
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
+Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.
@@ -88,7 +91,7 @@ Tool audit icons are a quiet exception rail, not a status badge on every tool ca
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 Turn-level file changes summarize in the message flow; detailed file diff inspection belongs in the session Review workbench surface.
 
-Special user-message renderers must preserve authorship semantics. Plan workflow user requests are user-authored prompts and should keep the right-aligned bubble treatment, while Blueprint control messages are orchestration events and should render as quiet centered event cards instead of pretending to be user speech.
+Special user-message renderers should keep workflow prompts lightweight in the message stream. Plan, Lattice, Light Loop, BlueprintLoop starts, and workflow continuation controls may use the same compact right-aligned prompt-bubble treatment with a small source badge; control messages should show a short human-readable summary by default rather than raw loop IDs, internal prompt text, or heavy centered event cards.
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
 

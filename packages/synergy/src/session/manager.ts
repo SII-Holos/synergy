@@ -9,6 +9,7 @@ import type { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "@/scope"
+import { ScopeContext } from "@/scope/context"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionInbox } from "./inbox"
@@ -56,6 +57,16 @@ export namespace SessionManager {
       onCancel(): void
     }[]
     lastActiveAt: number
+    isChild: boolean
+  }
+
+  export interface RuntimeStats {
+    totalCount: number
+    runningCount: number
+    idleCount: number
+    childCount: number
+    userCount: number
+    waiterCount: number
   }
 
   const runtimes = new Map<string, SessionRuntime>()
@@ -99,7 +110,28 @@ export namespace SessionManager {
   }
 
   const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
-  const IDLE_TTL_MS = 30 * 60 * 1000
+  const USER_IDLE_TTL_MS = 30 * 60 * 1000
+  const CHILD_SESSION_IDLE_TTL_MS = 5 * 60 * 1000
+  const RUNTIME_GC_MIN_INTERVAL_MS = 10 * 1000
+
+  let runtimeGcTimer: Timer | undefined
+  let lastRuntimeGcAt = 0
+
+  function scheduleRuntimeGC(reason: string, sessionID: string) {
+    if (runtimeGcTimer) return
+    const now = Date.now()
+    const delay = Math.max(0, RUNTIME_GC_MIN_INTERVAL_MS - (now - lastRuntimeGcAt))
+    runtimeGcTimer = setTimeout(() => {
+      runtimeGcTimer = undefined
+      lastRuntimeGcAt = Date.now()
+      try {
+        if (typeof Bun.gc === "function") Bun.gc(true)
+      } catch (error) {
+        log.warn("runtime gc failed", { reason, sessionID, error })
+      }
+    }, delay)
+    runtimeGcTimer.unref()
+  }
 
   const sweepTimer = setInterval(() => {
     const now = Date.now()
@@ -111,9 +143,11 @@ export namespace SessionManager {
           continue
         }
       }
-      if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
+      const ttl = runtime.isChild ? CHILD_SESSION_IDLE_TTL_MS : USER_IDLE_TTL_MS
+      if (now - runtime.lastActiveAt < ttl) continue
       runtimes.delete(sessionID)
-      log.info("swept idle runtime", { sessionID })
+      log.info("swept idle runtime", { sessionID, isChild: runtime.isChild })
+      scheduleRuntimeGC("idle_sweep", sessionID)
     }
   }, IDLE_SWEEP_INTERVAL_MS)
   sweepTimer.unref()
@@ -197,9 +231,30 @@ export namespace SessionManager {
       status: { type: "idle" },
       waiters: [],
       lastActiveAt: Date.now(),
+      isChild: false,
     }
     runtimes.set(sessionID, runtime)
     log.info("registered runtime", { sessionID })
+    return runtime
+  }
+
+  export function registerChildRuntime(sessionID: string): SessionRuntime {
+    const existing = runtimes.get(sessionID)
+    if (existing) {
+      existing.isChild = true
+      existing.lastActiveAt = Date.now()
+      return existing
+    }
+
+    const runtime: SessionRuntime = {
+      sessionID,
+      status: { type: "idle" },
+      waiters: [],
+      lastActiveAt: Date.now(),
+      isChild: true,
+    }
+    runtimes.set(sessionID, runtime)
+    log.info("registered child runtime", { sessionID })
     return runtime
   }
 
@@ -208,10 +263,30 @@ export namespace SessionManager {
     if (!runtime) return
     runtimes.delete(sessionID)
     log.info("unregistered runtime", { sessionID })
+    scheduleRuntimeGC("unregister", sessionID)
   }
 
   export function getRuntime(sessionID: string): SessionRuntime | undefined {
     return runtimes.get(sessionID)
+  }
+
+  export function runtimeStats(): RuntimeStats {
+    let runningCount = 0
+    let childCount = 0
+    let waiterCount = 0
+    for (const runtime of runtimes.values()) {
+      if (runtime.abort) runningCount++
+      if (runtime.isChild) childCount++
+      waiterCount += runtime.waiters.length
+    }
+    return {
+      totalCount: runtimes.size,
+      runningCount,
+      idleCount: runtimes.size - runningCount,
+      childCount,
+      userCount: runtimes.size - childCount,
+      waiterCount,
+    }
   }
 
   export async function run<T>(input: string | SessionEndpoint.Info, fn: () => Promise<T>): Promise<T> {
@@ -230,6 +305,7 @@ export namespace SessionManager {
         workspace,
         ensure: scope.type === "project",
         fn: async () => {
+          assertExecutionContext(session, "session manager run")
           const workspace = (session as Info).workspace
           if (workspace?.type !== "git_worktree") return fn()
           const { Worktree } = await import("../project/worktree")
@@ -247,6 +323,30 @@ export namespace SessionManager {
         unregisterRuntime(session.id)
       }
     }
+  }
+
+  export function assertExecutionContext(session: Info, phase: string): void {
+    const expected = session.workspace
+    if (!expected || expected.type !== "git_worktree") return
+
+    const actualWorkspace = ScopeContext.tryWorkspace()
+    if (actualWorkspace?.path === expected.path) return
+
+    const actualPath = actualWorkspace?.path ?? ScopeContext.tryScope()?.directory
+    log.error("session execution workspace mismatch", {
+      sessionID: session.id,
+      phase,
+      expected: expected.path,
+      actual: actualPath,
+      actualType: actualWorkspace?.type ?? "scope",
+    })
+    throw new Error(
+      [
+        `Session ${session.id} is bound to worktree ${expected.path},`,
+        `but ${phase} is running in ${actualPath ?? "no workspace context"}.`,
+        "Refusing to continue outside the session workspace.",
+      ].join(" "),
+    )
   }
 
   export function acquire(sessionID: string): AbortSignal | undefined {
@@ -299,9 +399,23 @@ export namespace SessionManager {
     })
 
     if (await SessionInbox.hasRunnableItem(sessionID)) {
-      const { SessionInvoke } = await import("./invoke")
-      await SessionInvoke.loop(sessionID)
+      scheduleWake(sessionID, "release")
     }
+  }
+
+  export async function wake(sessionID: string): Promise<void> {
+    if (isRunning(sessionID)) return
+    if (!(await SessionInbox.hasRunnableItem(sessionID))) return
+    const { SessionInvoke } = await import("./invoke")
+    await SessionInvoke.loop(sessionID)
+  }
+
+  export function scheduleWake(sessionID: string, reason: string): void {
+    setTimeout(() => {
+      void wake(sessionID).catch((error) => {
+        log.error("async session wake failed", { sessionID, reason, error })
+      })
+    }, 0)
   }
 
   export function setStatus(sessionID: string, status: StatusInfo): void {
@@ -330,7 +444,11 @@ export namespace SessionManager {
     for (const runtime of runtimes.values()) {
       if (runtime.status.type === "idle") continue
       if (scopeID) {
-        const session = await requireSession(runtime.sessionID)
+        const session = await getSession(runtime.sessionID)
+        if (!session) {
+          unregisterRuntime(runtime.sessionID)
+          continue
+        }
         if ((session.scope as Scope).id !== scopeID) continue
       }
       result[runtime.sessionID] = runtime.status
@@ -400,21 +518,15 @@ export namespace SessionManager {
       return
     }
 
-    const process = async () => {
-      const { SessionInvoke } = await import("./invoke")
-      await SessionInvoke.loop(session.id)
-    }
-
     if (input.waitForProcessing === false) {
       log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
-      void process().catch((error) => {
-        log.error("async inbox processing failed", { sessionID: session.id, error })
-      })
+      releaseIfIdle()
+      scheduleWake(session.id, "deliver")
       return
     }
 
     log.info("mail queued (session idle), processing", { sessionID: session.id })
-    await process()
+    await wake(session.id)
   }
 
   // --- Pending Reply ---
@@ -441,42 +553,44 @@ export namespace SessionManager {
 
   function emitStatus(runtime: SessionRuntime, status: StatusInfo): void {
     const payload = { sessionID: runtime.sessionID, status }
-    try {
-      Bus.publish(SessionEvent.Status, payload)
-      if (status.type === "idle") {
-        Bus.publish(SessionEvent.Idle, { sessionID: runtime.sessionID })
+    publishStatus(runtime.sessionID, SessionEvent.Status.type, payload, () => Bus.publish(SessionEvent.Status, payload))
+    if (status.type === "idle") {
+      const idlePayload = { sessionID: runtime.sessionID }
+      publishStatus(runtime.sessionID, SessionEvent.Idle.type, idlePayload, () =>
+        Bus.publish(SessionEvent.Idle, idlePayload),
+      )
+    }
+  }
+
+  function publishStatus(
+    sessionID: string,
+    type: string,
+    properties: Record<string, unknown>,
+    publish: () => Promise<void>,
+  ): void {
+    void publish().catch((e) => {
+      if (!(e instanceof Context.NotFound)) {
+        log.error("failed to publish session status event", { sessionID, type, error: e })
+        return
       }
-    } catch (e) {
-      if (!(e instanceof Context.NotFound)) throw e
-      void requireSession(runtime.sessionID)
+      void requireSession(sessionID)
         .then((session) => {
           const scope = session.scope as Scope
           GlobalBus.emit("event", {
             directory: scope.directory,
             payload: {
-              type: "session.status",
-              properties: payload,
+              type,
+              properties,
             },
           })
-          if (status.type === "idle") {
-            GlobalBus.emit("event", {
-              directory: scope.directory,
-              payload: {
-                type: "session.idle",
-                properties: { sessionID: runtime.sessionID },
-              },
-            })
-          }
         })
         .catch((err) => {
-          // Session was cleaned up before the async fallback ran — idle event dropped.
-          if (status.type === "idle") {
-            log.warn("emitStatus fallback: session already cleaned up, idle event dropped", {
-              sessionID: runtime.sessionID,
-              error: (err as Error)?.message ?? String(err),
-            })
-          }
+          log.warn("emitStatus fallback: session already cleaned up, event dropped", {
+            sessionID,
+            type,
+            error: (err as Error)?.message ?? String(err),
+          })
         })
-    }
+    })
   }
 }

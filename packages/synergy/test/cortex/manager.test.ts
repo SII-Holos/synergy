@@ -5,9 +5,10 @@ import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
-import { SessionInbox } from "../../src/session/inbox"
+import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
+import { PermissionNext } from "../../src/permission/next"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -420,6 +421,62 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("delegated sessions only deny recursive coordination tools when the agent profile does not allow them", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parentSession = await Session.create({})
+          const coordinationTools = [
+            "task",
+            "task_output",
+            "task_list",
+            "task_cancel",
+            "dagwrite",
+            "dagread",
+            "dagpatch",
+          ]
+
+          const supervisorTask = await Cortex.launch({
+            description: "Supervisor audit",
+            prompt: "Audit work",
+            agent: "supervisor",
+            executionRole: "delegated_subagent",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_test01234567890abc",
+            visibility: "hidden",
+            notifyParentOnComplete: false,
+          })
+          const supervisorSession = await Session.get(supervisorTask.sessionID)
+          for (const tool of coordinationTools) {
+            expect(
+              PermissionNext.evaluate(tool, "*", PermissionNext.sessionRuleset(supervisorSession)).action,
+            ).not.toBe("deny")
+          }
+
+          const ordinaryTask = await Cortex.launch({
+            description: "Implementation",
+            prompt: "Implement work",
+            agent: "implementation-engineer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parentSession.id,
+            parentMessageID: "msg_test01234567890abd",
+            visibility: "hidden",
+            notifyParentOnComplete: false,
+          })
+          const ordinarySession = await Session.get(ordinaryTask.sessionID)
+          for (const tool of coordinationTools) {
+            expect(PermissionNext.evaluate(tool, "*", PermissionNext.sessionRuleset(ordinarySession)).action).toBe(
+              "deny",
+            )
+          }
+
+          await Cortex.cancel(supervisorTask.id)
+          await Cortex.cancel(ordinaryTask.id)
+        },
+      })
+    })
+
     test("task appears in getTasksForSession", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -649,6 +706,52 @@ describe.serial("Cortex", () => {
             expect(completed?.status).toBe("completed")
             expect(completed?.output?.mode).toBe("summary")
             expect(completed?.output?.value).toContain("Execution Trajectory")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("terminal tasks release child runtime and compact retained memory", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const largePrompt = "prompt ".repeat(24_000)
+          const largeResult = "result ".repeat(24_000)
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, largeResult)
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Large retained output",
+              prompt: largePrompt,
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+
+            expect(completed?.status).toBe("completed")
+            expect(SessionManager.getRuntime(completed!.sessionID)).toBeUndefined()
+            expect(completed!.prompt.length).toBeLessThan(largePrompt.length)
+            expect(completed!.prompt).toContain("characters omitted")
+            expect(completed!.progress?.recentTools).toEqual([])
+            expect(completed!.output?.mode).toBe("final_response")
+            if (completed!.output?.mode === "final_response") {
+              expect(completed!.output.value.length).toBeLessThan(largeResult.length)
+              expect(completed!.output.value).toContain("characters omitted")
+            }
+            expect(Cortex.retentionStats().retainedProgressToolCount).toBe(0)
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
@@ -927,6 +1030,130 @@ describe.serial("Cortex", () => {
     })
   })
 
+  describe("memory retention", () => {
+    test("structured output is preserved untouched after compaction", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeStructuredToolResult(input.sessionID, { value: { choice: "drake" } })
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured retention",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: {
+                mode: "structured",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["choice"],
+                  properties: { choice: { type: "string" } },
+                },
+              },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.output).toEqual({ mode: "structured", value: { choice: "drake" } })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("error tasks retain bounded error after compaction", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const errorText = "error details ".repeat(5_000)
+          ;(SessionInvoke.invokeInternal as any) = mock(async () => {
+            throw new Error(errorText)
+          })
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Error task",
+              prompt: "Explode",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("error")
+            expect(completed?.error).toBeDefined()
+            expect(completed!.error!.length).toBeLessThan(errorText.length)
+            expect(completed!.error).toContain("characters omitted")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("retentionStats reports zero after all tasks cleaned up", () => {
+      expect(Cortex.retentionStats()).toEqual({
+        totalCount: 0,
+        byStatus: { pending: 0, queued: 0, running: 0, completed: 0, error: 0, cancelled: 0 },
+        retainedPromptChars: 0,
+        retainedOutputChars: 0,
+        retainedErrorChars: 0,
+        retainedProgressToolCount: 0,
+      })
+    })
+
+    test("completed task retains recentTools in compacted progress", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "done")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Recent tools test",
+              prompt: "Test",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.progress?.recentTools).toBeDefined()
+            expect(Array.isArray(completed?.progress?.recentTools)).toBe(true)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+  })
+
   describe("waitFor integration", () => {
     test("returns immediately for cancelled task", async () => {
       await using tmp = await tmpdir({ git: true })
@@ -970,14 +1197,14 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalInboxDeliver = SessionInbox.deliver
-          const deliveries: Parameters<typeof SessionInbox.deliver>[0][] = []
+          const originalDeliver = SessionManager.deliver
+          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionInbox.deliver as any) = mock(async (input: Parameters<typeof SessionInbox.deliver>[0]) => {
+          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
             deliveries.push(input)
           })
           try {
@@ -995,12 +1222,12 @@ describe.serial("Cortex", () => {
 
             expect(completed?.status).toBe("completed")
             expect(deliveries).toHaveLength(1)
-            expect(deliveries[0].sessionID).toBe(parentSession.id)
-            expect(deliveries[0].mode).toBe("steer")
-            expect(deliveries[0].message?.origin?.type).toBe("cortex")
+            expect(deliveries[0].target).toBe(parentSession.id)
+            expect(deliveries[0].mail.type).toBe("user")
+            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionInbox.deliver as any) = originalInboxDeliver
+            ;(SessionManager.deliver as any) = originalDeliver
           }
         },
       })
@@ -1012,14 +1239,14 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal2 = SessionInvoke.invokeInternal
-          const originalInboxDeliver2 = SessionInbox.deliver
+          const originalDeliver2 = SessionManager.deliver
           const deliverMock = mock(async () => {})
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionInbox.deliver as any) = deliverMock
+          ;(SessionManager.deliver as any) = deliverMock
           try {
             const parentSession = await Session.create({})
             const task = await Cortex.launch({
@@ -1038,7 +1265,7 @@ describe.serial("Cortex", () => {
             expect(deliverMock).not.toHaveBeenCalled()
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal2
-            ;(SessionInbox.deliver as any) = originalInboxDeliver2
+            ;(SessionManager.deliver as any) = originalDeliver2
           }
         },
       })

@@ -26,6 +26,15 @@ import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planBucketEviction } from "./message-eviction"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
+import {
+  createPlanBlueprintOfferFromPart,
+  emptyPlanBlueprintOfferState,
+  findLatestPlanBlueprintOfferFromParts,
+  isEmptyPlanBlueprintOfferState,
+  reducePlanBlueprintOfferState,
+  type PlanBlueprintOfferEvent,
+  type PlanBlueprintOfferState,
+} from "./plan-blueprint-offer"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -92,6 +101,9 @@ type State = {
   question: {
     [sessionID: string]: QuestionRequest[]
   }
+  planBlueprintOffer: {
+    [sessionID: string]: PlanBlueprintOfferState
+  }
   inbox: {
     [sessionID: string]: SessionInboxItem[]
   }
@@ -111,10 +123,74 @@ type State = {
   }
 }
 
-export interface NoteUpdateSignal {
-  id: string
-  version: number
-  type: "created" | "updated" | "deleted"
+function findSessionByID(sessions: Session[], sessionID: string): Session | undefined {
+  const result = Binary.search(sessions, sessionID, (s) => s.id)
+  return result.found ? sessions[result.index] : undefined
+}
+
+function setPlanBlueprintOfferState(
+  store: State,
+  setStore: SetStoreFunction<State>,
+  sessionID: string,
+  state: PlanBlueprintOfferState,
+) {
+  if (isEmptyPlanBlueprintOfferState(state)) {
+    if (!store.planBlueprintOffer[sessionID]) return
+    setStore(
+      "planBlueprintOffer",
+      produce((draft) => {
+        delete draft[sessionID]
+      }),
+    )
+    return
+  }
+
+  setStore("planBlueprintOffer", sessionID, reconcile(state))
+}
+
+export function updatePlanBlueprintOfferState(
+  store: State,
+  setStore: SetStoreFunction<State>,
+  sessionID: string,
+  event: PlanBlueprintOfferEvent,
+) {
+  const current = store.planBlueprintOffer[sessionID] ?? emptyPlanBlueprintOfferState
+  setPlanBlueprintOfferState(store, setStore, sessionID, reducePlanBlueprintOfferState(current, event))
+}
+
+function capturePlanBlueprintOfferFromPart(store: State, setStore: SetStoreFunction<State>, part: Part) {
+  const session = findSessionByID(store.session, part.sessionID)
+  const offer = createPlanBlueprintOfferFromPart({
+    part,
+    sessionID: part.sessionID,
+    workflowKind: session?.workflow?.kind,
+  })
+  if (!offer) return
+
+  updatePlanBlueprintOfferState(store, setStore, part.sessionID, { type: "captured", offer })
+}
+
+export function refreshPlanBlueprintOfferFromLoadedParts(
+  store: State,
+  setStore: SetStoreFunction<State>,
+  sessionID: string,
+) {
+  const session = findSessionByID(store.session, sessionID)
+  if (session?.workflow?.kind !== "plan") {
+    updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "plan_exited" })
+    return
+  }
+
+  const offer = findLatestPlanBlueprintOfferFromParts({
+    messages: store.message[sessionID] ?? [],
+    partsByMessage: store.part,
+    sessionID,
+    workflowKind: session.workflow.kind,
+    state: store.planBlueprintOffer[sessionID] ?? emptyPlanBlueprintOfferState,
+  })
+  if (!offer) return
+
+  updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "captured", offer })
 }
 
 function createGlobalSync() {
@@ -150,15 +226,10 @@ function createGlobalSync() {
   const bootstrapQueue: string[] = []
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
-  const [noteVersion, setNoteVersion] = createSignal(0)
   // Bumped on every (re)connect resync so component-level resources that are not
   // in the normalized store — e.g. blueprint loop state, which the server cannot
   // replay after a restart — refetch their state (issue #331).
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
-  const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
-  function bumpNoteVersion() {
-    setNoteVersion((v) => v + 1)
-  }
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -244,6 +315,7 @@ function createGlobalSync() {
         dag: {},
         permission: {},
         question: {},
+        planBlueprintOffer: {},
         inbox: {},
         mcp: {},
         lsp: [],
@@ -781,21 +853,6 @@ function createGlobalSync() {
       }
       return
     }
-    if (event?.type === "note.created" || event?.type === "note.updated" || event?.type === "note.deleted") {
-      bumpNoteVersion()
-      if (event.type === "note.deleted") {
-        const props = event.properties as { id: string; scopeID: string }
-        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
-      } else {
-        const props = event.properties as { note: { id: string; version: number } }
-        setNoteUpdate({
-          id: props.note.id,
-          version: props.note.version,
-          type: event.type as "created" | "updated",
-        })
-      }
-    }
-
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
       const item = event.properties.item as AgendaItem
       const result = Binary.search(globalStore.agenda, item.id, (a) => a.id)
@@ -857,6 +914,7 @@ function createGlobalSync() {
               }),
             )
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
+            updatePlanBlueprintOfferState(store, setStore, info.id, { type: "plan_exited" })
           }
           break
         }
@@ -865,6 +923,9 @@ function createGlobalSync() {
           // identity; a session.updated that only bumps time.updated must not
           // invalidate memos reading title/status/etc. (issue #319).
           setStore("session", result.index, reconcile(info))
+          if (info.workflow?.kind !== "plan")
+            updatePlanBlueprintOfferState(store, setStore, info.id, { type: "plan_exited" })
+          else refreshPlanBlueprintOfferFromLoadedParts(store, setStore, info.id)
           break
         }
         setStore(
@@ -874,6 +935,7 @@ function createGlobalSync() {
           }),
         )
         setStore("sessionTotal", store.sessionTotal + 1)
+        if (info.workflow?.kind === "plan") refreshPlanBlueprintOfferFromLoadedParts(store, setStore, info.id)
         break
       }
       case "session.diff":
@@ -992,6 +1054,8 @@ function createGlobalSync() {
             )
           }
         }
+
+        capturePlanBlueprintOfferFromPart(store, setStore, part)
 
         // Optimistic workspace update for worktree tools — the status bar reads
         // session.workspace from the store and should reflect the new workspace
@@ -1353,9 +1417,7 @@ function createGlobalSync() {
     markActiveSession,
     touchMessageBucket,
     bootstrap,
-    noteVersion,
     reconnectVersion,
-    noteUpdate,
     get agenda() {
       return globalStore.agenda
     },

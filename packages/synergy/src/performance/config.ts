@@ -89,6 +89,8 @@ export namespace PerformanceConfig {
       highRssBytes: 2 * 1024 * 1024 * 1024,
       highHeapUsedRatio: 0.85,
       highCpuUtilizationRatio: 0.9,
+      highExternalBytes: 512 * 1024 * 1024,
+      highArrayBuffersBytes: 256 * 1024 * 1024,
       eventLoopLagMs: 250,
       slowHttpRequestMs: 1000,
       slowSessionTurnMs: 30_000,

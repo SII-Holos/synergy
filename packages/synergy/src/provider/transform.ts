@@ -3,6 +3,7 @@ import { unique } from "remeda"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
+import { PromptCachePolicy } from "./prompt-cache-policy"
 import { iife } from "@/util/iife"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -234,6 +235,7 @@ export namespace ProviderTransform {
     return msgs.map((msg) => {
       if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
+      let hasSupportedImage = false
       const filtered = msg.content.map((part) => {
         if (part.type !== "file" && part.type !== "image") return part
 
@@ -248,7 +250,7 @@ export namespace ProviderTransform {
             model.api.npm === "@ai-sdk/amazon-bedrock" &&
             decodedByteLength(attachment.base64) > BEDROCK_MAX_IMAGE_BYTES
           ) {
-            const name = attachment.filename ? `\"${attachment.filename}\"` : "image"
+            const name = attachment.filename ? `"${attachment.filename}"` : "image"
             return {
               type: "text" as const,
               text: `[${name} was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use view_image with a smaller local image when the active model supports image input, use look_at for separate vision-model analysis, or attach a smaller image.]`,
@@ -256,14 +258,25 @@ export namespace ProviderTransform {
           }
         }
 
-        if (model.capabilities.input[attachment.modality]) return part
+        if (model.capabilities.input[attachment.modality]) {
+          hasSupportedImage = true
+          return part
+        }
 
-        const name = attachment.filename ? `\"${attachment.filename}\"` : attachment.modality
+        const name = attachment.filename ? `"${attachment.filename}"` : attachment.modality
         return {
           type: "text" as const,
           text: `[${name} was attached but this model does not support ${attachment.modality} input. Use the look_at tool with the file's local path to analyze it.]`,
         }
       })
+
+      if (hasSupportedImage) {
+        const hint = {
+          type: "text" as const,
+          text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+        }
+        return { ...msg, content: [hint, ...filtered] }
+      }
 
       return { ...msg, content: filtered }
     })
@@ -578,7 +591,7 @@ export namespace ProviderTransform {
       result["chat_template_args"] = { enable_thinking: true }
     }
 
-    if (model.providerID === "openai" || model.providerID === "openai-codex" || providerOptions?.setCacheKey) {
+    if (PromptCachePolicy.usesSessionPromptCacheKey(model, providerOptions)) {
       result["promptCacheKey"] = sessionID
     }
 
@@ -590,7 +603,6 @@ export namespace ProviderTransform {
 
     if (model.api.npm === "@ai-sdk/azure") {
       result["store"] = false
-      result["promptCacheKey"] = sessionID
     }
 
     if (model.api.npm === "@ai-sdk/google" || model.api.npm === "@ai-sdk/google-vertex") {

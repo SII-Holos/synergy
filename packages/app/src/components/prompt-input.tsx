@@ -85,13 +85,7 @@ import {
 } from "@/components/prompt-input/blueprint-slot"
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
-import {
-  createPlanBlueprintOfferFromPart,
-  emptyPlanBlueprintOfferState,
-  reducePlanBlueprintOfferState,
-  shouldDisplayPlanBlueprintOffer,
-  type PlanBlueprintOfferEvent,
-} from "@/components/prompt-input/plan-blueprint-offer-model"
+import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -178,6 +172,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
@@ -192,7 +187,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlan, setPendingPlan] = createSignal(false)
-  const [planBlueprintOfferState, setPlanBlueprintOfferState] = createSignal(emptyPlanBlueprintOfferState)
   const [pendingLattice, setPendingLattice] = createSignal<{
     mode: "auto" | "collaborative"
     maxModelCalls: number
@@ -209,9 +203,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
-  const updatePlanBlueprintOffer = (event: PlanBlueprintOfferEvent) => {
-    setPlanBlueprintOfferState((state) => reducePlanBlueprintOfferState(state, event))
-  }
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -375,36 +366,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   onCleanup(unsubBlueprintLoopUpdated)
 
-  const seenPlanBlueprintOfferKeys = new Set<string>()
-  const unsubPlanBlueprintOffer = sdk.event.on("message.part.updated", (event) => {
-    const sessionID = params.id
-    if (!sessionID) return
-
-    const offer = createPlanBlueprintOfferFromPart({
-      part: event.properties.part,
-      sessionID,
-      workflowKind: info()?.workflow?.kind,
-      muted: planBlueprintOfferState().muted,
-      seenKeys: seenPlanBlueprintOfferKeys,
-    })
-    if (!offer) return
-
-    seenPlanBlueprintOfferKeys.add(offer.key)
-    updatePlanBlueprintOffer({ type: "captured", offer })
-  })
-  onCleanup(unsubPlanBlueprintOffer)
-
-  createEffect(
-    on(
-      () => info()?.workflow?.kind,
-      (kind) => {
-        if (kind === "plan") return
-        seenPlanBlueprintOfferKeys.clear()
-        updatePlanBlueprintOffer({ type: "plan_exited" })
-      },
-    ),
-  )
-
   const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
   let slotLongPressFrame: number | undefined
@@ -503,13 +464,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
-  const canSubmit = createMemo(() =>
-    canSubmitPrompt({
+  const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || workspaceTransitionPending())
+  const canSubmit = createMemo(() => {
+    if (submitPending()) return false
+    return canSubmitPrompt({
       text: promptText(),
       working: working(),
       hasBlueprintSlot: !!localArmedLoop(),
-    }),
-  )
+    })
+  })
   const submitStopsSession = createMemo(() => working() && !promptText().trim())
   const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
 
@@ -599,8 +563,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const equipPlanBlueprintOffer = async () => {
-    const offer = untrack(() => planBlueprintOfferState().offer)
     const sessionID = params.id
+    const offer = sessionID ? untrack(() => sync.data.planBlueprintOffer[sessionID]?.offer) : undefined
     if (!offer || !sessionID) return
     if (working()) {
       showToast({
@@ -630,7 +594,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         title: offer.title,
         runMode: "current",
       })
-      updatePlanBlueprintOffer({ type: "equipped", key: offer.key })
+      sync.planBlueprintOffer.equip(sessionID, offer.key)
       showToast({
         type: "info",
         title: "Blueprint equipped",
@@ -932,6 +896,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     ),
   )
 
+  const planBlueprintOfferState = createMemo(() =>
+    params.id
+      ? (sync.data.planBlueprintOffer[params.id] ?? emptyPlanBlueprintOfferState)
+      : emptyPlanBlueprintOfferState,
+  )
+
   const visiblePlanBlueprintOffer = createMemo(() => {
     if (
       !shouldDisplayPlanBlueprintOffer({
@@ -958,8 +928,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <PlanBlueprintOfferControl
         offer={offer}
         onEquip={equipPlanBlueprintOffer}
-        onDismiss={() => updatePlanBlueprintOffer({ type: "dismissed", key: offer.key })}
-        onMute={() => updatePlanBlueprintOffer({ type: "muted" })}
+        onDismiss={() => params.id && sync.planBlueprintOffer.dismiss(params.id, offer.key)}
+        onMute={() => params.id && sync.planBlueprintOffer.mute(params.id)}
       />,
     )
   })
@@ -1478,6 +1448,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
+    newSessionSubmitPending,
+    setNewSessionSubmitPending,
     store,
     setStore,
     addToHistory,
@@ -1915,22 +1887,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!canSubmit()}
+                  inactive={!submitPending() && !canSubmit()}
                   value={
-                    <Switch>
-                      <Match when={submitStopsSession()}>
-                        <div class="flex items-center gap-2">
-                          <span>Stop</span>
-                          <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
-                        </div>
-                      </Match>
-                      <Match when={true}>
-                        <div class="flex items-center gap-2">
-                          <span>Send</span>
-                          <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
-                        </div>
-                      </Match>
-                    </Switch>
+                    <Show
+                      when={!submitPending()}
+                      fallback={
+                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                      }
+                    >
+                      <Switch>
+                        <Match when={submitStopsSession()}>
+                          <div class="flex items-center gap-2">
+                            <span>Stop</span>
+                            <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                          </div>
+                        </Match>
+                        <Match when={true}>
+                          <div class="flex items-center gap-2">
+                            <span>Send</span>
+                            <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
+                          </div>
+                        </Match>
+                      </Switch>
+                    </Show>
                   }
                 >
                   <IconButton

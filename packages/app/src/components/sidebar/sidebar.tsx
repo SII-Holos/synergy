@@ -386,6 +386,17 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </div>
 
+      {/* Collapsed search button — only visible when sidebar is collapsed */}
+      <Show when={!isExpanded()}>
+        <div class="sb-collapsed-search">
+          <Tooltip value="Search sessions" placement="right">
+            <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
+              <Icon name={getSemanticIcon("action.search")} size="normal" />
+            </button>
+          </Tooltip>
+        </div>
+      </Show>
+
       {/* Action buttons */}
       <div class="sb-actions">
         <Tooltip value="New session" placement="right">

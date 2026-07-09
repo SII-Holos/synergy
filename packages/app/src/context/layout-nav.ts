@@ -1,4 +1,4 @@
-import type { NavEntry, NavListState } from "./layout"
+import type { NavEntry, NavListState, ScopeNavEntry } from "./layout"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar
@@ -89,5 +89,19 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
       if (!previousEntry) return entry
       return { ...previousEntry, ...entry }
     }),
+  }
+}
+
+export function removeScopeFromIndex(
+  entries: readonly ScopeNavEntry[],
+  scopeID: string,
+  fallbackDirectory?: string,
+): { entries: ScopeNavEntry[]; directory?: string; removed: boolean } {
+  const removed = entries.find((entry) => entry.scopeID === scopeID)
+  if (!removed) return { entries: entries.slice(), directory: fallbackDirectory, removed: false }
+  return {
+    entries: entries.filter((entry) => entry.scopeID !== scopeID),
+    directory: removed.directory || fallbackDirectory,
+    removed: true,
   }
 }

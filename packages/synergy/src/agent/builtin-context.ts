@@ -26,6 +26,7 @@ export type SubagentPermissionProfile =
   | "externalResearch"
   | "research"
   | "supervisor"
+  | "lightLoopReviewer"
 
 export interface SubagentDefinition {
   name: string
@@ -34,6 +35,8 @@ export interface SubagentDefinition {
   model?: Provider.ModelRole
   permission: SubagentPermissionProfile
   visibleTo?: string[]
+  delegationGroups?: string[]
+  hidden?: boolean
   steps?: number
   temperature?: number
   topP?: number
@@ -213,6 +216,33 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
+  if (profile === "lightLoopReviewer") {
+    return PermissionNext.merge(
+      common,
+      anchoredReadTools(),
+      PermissionNext.fromConfig({
+        dagwrite: "allow",
+        dagread: "allow",
+        dagpatch: "allow",
+        task: "allow",
+        task_list: "allow",
+        task_output: "allow",
+        task_cancel: "allow",
+        session_send: "deny",
+        session_control: "deny",
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "deny",
+        note_edit: "deny",
+        memory_write: "deny",
+        memory_edit: "deny",
+        light_loop_approve: "allow",
+        light_loop_reject: "allow",
+      }),
+    )
+  }
+
   return PermissionNext.merge(common, classicReadTools())
 }
 
@@ -226,6 +256,8 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     mode: "subagent",
     native: true,
     visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
+    delegationGroups: definition.delegationGroups,
+    hidden: definition.hidden,
     ...resolveAgentModelRole(ctx, definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,

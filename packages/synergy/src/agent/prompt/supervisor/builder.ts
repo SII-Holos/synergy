@@ -5,7 +5,8 @@ import type { AgentInfo } from "../types"
 import PROMPT_BASE from "./base.txt"
 
 export function buildSupervisorPrompt(agents: AgentInfo[]): string {
-  const agentTable = buildAgentTable(agents, "supervisor")
+  const caller = agents.find((agent) => agent.name === "supervisor") ?? { name: "supervisor" }
+  const agentTable = buildAgentTable(agents, caller)
   return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable)
 }
 
@@ -17,6 +18,7 @@ export function createSupervisorAgent(ctx: BuiltinAgentContext) {
     prompt: buildSupervisorPrompt([]),
     model: "thinking",
     permission: "supervisor",
-    visibleTo: ["synergy", "synergy-max", "supervisor"],
+    hidden: true,
+    visibleTo: ["supervisor"],
   })
 }

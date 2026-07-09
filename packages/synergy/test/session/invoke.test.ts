@@ -18,6 +18,7 @@ import { SessionProcessor } from "../../src/session/processor"
 import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
+import { Worktree } from "../../src/project/worktree"
 
 const sessionID = "ses_test"
 
@@ -125,6 +126,7 @@ function installBasicLoopMocks(options?: {
     return {
       system: input.system,
       systemCacheBreakpoint: input.systemCacheBreakpoint,
+      lateSystem: input.lateSystem,
       messages: input.messages,
       toolDefinitions: input.toolDefinitions,
     }
@@ -191,6 +193,228 @@ async function createSessionWithUser(options?: { silent?: boolean }) {
   })
   return { session, user }
 }
+
+function withTimeout<T>(promise: Promise<T>, label: string, ms = 2_000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    }),
+  ])
+}
+
+async function createWorktreeSessionWithUser(name: string) {
+  const session = await Session.create({})
+  const worktree = await Worktree.create({
+    sessionID: session.id,
+    name,
+    baseRef: "current",
+    bind: true,
+  })
+  const user = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "user",
+    sessionID: session.id,
+    agent: "synergy",
+    model: { providerID: "test-provider", modelID: "test-model" },
+    time: { created: Date.now() },
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: user.id,
+    sessionID: session.id,
+    type: "text",
+    text: "Run in the active worktree",
+  })
+  return { session, worktree, user }
+}
+
+async function removeWorktreeSession(sessionID: string, worktreeID: string | undefined) {
+  if (worktreeID) {
+    await Worktree.remove({ sessionID, target: worktreeID, force: true }).catch(() => undefined)
+  }
+  await Session.remove(sessionID).catch(() => undefined)
+}
+
+describe("SessionInvoke workspace execution context", () => {
+  test("direct loop restores the persisted worktree workspace without ambient scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    let sessionID = ""
+    let worktreeID: string | undefined
+    let worktreePath = ""
+    let assistantPath: MessageV2.Assistant["path"] | undefined
+    let lateSystemPrompt = ""
+    const restore = installBasicLoopMocks({
+      onProcess: async (input, assistant) => {
+        assistantPath = assistant.path
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const created = await createWorktreeSessionWithUser("loop-context")
+          sessionID = created.session.id
+          worktreeID = created.worktree.id
+          worktreePath = created.worktree.path
+        },
+      })
+
+      await SessionInvoke.loop.force(sessionID)
+
+      expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
+      expect(lateSystemPrompt).toContain(`Working directory: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Workspace path: ${worktreePath}`)
+      expect(lateSystemPrompt).toContain(`Original checkout: ${tmp.path}`)
+    } finally {
+      restore()
+      SessionManager.unregisterRuntime(sessionID)
+      if (sessionID) {
+        await ScopeContext.provide({
+          scope,
+          fn: () => removeWorktreeSession(sessionID, worktreeID),
+        })
+      }
+    }
+  })
+
+  test("asynchronous delivery wakes an idle worktree session inside the worktree", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    let sessionID = ""
+    let worktreeID: string | undefined
+    let worktreePath = ""
+    let assistantPath: MessageV2.Assistant["path"] | undefined
+    const processed = Promise.withResolvers<void>()
+    const restore = installBasicLoopMocks({
+      onProcess: async (_input, assistant) => {
+        assistantPath = assistant.path
+        processed.resolve()
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          const worktree = await Worktree.create({
+            sessionID: session.id,
+            name: "delivery-context",
+            baseRef: "current",
+            bind: true,
+          })
+          sessionID = session.id
+          worktreeID = worktree.id
+          worktreePath = worktree.path
+        },
+      })
+
+      await SessionManager.deliver({
+        target: sessionID,
+        waitForProcessing: false,
+        mail: {
+          type: "user",
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          metadata: { source: "blueprint" },
+          parts: [
+            {
+              id: Identifier.ascending("part"),
+              sessionID,
+              messageID: Identifier.ascending("message"),
+              type: "text",
+              text: "Continue from Blueprint",
+            },
+          ],
+        },
+      })
+
+      await withTimeout(processed.promise, "worktree delivery wake")
+
+      expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
+    } finally {
+      restore()
+      SessionManager.unregisterRuntime(sessionID)
+      if (sessionID) {
+        await ScopeContext.provide({
+          scope,
+          fn: () => removeWorktreeSession(sessionID, worktreeID),
+        })
+      }
+    }
+  })
+
+  test("release-scheduled wake re-enters the worktree workspace", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    let sessionID = ""
+    let worktreeID: string | undefined
+    let worktreePath = ""
+    let assistantPath: MessageV2.Assistant["path"] | undefined
+    const processed = Promise.withResolvers<void>()
+    const restore = installBasicLoopMocks({
+      onProcess: async (_input, assistant) => {
+        assistantPath = assistant.path
+        processed.resolve()
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          const worktree = await Worktree.create({
+            sessionID: session.id,
+            name: "release-context",
+            baseRef: "current",
+            bind: true,
+          })
+          sessionID = session.id
+          worktreeID = worktree.id
+          worktreePath = worktree.path
+          await SessionInbox.enqueueMail({
+            sessionID,
+            mail: {
+              type: "user",
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parts: [
+                {
+                  id: Identifier.ascending("part"),
+                  sessionID,
+                  messageID: Identifier.ascending("message"),
+                  type: "text",
+                  text: "Queued at release",
+                },
+              ],
+            },
+          })
+        },
+      })
+
+      SessionManager.registerRuntime(sessionID)
+      SessionManager.acquire(sessionID)
+      await SessionManager.release(sessionID)
+      await withTimeout(processed.promise, "release wake")
+
+      expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
+    } finally {
+      restore()
+      SessionManager.unregisterRuntime(sessionID)
+      if (sessionID) {
+        await ScopeContext.provide({
+          scope,
+          fn: () => removeWorktreeSession(sessionID, worktreeID),
+        })
+      }
+    }
+  })
+})
 
 describe("SessionInvoke.selectResultMessage", () => {
   test("selects the last assistant for the latest reply-required user turn", () => {
@@ -298,6 +522,7 @@ describe("SessionInvoke system prompt assembly", () => {
     const originalEmbeddingGenerate = Embedding.generate
 
     let capturedSystem: string[] | undefined
+    let capturedLateSystem: string[] | undefined
 
     try {
       ;(Provider.getModel as any) = mock(async () => ({
@@ -332,9 +557,11 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
         capturedSystem = input.system
+        capturedLateSystem = input.lateSystem
         return {
           system: input.system,
           systemCacheBreakpoint: input.systemCacheBreakpoint,
+          lateSystem: input.lateSystem,
           messages: [{ role: "user", content: "stub message" }],
           toolDefinitions: [],
         }
@@ -389,11 +616,13 @@ describe("SessionInvoke system prompt assembly", () => {
           await SessionInvoke.loop.force(promptSessionID)
 
           const systemPrompt = capturedSystem?.join("\n") ?? ""
-          expect(systemPrompt).toContain("<coauthor-reminder>")
-          expect(systemPrompt).toContain(
+          const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain(
             "Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>",
           )
-          expect(systemPrompt).toContain("</coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("</coauthor-reminder>")
         },
       })
     } finally {
@@ -676,9 +905,11 @@ describe("SessionInvoke coauthor reminder prompt", () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       onProcess: async (input) => {
         systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -691,8 +922,9 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
           await SessionInvoke.loop.force(session.id)
 
-          expect(systemPrompt).toContain("<coauthor-reminder>")
-          expect(systemPrompt).toContain("Co-authored-by: synergy-agent")
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).toContain("Co-authored-by: synergy-agent")
         },
       })
     } finally {
@@ -705,10 +937,12 @@ describe("SessionInvoke coauthor reminder prompt", () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
     let systemPrompt = ""
+    let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
       config: { experimental: { coauthor_reminder: false } },
       onProcess: async (input) => {
         systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
       },
     })
 
@@ -723,6 +957,8 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
           expect(systemPrompt).not.toContain("<coauthor-reminder>")
           expect(systemPrompt).not.toContain("Co-authored-by: synergy-agent")
+          expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
         },
       })
     } finally {

@@ -80,6 +80,73 @@ function canInjectGitHubCliToken(patterns: Set<string>) {
   return Array.from(patterns).every(isGitHubCliCommand)
 }
 
+const ALLOW_DETACHED_DAEMONS_ENV = "SYNERGY_BASH_ALLOW_DETACHED_DAEMONS"
+
+export type DetachedDaemonRisk = {
+  kind: "tmux_detached" | "nohup" | "setsid" | "disown" | "daemonize" | "screen_detached" | "shell_background"
+  pattern: string
+}
+
+export function detectDetachedDaemonRisk(command: string): DetachedDaemonRisk | undefined {
+  const checks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: RegExp }> = [
+    {
+      kind: "tmux_detached",
+      pattern: "tmux new-session -d",
+      regex: /\btmux\s+(?:new-session|new)\b(?=[\s\S]*?(?:^|\s)-d(?:\s|$))/,
+    },
+    {
+      kind: "screen_detached",
+      pattern: "screen -dm",
+      regex: /\bscreen\s+-dm(?:\w|$)/,
+    },
+    {
+      kind: "nohup",
+      pattern: "nohup",
+      regex: /(?:^|[;&|]\s*)nohup(?:\s|$)/,
+    },
+    {
+      kind: "setsid",
+      pattern: "setsid",
+      regex: /(?:^|[;&|]\s*)setsid(?:\s|$)/,
+    },
+    {
+      kind: "disown",
+      pattern: "disown",
+      regex: /(?:^|[;&|]\s*)disown(?:\s|$)/,
+    },
+    {
+      kind: "daemonize",
+      pattern: "daemonize",
+      regex: /(?:^|[;&|]\s*)daemonize(?:\s|$)/,
+    },
+    {
+      kind: "shell_background",
+      pattern: "&",
+      regex: /\s&\s*(?:$|[;\n\r)]|\s+\w)/,
+    },
+  ]
+  for (const check of checks) {
+    if (check.regex.test(command)) return { kind: check.kind, pattern: check.pattern }
+  }
+}
+
+function allowsDetachedDaemons(ctx: BashContext) {
+  const extra = ctx.extra as Record<string, unknown> | undefined
+  if (extra?.shellAllowDetachedDaemons === true) return true
+  const controlProfile = extra?.controlProfile as string | undefined
+  if (controlProfile === "full_access") return true
+  const value = process.env[ALLOW_DETACHED_DAEMONS_ENV]?.toLowerCase()
+  return value === "1" || value === "true" || value === "yes"
+}
+
+function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
+  return [
+    `Blocked detached daemon launch pattern: ${risk.pattern}`,
+    "Detached shell daemons stay inside the Synergy service cgroup and can keep consuming MemoryHigh/MemoryMax after the tool call appears settled.",
+    "Use the bash tool's background/yieldSeconds flow for tracked processes, or set SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1 only for an operator-managed runtime that intentionally permits detached daemons.",
+  ].join("\n")
+}
+
 export const LocalBashBackend = {
   async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
     const shell = Shell.acceptable()
@@ -144,6 +211,19 @@ export const LocalBashBackend = {
       patternCount: patterns.size,
       patterns: Array.from(patterns),
     })
+
+    const detachedRisk = detectDetachedDaemonRisk(params.command)
+    if (detachedRisk && !allowsDetachedDaemons(ctx)) {
+      await trace(
+        "bash.detached_daemon.blocked",
+        {
+          risk: detachedRisk,
+          allowEnv: ALLOW_DETACHED_DAEMONS_ENV,
+        },
+        "warn",
+      )
+      throw new Error(detachedDaemonBlockMessage(detachedRisk))
+    }
 
     if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await trace("bash.permission.ask", {
@@ -477,6 +557,12 @@ export const LocalBashBackend = {
       aborted = true
       cleanupAllTimers()
       void kill()
+      setTimeout(() => {
+        if (!exited && regProc) {
+          regProc.exited = true
+          ProcessRegistry.markExited(regProc, -1, "SIGKILL")
+        }
+      }, 30_000)
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })

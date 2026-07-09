@@ -50,6 +50,10 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
     quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(),
   })
+
+  params.setSettings("agents", {
+    defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
+  })
   params.setSettings("roleVariant", cfg.role_variant ?? {})
 
   params.setSettings("providers", {
@@ -76,7 +80,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           const headers = mcp.headers as Record<string, string> | undefined
           return {
             key,
-            type: isLocal ? "local" : "remote",
+            type: (isLocal ? "local" : "remote") as "local" | "remote",
             enabled: mcp.enabled !== false,
             command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
             url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",

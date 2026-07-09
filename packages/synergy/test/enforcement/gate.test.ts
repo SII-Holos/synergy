@@ -32,21 +32,37 @@ describe("EnforcementGate path classification", () => {
     expect(primary.nonBypassable).toBe(false)
   })
 
-  test("read of original checkout in worktree is classified as bypassable file_external_read", async () => {
+  test("read of original checkout in worktree stays a bypassable external read", async () => {
     const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
       workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
     })
 
-    // The original checkout is a sibling directory, not inside the
-    // active worktree workspace.
     const result = gate.classify("read", {
-      filePath: "/Users/test/synergy/src/index.ts",
+      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
     })
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(false)
+    expect(result.capabilities.some((c: any) => c.class === "protected_op")).toBe(false)
+  })
+
+  test("autonomous allows non-sensitive reads from the original checkout for worktree sessions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((c: any) => c.class === "protected_op")).toBe(false)
   })
 
   test("protected home credential read carries secrets capability separately from file_external_read", async () => {
@@ -94,6 +110,25 @@ describe("EnforcementGate path classification", () => {
     })
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
+    expect(external).toBeDefined()
+    expect(external.nonBypassable).toBe(true)
+  })
+
+  test("autonomous denies save_file writes into the original checkout for worktree sessions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("save_file", {
+      filePath: "/Users/test/synergy/packages/ui/src/main.tsx",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.refusal?.matchedPermission).toBe("file_external_write")
+    const external = envelope.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -1337,6 +1372,37 @@ describe("EnforcementGate trustedRoots", () => {
     expect(envelope.capabilities.find((cap: any) => cap.class === "file_write")?.paths).toEqual([
       "/Users/test/.codex/skills/impeccable/scripts/context.mjs",
     ])
+  })
+
+  test("trustedRoots seed sandbox policy read and write roots", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.claude/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.claude/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.claude/skills")
+  })
+
+  test("trustedRoots seed sandbox policy even when directories do not exist", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.nonexistent/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.nonexistent/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.nonexistent/skills")
   })
 
   test("paths outside workspace and trustedRoots remain external writes", async () => {
