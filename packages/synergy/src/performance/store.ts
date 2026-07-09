@@ -6,7 +6,7 @@ import { PerformanceConfig } from "./config"
 import { PerformanceSchema } from "./schema"
 
 export namespace PerformanceStore {
-  const SCHEMA_VERSION = "1"
+  const SCHEMA_VERSION = "2"
 
   function dbDir() {
     return path.join(Global.Path.state, "observability", "performance")
@@ -532,10 +532,29 @@ export namespace PerformanceStore {
   function initialize(conn: Database) {
     const now = Date.now()
     conn.exec(SQL)
-    conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION)
+    migrateResourceSampleColumns(conn)
+    conn.exec("CREATE INDEX IF NOT EXISTS idx_perf_resource_role_time ON perf_resource_samples(process_role,time)")
+    conn.prepare("INSERT OR REPLACE INTO perf_meta (key,value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION)
     conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
     conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
     conn.prepare("INSERT OR IGNORE INTO perf_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))
+  }
+
+  function migrateResourceSampleColumns(conn: Database) {
+    const columns = new Set(
+      (
+        conn.prepare("PRAGMA table_info(perf_resource_samples)").all() as Array<{
+          name: string
+        }>
+      ).map((column) => column.name),
+    )
+    if (!columns.has("process_id")) conn.exec("ALTER TABLE perf_resource_samples ADD COLUMN process_id TEXT")
+    if (!columns.has("process_role")) {
+      conn.exec("ALTER TABLE perf_resource_samples ADD COLUMN process_role TEXT NOT NULL DEFAULT 'server'")
+    }
+    if (!columns.has("labels_json")) {
+      conn.exec("ALTER TABLE perf_resource_samples ADD COLUMN labels_json TEXT NOT NULL DEFAULT '{}'")
+    }
   }
 
   export interface StoredMetric {
@@ -648,7 +667,6 @@ CREATE INDEX IF NOT EXISTS idx_perf_spans_session_start ON perf_spans(session_id
 CREATE INDEX IF NOT EXISTS idx_perf_spans_rid_start ON perf_spans(rid,start_time);
 CREATE TABLE IF NOT EXISTS perf_resource_samples (sample_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,source TEXT NOT NULL,pid INTEGER,process_id TEXT,process_role TEXT NOT NULL DEFAULT 'unknown',cpu_user_micros REAL,cpu_system_micros REAL,cpu_utilization_ratio REAL,memory_rss_bytes INTEGER,memory_heap_total_bytes INTEGER,memory_heap_used_bytes INTEGER,memory_external_bytes INTEGER,memory_array_buffers_bytes INTEGER,event_loop_lag_ms REAL,event_loop_sample_window_ms INTEGER,app_read_bytes INTEGER,app_written_bytes INTEGER,app_read_ops INTEGER,app_write_ops INTEGER,os_read_bytes INTEGER,os_written_bytes INTEGER,os_available INTEGER NOT NULL DEFAULT 0,scope_id TEXT,session_id TEXT,trace_id TEXT,labels_json TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS idx_perf_resource_time ON perf_resource_samples(time);
-CREATE INDEX IF NOT EXISTS idx_perf_resource_role_time ON perf_resource_samples(process_role,time);
 CREATE INDEX IF NOT EXISTS idx_perf_resource_trace_time ON perf_resource_samples(trace_id,time);
 CREATE TABLE IF NOT EXISTS perf_issues (issue_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,severity TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',code TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,recommendation TEXT,module TEXT NOT NULL,trace_id TEXT,span_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,evidence_json TEXT NOT NULL DEFAULT '{}',first_seen_time INTEGER NOT NULL,last_seen_time INTEGER NOT NULL,occurrence_count INTEGER NOT NULL DEFAULT 1,fingerprint TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_perf_issues_fingerprint_open ON perf_issues(fingerprint) WHERE status = 'open';
