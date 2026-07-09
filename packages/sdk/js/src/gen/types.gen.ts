@@ -307,6 +307,27 @@ export type PerfDashboardSummary = {
     traceFiles: number
     recentErrors: number
     pendingSessions: number
+    sessionRuntimes: {
+      totalCount: number
+      runningCount: number
+      idleCount: number
+      childCount: number
+      userCount: number
+      waiterCount: number
+    }
+    cortexTasks: {
+      totalCount: number
+      pendingCount: number
+      queuedCount: number
+      runningCount: number
+      completedCount: number
+      errorCount: number
+      cancelledCount: number
+      retainedPromptChars: number
+      retainedOutputChars: number
+      retainedErrorChars: number
+      retainedProgressToolCount: number
+    }
   }
   top: {
     slowRoutes: Array<PerfRankedItem>
@@ -6132,14 +6153,19 @@ export type EventTodoUpdated = {
 export type EventNoteCreated = {
   type: "note.created"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
   }
 }
 
 export type EventNoteUpdated = {
   type: "note.updated"
   properties: {
+    scopeID: string
     note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
   }
 }
 
@@ -6156,6 +6182,7 @@ export type EventNoteArchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
@@ -6164,6 +6191,7 @@ export type EventNoteUnarchived = {
   properties: {
     ids: Array<string>
     scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
