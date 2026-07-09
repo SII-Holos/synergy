@@ -56,17 +56,23 @@ export function WorktreeTransitionCard(props: {
           <span class="wtd-card-title">{props.progress.title}</span>
           <span class="wtd-card-description">{props.progress.description}</span>
         </div>
+        <Show when={props.onDismiss}>
+          <Button
+            variant="ghost"
+            size="small"
+            icon={getSemanticIcon("action.close")}
+            class="wtd-card-dismiss"
+            onClick={handleDismiss}
+            aria-label="Dismiss worktree status"
+            title="Dismiss"
+          />
+        </Show>
       </div>
       <Show when={props.progress.steps.length > 0}>
         <StepList steps={props.progress.steps} />
       </Show>
-      <Show when={props.onRetry || props.onDismiss}>
+      <Show when={props.onRetry}>
         <div class="wtd-actions wtd-card-actions">
-          <Show when={props.onDismiss}>
-            <Button variant="ghost" size="small" onClick={handleDismiss}>
-              Dismiss
-            </Button>
-          </Show>
           <Show when={props.onRetry}>
             {(retry) => (
               <Button variant="primary" size="small" onClick={retry()}>
