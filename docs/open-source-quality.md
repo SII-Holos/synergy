@@ -101,12 +101,12 @@ bun run package:check
 
 ## Workflow Validation
 
-The `workflow:check` script downloads actionlint and runs it against all workflow files in `.github/workflows/`, then runs zizmor for GitHub Actions security analysis.
+The `workflow:check` script uses an installed `actionlint` binary when available, otherwise downloads the pinned actionlint release, then runs zizmor for GitHub Actions security analysis.
 
 Run locally:
 
 ```bash
-bun run workflow:check      # requires network access
+bun run workflow:check      # install actionlint locally to avoid the actionlint download fallback
 ```
 
 ## Secret Scanning

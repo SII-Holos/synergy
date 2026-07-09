@@ -15,6 +15,7 @@ import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
 import { Observability } from "../observability"
+import { Session } from "../session"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -350,6 +351,12 @@ function registerShutdown(
       phase = "kill running processes"
       await Observability.emit("shutdown.phase", { data: { phase } })
       await ProcessRegistry.killAllRunning()
+
+      phase = "flush session parts"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await Session.flushPartWrites().catch((error) => {
+        log.warn("failed to flush session part writes", { error })
+      })
 
       phase = "stop global runtime"
       await Observability.emit("shutdown.phase", { data: { phase } })

@@ -188,12 +188,11 @@ If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${
   export async function start(scopeID: string, loopID: string, userPrompt?: string): Promise<Info> {
     const normalized = normalizeStartUserPrompt(userPrompt)
     const before = await BlueprintLoopStore.get(scopeID, loopID)
-    await SessionWorkflowService.prepareBlueprintLoopBinding(before.sessionID, before.source)
+    await bindSessionToLoop(before.sessionID, loopID, "execution")
     const loop = await BlueprintLoopStore.updateStatus(scopeID, loopID, {
       status: "running",
       userPrompt: normalized ?? null,
     })
-    await bindSessionToLoop(before.sessionID, loopID, "execution")
     void deliverFirstPrompt(before.sessionID, before, normalized).catch((err) => {
       log.error("failed to deliver BlueprintLoop start prompt", { loopID, error: err })
       BlueprintLoopStore.updateStatus(scopeID, loopID, {

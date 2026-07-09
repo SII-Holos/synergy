@@ -56,63 +56,54 @@ test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async ()
   await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
   await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-gh-token" })
 
-  try {
-    await using tmp = await tmpdir({ git: true })
-    const shell = Shell.acceptable()
-    const isUnixShell = /(?:^|[\\/])(?:bash|zsh)(?:\.exe)?$/i.test(shell)
-    const printTokenOrMissing = isUnixShell
-      ? "printf '%s' \"${GH_TOKEN:-missing}\""
-      : "if defined GH_TOKEN (<nul set /p dummy=%GH_TOKEN%) else (<nul set /p dummy=missing)"
-    const chainedTokenCommand = `gh && ${printTokenOrMissing}`
-
-    if (isUnixShell) {
-      const ghPath = `${tmp.path}/gh`
-      await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' \"$GH_TOKEN\"")
-      await fs.chmod(ghPath, 0o755)
-    } else {
-      await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n<nul set /p dummy=%GH_TOKEN%\r\n")
-    }
-    process.env.PATH = `${tmp.path}${path.delimiter}${originalPath ?? ""}`
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const ghResult = await LocalBashBackend.execute(
-          {
-            command: "gh",
-            description: "prints managed GitHub token",
-            workdir: tmp.path,
-          },
-          testContext(),
-        )
-        expect(ghResult.output).toBe("stored-gh-token")
-
-        const nonGhResult = await LocalBashBackend.execute(
-          {
-            command: printTokenOrMissing,
-            description: "prints token availability",
-            workdir: tmp.path,
-          },
-          testContext(),
-        )
-        expect(nonGhResult.output).toBe("missing")
-
-        const chainedResult = await LocalBashBackend.execute(
-          {
-            command: chainedTokenCommand,
-            description: "prints chained token availability",
-            workdir: tmp.path,
-          },
-          testContext(),
-        )
-        expect(chainedResult.output).toBe("missing")
-      },
-    })
-  } finally {
-    if (savedGH === undefined) delete process.env.GH_TOKEN
-    else process.env.GH_TOKEN = savedGH
-    if (savedGITHUB === undefined) delete process.env.GITHUB_TOKEN
-    else process.env.GITHUB_TOKEN = savedGITHUB
-    if (savedPath === undefined) delete process.env.PATH
-    else process.env.PATH = savedPath
+  await using tmp = await tmpdir({ git: true })
+  const shell = Shell.acceptable()
+  const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
+  const usesPosixShell = process.platform !== "win32" || usesBash
+  const printTokenOrMissing = usesPosixShell
+    ? "printf '%s' \"${GH_TOKEN:-missing}\""
+    : "if defined GH_TOKEN (<nul set /p dummy=%GH_TOKEN%) else (<nul set /p dummy=missing)"
+  const chainedTokenCommand = `gh && ${printTokenOrMissing}`
+  if (process.platform === "win32" && !usesBash) {
+    await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n<nul set /p dummy=%GH_TOKEN%\r\n")
+  } else {
+    const ghPath = `${tmp.path}/gh`
+    await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' \"$GH_TOKEN\"")
+    await fs.chmod(ghPath, 0o755)
   }
+  process.env.PATH = `${tmp.path}${path.delimiter}${originalPath ?? ""}`
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const ghResult = await LocalBashBackend.execute(
+        {
+          command: "gh",
+          description: "prints managed GitHub token",
+          workdir: tmp.path,
+        },
+        testContext(),
+      )
+      expect(ghResult.output).toBe("stored-gh-token")
+
+      const nonGhResult = await LocalBashBackend.execute(
+        {
+          command: printTokenOrMissing,
+          description: "prints token availability",
+          workdir: tmp.path,
+        },
+        testContext(),
+      )
+      expect(nonGhResult.output).toBe("missing")
+
+      const chainedResult = await LocalBashBackend.execute(
+        {
+          command: chainedTokenCommand,
+          description: "prints chained token availability",
+          workdir: tmp.path,
+        },
+        testContext(),
+      )
+      expect(chainedResult.output).toBe("missing")
+    },
+  })
 })

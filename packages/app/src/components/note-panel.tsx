@@ -1433,7 +1433,7 @@ function NoteEditor(props: {
   const directory = () => props.directory
 
   const [note, { refetch }] = createResource(
-    () => ({ id: props.id, dir: directory() }),
+    () => ({ id: props.id, dir: directory(), reconnect: globalSync.reconnectVersion() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await sdk.client.note.get({ id, directory: dir })
