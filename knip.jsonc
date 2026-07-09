@@ -44,7 +44,6 @@
     "tree-sitter-bash",
     "xlsx",
     "turbo",
-    "undici",
     "@tsconfig/bun",
     "@tsconfig/node22",
     "vite-plugin-icons-spritesheet",

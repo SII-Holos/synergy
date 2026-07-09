@@ -1,37 +1,5 @@
-import { test, expect, mock } from "bun:test"
-
-// ---------------------------------------------------------------------------
-// Intercept undici so we can observe ProxyAgent / Agent construction without
-// spinning up real sockets. The provider module imports these at the top
-// level, so the mock must be registered before the provider is first loaded.
-// ---------------------------------------------------------------------------
-
-interface ProxyAgentCall {
-  opts: Record<string, unknown>
-}
-const proxyAgentCalls: ProxyAgentCall[] = []
-const agentCallCount = { value: 0 }
-
-mock.module("undici", () => {
-  class MockProxyAgent {
-    constructor(opts: Record<string, unknown>) {
-      proxyAgentCalls.push({ opts })
-    }
-  }
-  class MockAgent {
-    constructor() {
-      agentCallCount.value++
-    }
-  }
-  return { ProxyAgent: MockProxyAgent, Agent: MockAgent }
-})
-
-// Provider imports undici internally — now it will resolve to our mock.
+import { test, expect } from "bun:test"
 import { Provider } from "../../src/provider/provider"
-
-// ---------------------------------------------------------------------------
-// Minimal model factory so createSDKFromSpec has a valid spec to work with.
-// ---------------------------------------------------------------------------
 
 function makeModel(overrides: Partial<Provider.Model> = {}): Provider.Model {
   return {
@@ -69,170 +37,198 @@ function makeModel(overrides: Partial<Provider.Model> = {}): Provider.Model {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers — reset mock state between tests
-// ---------------------------------------------------------------------------
+const proxyEnvKeys = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"] as const
 
-function resetMocks() {
-  proxyAgentCalls.length = 0
-  agentCallCount.value = 0
+function snapshotProxyEnv() {
+  return Object.fromEntries(proxyEnvKeys.map((key) => [key, process.env[key]])) as Record<string, string | undefined>
 }
 
-// ---------------------------------------------------------------------------
-// resolveProxyDispatcher — behavioural contracts
-// ---------------------------------------------------------------------------
+function restoreProxyEnv(snapshot: Record<string, string | undefined>) {
+  for (const key of proxyEnvKeys) {
+    const value = snapshot[key]
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
 
-test("resolveProxyDispatcher returns ProxyAgent when proxy option is set", () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { proxy: "http://proxy.example.com:8080", apiKey: "test-key" },
+function createProbeProxy(label: string) {
+  let hits = 0
+  const lines: string[] = []
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket, data) {
+        hits++
+        const line = new TextDecoder().decode(data).split("\r\n")[0] ?? ""
+        lines.push(line)
+        socket.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+        socket.end()
+      },
+    },
   })
+  return {
+    label,
+    url: `http://127.0.0.1:${server.port}`,
+    get hits() {
+      return hits
+    },
+    get lines() {
+      return lines
+    },
+    stop() {
+      server.stop()
+    },
+  }
+}
 
-  expect(proxyAgentCalls.length).toBe(1)
-  expect(proxyAgentCalls[0].opts).toMatchObject({ uri: "http://proxy.example.com:8080" })
+function createChunkedServer() {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket) {
+        socket.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n")
+        socket.write("6\r\nhello \r\n")
+        socket.write("5\r\nworld\r\n")
+        socket.write("0\r\n\r\n")
+        socket.end()
+      },
+    },
+  })
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    stop() {
+      server.stop()
+    },
+  }
+}
+
+async function tryFetch(patchedFetch: (input: any, init?: any) => Promise<Response>) {
+  try {
+    await patchedFetch("http://127.0.0.1:1/proxy-test", { signal: AbortSignal.timeout(1_000) })
+  } catch {}
+}
+
+test("noProxy bypasses system proxy env and restores it afterward", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+    process.env.http_proxy = envProxy.url
+    process.env.https_proxy = envProxy.url
+    process.env.ALL_PROXY = envProxy.url
+    process.env.all_proxy = envProxy.url
+
+    const sdk = Provider.createSDKFromSpec(makeModel(), {
+      options: { noProxy: true, apiKey: "test-key" },
+    })
+
+    await tryFetch((sdk as any).fetch)
+
+    expect(envProxy.hits).toBe(0)
+    expect(process.env.HTTP_PROXY).toBe(envProxy.url)
+    expect(process.env.HTTPS_PROXY).toBe(envProxy.url)
+    expect(process.env.http_proxy).toBe(envProxy.url)
+    expect(process.env.https_proxy).toBe(envProxy.url)
+    expect(process.env.ALL_PROXY).toBe(envProxy.url)
+    expect(process.env.all_proxy).toBe(envProxy.url)
+  } finally {
+    envProxy.stop()
+    restoreProxyEnv(snapshot)
+  }
 })
 
-test("resolveProxyDispatcher returns Agent when noProxy is true", () => {
-  resetMocks()
+test("proxy option overrides system proxy env for the wrapped fetch", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const configuredProxy = createProbeProxy("configured")
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+    process.env.http_proxy = envProxy.url
+    process.env.https_proxy = envProxy.url
 
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { noProxy: true, apiKey: "test-key" },
-  })
+    const sdk = Provider.createSDKFromSpec(makeModel(), {
+      options: { proxy: configuredProxy.url, apiKey: "test-key" },
+    })
 
-  expect(agentCallCount.value).toBe(1)
-  expect(proxyAgentCalls.length).toBe(0)
+    await tryFetch((sdk as any).fetch)
+
+    expect(envProxy.hits).toBe(0)
+    expect(configuredProxy.hits).toBe(1)
+    expect(process.env.HTTP_PROXY).toBe(envProxy.url)
+    expect(process.env.HTTPS_PROXY).toBe(envProxy.url)
+    expect(process.env.http_proxy).toBe(envProxy.url)
+    expect(process.env.https_proxy).toBe(envProxy.url)
+  } finally {
+    envProxy.stop()
+    configuredProxy.stop()
+    restoreProxyEnv(snapshot)
+  }
 })
 
-test("resolveProxyDispatcher returns undefined (no dispatcher) when neither proxy nor noProxy is set", () => {
-  resetMocks()
+test("noProxy takes precedence when proxy is also set", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const configuredProxy = createProbeProxy("configured")
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
 
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
+    const sdk = Provider.createSDKFromSpec(makeModel(), {
+      options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" },
+    })
+
+    await tryFetch((sdk as any).fetch)
+
+    expect(envProxy.hits).toBe(0)
+    expect(configuredProxy.hits).toBe(0)
+  } finally {
+    envProxy.stop()
+    configuredProxy.stop()
+    restoreProxyEnv(snapshot)
+  }
+})
+
+test("noProxy direct fetch decodes chunked responses", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const server = createChunkedServer()
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+
+    const sdk = Provider.createSDKFromSpec(makeModel(), {
+      options: { noProxy: true, apiKey: "test-key" },
+    })
+
+    const response = await (sdk as any).fetch(`${server.url}/stream`, { signal: AbortSignal.timeout(1_000) })
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("hello world")
+    expect(envProxy.hits).toBe(0)
+  } finally {
+    envProxy.stop()
+    server.stop()
+    restoreProxyEnv(snapshot)
+  }
+})
+
+test("createSDKFromSpec returns unwrapped SDK when no proxy option is configured", () => {
+  const sdk = Provider.createSDKFromSpec(makeModel(), {
     options: { apiKey: "test-key" },
   })
 
-  expect(proxyAgentCalls.length).toBe(0)
-  expect(agentCallCount.value).toBe(0)
-})
-
-test("resolveProxyDispatcher returns undefined (no dispatcher) when noProxy is false", () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { noProxy: false, apiKey: "test-key" },
-  })
-
-  expect(proxyAgentCalls.length).toBe(0)
-  expect(agentCallCount.value).toBe(0)
-})
-
-test("resolveProxyDispatcher ignores noProxy when proxy is also set (proxy takes precedence)", () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { proxy: "http://proxy.example.com:8080", noProxy: true, apiKey: "test-key" },
-  })
-
-  expect(proxyAgentCalls.length).toBe(1)
-  expect(agentCallCount.value).toBe(0)
-})
-
-// ---------------------------------------------------------------------------
-// Option stripping — proxy/noProxy must NOT leak to bundledFn
-// ---------------------------------------------------------------------------
-
-test("proxy and noProxy options are stripped before options are passed to bundledFn", () => {
-  resetMocks()
-
-  const model = makeModel()
-  const sdk = Provider.createSDKFromSpec(model, {
-    options: { proxy: "http://p:8080", apiKey: "k", extra: "val" },
-  })
-
   expect(sdk).toBeDefined()
-  // SDK may be a function (e.g. @ai-sdk/openai) or an object — both are valid.
-  expect(typeof sdk === "object" || typeof sdk === "function").toBe(true)
-  expect((sdk as any).fetch).toBeTypeOf("function")
-
-  // The dispatcher was created exactly once — proving proxy was extracted
-  // before bundledFn and not seen by it.
-  expect(proxyAgentCalls.length).toBe(1)
+  expect((sdk as any).fetch).not.toBeTypeOf("function")
 })
 
-// ---------------------------------------------------------------------------
-// createSDKFromSpec — fetch wrapper injection
-// ---------------------------------------------------------------------------
-
-test("createSDKFromSpec wraps SDK with a fetch proxy when proxy is configured", () => {
-  resetMocks()
-
-  const model = makeModel()
-  const sdk = Provider.createSDKFromSpec(model, {
-    options: { proxy: "http://proxy.example.com:8080", apiKey: "test-key" },
-  })
-
-  expect(sdk).toBeDefined()
-  expect((sdk as any).fetch).toBeTypeOf("function")
-
-  // Verify the patched fetch accepts input and init
-  const patchedFetch = (sdk as any).fetch as (input: any, init?: any) => Promise<Response>
-  expect(patchedFetch).toBeTypeOf("function")
-})
-
-test("createSDKFromSpec returns unmodified SDK when no proxy/noProxy is configured", () => {
-  resetMocks()
-
-  const model = makeModel()
-  const sdk = Provider.createSDKFromSpec(model, {
-    options: { apiKey: "test-key" },
-  })
-
-  expect(sdk).toBeDefined()
-  expect(proxyAgentCalls.length).toBe(0)
-  expect(agentCallCount.value).toBe(0)
-})
-
-// ---------------------------------------------------------------------------
-// Edge cases
-// ---------------------------------------------------------------------------
-
-test("proxy option with empty string does not trigger ProxyAgent", () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { proxy: "", apiKey: "test-key" },
-  })
-
-  expect(proxyAgentCalls.length).toBe(0)
-  expect(agentCallCount.value).toBe(0)
-})
-
-test('noProxy string "true" does not trigger Agent (explicit === true check)', () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
+test('noProxy string "true" does not enable noProxy', () => {
+  const sdk = Provider.createSDKFromSpec(makeModel(), {
     options: { noProxy: "true", apiKey: "test-key" },
   })
 
-  expect(proxyAgentCalls.length).toBe(0)
-  expect(agentCallCount.value).toBe(0)
-})
-
-test("proxy with noProxy=false still uses ProxyAgent", () => {
-  resetMocks()
-
-  const model = makeModel()
-  Provider.createSDKFromSpec(model, {
-    options: { proxy: "http://p:9999", noProxy: false, apiKey: "test-key" },
-  })
-
-  expect(proxyAgentCalls.length).toBe(1)
-  expect(proxyAgentCalls[0].opts.uri).toBe("http://p:9999")
+  expect((sdk as any).fetch).not.toBeTypeOf("function")
 })

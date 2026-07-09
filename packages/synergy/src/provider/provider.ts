@@ -15,7 +15,8 @@ import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
-import { ProxyAgent, Agent } from "undici"
+import net from "node:net"
+import tls from "node:tls"
 import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
 
 // Direct imports for bundled providers
@@ -67,11 +68,156 @@ export namespace Provider {
     "@ai-sdk/vercel": createVercel,
   }
 
-  /** Resolve a per-request undici dispatcher from proxy/noProxy options. */
-  function resolveProxyDispatcher(proxyUrl: string | undefined, noProxy: boolean): any {
-    if (proxyUrl) return new ProxyAgent({ uri: proxyUrl })
-    if (noProxy) return new Agent()
-    return undefined
+  function createChunkedBodyDecoder(controller: ReadableStreamDefaultController<Uint8Array>) {
+    let buffer = new Uint8Array()
+    let remaining = 0
+    let done = false
+
+    return (chunk: Uint8Array) => {
+      if (done) return
+      const combined = new Uint8Array(buffer.length + chunk.length)
+      combined.set(buffer)
+      combined.set(chunk, buffer.length)
+      buffer = combined
+
+      while (!done) {
+        if (remaining === 0) {
+          const text = new TextDecoder().decode(buffer)
+          const lineEnd = text.indexOf("\r\n")
+          if (lineEnd === -1) return
+          const sizeText = text.slice(0, lineEnd).split(";", 1)[0]
+          remaining = Number.parseInt(sizeText, 16)
+          const consumed = lineEnd + 2
+          buffer = buffer.slice(consumed)
+          if (remaining === 0) {
+            done = true
+            controller.close()
+            return
+          }
+        }
+
+        if (buffer.length < remaining + 2) return
+        controller.enqueue(buffer.slice(0, remaining))
+        buffer = buffer.slice(remaining + 2)
+        remaining = 0
+      }
+    }
+  }
+
+  async function directFetch(input: RequestInfo | URL, init: RequestInit | undefined) {
+    const request = input instanceof Request ? input : new Request(input, init)
+    const url = new URL(request.url)
+    const isHttps = url.protocol === "https:"
+    const port = Number(url.port || (isHttps ? 443 : 80))
+    const headers = new Headers(request.headers)
+    headers.set("Host", url.host)
+    headers.set("Connection", "close")
+    if (!headers.has("Accept-Encoding")) headers.set("Accept-Encoding", "identity")
+
+    const body = request.body ? new Uint8Array(await request.arrayBuffer()) : undefined
+    if (body && !headers.has("Content-Length")) headers.set("Content-Length", String(body.byteLength))
+
+    return new Promise<Response>((resolve, reject) => {
+      const socket = isHttps
+        ? tls.connect({ host: url.hostname, port, servername: url.hostname })
+        : net.connect({ host: url.hostname, port })
+      let settled = false
+      let headerBuffer = new Uint8Array()
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+
+      const fail = (error: unknown) => {
+        if (settled) {
+          controller?.error(error)
+          return
+        }
+        settled = true
+        reject(error)
+      }
+
+      const abort = () => {
+        socket.destroy(request.signal.reason)
+        fail(request.signal.reason ?? new DOMException("Request aborted", "AbortError"))
+      }
+
+      request.signal.addEventListener("abort", abort, { once: true })
+      socket.on("error", fail)
+      const sendRequest = () => {
+        const path = `${url.pathname}${url.search}`
+        const headerLines = Array.from(headers.entries()).map(([key, value]) => `${key}: ${value}`)
+        socket.write(`${request.method} ${path || "/"} HTTP/1.1\r\n${headerLines.join("\r\n")}\r\n\r\n`)
+        if (body) socket.write(body)
+      }
+      socket.on(isHttps ? "secureConnect" : "connect", sendRequest)
+      let pushBody: ((chunk: Uint8Array) => void) | undefined
+      socket.on("data", (chunk: Buffer) => {
+        const data = new Uint8Array(chunk)
+        if (settled) {
+          pushBody?.(data)
+          return
+        }
+
+        const combined = new Uint8Array(headerBuffer.length + data.length)
+        combined.set(headerBuffer)
+        combined.set(data, headerBuffer.length)
+        const marker = "\r\n\r\n"
+        const text = new TextDecoder().decode(combined)
+        const headerEnd = text.indexOf(marker)
+        if (headerEnd === -1) {
+          headerBuffer = combined
+          return
+        }
+
+        const rawHeaders = text.slice(0, headerEnd).split("\r\n")
+        const [statusLine = "HTTP/1.1 502 Bad Gateway", ...headerLines] = rawHeaders
+        const [, statusCode = "502", ...statusTextParts] = statusLine.split(" ")
+        const responseHeaders = new Headers()
+        for (const line of headerLines) {
+          const separator = line.indexOf(":")
+          if (separator === -1) continue
+          responseHeaders.append(line.slice(0, separator), line.slice(separator + 1).trim())
+        }
+
+        const bodyStart = headerEnd + marker.length
+        const bodyPrefix = combined.slice(bodyStart)
+        const isChunked = responseHeaders.get("transfer-encoding")?.toLowerCase().includes("chunked") ?? false
+        settled = true
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            controller = c
+            pushBody = isChunked ? createChunkedBodyDecoder(c) : (bodyChunk) => c.enqueue(bodyChunk)
+            if (bodyPrefix.byteLength > 0) pushBody(bodyPrefix)
+          },
+          cancel() {
+            socket.destroy()
+          },
+        })
+        resolve(
+          new Response(stream, {
+            status: Number(statusCode),
+            statusText: statusTextParts.join(" "),
+            headers: responseHeaders,
+          }),
+        )
+      })
+      socket.on("end", () => {
+        try {
+          controller?.close()
+        } catch {}
+      })
+      socket.on("close", () => request.signal.removeEventListener("abort", abort))
+    })
+  }
+
+  async function fetchWithProxyOptions(
+    fetchFn: typeof fetch,
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    proxyUrl: string | undefined,
+    noProxy: boolean,
+  ) {
+    if (noProxy) return directFetch(input, init)
+    if (proxyUrl) return fetchFn(input, { ...init, proxy: proxyUrl } as RequestInit)
+    return fetchFn(input, init)
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -557,7 +703,8 @@ export namespace Provider {
     }
 
     // Strip proxy/noProxy from options before passing to bundledFn —
-    // they are handled below via the per-request dispatcher, not as SDK options.
+    // Bun fetch reads proxy settings from process.env, so these are handled
+    // around each fetch call instead of passed through as SDK options.
     const proxyUrl = options["proxy"] as string | undefined
     const noProxy = options["noProxy"] === true
     delete options["proxy"]
@@ -568,16 +715,12 @@ export namespace Provider {
       ...options,
     }) as SDK
 
-    // When proxy/noProxy are configured, wrap the SDK's default fetch with a
-    // dispatcher-aware version so the import probe (and any other createSDKFromSpec
-    // caller) also routes through the proxy.
     if (proxyUrl || noProxy) {
       const baseFetch = (builtSDK as any)._fetch ?? fetch
-      const dispatcher = resolveProxyDispatcher(proxyUrl, noProxy)
       const patchedSDK = new Proxy(builtSDK as object, {
         get(target, prop) {
           if (prop === "fetch") {
-            return (input: any, init?: any) => baseFetch(input, { ...init, dispatcher } as any)
+            return (input: any, init?: any) => fetchWithProxyOptions(baseFetch, input, init, proxyUrl, noProxy)
           }
           return Reflect.get(target, prop)
         },
@@ -619,18 +762,19 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const proxyUrl = options["proxy"] as string | undefined
+      const noProxy = options["noProxy"] === true
+      delete options["proxy"]
+      delete options["noProxy"]
       const timeoutCfg = await TimeoutConfig.resolve()
-
       const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
-        // Resolve per-request dispatcher from proxy/noProxy options
-        const proxyUrl = options["proxy"]
-        const noProxy = options["noProxy"] === true
-        const dispatcher = resolveProxyDispatcher(proxyUrl, noProxy)
+        const proxyUrlForRequest = proxyUrl
+        const noProxyForRequest = noProxy
 
         // Provider-level options take precedence; otherwise use the configured
         // idle timeout (timeout.provider.idle_sec). `false` disables it.
@@ -699,13 +843,18 @@ export namespace Provider {
         const fetchTimer = log.time("fetch.request", { url: safeUrl })
         let response: Response
         try {
-          response = await fetchFn(input, {
-            ...opts,
-            headers,
-            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-            timeout: false,
-            ...(dispatcher ? ({ dispatcher } as any) : {}),
-          })
+          response = await fetchWithProxyOptions(
+            fetchFn,
+            input,
+            {
+              ...opts,
+              headers,
+              // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+              timeout: false,
+            },
+            proxyUrlForRequest,
+            noProxyForRequest,
+          )
         } catch (error) {
           cleanupTimers()
           fetchTimer.stop({ status: "exception" })
