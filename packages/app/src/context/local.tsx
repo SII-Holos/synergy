@@ -365,6 +365,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return find(key)
       })
 
+      const sessionDefaultVariant = createMemo((): string | undefined => {
+        const id = params.id
+        const m = current()
+        if (!id || !m) return undefined
+        return ComposerIntent.sessionDefaultVariant({ providerID: m.provider.id, modelID: m.id }, sync.data.message[id])
+      })
+
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
 
       function inQuickSwitcher(model: ModelKey) {
@@ -442,7 +449,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           current() {
             const m = current()
             if (!m) return undefined
-            return variantSession().get({ providerID: m.provider.id, modelID: m.id })
+            const modelKey = { providerID: m.provider.id, modelID: m.id }
+            const session = variantSession()
+            if (session.has(modelKey)) return session.get(modelKey)
+            return sessionDefaultVariant()
           },
           list() {
             const m = current()
@@ -455,6 +465,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
             if (!modelKey) return
             variantSession().set(modelKey, value)
+          },
+          setForSession(sessionID: string, value: string | undefined, target?: ModelKey, scopeKey = sdk.scopeKey) {
+            const m = current()
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            loadVariantSession(scopeKey, sessionID).set(modelKey, value)
           },
           cycle() {
             const variants = this.list()

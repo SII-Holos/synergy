@@ -351,7 +351,9 @@ export namespace RuntimeReload {
       }
       case "mcp": {
         const { MCP } = await import("../mcp")
+        const { Plugin } = await import("../plugin")
         await MCP.reload()
+        await Plugin.reloadMcpContributions()
         return
       }
       case "lsp": {

@@ -154,6 +154,33 @@ describe("autonomous profile filesystem", () => {
       },
     })
   })
+
+  test("autonomous filesystem includes trusted skill roots as writeRoots", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const trustedRoots = ["/tmp/test/.codex/skills", "/tmp/test/.claude/skills"]
+        const profile = await buildProfile("autonomous", { workspace, workspaceType: "main", trustedRoots })
+
+        expect(profile.filesystem.writeRoots).toEqual([workspace, ...trustedRoots])
+      },
+    })
+  })
+
+  test("guarded filesystem includes trusted skill roots as writeRoots", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const trustedRoots = ["/tmp/test/.codex/skills", "/tmp/test/.claude/skills"]
+        const profile = await buildProfile("guarded", { workspace, workspaceType: "main", trustedRoots })
+
+        expect(profile.filesystem.writeRoots).toEqual([workspace, ...trustedRoots])
+        expect(profile.filesystem.readRoots).toEqual([workspace, ...trustedRoots])
+      },
+    })
+  })
 })
 
 describe("autonomous profile sandbox", () => {

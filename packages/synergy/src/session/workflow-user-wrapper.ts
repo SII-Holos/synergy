@@ -19,6 +19,8 @@ export namespace WorkflowUserWrapper {
     "blueprint_loop_continuation",
     "blueprint_loop_restart",
     "light_loop_continuation",
+    "light_loop_approved",
+    "light_loop_rejected",
     "lattice_continuation",
   ])
 
@@ -238,7 +240,7 @@ export namespace WorkflowUserWrapper {
     return [
       "<lightloop-user-request>",
       "You are in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop().",
+      "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review.",
       "",
       "User request:",
       query,
@@ -250,7 +252,7 @@ export namespace WorkflowUserWrapper {
     return [
       "<lightloop-user-request>",
       "You are synergy in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop().",
+      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
       "",
       "User request:",
       query,
@@ -262,7 +264,7 @@ export namespace WorkflowUserWrapper {
     return [
       "<lightloop-user-request>",
       "You are synergy-max in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop().",
+      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
       "",
       "User request:",
       query,

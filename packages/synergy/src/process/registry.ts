@@ -1,4 +1,5 @@
 import type { ChildProcess } from "child_process"
+import { readFileSync } from "fs"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Observability } from "../observability"
@@ -54,10 +55,34 @@ export namespace ProcessRegistry {
     truncated: boolean
   }
 
+  export interface ProcessInspection {
+    alive?: boolean
+    rssBytes?: number
+  }
+
+  export interface ResourceSnapshot {
+    id: string
+    command: string
+    description?: string
+    cwd?: string
+    pid?: number
+    startedAt: number
+    ageMs: number
+    backgrounded: boolean
+    outputChars: number
+    truncated: boolean
+    lastOutputAt?: number
+    alive?: boolean
+    rssBytes?: number
+  }
+
+  export type ProcessInspector = (pid: number, proc: Process) => ProcessInspection
+
   const running = new Map<string, Process>()
   const finished = new Map<string, FinishedProcess>()
   let sweeper: Timer | null = null
   let ttlMs = DEFAULT_TTL_MS
+  let processInspector: ProcessInspector = defaultProcessInspector
 
   export function create(opts: {
     command: string
@@ -228,6 +253,47 @@ export namespace ProcessRegistry {
     return [...listRunning(), ...listFinished()].sort((a, b) => b.startedAt - a.startedAt)
   }
 
+  export function resourceSnapshot(opts: { now?: number; settleStale?: boolean } = {}): ResourceSnapshot[] {
+    const now = opts.now ?? Date.now()
+    const result: ResourceSnapshot[] = []
+    for (const proc of Array.from(running.values())) {
+      if (proc.exited) continue
+      const inspection = inspect(proc)
+      if (opts.settleStale && proc.pid !== undefined && inspection.alive === false) {
+        markStale(proc)
+        continue
+      }
+      result.push({
+        id: proc.id,
+        command: proc.command,
+        description: proc.description,
+        cwd: proc.cwd,
+        pid: proc.pid,
+        startedAt: proc.startedAt,
+        ageMs: now - proc.startedAt,
+        backgrounded: proc.backgrounded,
+        outputChars: proc.output.length,
+        truncated: proc.truncated,
+        lastOutputAt: proc.lastOutputAt,
+        alive: inspection.alive,
+        rssBytes: inspection.rssBytes,
+      })
+    }
+    return result.sort((a, b) => (b.rssBytes ?? -1) - (a.rssBytes ?? -1) || b.startedAt - a.startedAt)
+  }
+
+  export function settleStaleProcesses() {
+    resourceSnapshot({ settleStale: true })
+  }
+
+  export function setProcessInspector(inspector: ProcessInspector) {
+    const previous = processInspector
+    processInspector = inspector
+    return () => {
+      processInspector = previous
+    }
+  }
+
   function pruneExpired() {
     const cutoff = Date.now() - ttlMs
     for (const [id, proc] of finished.entries()) {
@@ -303,5 +369,58 @@ export namespace ProcessRegistry {
         count: procs.length,
       },
     })
+  }
+
+  function inspect(proc: Process): ProcessInspection {
+    if (proc.pid === undefined) return {}
+    try {
+      return processInspector(proc.pid, proc)
+    } catch (error) {
+      log.warn("failed to inspect process", { id: proc.id, pid: proc.pid, error })
+      return {}
+    }
+  }
+
+  function markStale(proc: Process) {
+    void Observability.emit("process.stale_settled", {
+      processId: proc.id,
+      pid: proc.pid,
+      cwd: proc.cwd,
+      level: "warn",
+      data: {
+        command: proc.command,
+        outputChars: proc.output.length,
+      },
+    })
+    markExited(proc, null, null)
+  }
+
+  function defaultProcessInspector(pid: number): ProcessInspection {
+    const alive = isPidAlive(pid)
+    return {
+      alive,
+      rssBytes: alive ? readLinuxRssBytes(pid) : undefined,
+    }
+  }
+
+  function isPidAlive(pid: number) {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "EPERM"
+    }
+  }
+
+  function readLinuxRssBytes(pid: number) {
+    if (process.platform !== "linux") return undefined
+    try {
+      const status = readFileSync(`/proc/${pid}/status`, "utf8")
+      const match = /^VmRSS:\s+(\d+)\s+kB$/m.exec(status)
+      if (!match) return undefined
+      return Number(match[1]) * 1024
+    } catch {
+      return undefined
+    }
   }
 }

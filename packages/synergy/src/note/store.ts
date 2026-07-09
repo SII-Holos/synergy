@@ -11,6 +11,7 @@ import { Log } from "../util/log"
 import { Plugin } from "../plugin"
 import { NoteMarkdown } from "./markdown"
 import { NoteDocument } from "./document"
+import { isDeepEqual } from "remeda"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
@@ -40,6 +41,9 @@ export namespace NoteStore {
     note.tags ??= []
     note.version ??= 1
     note.kind ??= "note"
+    note.time ??= { created: 0, updated: 0 }
+    note.time.created ??= note.time.updated ?? 0
+    note.time.updated ??= note.time.created
     note.content = NoteDocument.normalize(note.content)
     normalizeBlueprint(note)
     return note
@@ -62,6 +66,62 @@ export namespace NoteStore {
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
     const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
     return { ...meta, searchText: searchParts.join("\n"), previewHtml }
+  }
+
+  function arrayEqual(a: string[] | undefined, b: string[] | undefined): boolean {
+    const left = a ?? []
+    const right = b ?? []
+    return left.length === right.length && left.every((value, index) => value === right[index])
+  }
+
+  function deepEqual(a: unknown, b: unknown): boolean {
+    return isDeepEqual(a ?? null, b ?? null)
+  }
+
+  function changedFields(
+    before: z.infer<typeof NoteTypes.Info>,
+    after: z.infer<typeof NoteTypes.Info>,
+  ): NoteTypes.ChangedField[] {
+    const changed: NoteTypes.ChangedField[] = []
+    if (before.title !== after.title) changed.push("title")
+    if (NoteDocument.hash(before.content) !== NoteDocument.hash(after.content)) changed.push("content")
+    if (!arrayEqual(before.tags, after.tags)) changed.push("tags")
+    if (before.pinned !== after.pinned) changed.push("pinned")
+    if (before.global !== after.global) changed.push("global")
+    if (before.kind !== after.kind) changed.push("kind")
+    if (!deepEqual(before.blueprint, after.blueprint)) changed.push("blueprint")
+    if (before.archived !== after.archived) changed.push("archived")
+    return changed
+  }
+
+  type StoredMetadata = Partial<Omit<Metadata, "time">> & { time?: Partial<Metadata["time"]> }
+
+  function normalizeMetadataEntry(entry: unknown, scopeID: string): Metadata | undefined {
+    if (!entry || typeof entry !== "object") return undefined
+    const raw = entry as StoredMetadata
+    if (typeof raw.id !== "string" || typeof raw.title !== "string") return undefined
+
+    const tags = Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : []
+    const created = typeof raw.time?.created === "number" ? raw.time.created : 0
+    const updated = typeof raw.time?.updated === "number" ? raw.time.updated : created
+    const searchText = typeof raw.searchText === "string" && raw.searchText.length > 0 ? raw.searchText : raw.title
+
+    const normalized: Metadata = {
+      id: raw.id,
+      title: raw.title,
+      pinned: raw.pinned === true,
+      global: typeof raw.global === "boolean" ? raw.global : scopeID === HOME_SCOPE_ID,
+      archived: raw.archived === true,
+      tags,
+      version: typeof raw.version === "number" ? raw.version : 1,
+      time: { created, updated },
+      searchText,
+    }
+    if (typeof raw.originScope === "string") normalized.originScope = raw.originScope
+    if (raw.kind === "note" || raw.kind === "blueprint") normalized.kind = raw.kind
+    if (typeof raw.previewHtml === "string") normalized.previewHtml = raw.previewHtml
+    if (raw.blueprint && typeof raw.blueprint === "object") normalized.blueprint = raw.blueprint
+    return normalizeMetadata(normalized, scopeID)
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -104,9 +164,13 @@ export namespace NoteStore {
   async function loadIndex(scopeID: string): Promise<Metadata[]> {
     const sid = Identifier.asScopeID(scopeID)
     try {
-      const entries = await Storage.read<Metadata[]>(indexPath(sid))
-      if (!Array.isArray(entries)) return rebuildIndex(scopeID)
-      return entries.map((entry) => normalizeMetadata(entry, scopeID))
+      const raw = await Storage.read<unknown>(indexPath(sid))
+      if (!Array.isArray(raw)) return rebuildIndex(scopeID)
+      const entries = raw
+        .map((entry) => normalizeMetadataEntry(entry, scopeID))
+        .filter((entry): entry is Metadata => entry !== undefined)
+      sortByPinAndTime(entries)
+      return entries
     } catch {
       return rebuildIndex(scopeID)
     }
@@ -237,7 +301,7 @@ export namespace NoteStore {
     await Storage.write(StoragePath.note(scopeID, id), note)
     await indexSet(targetScopeID, note)
     log.info("created", { id, title: note.title, global: isGlobal, scopeID: targetScopeID })
-    await Bus.publish(NoteEvent.Created, { note })
+    await Bus.publish(NoteEvent.Created, { scopeID: targetScopeID, note, meta: toMetadata(note) })
     await Plugin.trigger(
       "note.create.after",
       {
@@ -321,54 +385,59 @@ export namespace NoteStore {
     )
 
     let wasGlobal = false
-    const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
-      draft.global ??= false
-      draft.version ??= 1
-      wasGlobal = draft.global
-      if (update.patch.expectedVersion !== undefined && update.patch.expectedVersion !== draft.version) {
-        throw new NoteError.Conflict({
-          noteID,
-          expectedVersion: update.patch.expectedVersion,
-          note: normalize(draft),
-        })
-      }
-      if (update.patch.title !== undefined) draft.title = update.patch.title
-      if (update.patch.content !== undefined) draft.content = NoteDocument.normalize(update.patch.content)
-      if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
-      if (update.patch.tags !== undefined) draft.tags = update.patch.tags
-      if (update.patch.kind !== undefined) draft.kind = update.patch.kind
-      if (update.patch.blueprint === null) {
-        draft.blueprint = undefined
-      } else if (update.patch.blueprint !== undefined) {
-        const { activeLoopID, ...rest } = update.patch.blueprint as z.infer<
-          typeof NoteTypes.PatchInput
-        >["blueprint"] & {
-          status?: unknown
+    const before = structuredClone(current)
+    const note = normalize(
+      await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
+        draft.global ??= false
+        draft.version ??= 1
+        wasGlobal = draft.global
+        if (update.patch.expectedVersion !== undefined && update.patch.expectedVersion !== draft.version) {
+          throw new NoteError.Conflict({
+            noteID,
+            expectedVersion: update.patch.expectedVersion,
+            note: normalize(draft),
+          })
         }
-        delete rest.status
-        const next = { ...(draft.blueprint ?? {}), ...rest }
-        if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
-        if (activeLoopID === null) delete next.activeLoopID
-        draft.blueprint = next
-      }
-      if (update.patch.global !== undefined) draft.global = update.patch.global
-      if (update.patch.global === true && !wasGlobal) {
-        draft.originScope = sid as string
-      }
-      if (update.patch.archived !== undefined) {
-        draft.archived = update.patch.archived
-      }
-      draft.version += 1
-      draft.time.updated = Date.now()
-    })
+        if (update.patch.title !== undefined) draft.title = update.patch.title
+        if (update.patch.content !== undefined) draft.content = NoteDocument.normalize(update.patch.content)
+        if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
+        if (update.patch.tags !== undefined) draft.tags = update.patch.tags
+        if (update.patch.kind !== undefined) draft.kind = update.patch.kind
+        if (update.patch.blueprint === null) {
+          draft.blueprint = undefined
+        } else if (update.patch.blueprint !== undefined) {
+          const { activeLoopID, ...rest } = update.patch.blueprint as z.infer<
+            typeof NoteTypes.PatchInput
+          >["blueprint"] & {
+            status?: unknown
+          }
+          delete rest.status
+          const next = { ...(draft.blueprint ?? {}), ...rest }
+          if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
+          if (activeLoopID === null) delete next.activeLoopID
+          draft.blueprint = next
+        }
+        if (update.patch.global !== undefined) draft.global = update.patch.global
+        if (update.patch.global === true && !wasGlobal) {
+          draft.originScope = sid as string
+        }
+        if (update.patch.archived !== undefined) {
+          draft.archived = update.patch.archived
+        }
+        draft.version += 1
+        draft.time.updated = Date.now()
+      }),
+    )
 
     const isNowGlobal = note.global ?? false
+    let finalScopeID = scopeID
     if (!wasGlobal && isNowGlobal) {
       const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       await Storage.write(StoragePath.note(globalSid, noteID), note)
       await Storage.remove(sourcePath)
       await indexRemove(scopeID, noteID)
       await indexSet(HOME_SCOPE_ID, note)
+      finalScopeID = HOME_SCOPE_ID
       log.info("promoted to global", { id: noteID, from: sid })
     } else if (wasGlobal && !isNowGlobal) {
       const targetSid = Identifier.asScopeID(note.originScope || scopeID)
@@ -376,17 +445,19 @@ export namespace NoteStore {
       await Storage.remove(sourcePath)
       await indexRemove(scopeID, noteID)
       await indexSet(note.originScope || scopeID, note)
+      finalScopeID = note.originScope || scopeID
       log.info("demoted from global", { id: noteID, to: targetSid })
     } else {
       await indexSet(scopeID, note)
     }
 
+    const meta = toMetadata(note)
     log.info("updated", { id: noteID, version: note.version })
-    await Bus.publish(NoteEvent.Updated, { note })
+    await Bus.publish(NoteEvent.Updated, { scopeID: finalScopeID, note, meta, changed: changedFields(before, note) })
     if (patch.archived === true) {
-      await Bus.publish(NoteEvent.Archived, { ids: [noteID], scopeID })
+      await Bus.publish(NoteEvent.Archived, { ids: [noteID], scopeID: finalScopeID, metas: [meta] })
     } else if (patch.archived === false) {
-      await Bus.publish(NoteEvent.Unarchived, { ids: [noteID], scopeID })
+      await Bus.publish(NoteEvent.Unarchived, { ids: [noteID], scopeID: finalScopeID, metas: [meta] })
     }
     await Plugin.trigger(
       "note.update.after",
@@ -416,42 +487,54 @@ export namespace NoteStore {
     await Bus.publish(NoteEvent.Deleted, { id: noteID, scopeID })
   }
 
-  export async function archive(scopeID: string, noteIDs: string[]): Promise<z.infer<typeof NoteTypes.Info>[]> {
-    const sid = Identifier.asScopeID(scopeID)
-    const results: z.infer<typeof NoteTypes.Info>[] = []
+  async function groupResolvedNoteIDs(scopeID: string, noteIDs: string[]): Promise<Map<string, string[]>> {
+    const grouped = new Map<string, string[]>()
     for (const noteID of noteIDs) {
-      const sourcePath = StoragePath.note(sid, noteID)
-      const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
-        draft.archived = true as const
-        draft.version += 1
-        draft.time.updated = Date.now()
-      })
-      normalize(note)
-      results.push(note)
+      const resolved = await resolveScope(scopeID, noteID)
+      const ids = grouped.get(resolved.scopeID) ?? []
+      ids.push(noteID)
+      grouped.set(resolved.scopeID, ids)
     }
-    await indexUpdateMany(scopeID, results)
-    log.info("archived", { ids: noteIDs, count: noteIDs.length })
-    await Bus.publish(NoteEvent.Archived, { ids: noteIDs, scopeID })
+    return grouped
+  }
+
+  async function setArchived(
+    scopeID: string,
+    noteIDs: string[],
+    archived: boolean,
+  ): Promise<z.infer<typeof NoteTypes.Info>[]> {
+    const grouped = await groupResolvedNoteIDs(scopeID, noteIDs)
+    const results: z.infer<typeof NoteTypes.Info>[] = []
+    for (const [resolvedScopeID, ids] of grouped) {
+      const sid = Identifier.asScopeID(resolvedScopeID)
+      const scopedResults: z.infer<typeof NoteTypes.Info>[] = []
+      for (const noteID of ids) {
+        const sourcePath = StoragePath.note(sid, noteID)
+        const note = normalize(
+          await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
+            draft.version ??= 1
+            draft.archived = archived
+            draft.version += 1
+            draft.time.updated = Date.now()
+          }),
+        )
+        scopedResults.push(note)
+        results.push(note)
+      }
+      await indexUpdateMany(resolvedScopeID, scopedResults)
+      const payload = { ids, scopeID: resolvedScopeID, metas: scopedResults.map(toMetadata) }
+      await Bus.publish(archived ? NoteEvent.Archived : NoteEvent.Unarchived, payload)
+    }
+    log.info(archived ? "archived" : "unarchived", { ids: noteIDs, count: noteIDs.length })
     return results
   }
 
+  export async function archive(scopeID: string, noteIDs: string[]): Promise<z.infer<typeof NoteTypes.Info>[]> {
+    return setArchived(scopeID, noteIDs, true)
+  }
+
   export async function unarchive(scopeID: string, noteIDs: string[]): Promise<z.infer<typeof NoteTypes.Info>[]> {
-    const sid = Identifier.asScopeID(scopeID)
-    const results: z.infer<typeof NoteTypes.Info>[] = []
-    for (const noteID of noteIDs) {
-      const sourcePath = StoragePath.note(sid, noteID)
-      const note = await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
-        draft.archived = false
-        draft.version += 1
-        draft.time.updated = Date.now()
-      })
-      normalize(note)
-      results.push(note)
-    }
-    await indexUpdateMany(scopeID, results)
-    log.info("unarchived", { ids: noteIDs, count: noteIDs.length })
-    await Bus.publish(NoteEvent.Unarchived, { ids: noteIDs, scopeID })
-    return results
+    return setArchived(scopeID, noteIDs, false)
   }
 
   // --- Public API: metadata only (fast, for tools) ---
