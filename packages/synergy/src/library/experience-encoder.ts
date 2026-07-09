@@ -20,6 +20,9 @@ import { createHash } from "crypto"
 
 export namespace ExperienceEncoder {
   const log = Log.create({ service: "library.encoder" })
+  const GIB = 1024 * 1024 * 1024
+  const MAX_ENCODER_RSS_BYTES = envBytes("SYNERGY_LIBRARY_ENCODER_MAX_RSS_BYTES", 6 * GIB)
+  const MAX_ENCODER_ARRAY_BUFFER_BYTES = envBytes("SYNERGY_LIBRARY_ENCODER_MAX_ARRAY_BUFFER_BYTES", GIB)
 
   function hashForLog(value: string): string {
     if (!value) return "empty"
@@ -41,8 +44,16 @@ export namespace ExperienceEncoder {
   }
 
   export function onComplete(msg: MessageV2.Assistant) {
-    if (msg.error && !MessageV2.AbortedError.isInstance(msg.error)) return
-    if (msg.finish === "tool-calls") return
+    const skipReason = skipEncodeOnCompleteReason(msg)
+    if (skipReason) {
+      log.info("skipping experience encoding", {
+        sessionID: msg.sessionID,
+        messageID: msg.id,
+        reason: skipReason,
+        memory: memorySnapshot(),
+      })
+      return
+    }
 
     encode(msg.sessionID, msg.parentID)
       .then(async (outcome) => {
@@ -158,6 +169,51 @@ export namespace ExperienceEncoder {
     })
 
     return { script, embedding, reason: result.reason, usedFallback }
+  }
+
+  function envBytes(name: string, fallback: number) {
+    const raw = process.env[name]
+    if (!raw) return fallback
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+    return parsed
+  }
+
+  type MemoryUsage = ReturnType<typeof process.memoryUsage>
+
+  function memorySnapshot(memory: MemoryUsage = process.memoryUsage()) {
+    return {
+      rss: memory.rss,
+      heapUsed: memory.heapUsed,
+      external: memory.external,
+      arrayBuffers: memory.arrayBuffers,
+    }
+  }
+
+  function memoryPressureReason(memory: MemoryUsage = process.memoryUsage()) {
+    if (memory.rss >= MAX_ENCODER_RSS_BYTES) {
+      return `memory pressure: rss ${memory.rss} >= ${MAX_ENCODER_RSS_BYTES}`
+    }
+    if (memory.arrayBuffers >= MAX_ENCODER_ARRAY_BUFFER_BYTES) {
+      return `memory pressure: arrayBuffers ${memory.arrayBuffers} >= ${MAX_ENCODER_ARRAY_BUFFER_BYTES}`
+    }
+    return undefined
+  }
+
+  function skipEncodeOnCompleteReason(msg: MessageV2.Assistant, memory: MemoryUsage = process.memoryUsage()) {
+    if (msg.error) return "assistant errored"
+    if (msg.finish === "tool-calls") return "assistant requested tool calls"
+    return memoryPressureReason(memory)
+  }
+
+  function shouldEncodeOnComplete(msg: MessageV2.Assistant, memory: MemoryUsage = process.memoryUsage()) {
+    return !skipEncodeOnCompleteReason(msg, memory)
+  }
+
+  export const __test = {
+    memoryPressureReason,
+    skipEncodeOnCompleteReason,
+    shouldEncodeOnComplete,
   }
 
   async function encode(sessionID: string, userMessageID: string): Promise<EncodeOutcome> {
