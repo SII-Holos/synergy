@@ -491,7 +491,7 @@ export namespace SessionManager {
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
         ).catch(() => undefined)
-        if (!info || info.time.archived || info.pendingReply !== true) continue
+        if (!info || !info.time || info.time.archived || info.pendingReply !== true) continue
         sessionIDs.add(info.id)
       }
     }
@@ -510,7 +510,7 @@ export namespace SessionManager {
         const info = await Storage.read<Info>(
           StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
         ).catch(() => undefined)
-        if (!info || info.time.archived) continue
+        if (!info || !info.time || info.time.archived) continue
         if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
         sessionIDs.add(info.id)
       }
