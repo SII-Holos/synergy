@@ -32503,6 +32503,9 @@
             "properties": {
               "id": {
                 "type": "string"
+              },
+              "directory": {
+                "type": "string"
               }
             },
             "required": ["id"]
