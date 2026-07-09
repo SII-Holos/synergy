@@ -16,7 +16,13 @@ import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registri
 import type { WorkbenchSurfaceState } from "./workbench-panels-model"
 import { migrateWorkbenchLayout } from "./workbench-layout-migration"
 import { reconcile } from "solid-js/store"
-import { applySessionToNavList, mergeNavListByID, navUpdateFromSession, orderNavEntries } from "./layout-nav"
+import {
+  applySessionToNavList,
+  mergeNavListByID,
+  navUpdateFromSession,
+  orderNavEntries,
+  removeScopeFromIndex,
+} from "./layout-nav"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -504,12 +510,46 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // On session.updated, refresh nav lists preserving current depth.
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
     const NAV_REFRESH_DEBOUNCE_MS = 300
+    function scheduleScopeIndexRefresh() {
+      const pending = navRefreshTimers.get("__scopeIndex__")
+      if (pending) clearTimeout(pending)
+      navRefreshTimers.set(
+        "__scopeIndex__",
+        setTimeout(() => {
+          navRefreshTimers.delete("__scopeIndex__")
+          loadScopeIndex()
+        }, NAV_REFRESH_DEBOUNCE_MS),
+      )
+    }
+
+    function applyScopeRemoval(scopeID: string, directory?: string) {
+      const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
+      if (removed.directory) server.scopes.close(removed.directory)
+      if (removed.removed) {
+        setScopeIndex(removed.entries)
+      }
+      scheduleScopeIndexRefresh()
+    }
 
     onMount(() => {
       const unsub = globalSdk.event.listen((e) => {
-        if ((e.details as { type?: string })?.type !== "session.updated") return
+        const event = e.details as { type?: string; properties?: unknown }
+        const eventProperties = isRecord(event.properties) ? event.properties : undefined
+        const eventDirectory = typeof eventProperties?.directory === "string" ? eventProperties.directory : undefined
+        if (event.type === "scope.removed") {
+          const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
+          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
+          return
+        }
+        const eventTime = isRecord(eventProperties?.time) ? eventProperties.time : undefined
+        if (event.type === "scope.updated" && eventTime?.archived) {
+          const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
+          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
+          return
+        }
+        if (event.type !== "session.updated") return
         const properties = (
-          e.details as {
+          event as {
             properties?: {
               info?: { scope?: { id?: string; directory?: string } }
               navEntry?: NavEntry
@@ -549,15 +589,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             refreshGlobalRecent()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
-        const scopeIndexPending = navRefreshTimers.get("__scopeIndex__")
-        if (scopeIndexPending) clearTimeout(scopeIndexPending)
-        navRefreshTimers.set(
-          "__scopeIndex__",
-          setTimeout(() => {
-            navRefreshTimers.delete("__scopeIndex__")
-            loadScopeIndex()
-          }, NAV_REFRESH_DEBOUNCE_MS),
-        )
+        scheduleScopeIndexRefresh()
         if (scope.id === "home") {
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue

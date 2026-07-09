@@ -115,6 +115,23 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.read).toBe(256)
   })
 
+  test("extracts DeepSeek prompt cache tokens from usage fields", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        prompt_cache_hit_tokens: 384,
+        prompt_cache_miss_tokens: 616,
+      } as Parameters<typeof Session.getUsage>[0]["usage"],
+    })
+
+    expect(result.tokens.input).toBe(616)
+    expect(result.tokens.cache.read).toBe(384)
+  })
+
   test("extracts OpenAI prompt cache hit and miss metadata", () => {
     const model = createModel({ context: 100_000, output: 32_000 })
     const result = Session.getUsage({

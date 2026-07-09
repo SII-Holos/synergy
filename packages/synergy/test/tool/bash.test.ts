@@ -7,6 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
+import { detectDetachedDaemonRisk, LocalBashBackend } from "../../src/tool/bash/local"
 import { Shell } from "../../src/util/shell"
 
 const ctx = {
@@ -17,7 +18,8 @@ const ctx = {
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},
-}
+  extra: {} as Record<string, unknown>,
+} as any
 
 function metadataTracker() {
   const calls: Array<{ metadata: any }> = []
@@ -154,6 +156,68 @@ describe("tool.bash", () => {
       expect(right.metadata.exit).toBe(0)
       expect(left.output).toContain("left")
       expect(right.output).toContain("right")
+    })
+  })
+
+  test("detects detached daemon launch patterns without flagging normal command chaining", () => {
+    expect(detectDetachedDaemonRisk("tmux new-session -d -s app 'npm run dev'")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("tmux new -d -s app")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("screen -dmS app python server.py")?.kind).toBe("screen_detached")
+    expect(detectDetachedDaemonRisk("nohup npm run dev > server.log 2>&1 &")?.kind).toBe("nohup")
+    expect(detectDetachedDaemonRisk("setsid python worker.py")?.kind).toBe("setsid")
+    expect(detectDetachedDaemonRisk("sleep 100 & disown")?.kind).toBe("disown")
+    expect(detectDetachedDaemonRisk("python worker.py &")?.kind).toBe("shell_background")
+    expect(detectDetachedDaemonRisk("sleep 100 & echo done")?.kind).toBe("shell_background")
+    expect(detectDetachedDaemonRisk("echo first && echo second")).toBeUndefined()
+    expect(detectDetachedDaemonRisk("cd ..")).toBeUndefined()
+  })
+
+  test("blocks detached daemon launch patterns before spawning locally", async () => {
+    await withProjectScope(async () => {
+      await expect(
+        LocalBashBackend.execute(
+          {
+            command: "nohup echo hi > daemon.log 2>&1 &",
+            description: "Launch detached daemon",
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("Blocked detached daemon launch pattern")
+    })
+  })
+
+  test("allows detached daemons with shellAllowDetachedDaemons context flag", async () => {
+    await withProjectScope(async () => {
+      const allowedCtx = {
+        ...ctx,
+        extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
+      }
+      // no rejection expected; command may fail at runtime but should not be blocked
+      const result = await LocalBashBackend.execute(
+        {
+          command: "echo allowed",
+          description: "Allowed daemon",
+        },
+        allowedCtx,
+      )
+      expect(result.metadata.exit).toBe(0)
+    })
+  })
+
+  test("allows detached daemons with full_access control profile", async () => {
+    await withProjectScope(async () => {
+      const fullAccessCtx = {
+        ...ctx,
+        extra: { ...ctx.extra, controlProfile: "full_access" },
+      }
+      const result = await LocalBashBackend.execute(
+        {
+          command: "echo allowed",
+          description: "full_access daemon",
+        },
+        fullAccessCtx,
+      )
+      expect(result.metadata.exit).toBe(0)
     })
   })
 

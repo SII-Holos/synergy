@@ -1,4 +1,4 @@
-import { Show, createMemo, createSignal } from "solid-js"
+import { Show, createMemo, createSignal, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -16,8 +16,11 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { setWorktreeTransition, worktreeTransition } from "@/components/session/worktree-progress-signals"
-import { isSessionRunningForWorkspaceChange } from "@/components/session/worktree-session"
+import { WorktreeEnterConfirmDialog } from "@/components/session/worktree-transition-dialog"
+import {
+  isSessionRunningForWorkspaceChange,
+  type SessionWorkspaceTransitionRequest,
+} from "@/components/session/worktree-session"
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
@@ -93,7 +96,10 @@ function SessionActionMenu(props: {
   )
 }
 
-export function SessionTopBar() {
+export function SessionTopBar(props: {
+  onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
+  workspaceTransitionPending?: Accessor<boolean>
+}) {
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
@@ -103,7 +109,6 @@ export function SessionTopBar() {
   const command = useCommand()
   const sync = useSync()
   const workbench = useWorkbenchPanels()
-  const worktreePending = createMemo(() => !!worktreeTransition())
   const sideSurface = createMemo(() => workbench.surface("side"))
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
@@ -115,7 +120,7 @@ export function SessionTopBar() {
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
-      pending: worktreePending(),
+      pending: props.workspaceTransitionPending?.(),
       status: sync.data.session_status[params.id ?? ""],
       working: sessionInfo()?.working,
     }),
@@ -143,8 +148,14 @@ export function SessionTopBar() {
     dialog.show(() => <DialogSessionRename session={session} directory={dir} />)
   }
 
-  const showWorktreeTransition = (mode: "enter" | "leave", sessionID: string, dir: string) => {
-    setWorktreeTransition({ mode, sessionID, directory: dir })
+  const showEnterWorktreeDialog = (sessionID: string, dir: string) => {
+    dialog.show(() => (
+      <WorktreeEnterConfirmDialog
+        sessionID={sessionID}
+        directory={dir}
+        onConfirm={(request) => props.onWorkspaceTransition?.(request)}
+      />
+    ))
   }
 
   const toggleWorktree = () => {
@@ -152,16 +163,14 @@ export function SessionTopBar() {
     const dir = sessionDirectory()
     if (!session || !dir || worktreeDisabled()) return
     if (!isWorktreeSession()) {
-      showWorktreeTransition("enter", session.id, dir)
+      showEnterWorktreeDialog(session.id, dir)
       return
     }
     confirm.show({
       ...leaveWorktreeConfirm(session.title),
       onConfirm: () => {
-        setTimeout(() => {
-          if (worktreeDisabled()) return
-          showWorktreeTransition("leave", session.id, dir)
-        }, 0)
+        if (worktreeDisabled()) return
+        props.onWorkspaceTransition?.({ operation: "leave", sessionID: session.id, directory: dir })
       },
     })
   }
