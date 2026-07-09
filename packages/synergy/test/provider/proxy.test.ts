@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test"
+import { generateText, streamText } from "ai"
 import { Provider } from "../../src/provider/provider"
 
 function makeModel(overrides: Partial<Provider.Model> = {}): Provider.Model {
@@ -98,6 +99,104 @@ function createChunkedServer() {
   })
   return {
     url: `http://127.0.0.1:${server.port}`,
+    stop() {
+      server.stop()
+    },
+  }
+}
+
+function createOpenAICompatibleServer() {
+  let hits = 0
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket, data) {
+        hits++
+        const request = new TextDecoder().decode(data)
+        const isStreaming = request.includes('"stream":true')
+        const body = isStreaming
+          ? [
+              'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"OK"},"finish_reason":null}]}',
+              'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+              "data: [DONE]",
+              "",
+            ].join("\n\n")
+          : JSON.stringify({
+              id: "chatcmpl-test",
+              object: "chat.completion",
+              created: 0,
+              model: "test-model",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "OK" },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            })
+        const contentType = isStreaming ? "text/event-stream" : "application/json"
+        socket.write(
+          `HTTP/1.1 200 OK\r\nContent-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+        )
+        socket.end()
+      },
+    },
+  })
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    get hits() {
+      return hits
+    },
+    stop() {
+      server.stop()
+    },
+  }
+}
+
+function createOpenAIResponsesServer() {
+  let hits = 0
+  const lines: string[] = []
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket, data) {
+        hits++
+        lines.push(new TextDecoder().decode(data).split("\r\n")[0] ?? "")
+        const body = JSON.stringify({
+          id: "resp_test",
+          object: "response",
+          created_at: 0,
+          status: "completed",
+          model: "test-model",
+          output: [
+            {
+              id: "msg_test",
+              type: "message",
+              status: "completed",
+              role: "assistant",
+              content: [{ type: "output_text", text: "OK", annotations: [] }],
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        })
+        socket.write(
+          `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+        )
+        socket.end()
+      },
+    },
+  })
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    get hits() {
+      return hits
+    },
+    get lines() {
+      return lines
+    },
     stop() {
       server.stop()
     },
@@ -208,6 +307,148 @@ test("noProxy direct fetch decodes chunked responses", async () => {
 
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("hello world")
+    expect(envProxy.hits).toBe(0)
+  } finally {
+    envProxy.stop()
+    server.stop()
+    restoreProxyEnv(snapshot)
+  }
+})
+
+test("noProxy bypasses system proxy env for generateText requests", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const server = createOpenAICompatibleServer()
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+    process.env.http_proxy = envProxy.url
+    process.env.https_proxy = envProxy.url
+
+    const sdk = Provider.createSDKFromSpec(
+      makeModel({
+        api: {
+          id: "test-model",
+          url: `${server.url}/v1`,
+          npm: "@ai-sdk/openai-compatible",
+        },
+      }),
+      { options: { noProxy: true, apiKey: "test-key" } },
+    )
+
+    const result = await generateText({
+      model: sdk.languageModel("test-model"),
+      prompt: "ping",
+      abortSignal: AbortSignal.timeout(1_000),
+    })
+
+    expect(result.text).toBe("OK")
+    expect(server.hits).toBe(1)
+    expect(envProxy.hits).toBe(0)
+  } finally {
+    envProxy.stop()
+    server.stop()
+    restoreProxyEnv(snapshot)
+  }
+})
+
+test("noProxy takes precedence over explicit proxy for generateText requests", async () => {
+  const configuredProxy = createProbeProxy("configured")
+  const server = createOpenAICompatibleServer()
+  try {
+    const sdk = Provider.createSDKFromSpec(
+      makeModel({
+        api: {
+          id: "test-model",
+          url: `${server.url}/v1`,
+          npm: "@ai-sdk/openai-compatible",
+        },
+      }),
+      { options: { proxy: configuredProxy.url, noProxy: true, apiKey: "test-key" } },
+    )
+
+    const result = await generateText({
+      model: sdk.languageModel("test-model"),
+      prompt: "ping",
+      abortSignal: AbortSignal.timeout(1_000),
+    })
+
+    expect(result.text).toBe("OK")
+    expect(server.hits).toBe(1)
+    expect(configuredProxy.hits).toBe(0)
+  } finally {
+    configuredProxy.stop()
+    server.stop()
+  }
+})
+
+test("noProxy bypasses system proxy env for OpenAI responses requests", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const server = createOpenAIResponsesServer()
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+    process.env.http_proxy = envProxy.url
+    process.env.https_proxy = envProxy.url
+
+    const sdk = Provider.createSDKFromSpec(
+      makeModel({
+        api: {
+          id: "test-model",
+          url: `${server.url}/v1`,
+          npm: "@ai-sdk/openai",
+        },
+      }),
+      { options: { noProxy: true, apiKey: "test-key" } },
+    )
+
+    const result = await generateText({
+      model: (sdk as any).responses("test-model"),
+      prompt: "ping",
+      abortSignal: AbortSignal.timeout(1_000),
+    })
+
+    expect(result.text).toBe("OK")
+    expect(server.hits).toBe(1)
+    expect(server.lines[0]).toBe("POST /v1/responses HTTP/1.1")
+    expect(envProxy.hits).toBe(0)
+  } finally {
+    envProxy.stop()
+    server.stop()
+    restoreProxyEnv(snapshot)
+  }
+})
+
+test("noProxy bypasses system proxy env for streamText requests", async () => {
+  const snapshot = snapshotProxyEnv()
+  const envProxy = createProbeProxy("env")
+  const server = createOpenAICompatibleServer()
+  try {
+    process.env.HTTP_PROXY = envProxy.url
+    process.env.HTTPS_PROXY = envProxy.url
+    process.env.http_proxy = envProxy.url
+    process.env.https_proxy = envProxy.url
+
+    const sdk = Provider.createSDKFromSpec(
+      makeModel({
+        api: {
+          id: "test-model",
+          url: `${server.url}/v1`,
+          npm: "@ai-sdk/openai-compatible",
+        },
+      }),
+      { options: { noProxy: true, apiKey: "test-key" } },
+    )
+
+    const result = streamText({
+      model: sdk.languageModel("test-model"),
+      prompt: "ping",
+      abortSignal: AbortSignal.timeout(1_000),
+    })
+
+    expect(await result.text).toBe("OK")
+    expect(server.hits).toBe(1)
     expect(envProxy.hits).toBe(0)
   } finally {
     envProxy.stop()

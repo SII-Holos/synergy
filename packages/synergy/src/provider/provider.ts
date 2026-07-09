@@ -215,9 +215,10 @@ export namespace Provider {
     proxyUrl: string | undefined,
     noProxy: boolean,
   ) {
-    if (noProxy) return directFetch(input, init)
-    if (proxyUrl) return fetchFn(input, { ...init, proxy: proxyUrl } as RequestInit)
-    return fetchFn(input, init)
+    const request = input instanceof Request ? input : new Request(input, init)
+    if (noProxy) return directFetch(request, undefined)
+    if (proxyUrl) return fetchFn(request, { proxy: proxyUrl } as RequestInit)
+    return fetchFn(request)
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -702,26 +703,27 @@ export namespace Provider {
       throw new Error(`Unsupported provider SDK "${model.api.npm}" for "${model.providerID}"`)
     }
 
-    // Strip proxy/noProxy from options before passing to bundledFn —
-    // Bun fetch reads proxy settings from process.env, so these are handled
-    // around each fetch call instead of passed through as SDK options.
+    const customFetch = options["fetch"]
     const proxyUrl = options["proxy"] as string | undefined
     const noProxy = options["noProxy"] === true
     delete options["proxy"]
     delete options["noProxy"]
+
+    const proxyFetch =
+      proxyUrl || noProxy
+        ? (input: any, init?: any) => fetchWithProxyOptions(customFetch ?? fetch, input, init, proxyUrl, noProxy)
+        : customFetch
+    if (proxyFetch) options["fetch"] = proxyFetch
 
     const builtSDK = bundledFn({
       name: model.providerID,
       ...options,
     }) as SDK
 
-    if (proxyUrl || noProxy) {
-      const baseFetch = (builtSDK as any)._fetch ?? fetch
+    if (proxyFetch) {
       const patchedSDK = new Proxy(builtSDK as object, {
         get(target, prop) {
-          if (prop === "fetch") {
-            return (input: any, init?: any) => fetchWithProxyOptions(baseFetch, input, init, proxyUrl, noProxy)
-          }
+          if (prop === "fetch") return proxyFetch
           return Reflect.get(target, prop)
         },
       })
@@ -1000,7 +1002,18 @@ export namespace Provider {
 
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
-    const key = `${model.providerID}/${model.id}`
+    const provider = s.providers[model.providerID]
+    const options = { ...provider.options, ...model.options }
+    const key = Bun.hash
+      .xxHash32(
+        JSON.stringify({
+          providerID: model.providerID,
+          modelID: model.id,
+          npm: model.api.npm,
+          options,
+        }),
+      )
+      .toString()
     const MODEL_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — keep in sync with SDK_CACHE_TTL_MS
     const cached = s.models.get(key)
     if (cached) {
@@ -1009,7 +1022,6 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const provider = s.providers[model.providerID]
     const sdk = await getSDK(model)
 
     try {
