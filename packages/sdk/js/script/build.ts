@@ -114,7 +114,10 @@ function removeExpandedPerformanceParameterComponents(spec: OpenApiDocument) {
   for (const name of Object.keys(performanceQueryParameters)) delete spec.components?.parameters?.[name]
 }
 
-await $`bun dev generate > ${dir}/openapi.json`.cwd(path.resolve(dir, "../../synergy"))
+await writeFile(
+  path.join(dir, "openapi.json"),
+  await $`bun dev generate`.cwd(path.resolve(dir, "../../synergy")).text(),
+)
 await prepareSdkOpenApi()
 
 await createClient({
