@@ -5845,6 +5845,7 @@ export type EventScopeRemoved = {
   type: "scope.removed"
   properties: {
     id: string
+    directory?: string
   }
 }
 
