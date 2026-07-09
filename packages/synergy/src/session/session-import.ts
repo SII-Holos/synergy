@@ -17,28 +17,41 @@ import { Log } from "@/util/log"
 export namespace SessionImport {
   const log = Log.create({ service: "session-import" })
 
-  function validateScope(report: SessionExport.Report, targetScope: Scope): string[] {
-    const warnings: string[] = []
+  function checkScopeMismatch(report: SessionExport.Report, targetScope: Scope): void {
     const sourceScopes = collectSourceScopes(report)
-
-    if (sourceScopes.size === 0) return warnings
+    if (sourceScopes.size === 0) return
 
     const targetType = targetScope.type
-    const targetDir = targetScope.directory
-
+    const targetID = targetScope.id
     for (const [scopeID, source] of sourceScopes) {
-      if (source.type !== targetType) {
-        warnings.push(
-          `Session originally belonged to a "${source.type}" scope (${scopeID}) but is being imported into a "${targetType}" scope. Workspace paths may not match.`,
+      if (scopeID !== "unknown" && scopeID !== targetID) {
+        throw new Error(
+          `Cannot import session from scope "${scopeID}" into scope "${targetID}". ` +
+            `Session import only supports importing back into the same scope.`,
         )
       }
-      if (source.directory && source.directory !== targetDir) {
-        warnings.push(
-          `Session originally used directory "${source.directory}" but the target scope directory is "${targetDir}". Relative paths in tool results may be incorrect.`,
+      if (source.type && source.type !== targetType) {
+        throw new Error(
+          `Cannot import session from a "${source.type}" scope (${scopeID}) into a "${targetType}" scope. ` +
+            `Session import only supports same-type scopes.`,
         )
       }
     }
+  }
 
+  function collectDirectoryWarnings(report: SessionExport.Report, targetScope: Scope): string[] {
+    const warnings: string[] = []
+    const sourceScopes = collectSourceScopes(report)
+    if (sourceScopes.size === 0) return warnings
+
+    const targetDir = targetScope.directory
+    for (const [scopeID, source] of sourceScopes) {
+      if (source.directory && source.directory !== targetDir) {
+        warnings.push(
+          `Session originally used directory "${source.directory}" but the target scope directory is "${targetDir}" (scope ${scopeID}). Relative paths in tool results may be incorrect.`,
+        )
+      }
+    }
     return warnings
   }
 
@@ -121,6 +134,14 @@ export namespace SessionImport {
     if (report.sessions.length === 0) throw new Error("Session import report does not contain any sessions")
 
     const scope = ScopeContext.current.scope
+    checkScopeMismatch(report, scope)
+    const warnings = collectDirectoryWarnings(report, scope)
+    if (warnings.length > 0) {
+      for (const warning of warnings) {
+        log.warn(warning)
+      }
+    }
+
     const scopeID = Identifier.asScopeID(scope.id)
     const idMap = new Map(report.sessions.map((data) => [data.info.id, Identifier.descending("session")]))
     const ordered = orderSessions(report)
@@ -178,12 +199,6 @@ export namespace SessionImport {
         info: await Session.withRuntimeInfo(item.session),
         navEntry: navIndex.entries.find((entry) => entry.id === item.session.id),
       })
-    }
-    const warnings = validateScope(report, scope)
-    if (warnings.length > 0) {
-      for (const warning of warnings) {
-        log.warn(warning)
-      }
     }
 
     const rootSessionID = idMap.get(report.rootSessionID) ?? imported[0]?.session.id

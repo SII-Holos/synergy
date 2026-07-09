@@ -149,7 +149,7 @@ describe("SessionImport", () => {
     })
   })
 
-  test("warns when importing across different scopes", async () => {
+  test("rejects import from a different scope", async () => {
     await using sourceTmp = await tmpdir({ git: true })
     await using targetTmp = await tmpdir({ git: true })
     const sourceScope = await sourceTmp.scope()
@@ -167,16 +167,34 @@ describe("SessionImport", () => {
     await ScopeContext.provide({
       scope: targetScope,
       fn: async () => {
+        await expect(SessionImport.fromReport(report)).rejects.toThrow("Cannot import session from scope")
+      },
+    })
+  })
+
+  test("warns when importing into same scope type with different directory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    const report = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const root = await Session.create({ title: "Same Scope Export" })
+        await writeExchange(root.id, "test message")
+        return SessionExport.generate({ sessionID: root.id, mode: "full" })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
         const result = await SessionImport.fromReport(report)
         expect(result.sessionCount).toBe(1)
         expect(result.messageCount).toBe(2)
-        expect(result.warnings.length).toBeGreaterThanOrEqual(1)
-        const warningText = result.warnings.join(" ")
-        expect(warningText).toContain("originally used directory")
+        expect(result.warnings).toEqual([])
 
         const root = await Session.get(result.rootSessionID)
-        expect((root.scope as Scope).id).toBe(targetScope.id)
-        expect(root.workspace?.path).toBe(targetScope.directory)
+        expect((root.scope as Scope).id).toBe(scope.id)
       },
     })
   })
