@@ -268,6 +268,42 @@ describe("session lifecycle events", () => {
       },
     })
   })
+
+  test("Session.get exposes effective control profile for root sessions without persisting it", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+        expect((await Session.get(session.id)).controlProfile).toBe("full_access")
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("Session.list exposes effective control profiles for root and child sessions", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const root = await Session.create({})
+        const child = await Session.create({ parentID: root.id })
+
+        const roots = await Session.list()
+        expect(roots.data.find((item) => item.id === root.id)?.controlProfile).toBe("full_access")
+
+        const all = await Session.list({ parentOnly: false })
+        expect(all.data.find((item) => item.id === child.id)?.controlProfile).toBe("full_access")
+
+        await Session.remove(root.id)
+      },
+    })
+  })
+
   test("resolveControlProfile falls back to guarded for ordinary root sessions", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -452,6 +488,56 @@ describe("session lifecycle events", () => {
         expect(await Session.resolveControlProfile(grandchild.id)).toBe("autonomous")
 
         await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("childPage exposes effective control profiles for child sessions", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const root = await Session.create({})
+        const child = await Session.create({ parentID: root.id })
+
+        const page = await Session.childPage({ parentID: root.id })
+        const childItem = page.items.find((item) => item.id === child.id)
+        expect(childItem?.controlProfile).toBe("full_access")
+
+        await Session.remove(root.id)
+      },
+    })
+  })
+
+  test("Session.get exposes guarded for root sessions without explicit profile or config default", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+        expect((await Session.get(session.id)).controlProfile).toBe("guarded")
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("Session.list returns explicitly stored controlProfile unchanged", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ controlProfile: "autonomous" })
+
+        const list = await Session.list()
+        const item = list.data.find((i) => i.id === session.id)
+        expect(item?.controlProfile).toBe("autonomous")
+        expect(await Session.resolveSessionControlProfile(session.id)).toBe("autonomous")
+
+        await Session.remove(session.id)
       },
     })
   })
