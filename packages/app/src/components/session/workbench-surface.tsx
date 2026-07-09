@@ -35,14 +35,28 @@ function WorkbenchPanelContent(props: {
   const [loading, setLoading] = createSignal(!props.entry.component && !!props.entry.loader)
 
   onMount(() => {
+    console.log(
+      `[workbench panel ${props.entry.id}] mount. has loader:`,
+      !!props.entry.loader,
+      "has component:",
+      !!props.entry.component,
+    )
     if (!props.entry.loader) return
     props.entry.loader().then(
       (mod) => {
+        console.log(`[workbench panel ${props.entry.id}] loader resolved. default type:`, typeof mod.default)
         setComp(() => mod.default)
         setLoading(false)
       },
-      () => setLoading(false),
+      (err) => {
+        console.error(`[workbench panel ${props.entry.id}] loader failed:`, err)
+        setLoading(false)
+      },
     )
+  })
+
+  createEffect(() => {
+    console.log(`[workbench panel ${props.entry.id}] state -> loading:`, loading(), "comp:", !!comp())
   })
 
   return (

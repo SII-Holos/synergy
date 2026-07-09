@@ -77,7 +77,13 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
         assetUrl(contribution, modulePath),
         exportName ?? "default",
         contribution.ui?.minUIApiVersion ?? "",
-      )
+      ).catch((err) => {
+        console.error(
+          `[plugin host ${contribution.pluginId}] loadComponent failed for ${exportName ?? "default"}:`,
+          err,
+        )
+        throw err
+      })
   }
 
   const loadCommand = (

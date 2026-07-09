@@ -119,14 +119,22 @@ function hasBundledSolidRuntime(source: string) {
 }
 
 async function resolvedPluginModuleUrl(pluginId: string, assetsBaseUrl: string) {
+  console.log(`[plugin loader ${pluginId}] resolving module URL: ${assetsBaseUrl}`)
   const cached = rewrittenPluginModuleUrls.get(assetsBaseUrl)
-  if (cached) return cached
+  if (cached) {
+    console.log(`[plugin loader ${pluginId}] using cached module URL`)
+    return cached
+  }
 
   sharedSolidRuntime()
+  console.log(`[plugin loader ${pluginId}] shared solid runtime initialized`)
   const response = await fetch(assetsBaseUrl)
+  console.log(`[plugin loader ${pluginId}] fetch response: ${response.status} ${response.statusText}`)
   if (!response.ok) throw new Error(`Failed to fetch plugin UI bundle: HTTP ${response.status}`)
 
   const source = await response.text()
+  console.log(`[plugin loader ${pluginId}] bundle length: ${source.length}`)
+  console.log(`[plugin loader ${pluginId}] bundle head:\n${source.slice(0, 400)}`)
   if (hasBundledSolidRuntime(source)) {
     throw new Error(`Plugin ${pluginId} bundles Solid runtime. Rebuild it with synergy-plugin build.`)
   }
@@ -137,9 +145,11 @@ async function resolvedPluginModuleUrl(pluginId: string, assetsBaseUrl: string) 
   }
 
   const rewritten = rewriteSharedSolidImports(source)
+  console.log(`[plugin loader ${pluginId}] rewritten head:\n${rewritten.slice(0, 400)}`)
   const blob = new Blob([`${rewritten}\n//# sourceURL=${assetsBaseUrl}`], { type: "text/javascript" })
   const url = URL.createObjectURL(blob)
   rewrittenPluginModuleUrls.set(assetsBaseUrl, url)
+  console.log(`[plugin loader ${pluginId}] created blob URL: ${url}`)
   return url
 }
 
@@ -173,15 +183,21 @@ export async function loadPluginExport<T = unknown>(
   if (uiApiVersion && !isCompatibleUIVersion(uiApiVersion, CURRENT_UI_API_VERSION)) {
     throw new Error(`Plugin ${pluginId} requires UI API ${uiApiVersion} but host is ${CURRENT_UI_API_VERSION}`)
   }
+  console.log(`[plugin loader ${pluginId}] loadPluginExport called: export="${exportName}" url=${assetsBaseUrl}`)
   try {
+    console.log(`[plugin loader ${pluginId}] loading export "${exportName}" from ${assetsBaseUrl}`)
     const moduleUrl = await resolvedPluginModuleUrl(pluginId, assetsBaseUrl)
+    console.log(`[plugin loader ${pluginId}] importing module URL: ${moduleUrl}`)
     const mod = (await import(/* @vite-ignore */ moduleUrl)) as Record<string, unknown>
+    console.log(`[plugin loader ${pluginId}] module imported. keys:`, Object.keys(mod))
     const exported = mod[exportName]
+    console.log(`[plugin loader ${pluginId}] export "${exportName}" resolved to:`, typeof exported, exported)
     if (exported === undefined) {
       throw new Error(`Export "${exportName}" not found in plugin ${pluginId} bundle at ${assetsBaseUrl}`)
     }
     return { default: exported as T }
   } catch (err) {
+    console.error(`[plugin loader ${pluginId}] failed to load "${exportName}" from ${assetsBaseUrl}:`, err)
     if (err instanceof Error && err.message.startsWith("Export ")) throw err
     throw new Error(
       `Failed to load plugin ${pluginId} from ${assetsBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
