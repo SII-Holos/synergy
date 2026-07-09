@@ -11,7 +11,6 @@ import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
-import { PermissionNext } from "@/permission/next"
 import { CortexTypes } from "./types"
 import { Trajectory } from "./trajectory"
 import { CortexConcurrency } from "./concurrency"
@@ -20,7 +19,6 @@ import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
 import { CortexOutput } from "./output"
-import { SessionBounds } from "../session/bounds"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -29,11 +27,11 @@ export namespace Cortex {
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
+  let progressUpdateTimer: Timer | undefined
 
-  const TASK_CLEANUP_DELAY_MS = 60 * 1000
-  const TASK_PROMPT_RETAIN_CHARS = 4_096
-  const TASK_ERROR_RETAIN_CHARS = 8_192
-  const TASK_OUTPUT_RETAIN_CHARS = 120_000
+  const PROMPT_COMPACT_DELAY_MS = 30 * 1000
+  const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
+  const PROGRESS_UPDATE_EVENT_DELAY_MS = 200
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -93,12 +91,9 @@ export namespace Cortex {
 
     const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
-    const blockedCoordinationTools = Array.from(
+    const blockedTools = Array.from(
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
-    const agent = await Agent.get(input.agent)
-    const delegatedSessionDenies =
-      executionRole === "delegated_subagent" ? delegatedCoordinationDenies(agent, blockedCoordinationTools) : []
 
     let session: import("../session/types").Info
 
@@ -127,7 +122,16 @@ export namespace Cortex {
         scope: parent.scope as import("@/scope").Scope,
         parentID: input.parentSessionID,
         title: `[Cortex] ${input.description} (@${input.agent})`,
-        permission: [{ permission: "question", pattern: "*", action: "deny" }, ...delegatedSessionDenies],
+        permission: [
+          { permission: "question", pattern: "*", action: "deny" },
+          ...(executionRole === "delegated_subagent"
+            ? blockedTools.map((tool) => ({
+                pattern: "*",
+                action: "deny" as const,
+                permission: tool,
+              }))
+            : []),
+        ],
         cortex: {
           parentSessionID: input.parentSessionID,
           parentMessageID: input.parentMessageID,
@@ -239,17 +243,20 @@ export namespace Cortex {
       log.error("failed to persist task status", { taskID, status, error })
     })
 
-    Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+    publishVisibleTasksUpdate()
   }
 
-  function delegatedCoordinationDenies(agent: Agent.Info | undefined, tools: string[]): PermissionNext.Ruleset {
-    return tools
-      .filter((tool) => !agent || PermissionNext.evaluate(tool, "*", agent.permission).action !== "allow")
-      .map((tool) => ({
-        pattern: "*",
-        action: "deny" as const,
-        permission: tool,
-      }))
+  function publishVisibleTasksUpdate(): void {
+    void Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
+  }
+
+  function scheduleProgressUpdate(task: CortexTypes.Task): void {
+    if (task.visibility === "hidden") return
+    if (progressUpdateTimer) return
+    progressUpdateTimer = setTimeout(() => {
+      progressUpdateTimer = undefined
+      publishVisibleTasksUpdate()
+    }, PROGRESS_UPDATE_EVENT_DELAY_MS)
   }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
@@ -309,6 +316,7 @@ export namespace Cortex {
             recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
           }
           tasks.set(task.id, current)
+          scheduleProgressUpdate(current)
           return
         }
 
@@ -321,6 +329,7 @@ export namespace Cortex {
             lastUpdate: now,
           }
           tasks.set(task.id, current)
+          scheduleProgressUpdate(current)
         }
       })
 
@@ -417,54 +426,6 @@ export namespace Cortex {
     return value.length > maxChars ? value.slice(0, maxChars - 3) + "..." : value
   }
 
-  function compactString(value: string, maxChars: number): string {
-    return SessionBounds.middlePreview(value, maxChars).text
-  }
-
-  function compactTaskOutput(output: CortexTypes.TaskOutput | undefined): CortexTypes.TaskOutput | undefined {
-    if (!output) return undefined
-    if (output.mode === "summary" || output.mode === "final_response") {
-      return { ...output, value: compactString(output.value, TASK_OUTPUT_RETAIN_CHARS) }
-    }
-    return output
-  }
-
-  function taskOutputChars(output: CortexTypes.TaskOutput | undefined): number {
-    if (!output) return 0
-    if (output.mode === "summary" || output.mode === "final_response") return output.value.length
-    try {
-      return JSON.stringify(output.value).length
-    } catch {
-      return 0
-    }
-  }
-
-  function releaseTerminalTaskMemory(taskID: string): void {
-    const task = tasks.get(taskID)
-    if (!task || !isTerminal(task.status)) return
-
-    task.prompt = compactString(task.prompt, TASK_PROMPT_RETAIN_CHARS)
-    if (task.error) task.error = compactString(task.error, TASK_ERROR_RETAIN_CHARS)
-    task.output = compactTaskOutput(task.output)
-    if (task.progress) {
-      task.progress = {
-        toolCalls: task.progress.toolCalls,
-        lastTool: task.progress.lastTool,
-        lastToolStatus: task.progress.lastToolStatus,
-        lastTitle: task.progress.lastTitle,
-        lastPartId: task.progress.lastPartId,
-        lastUpdate: task.progress.lastUpdate,
-        lastMessage: task.progress.lastMessage
-          ? compactString(task.progress.lastMessage, 240)
-          : task.progress.lastMessage,
-        recentTools: task.progress.recentTools,
-      }
-    }
-    tasks.set(taskID, task)
-    SessionManager.unregisterRuntime(task.sessionID)
-    log.info("task terminal memory released", { taskID, sessionID: task.sessionID })
-  }
-
   function updateTaskStatus(
     taskID: string,
     status: CortexTypes.TaskStatus,
@@ -536,12 +497,20 @@ export namespace Cortex {
 
     void cleanupChildWorktree(task)
 
-    releaseTerminalTaskMemory(taskID)
+    setTimeout(() => {
+      const task = tasks.get(taskID)
+      if (task) {
+        task.prompt = truncate(task.prompt, 4096)
+        task.progress = undefined
+        log.info("task compacted", { taskID })
+      }
+    }, PROMPT_COMPACT_DELAY_MS)
 
     setTimeout(() => {
       void (async () => {
         tasks.delete(taskID)
         acquiredTasks.delete(taskID)
+        SessionManager.unregisterRuntime(task.sessionID)
         log.info("task cleaned up", { taskID })
       })()
     }, TASK_CLEANUP_DELAY_MS)
@@ -660,45 +629,6 @@ export namespace Cortex {
 
   export function listVisible(): CortexTypes.Task[] {
     return Array.from(tasks.values()).filter((task) => task.visibility !== "hidden")
-  }
-
-  export interface RetentionStats {
-    totalCount: number
-    byStatus: Record<CortexTypes.TaskStatus, number>
-    retainedPromptChars: number
-    retainedOutputChars: number
-    retainedErrorChars: number
-    retainedProgressToolCount: number
-  }
-
-  export function retentionStats(): RetentionStats {
-    const byStatus: Record<CortexTypes.TaskStatus, number> = {
-      pending: 0,
-      queued: 0,
-      running: 0,
-      completed: 0,
-      error: 0,
-      cancelled: 0,
-    }
-    let retainedPromptChars = 0
-    let retainedOutputChars = 0
-    let retainedErrorChars = 0
-    let retainedProgressToolCount = 0
-    for (const task of tasks.values()) {
-      byStatus[task.status]++
-      retainedPromptChars += task.prompt.length
-      retainedOutputChars += taskOutputChars(task.output)
-      retainedErrorChars += task.error?.length ?? 0
-      retainedProgressToolCount += task.progress?.recentTools?.length ?? 0
-    }
-    return {
-      totalCount: tasks.size,
-      byStatus,
-      retainedPromptChars,
-      retainedOutputChars,
-      retainedErrorChars,
-      retainedProgressToolCount,
-    }
   }
 
   export function getRunningTasks(): CortexTypes.Task[] {
@@ -890,6 +820,10 @@ export namespace Cortex {
     tasks.clear()
     taskRuns.clear()
     acquiredTasks.clear()
+    if (progressUpdateTimer) {
+      clearTimeout(progressUpdateTimer)
+      progressUpdateTimer = undefined
+    }
     for (const waiters of taskWaiters.values()) {
       for (const waiter of waiters) {
         clearTimeout(waiter.timeout)

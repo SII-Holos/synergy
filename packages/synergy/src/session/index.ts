@@ -280,6 +280,15 @@ export namespace Session {
     return { ...result, working }
   }
 
+  async function withClientInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const info = await withRuntimeInfo(session)
+    if (info.controlProfile) return info
+    return {
+      ...info,
+      controlProfile: await resolveControlProfile(info.id),
+    }
+  }
+
   // Dedup redundant session.updated publishes: a diff limited to time.updated
   // (or a byte-identical payload) is throttled to a heartbeat, while any real
   // field change publishes immediately (issue #319, defense in depth).
@@ -313,6 +322,7 @@ export namespace Session {
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
+    agentOverride?: Info["agentOverride"]
     preAuthorizedActions?: string[]
     endpoint?: SessionEndpoint.Info
     id?: string
@@ -362,6 +372,7 @@ export namespace Session {
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       controlProfile,
+      agentOverride: input?.agentOverride,
       preAuthorizedActions: input?.preAuthorizedActions,
       endpoint,
       interaction: inheritedInteraction,
@@ -574,10 +585,7 @@ export namespace Session {
     const scope = session.scope as Scope
     const read = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
     const info = read as Info
-    if (info.parentID && !info.controlProfile) {
-      info.controlProfile = await resolveControlProfile(id)
-    }
-    return withRuntimeInfo(info)
+    return withClientInfo(info)
   })
 
   export async function clearCompletionNotice(id: string) {
@@ -697,7 +705,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withRuntimeInfo(s)))
+      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withClientInfo(s)))
       return { data, total }
     }
 
@@ -711,7 +719,7 @@ export namespace Session {
     const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
     const sessions = await Storage.readMany<Info>(keys)
     const data = await Promise.all(
-      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withRuntimeInfo(s)),
+      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
     )
 
     return { data, total }
@@ -768,7 +776,7 @@ export namespace Session {
     const items = await Promise.all(
       sessions
         .filter((session): session is Info => session != null && !!session.scope)
-        .map((session) => withRuntimeInfo(session)),
+        .map((session) => withClientInfo(session)),
     )
 
     return { items, nextCursor, total }

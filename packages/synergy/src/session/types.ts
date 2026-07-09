@@ -220,6 +220,7 @@ export const Info = z
         })
         .optional()
         .describe("Per-session model override set by /model command"),
+      agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
