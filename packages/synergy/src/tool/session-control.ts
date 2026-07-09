@@ -289,7 +289,7 @@ function sessionSummary(session: Session.Info) {
   return {
     id: session.id,
     title: session.title,
-    scopeID: (session.scope as Scope).id,
+    scopeID: session.scope.id,
     workspace: session.workspace,
     interaction: session.interaction,
     controlProfile: session.controlProfile,
