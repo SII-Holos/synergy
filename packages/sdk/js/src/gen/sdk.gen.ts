@@ -414,6 +414,8 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionImportErrors,
+  SessionImportResponses,
   SessionInboxErrors,
   SessionInboxGuideErrors,
   SessionInboxGuideResponses,
@@ -2653,6 +2655,44 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/unrollback",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Import session data
+   *
+   * Import a Synergy session export JSON or gzipped JSON file into the current scope.
+   */
+  public import<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      file?: unknown
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionImportResponses, SessionImportErrors, ThrowOnError>({
+      ...formDataBodySerializer,
+      url: "/session/import",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

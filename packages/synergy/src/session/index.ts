@@ -645,7 +645,7 @@ export namespace Session {
     const scopeID = asScopeID((session.scope as Scope).id)
     const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
       StoragePath.sessionSummary(scopeID, asSessionID(sessionID)),
-    )
+    ).catch(() => [])
     return diffs ?? []
   })
 

@@ -100,6 +100,56 @@
   line-height: var(--type-ui-caption-line-height, 16px);
 }
 
+.session-import-file {
+  display: grid;
+  min-width: 0;
+  cursor: pointer;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  background: var(--dialog-control-bg);
+  padding: 12px 13px;
+  box-shadow: inset 0 0 0 1px var(--dialog-border-weak);
+}
+
+.session-import-file:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--dialog-border),
+    0 0 0 3px color-mix(in srgb, var(--accent-base, currentColor) 18%, transparent);
+}
+
+.session-import-file input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.session-import-file-icon {
+  color: var(--icon-weak);
+}
+
+.session-import-file-main {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size, 14px);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: var(--type-ui-row-title-line-height, 20px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-import-file-meta {
+  color: var(--text-weak);
+  font-size: var(--type-ui-caption-size, 12px);
+  line-height: var(--type-ui-caption-line-height, 16px);
+}
+
 @media (max-width: 640px) {
   .session-export-mode-group {
     grid-template-columns: 1fr;
