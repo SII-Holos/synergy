@@ -77,6 +77,7 @@ import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { canSubmitPrompt } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
 import {
   blueprintRequestErrorMessage,
   isTerminalBlueprintLoopStatus,
@@ -651,11 +652,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const openLatticeDialog = (event?: Event) => {
-    if (blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive()) {
+    if (blueprintModeLocked() || planActive() || lightLoopActive()) {
       event?.preventDefault()
       return
     }
     latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
+  }
+
+  const selectLatticeFromMenu = (event?: Event) => {
+    const state = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
+    if (state.action === "cancel") {
+      void cancelLattice()
+      return
+    }
+
+    if (state.action === "open") {
+      openLatticeDialog(event)
+      return
+    }
+
+    event?.preventDefault()
   }
 
   const selectPlanFromMenu = (event?: Event) => {
@@ -733,6 +756,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           }
         }),
     }
+    const latticeMenuState = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
     return [
       {
         id: "context",
@@ -811,26 +842,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           {
             id: "lattice-mode",
             label: "Lattice",
-            description: latticeActive() ? "Recursive Blueprint run armed" : "Run a goal as a recursive Blueprint",
+            description: latticeMenuState.description,
             icon: getSemanticIcon("prompt.lattice"),
             selected: latticeActive(),
-            ariaDisabled: blueprintModeLocked() || latticeActive() || planActive() || lightLoopActive(),
-            title: blueprintModeLocked()
-              ? "Lattice is unavailable while a Blueprint is equipped"
-              : latticeActive()
-                ? "Lattice is already enabled"
-                : planActive()
-                  ? "Lattice is unavailable while Plan is active"
-                  : lightLoopActive()
-                    ? "Lattice is unavailable while Light Loop is active"
-                    : undefined,
+            ariaDisabled: latticeMenuState.ariaDisabled,
+            title: latticeMenuState.title,
             iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": latticeActive(),
               "text-text-base": latticeActive(),
-              "opacity-60": blueprintModeLocked() || planActive() || lightLoopActive(),
+              "opacity-60": latticeMenuState.ariaDisabled,
             },
-            onSelect: openLatticeDialog,
+            onSelect: selectLatticeFromMenu,
           },
         ],
       },
