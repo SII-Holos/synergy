@@ -36,7 +36,7 @@ function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
     >
       {(loadedDiffs) => (
         <SessionReviewTab
-          diffs={loadedDiffs}
+          diffs={() => loadedDiffs()}
           view={view}
           diffStyle={layout.review.diffStyle()}
           onDiffStyleChange={layout.review.setDiffStyle}
