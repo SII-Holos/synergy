@@ -15,6 +15,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
+import { ProxyAgent, Agent } from "undici"
 import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
 
 // Direct imports for bundled providers
@@ -64,6 +65,16 @@ export namespace Provider {
     "@ai-sdk/togetherai": createTogetherAI,
     "@ai-sdk/perplexity": createPerplexity,
     "@ai-sdk/vercel": createVercel,
+  }
+
+  /** Resolve a per-request undici dispatcher from proxy/noProxy options. */
+  function resolveProxyDispatcher(
+    proxyUrl: string | undefined,
+    noProxy: boolean,
+  ): import("undici").Dispatcher | undefined {
+    if (proxyUrl) return new ProxyAgent({ uri: proxyUrl })
+    if (noProxy) return new Agent()
+    return undefined
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -548,10 +559,36 @@ export namespace Provider {
       throw new Error(`Unsupported provider SDK "${model.api.npm}" for "${model.providerID}"`)
     }
 
-    return bundledFn({
+    // Strip proxy/noProxy from options before passing to bundledFn —
+    // they are handled below via the per-request dispatcher, not as SDK options.
+    const proxyUrl = options["proxy"] as string | undefined
+    const noProxy = options["noProxy"] === true
+    delete options["proxy"]
+    delete options["noProxy"]
+
+    const builtSDK = bundledFn({
       name: model.providerID,
       ...options,
     }) as SDK
+
+    // When proxy/noProxy are configured, wrap the SDK's default fetch with a
+    // dispatcher-aware version so the import probe (and any other createSDKFromSpec
+    // caller) also routes through the proxy.
+    if (proxyUrl || noProxy) {
+      const baseFetch = (builtSDK as any)._fetch ?? fetch
+      const dispatcher = resolveProxyDispatcher(proxyUrl, noProxy)
+      const patchedSDK = new Proxy(builtSDK as object, {
+        get(target, prop) {
+          if (prop === "fetch") {
+            return (input: any, init?: any) => baseFetch(input, { ...init, dispatcher } as any)
+          }
+          return Reflect.get(target, prop)
+        },
+      })
+      return patchedSDK as SDK
+    }
+
+    return builtSDK
   }
 
   export async function getSDK(model: Model) {
@@ -593,23 +630,10 @@ export namespace Provider {
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
-        // Proxy override: temporarily override env vars so Bun's fetch respects them
+        // Resolve per-request dispatcher from proxy/noProxy options
         const proxyUrl = options["proxy"]
         const noProxy = options["noProxy"] === true
-        let previousProxy: string | undefined
-        let previousNoProxy: string | undefined
-        let previousAnyProxy: string | undefined
-        if (proxyUrl) {
-          previousProxy = process.env.https_proxy
-          previousAnyProxy = (process.env as any).HTTPS_PROXY
-          process.env.https_proxy = proxyUrl
-          ;(process.env as any).HTTPS_PROXY = proxyUrl
-        } else if (noProxy) {
-          previousNoProxy = process.env.NO_PROXY
-          previousAnyProxy = (process.env as any).no_proxy
-          process.env.NO_PROXY = "*"
-          ;(process.env as any).no_proxy = "*"
-        }
+        const dispatcher = resolveProxyDispatcher(proxyUrl, noProxy)
 
         // Provider-level options take precedence; otherwise use the configured
         // idle timeout (timeout.provider.idle_sec). `false` disables it.
@@ -683,25 +707,13 @@ export namespace Provider {
             headers,
             // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
             timeout: false,
+            ...(dispatcher ? ({ dispatcher } as any) : {}),
           })
         } catch (error) {
           cleanupTimers()
           fetchTimer.stop({ status: "exception" })
           log.error("fetch.request.failed", { url: safeUrl, error })
           throw error
-        } finally {
-          // Restore proxy env vars after this request
-          if (proxyUrl) {
-            if (previousProxy !== undefined) process.env.https_proxy = previousProxy
-            else delete process.env.https_proxy
-            if (previousAnyProxy !== undefined) (process.env as any).HTTPS_PROXY = previousAnyProxy
-            else delete (process.env as any).HTTPS_PROXY
-          } else if (noProxy) {
-            if (previousNoProxy !== undefined) process.env.NO_PROXY = previousNoProxy
-            else delete process.env.NO_PROXY
-            if (previousAnyProxy !== undefined) (process.env as any).no_proxy = previousAnyProxy
-            else delete (process.env as any).no_proxy
-          }
         }
         // First byte arrived — stop the TTFB timer so it cannot abort a
         // healthy long-lived stream later on.
