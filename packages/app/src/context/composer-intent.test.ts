@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { resolveModel, resolveAgent, sessionDefaultModel, sessionDefaultAgent, type ModelKey } from "./composer-intent"
+import {
+  resolveModel,
+  resolveAgent,
+  sessionDefaultModel,
+  sessionDefaultAgent,
+  sessionDefaultVariant,
+  type ModelKey,
+} from "./composer-intent"
 
 const A: ModelKey = { providerID: "p", modelID: "a" }
 const B: ModelKey = { providerID: "p", modelID: "b" }
@@ -98,6 +105,25 @@ describe("sessionDefaultAgent", () => {
   })
 })
 
+describe("sessionDefaultVariant", () => {
+  test("inherits the last root user message's variant for the current model", () => {
+    const messages = [
+      { role: "user", isRoot: true, model: A, variant: "low" },
+      { role: "user", isRoot: true, model: B, variant: "high" },
+    ]
+    expect(sessionDefaultVariant(B, messages)).toBe("high")
+  })
+
+  test("does not apply a history variant to a different current model", () => {
+    const messages = [{ role: "user", isRoot: true, model: A, variant: "high" }]
+    expect(sessionDefaultVariant(B, messages)).toBeUndefined()
+  })
+
+  test("undefined when the last root message has no variant", () => {
+    expect(sessionDefaultVariant(A, [{ role: "user", isRoot: true, model: A }])).toBeUndefined()
+  })
+})
+
 describe("#318 end-to-end precedence", () => {
   // Simulates: user opens session B, picks model A while messages still load,
   // then history (model C) arrives. effective must stay A.
@@ -116,5 +142,12 @@ describe("#318 end-to-end precedence", () => {
     const sessionDefault = sessionDefaultModel(undefined, messages)
     const effective = resolveModel([draft, sessionDefault, B], validAll)
     expect(effective).toBe(C)
+  })
+
+  test("variant draft survives a late history load", () => {
+    const draft = "low"
+    const messages = [{ role: "user", isRoot: true, model: A, variant: "high" }]
+    const history = sessionDefaultVariant(A, messages)
+    expect(draft ?? history).toBe("low")
   })
 })

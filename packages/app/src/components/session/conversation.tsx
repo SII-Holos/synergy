@@ -108,17 +108,6 @@ export function SessionConversation(props: {
           </Button>
         </div>
       </Show>
-      <Show when={props.workspaceTransition?.()}>
-        {(progress) => (
-          <div class="w-full min-w-0 px-3 md:px-1">
-            <WorktreeTransitionCard
-              progress={progress()}
-              onRetry={props.workspaceTransitionActions?.()?.retry}
-              onDismiss={props.workspaceTransitionActions?.()?.dismiss}
-            />
-          </div>
-        )}
-      </Show>
       <For each={props.timeline()}>
         {(msg, index) => {
           if (import.meta.env.DEV) {
@@ -187,6 +176,17 @@ export function SessionConversation(props: {
           )
         }}
       </For>
+      <Show when={props.workspaceTransition?.()}>
+        {(progress) => (
+          <div class="w-full min-w-0 px-3 md:px-1">
+            <WorktreeTransitionCard
+              progress={progress()}
+              onRetry={props.workspaceTransitionActions?.()?.retry}
+              onDismiss={props.workspaceTransitionActions?.()?.dismiss}
+            />
+          </div>
+        )}
+      </Show>
       <Show when={props.pendingTimeline?.()?.length}>
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>

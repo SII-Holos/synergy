@@ -264,7 +264,7 @@
 
 .wtd-card-header {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
 }
@@ -298,6 +298,30 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.wtd-card-dismiss {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  justify-self: end;
+  color: var(--icon-weak);
+  background: transparent;
+  border-color: transparent;
+}
+
+.wtd-card-dismiss:hover:not(:disabled) {
+  color: var(--icon-base);
+  background: var(--surface-inset-base-hover);
+  border-color: var(--wtd-border);
+}
+
+.wtd-card-dismiss:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
 .wtd-card-kicker {

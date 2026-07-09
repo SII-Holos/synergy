@@ -57,4 +57,11 @@ describe("PromptCachePolicy", () => {
     expect(PromptCachePolicy.usesSessionPromptCacheKey(compatibleModel)).toBe(false)
     expect(PromptCachePolicy.usesSessionPromptCacheKey(compatibleModel, { setCacheKey: true })).toBe(true)
   })
+
+  test("does not treat DeepSeek user_id as a session cache-affinity key", () => {
+    const deepSeekModel = model({ providerID: "deepseek", npm: "@ai-sdk/openai-compatible" })
+
+    expect(PromptCachePolicy.layout(deepSeekModel)).toBe("late-user-context")
+    expect(PromptCachePolicy.usesSessionPromptCacheKey(deepSeekModel, { user_id: "session-1" })).toBe(false)
+  })
 })

@@ -23,7 +23,7 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
 import { SessionManager } from "./manager"
 import type { Info } from "./types"
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
 import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
@@ -535,8 +535,9 @@ export namespace ToolResolver {
     envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
-    session?: Info,
+    input: Input,
   ) {
+    const session = input.session
     const profile = gate.getProfileInfo()
     const approval = profile.approval
     const policyDecision = ApprovalPolicy.decideCapabilities(profile, envelope.capabilities)
@@ -608,6 +609,7 @@ export namespace ToolResolver {
       const cfg = await Config.current()
       if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
         const redactedEvidence = SmartAllow.buildRedactedEvidence(args, envelope.capabilities)
+        const context = await smartAllowContext(input, ctx)
         const classification = await SmartAllow.classify({
           sessionID: ctx.sessionID,
           tool: toolName,
@@ -616,6 +618,7 @@ export namespace ToolResolver {
           workspace: ScopeContext.current.directory,
           policyAction: decision.action,
           redactedEvidence,
+          ...(context ?? {}),
         })
         if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID, decision.action)) {
           await setApprovalMetadata(ctx, {
@@ -747,6 +750,56 @@ export namespace ToolResolver {
 
   function approvalFromContext(ctx: Tool.Context): ApprovalMetadata | undefined {
     return (ctx.extra as any).approval
+  }
+
+  async function smartAllowContext(input: Input, ctx: Tool.Context) {
+    const agentContext = [input.agent.name, input.agent.description].filter(Boolean).join(": ")
+    const userMessageID = (ctx.extra as { userMessageID?: unknown }).userMessageID
+    let userMessage: string | undefined
+
+    if (typeof userMessageID === "string") {
+      try {
+        const message = await MessageV2.get({ sessionID: input.sessionID, messageID: userMessageID })
+        if (message.info.role === "user") {
+          userMessage = SmartAllow.redactContextText(MessageV2.extractText(message.parts, { maxLength: 1_600 }), 1_000)
+        }
+      } catch (error) {
+        log.debug("smart allow user message context unavailable", {
+          sessionID: input.sessionID,
+          messageID: userMessageID,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    const newest: MessageV2.WithParts[] = []
+    try {
+      for await (const message of MessageV2.stream({ sessionID: input.sessionID })) {
+        newest.push(message)
+        if (newest.length >= 4) break
+      }
+    } catch (error) {
+      log.debug("smart allow recent history unavailable", {
+        sessionID: input.sessionID,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
+    const recentHistory = newest
+      .reverse()
+      .filter((message) => MessageV2.isPromptVisible(message))
+      .map((message) => {
+        const text = SmartAllow.redactContextText(MessageV2.extractText(message.parts, { maxLength: 1_000 }), 600)
+        return text ? `${message.info.role}: ${text}` : undefined
+      })
+      .filter((item): item is string => !!item)
+
+    if (!userMessage && recentHistory.length === 0 && !agentContext) return undefined
+    return {
+      ...(userMessage ? { userMessage } : {}),
+      ...(recentHistory.length ? { recentHistory } : {}),
+      ...(agentContext ? { agentContext: SmartAllow.redactContextText(agentContext, 500) } : {}),
+    }
   }
 
   function contextFactory(input: Input) {
@@ -1282,7 +1335,7 @@ export namespace ToolResolver {
                   capabilities: envelope.capabilities,
                 })
                 if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
-                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
+                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput)
                 await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                   decision: envelope.decision,
                   capabilities: envelope.capabilities.map((cap) => cap.class),
@@ -1531,7 +1584,7 @@ export namespace ToolResolver {
                     capabilities: envelope.capabilities,
                   })
                   if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
-                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
+                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput)
                   await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                     decision: envelope.decision,
                     capabilities: envelope.capabilities.map((cap) => cap.class),
