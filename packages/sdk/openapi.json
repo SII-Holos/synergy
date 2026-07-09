@@ -25132,6 +25132,10 @@
             },
             "required": ["providerID", "modelID"]
           },
+          "agentOverride": {
+            "description": "Per-session agent override set by session control",
+            "type": "string"
+          },
           "pendingReply": {
             "type": "boolean"
           },

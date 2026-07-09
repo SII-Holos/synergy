@@ -313,6 +313,7 @@ export namespace Session {
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
+    agentOverride?: Info["agentOverride"]
     preAuthorizedActions?: string[]
     endpoint?: SessionEndpoint.Info
     id?: string
@@ -362,6 +363,7 @@ export namespace Session {
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       controlProfile,
+      agentOverride: input?.agentOverride,
       preAuthorizedActions: input?.preAuthorizedActions,
       endpoint,
       interaction: inheritedInteraction,
