@@ -1,7 +1,7 @@
 import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
-export type MessageSlotName = "before-reasoning" | "after-reasoning" | "before-tools" | "after-tools"
+export type MessageSlotName = string
 
 export interface MessageSlotProps {
   slot: MessageSlotName

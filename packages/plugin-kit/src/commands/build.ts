@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs"
-import { EOL } from "os"
+import os, { EOL } from "os"
 import type { Argv } from "yargs"
 import {
   PluginArtifact,
@@ -97,12 +97,28 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     if (uiSourcePath) {
       const uiOutdir = path.dirname(uiOutputPath)
       spinner("Building frontend")
-      const frontendResult = await Bun.build({
-        entrypoints: [uiSourcePath],
-        outdir: uiOutdir,
-        target: "browser",
-        naming: path.basename(uiOutputPath),
-      })
+      // Bun.build resolves tsconfig from the entrypoint directory, and a plugin's
+      // own tsconfig (e.g. jsx: "preserve") can override the JSX transform options
+      // passed here. Build from a temp copy of the UI source directory so the
+      // explicit Solid JSX settings below are always honored.
+      const uiSourceDir = path.dirname(uiSourcePath)
+      const tempUiDir = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-ui-build-"))
+      const tempUiSourceDir = path.join(tempUiDir, path.basename(uiSourceDir))
+      copyDir(uiSourceDir, tempUiSourceDir)
+      const tempUiEntryPath = path.join(tempUiSourceDir, path.basename(uiSourcePath))
+      let frontendResult: Awaited<ReturnType<typeof Bun.build>>
+      try {
+        frontendResult = await Bun.build({
+          entrypoints: [tempUiEntryPath],
+          outdir: uiOutdir,
+          target: "browser",
+          naming: path.basename(uiOutputPath),
+          external: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/h"],
+          jsx: { runtime: "automatic", importSource: "solid-js/h" },
+        })
+      } finally {
+        fs.rmSync(tempUiDir, { recursive: true, force: true })
+      }
       if (!frontendResult.success) {
         for (const log of frontendResult.logs) {
           UI.println(`  ${UI.Style.TEXT_WARNING}${log.message}${UI.Style.TEXT_NORMAL}`)

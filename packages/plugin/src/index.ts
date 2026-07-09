@@ -30,6 +30,7 @@ export * from "./policy.js"
 export * from "./spec.js"
 export * from "./version.js"
 export * from "./artifact.js"
+export * from "./loader.js"
 export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell.js"
 
 // ---------------------------------------------------------------------------

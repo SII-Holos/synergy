@@ -14,9 +14,21 @@ import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { SessionEndpoint } from "../session/endpoint"
 import { Plugin } from "../plugin"
+import { createHash } from "crypto"
 
 export namespace ExperienceEncoder {
   const log = Log.create({ service: "library.encoder" })
+
+  function hashForLog(value: string): string {
+    if (!value) return "empty"
+    return createHash("sha256").update(value).digest("hex").slice(0, 12)
+  }
+
+  function preview(value: string, limit = 120): string {
+    const raw = value.replace(/\s+/g, " ").trim()
+    if (raw.length <= limit) return raw
+    return raw.slice(0, limit)
+  }
 
   interface EncodeOutcome {
     encoded: boolean
@@ -90,7 +102,19 @@ export namespace ExperienceEncoder {
       const intentModel = await Provider.getModel(userInfo.model.providerID, userInfo.model.modelID)
       const intentCtx: AgentContext = { sessionID, userMsg: userInfo, model: intentModel, learning }
       const history = buildIntentHistory(msgs, userMessageID)
-      const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
+      const rawIntent = await generateIntent(intentCtx, history, userText)
+      const intentResult = Intent.sanitizeWithReason(rawIntent, userText)
+      const intent = intentResult.value
+      log.info("intent generated", {
+        sessionID,
+        userMessageID,
+        reason: intentResult.reason,
+        rawLen: rawIntent.length,
+        sanitizedLen: intent.length,
+        usedFallback: intent === userText,
+        rawHash: hashForLog(rawIntent),
+        rawPreview: preview(rawIntent),
+      })
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
       const extracted = TurnDigest.extractSingle(session, msgs, userMessageID, {

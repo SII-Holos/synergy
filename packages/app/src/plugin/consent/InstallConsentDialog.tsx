@@ -4,8 +4,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { PermissionRiskBadge } from "./PermissionRiskBadge"
-import { TrustTierExplanation } from "./TrustTierExplanation"
-import type { PermissionItem, PluginPermissionDiff, TrustTier } from "./schema"
+import type { PermissionItem, PluginPermissionDiff } from "./schema"
 import "./InstallConsentDialog.css"
 
 // ── Display grouping ────────────────────────────────────────────────────────
@@ -47,7 +46,6 @@ function iconForItem(item: PermissionItem): string {
 export interface InstallConsentDialogProps {
   manifest: { name: string; version: string; displayName?: string }
   diff: PluginPermissionDiff
-  trustTier: TrustTier
   onApprove: () => void
   onDeny: () => void
 }
@@ -111,9 +109,6 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
       <Show when={grouped().length === 0}>
         <p class="text-13-regular text-text-weak">No specific permissions declared.</p>
       </Show>
-
-      {/* ── Trust tier info ── */}
-      <TrustTierExplanation tier={props.trustTier} />
 
       {/* ── Changed items (severity upgrades) ── */}
       <Show when={props.diff.changed.length > 0}>

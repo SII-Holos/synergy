@@ -63,20 +63,7 @@ export interface SynergyCapabilityManifest {
       config?: "none" | "plugin" | "global"
       secrets?: "none" | "own"
     }
-    ui?: {
-      toolRenderers?: boolean
-      partRenderers?: boolean
-      workbenchPanels?: boolean
-      appPanels?: boolean
-      settings?: boolean
-      messageSlots?: boolean
-      themes?: boolean
-      icons?: boolean
-      appRoutes?: boolean
-      commands?: boolean
-      trustedImport?: boolean
-      sandboxIframe?: boolean
-    }
+    ui?: boolean
     hooks?: {
       promptTransform?: boolean
       compactionTransform?: boolean
@@ -104,12 +91,12 @@ export interface SynergyCapabilityManifest {
       toolRenderers?: unknown[]
       partRenderers?: unknown[]
       workbenchPanels?: unknown[]
-      appPanels?: unknown[]
+      navigation?: unknown[]
       settings?: unknown[]
       messageSlots?: unknown[]
+      composerSlots?: unknown[]
       themes?: unknown[]
       icons?: unknown[]
-      appRoutes?: unknown[]
       commands?: unknown[]
     }
   }
@@ -653,10 +640,9 @@ function networkPermissionItem(manifest: SynergyCapabilityManifest): SynergyCapa
 
 function contributionPermissionItems(manifest: SynergyCapabilityManifest): SynergyCapabilityPermissionItem[] {
   const ui = manifest.contributes?.ui
-  const perms = manifest.permissions?.ui
   const items: SynergyCapabilityPermissionItem[] = []
 
-  if (ui?.toolRenderers || perms?.toolRenderers) {
+  if (ui?.toolRenderers) {
     items.push({
       key: "ui.toolRenderers",
       category: "ui",
@@ -665,7 +651,7 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Overrides how tool outputs appear in the chat UI.",
     })
   }
-  if (ui?.partRenderers || perms?.partRenderers) {
+  if (ui?.partRenderers) {
     items.push({
       key: "ui.partRenderers",
       category: "ui",
@@ -674,7 +660,7 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Overrides how message parts appear in the chat UI.",
     })
   }
-  if (ui?.workbenchPanels || perms?.workbenchPanels) {
+  if (ui?.workbenchPanels) {
     items.push({
       key: "ui.workbenchPanels",
       category: "ui",
@@ -683,25 +669,25 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Adds custom panels to the side workspace or BottomSpace.",
     })
   }
-  if (ui?.appPanels || perms?.appPanels) {
+  if (ui?.navigation) {
     items.push({
-      key: "ui.appPanels",
+      key: "ui.navigation",
       category: "ui",
       severity: "low",
-      title: "App panels",
-      description: "Adds top-level sidebar panels to the app.",
+      title: "Navigation surfaces",
+      description: "Adds plugin pages or sidebar destinations.",
     })
   }
-  if (ui?.settings || perms?.settings) {
+  if (ui?.settings) {
     items.push({
       key: "ui.settings",
       category: "ui",
       severity: "low",
-      title: "Settings page",
+      title: "Settings section",
       description: "Adds a custom settings page or form.",
     })
   }
-  if (ui?.themes || perms?.themes) {
+  if (ui?.themes) {
     items.push({
       key: "ui.themes",
       category: "ui",
@@ -710,7 +696,7 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Adds custom color themes to the UI.",
     })
   }
-  if (ui?.icons || perms?.icons) {
+  if (ui?.icons) {
     items.push({
       key: "ui.icons",
       category: "ui",
@@ -719,25 +705,25 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Adds custom icon sets to the UI.",
     })
   }
-  if (ui?.messageSlots || perms?.messageSlots) {
+  if (ui?.messageSlots) {
     items.push({
       key: "ui.messageSlots",
       category: "ui",
       severity: "low",
       title: "Message slots",
-      description: "Adds custom components around reasoning and tool timeline sections.",
+      description: "Adds custom components around message timeline sections.",
     })
   }
-  if (ui?.appRoutes || perms?.appRoutes) {
+  if (ui?.composerSlots) {
     items.push({
-      key: "ui.appRoutes",
+      key: "ui.composerSlots",
       category: "ui",
       severity: "low",
-      title: "App routes",
-      description: "Adds custom plugin pages to the app.",
+      title: "Composer slots",
+      description: "Adds custom controls around the composer.",
     })
   }
-  if (ui?.commands || perms?.commands) {
+  if (ui?.commands) {
     items.push({
       key: "ui.commands",
       category: "ui",
@@ -951,12 +937,12 @@ function permissionsRelevantContributes(manifest: SynergyCapabilityManifest) {
             toolRenderers: Boolean(contributes.ui.toolRenderers?.length),
             partRenderers: Boolean(contributes.ui.partRenderers?.length),
             workbenchPanels: Boolean(contributes.ui.workbenchPanels?.length),
-            appPanels: Boolean(contributes.ui.appPanels?.length),
+            navigation: Boolean(contributes.ui.navigation?.length),
             settings: Boolean(contributes.ui.settings?.length),
             messageSlots: Boolean(contributes.ui.messageSlots?.length),
+            composerSlots: Boolean(contributes.ui.composerSlots?.length),
             themes: Boolean(contributes.ui.themes?.length),
             icons: Boolean(contributes.ui.icons?.length),
-            appRoutes: Boolean(contributes.ui.appRoutes?.length),
             commands: Boolean(contributes.ui.commands?.length),
           },
         }

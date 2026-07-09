@@ -45,10 +45,6 @@ import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
-import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
-import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
-import { WorkspaceSessionReviewTool } from "@/components/workspace/tool-session-review"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
@@ -1018,14 +1014,6 @@ function SessionPageContent() {
 
   return (
     <>
-      <Show when={!!params.id}>
-        <WorkspaceBrowserTool />
-      </Show>
-      <WorkspaceNotesTool />
-      <WorkspaceTerminalTool />
-      <Show when={!!params.id}>
-        <WorkspaceSessionReviewTool />
-      </Show>
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
           <div

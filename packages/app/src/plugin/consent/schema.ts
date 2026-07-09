@@ -1,5 +1,4 @@
 import type { PluginPermissionItem, PluginPermissionSeverity } from "@ericsanchezok/synergy-plugin/permissions"
-import type { TrustTier as PluginTrustTier } from "@ericsanchezok/synergy-util/plugin-policy"
 
 export type PermissionSeverity = PluginPermissionSeverity
 export type PermissionItem = PluginPermissionItem
@@ -23,5 +22,3 @@ export interface PluginPermissionDiff {
   requiresApproval: boolean
   reason?: string
 }
-
-export type TrustTier = PluginTrustTier

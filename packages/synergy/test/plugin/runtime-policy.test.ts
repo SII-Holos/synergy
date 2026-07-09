@@ -177,10 +177,8 @@ describe("validateRuntimePolicy", () => {
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings[0].message.toLowerCase()).toContain("sandbox")
   })
-
-  test("trusted-import trust tier with sandbox request produces warning", () => {
+  test("local trusted-import plugin with in-process mode produces no warnings", () => {
     const manifest = makeManifest({
-      trust: { requestedTier: "sandbox" },
       runtime: { mode: "in-process" },
     })
     const results = validateRuntimePolicy({
@@ -190,14 +188,11 @@ describe("validateRuntimePolicy", () => {
       risk: "low",
     })
     const warnings = results.filter((r) => r.type === "warn")
-    expect(warnings.length).toBeGreaterThan(0)
-    expect(warnings[0].message.toLowerCase()).toContain("trusted-import")
+    expect(warnings.length).toBe(0)
   })
 
-  test("matching sandbox trust tier and sandbox mode produces no mismatch warning", () => {
-    const manifest = makeManifest({
-      trust: { requestedTier: "sandbox" },
-    })
+  test("sandbox trust tier without explicit trust request produces isolation warning", () => {
+    const manifest = makeManifest({})
     const results = validateRuntimePolicy({
       manifest,
       source: "npm",
@@ -205,10 +200,8 @@ describe("validateRuntimePolicy", () => {
       risk: "low",
     })
     const warnings = results.filter((r) => r.type === "warn")
-    const mismatchWarnings = warnings.filter(
-      (w) => w.message.toLowerCase().includes("mismatch") || w.message.toLowerCase().includes("sandbox"),
-    )
-    expect(mismatchWarnings.length).toBe(0)
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0].message.toLowerCase()).toContain("sandbox")
   })
 
   // ── Rule 4: worker mode unsupported APIs → warning ──

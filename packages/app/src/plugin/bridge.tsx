@@ -8,22 +8,27 @@ import {
   setExternalMessageSlotLookup,
   notifyExternalMessageSlotsChanged,
 } from "@ericsanchezok/synergy-ui/message-slots"
+import {
+  notifyExternalComposerSlotsChanged,
+  setExternalComposerSlotLookup,
+} from "@ericsanchezok/synergy-ui/composer-slots"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useCommand } from "@/context/command"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
-import { getToolRenderer, getToolFallback, onToolLoaded } from "./registries/tool-registry"
+import { toolRendererRegistry } from "./registries/tool-registry"
 import { getMessageSlotsByName, subscribeMessageSlots } from "./registries/message-slot-registry"
+import { getComposerSlotsByName, subscribeComposerSlots } from "./registries/composer-slot-registry"
 import { listUICommands, subscribeUICommands } from "./registries/ui-command-registry"
 import { usePluginHost } from "./host"
 
 // Wire up at module load time — setExternalToolLookup / setExternalFallbackLookup are non-reactive, safe to call outside a root.
 setExternalToolLookup((name: string) => {
-  return getToolRenderer(name)
+  return toolRendererRegistry.render(name)
 })
 setExternalFallbackLookup((name: string) => {
-  return getToolFallback(name)
+  return toolRendererRegistry.fallback(name)
 })
 setExternalMessageSlotLookup((slot) => {
   return getMessageSlotsByName(slot).map((entry) => ({
@@ -32,19 +37,20 @@ setExternalMessageSlotLookup((slot) => {
     loader: entry.loader,
   }))
 })
+setExternalComposerSlotLookup((slot) => {
+  return getComposerSlotsByName(slot).map((entry) => ({
+    id: entry.id,
+    component: entry.component,
+    loader: entry.loader,
+  }))
+})
 
-/**
- * Component that subscribes to onToolLoaded and notifies the UI layer
- * when a lazy-loaded plugin tool renderer becomes available.
- *
- * Must be rendered inside the SolidJS component tree so createEffect
- * inside onToolLoaded has a reactive root.
- */
 export function PluginToolBridge() {
   onMount(() => {
-    onToolLoaded(() => {
+    const dispose = toolRendererRegistry.onLoad(() => {
       notifyExternalToolLoaded()
     })
+    onCleanup(dispose)
   })
   return null
 }
@@ -53,6 +59,16 @@ export function PluginMessageSlotBridge() {
   onMount(() => {
     const unsubscribe = subscribeMessageSlots(() => {
       notifyExternalMessageSlotsChanged()
+    })
+    onCleanup(unsubscribe)
+  })
+  return null
+}
+
+export function PluginComposerSlotBridge() {
+  onMount(() => {
+    const unsubscribe = subscribeComposerSlots(() => {
+      notifyExternalComposerSlotsChanged()
     })
     onCleanup(unsubscribe)
   })

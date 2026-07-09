@@ -29,43 +29,67 @@ const PartRendererDef = z
   })
   .strict()
 
-const PanelDef = z
+const NavigationDef = z
+  .object({
+    id: UiSurfaceId,
+    label: z.string().min(1).max(64),
+    icon: z.string().optional(),
+    placement: z.enum(["sidebar", "page"]),
+    exportName: z.string().optional().default("default"),
+    order: z.number().int().optional().default(1000),
+  })
+  .strict()
+
+const WorkbenchPanelDef = z
   .object({
     id: UiSurfaceId,
     label: z.string().min(1).max(64),
     icon: z.string().min(1),
+    surface: z.enum(["side", "bottom"]),
+    cardinality: z.enum(["exclusive", "singleton", "multi"]),
+    requiresSession: z.boolean().optional(),
     exportName: z.string().optional().default("default"),
     order: z.number().int().optional().default(1000),
-    sandbox: z.boolean().optional().default(false),
-    sandboxEntry: JsAssetPath.optional(),
   })
   .strict()
-
-const WorkbenchPanelDef = PanelDef.extend({
-  surface: z.enum(["side", "bottom"]),
-  cardinality: z.enum(["exclusive", "singleton", "multi"]),
-  requiresSession: z.boolean().optional(),
-}).strict()
 
 const SettingsDef = z
   .object({
     id: UiSurfaceId,
     label: z.string().min(1).max(64),
-    icon: z.string().min(1),
+    icon: z.string().optional(),
     group: z.string(),
     formSchema: z.record(z.string(), z.unknown()).optional(),
     exportName: z.string().optional().default("default"),
     order: z.number().int().optional().default(1000),
-    sandbox: z.boolean().optional().default(false),
-    sandboxEntry: JsAssetPath.optional(),
+    visibility: z.enum(["standard", "developer"]).optional(),
   })
   .strict()
+
+const MessageSlotName = z.string().regex(/^[a-z][a-z0-9.-]*(?:\.[a-z][a-z0-9.-]*)*$/)
 
 const MessageSlotDef = z
   .object({
     id: UiSurfaceId,
+    slot: MessageSlotName,
     exportName: z.string().optional().default("default"),
-    slot: z.enum(["before-reasoning", "after-reasoning", "before-tools", "after-tools"]),
+    order: z.number().int().optional().default(1000),
+  })
+  .strict()
+
+const ComposerSlotDef = z
+  .object({
+    id: UiSurfaceId,
+    slot: z.enum([
+      "composer.above",
+      "composer.below",
+      "composer.toolbar.left",
+      "composer.toolbar.right",
+      "composer.add-menu",
+      "composer.start-option",
+    ]),
+    exportName: z.string().optional().default("default"),
+    order: z.number().int().optional().default(1000),
   })
   .strict()
 
@@ -81,18 +105,6 @@ const IconDef = z
   .object({
     name: z.string().min(1).max(128),
     path: z.string().min(1),
-  })
-  .strict()
-
-const AppRouteDef = z
-  .object({
-    id: UiSurfaceId,
-    label: z.string().min(1),
-    icon: z.string().optional(),
-    entry: JsAssetPath.optional(),
-    exportName: z.string().optional().default("default"),
-    sandbox: z.boolean().optional().default(false),
-    sandboxEntry: JsAssetPath.optional(),
   })
   .strict()
 
@@ -168,20 +180,42 @@ const UIContribution = z
     entry: JsAssetPath.optional(),
     minUIApiVersion: z
       .string()
-      .regex(/^\d+\.\d+\.\d+$/)
+      .regex(/^\d+\.\d+$/)
       .optional(),
     toolRenderers: z.array(ToolRendererDef).optional(),
     partRenderers: z.array(PartRendererDef).optional(),
     workbenchPanels: z.array(WorkbenchPanelDef).optional(),
-    appPanels: z.array(PanelDef).optional(),
+    navigation: z.array(NavigationDef).optional(),
     settings: z.array(SettingsDef).optional(),
     messageSlots: z.array(MessageSlotDef).optional(),
+    composerSlots: z.array(ComposerSlotDef).optional(),
+    commands: z.array(UICommandDef).optional(),
     themes: z.array(ThemeDef).optional(),
     icons: z.array(IconDef).optional(),
-    appRoutes: z.array(AppRouteDef).optional(),
-    commands: z.array(UICommandDef).optional(),
   })
   .strict()
+  .superRefine((ui, ctx) => {
+    const requiresEntry =
+      Boolean(ui.toolRenderers?.some((renderer) => !renderer.fallback)) ||
+      Boolean(ui.partRenderers?.length) ||
+      Boolean(ui.workbenchPanels?.length) ||
+      Boolean(ui.navigation?.length) ||
+      Boolean(ui.settings?.some((section) => !section.formSchema)) ||
+      Boolean(ui.messageSlots?.length) ||
+      Boolean(ui.composerSlots?.length) ||
+      Boolean(ui.commands?.length)
+
+    if (requiresEntry && !ui.entry) {
+      ctx.addIssue({ code: "custom", path: ["entry"], message: "Solid UI surfaces require contributes.ui.entry" })
+    }
+    if (ui.entry && !ui.minUIApiVersion) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["minUIApiVersion"],
+        message: "contributes.ui.minUIApiVersion is required when contributes.ui.entry is set",
+      })
+    }
+  })
   .optional()
 
 const PluginPermissionsSchema = z
@@ -227,23 +261,7 @@ const PluginPermissionsSchema = z
       .optional(),
 
     /** UI surface permissions */
-    ui: z
-      .object({
-        toolRenderers: z.boolean().default(false),
-        partRenderers: z.boolean().default(false),
-        workbenchPanels: z.boolean().default(false),
-        appPanels: z.boolean().default(false),
-        settings: z.boolean().default(false),
-        messageSlots: z.boolean().default(false),
-        themes: z.boolean().default(false),
-        icons: z.boolean().default(false),
-        appRoutes: z.boolean().default(false),
-        commands: z.boolean().default(false),
-        trustedImport: z.boolean().default(false),
-        sandboxIframe: z.boolean().default(false),
-      })
-      .strict()
-      .optional(),
+    ui: z.boolean().default(false).optional(),
 
     /** Hook permission declarations */
     hooks: z
@@ -286,13 +304,6 @@ export const PluginManifest = z
     // Dependencies on other plugins
     dependencies: z.record(z.string(), z.string()).optional(),
 
-    // Trust tier request
-    trust: z
-      .object({
-        requestedTier: z.enum(["declarative", "trusted-import", "sandbox"]).optional(),
-        reason: z.string().optional(),
-      })
-      .optional(),
     // Permission / trust declaration
     permissions: PluginPermissionsSchema,
     // Declarative contributions
@@ -538,5 +549,14 @@ export const PluginManifest = z
       .optional(),
   })
   .strict()
+  .superRefine((manifest, ctx) => {
+    if (manifest.contributes?.ui && manifest.permissions?.ui !== true) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["permissions", "ui"],
+        message: "contributes.ui requires permissions.ui: true",
+      })
+    }
+  })
 
 export type PluginManifest = z.infer<typeof PluginManifest>

@@ -33,20 +33,19 @@ import {
   PluginToolBridge,
   PluginCommandBridge,
   PluginMessageSlotBridge,
+  PluginComposerSlotBridge,
   PluginThemeConfigBridge,
   PluginHostProvider,
-  MarketplacePage,
   PluginDetailPage,
-  PluginAppPanelPage,
-  PluginAppRoutePage,
+  BuiltinNavigationPage,
+  PluginNavigationPage,
 } from "@/plugin"
-import { AgendaPanel } from "@/components/agenda"
-import { LibraryPanel } from "@/components/library"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
 import { DialogSelectServer } from "@/components/dialog"
 import { ServerConnectionErrorPage } from "@/pages/server-connection-error"
+import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 
 const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
 
@@ -68,10 +67,7 @@ const Session = lazy(async () => {
   signalAppSurfaceReady()
   return session
 })
-const PerformancePanel = lazy(async () => {
-  const performance = await import("@/components/performance/panel")
-  return { default: performance.PerformancePanel }
-})
+
 const Loading = () => (
   <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
     Loading...
@@ -210,6 +206,7 @@ function ConnectedApp() {
                   <GlobalSyncProvider>
                     <PluginToolBridge />
                     <PluginMessageSlotBridge />
+                    <PluginComposerSlotBridge />
                     <PluginThemeConfigBridge />
                     <Router
                       base={proxyPrefix()}
@@ -225,12 +222,17 @@ function ConnectedApp() {
                       )}
                     >
                       <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
-                      <Route path="/agenda" component={AgendaPanel} />
-                      <Route path="/library" component={LibraryPanel} />
-                      <Route path="/performance" component={PerformancePanel} />
-                      <Route path="/plugins/marketplace" component={MarketplacePage} />
-                      <Route path="/plugins/panels/:pluginId/:panelId" component={PluginAppPanelPage} />
-                      <Route path="/plugins/routes/:pluginId/:routeId" component={PluginAppRoutePage} />
+                      <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
+                      <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
+                      <Route
+                        path="/performance"
+                        component={() => <BuiltinNavigationPage navigationId="performance" />}
+                      />
+                      <Route
+                        path="/plugins/marketplace"
+                        component={() => <BuiltinNavigationPage navigationId="plugins" />}
+                      />
+                      <Route path="/plugins/:pluginId/:navigationId" component={PluginNavigationPage} />
                       <Route path="/plugins/:pluginId" component={PluginDetailPage} />
                       <Route path="/:dir" component={DirectoryLayout}>
                         <Route path="/" component={() => <Navigate href="session" />} />
@@ -241,9 +243,11 @@ function ConnectedApp() {
                               <FileProvider>
                                 <ResourceOpenProvider>
                                   <PromptProvider>
-                                    <Suspense fallback={<Loading />}>
-                                      <Session />
-                                    </Suspense>
+                                    <BuiltinWorkbenchPanelsProvider>
+                                      <Suspense fallback={<Loading />}>
+                                        <Session />
+                                      </Suspense>
+                                    </BuiltinWorkbenchPanelsProvider>
                                   </PromptProvider>
                                 </ResourceOpenProvider>
                               </FileProvider>

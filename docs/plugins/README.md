@@ -12,7 +12,7 @@ Start here:
 - [04-tool-renderer-guide.md](04-tool-renderer-guide.md)
 - [05-workbench-panels.md](05-workbench-panels.md)
 - [06-settings-themes-icons.md](06-settings-themes-icons.md)
-- [07-sandbox-guide.md](07-sandbox-guide.md)
+- [07-sandbox-guide.md](07-sandbox-guide.md) — Solid UI runtime contract and asset loading
 - [09-security-best-practices.md](09-security-best-practices.md)
 - [developer-guide.md](developer-guide.md)
 

@@ -7,13 +7,15 @@ import { pathToFileURL } from "url"
 import { errors } from "./error"
 import { approvedPluginTrustDecision, derivePluginSource, resolveInstalledPluginPolicy } from "../plugin/trust"
 import { Installation } from "../global/installation"
-import { Plugin } from "../plugin/index"
 import {
   isAllowedPluginAssetPath,
   normalizePluginArtifactPath,
-  pluginAssetUrl,
+  rewritePluginSolidImports,
+  hasUnsupportedSolidRuntimeImport,
+  hasBundledSolidRuntime,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
+import { Plugin } from "../plugin/index"
 import { computeRisk, pluginRisk, registryPermissionSummary } from "@ericsanchezok/synergy-util/capability"
 
 import { diffPermissions } from "../plugin/consent/diff"
@@ -77,7 +79,6 @@ const UIContribution = z
     pluginId: z.string(),
     name: z.string().optional(),
     version: z.string(),
-    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
     health: z.enum(["loaded", "disabled"]).optional(),
     disabledReason: z.string().optional(),
     disabledPhase: z.string().optional(),
@@ -270,18 +271,10 @@ export const PluginRoute = new Hono()
       const settled = await Promise.allSettled(
         loaded.map(async (p) => {
           const manifest = p.manifest
-          const policy = await resolveInstalledPluginPolicy({
-            pluginId: p.id,
-            pluginDir: p.pluginDir,
-            manifest,
-            source: p.source,
-            devMode: Installation.isLocal(),
-          })
           return {
             pluginId: p.id,
             name: p.name ?? manifest.name,
             version: manifest.version,
-            trustTier: policy.trust.tier,
             health: "loaded" as const,
             ui: manifest.contributes?.ui ?? null,
             permissions: manifest.permissions ?? null,
@@ -297,7 +290,6 @@ export const PluginRoute = new Hono()
           pluginId: disabled.pluginId,
           name: disabled.name ?? disabled.pluginId,
           version: "0.0.0",
-          trustTier: "sandbox" as const,
           health: "disabled" as const,
           disabledReason: disabled.reason,
           disabledPhase: disabled.phase,
@@ -324,7 +316,12 @@ export const PluginRoute = new Hono()
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const versionHash = c.req.param("versionHash")
-      const rawFilePath = c.req.param("*")
+      // Fallback: Hono's "*" wildcard param may be empty on some versions; parse from path instead.
+      let rawFilePath = c.req.param("*")
+      if (!rawFilePath) {
+        const prefix = `/plugin/assets/${encodeURIComponent(pluginId)}/${encodeURIComponent(versionHash)}/`
+        rawFilePath = c.req.path.startsWith(prefix) ? decodeURIComponent(c.req.path.slice(prefix.length)) : ""
+      }
       if (!rawFilePath) return c.json({ message: "Missing asset path" }, 400)
 
       let filePath: string
@@ -377,60 +374,32 @@ export const PluginRoute = new Hono()
         return c.body(sanitized, { headers: { "Content-Type": mimeType } })
       }
 
+      // 7. JavaScript plugin UI bundles — rewrite Solid runtime imports to the host's
+      // shared runtime so the browser/Electron can import them directly without a
+      // client-side blob URL (which violates Electron's CSP in production builds).
+      if (ext === ".js" || ext === ".mjs" || ext === ".cjs") {
+        const raw = await Bun.file(real).text()
+        if (hasBundledSolidRuntime(raw)) {
+          return c.json(
+            { message: `Plugin ${pluginId} bundles Solid runtime. Rebuild it with synergy-plugin build.` },
+            400,
+          )
+        }
+        if (hasUnsupportedSolidRuntimeImport(raw)) {
+          return c.json(
+            {
+              message:
+                `Plugin ${pluginId} imports an unsupported Solid runtime subpath. ` +
+                `Use solid-js, solid-js/web, solid-js/store, solid-js/h, solid-js/h/jsx-runtime, or solid-js/h/jsx-dev-runtime.`,
+            },
+            400,
+          )
+        }
+        const rewritten = rewritePluginSolidImports(raw)
+        return c.body(rewritten, { headers: { "Content-Type": mimeType } })
+      }
+
       return c.body(Bun.file(real).stream(), { headers: { "Content-Type": mimeType } })
-    },
-  )
-
-  // 3. GET /:pluginId/sandbox/:panelId — Serve sandbox HTML shell for iframe panels
-  .get(
-    "/:pluginId/sandbox/:surface/:surfaceId",
-    describeRoute({
-      summary: "Serve plugin sandbox iframe shell",
-      description: "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
-      operationId: "plugin.sandbox",
-      responses: {
-        200: { description: "Sandbox HTML page" },
-        ...errors(404),
-      },
-    }),
-    async (c) => {
-      const pluginId = c.req.param("pluginId")
-      const surface = c.req.param("surface")
-      const surfaceId = c.req.param("surfaceId")
-      const plugin = await Plugin.get(pluginId)
-      if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
-
-      const manifest = await Plugin.manifest(pluginId)
-      if (!manifest) return c.json({ message: `Plugin manifest not found: ${pluginId}` }, 404)
-      const ui = manifest.contributes?.ui
-      const version = manifest.version
-
-      const entries: Record<string, Array<{ id: string; entry?: string; sandboxEntry?: string }>> = {
-        workbenchPanels: ui?.workbenchPanels ?? [],
-        appPanels: ui?.appPanels ?? [],
-        settings: ui?.settings ?? [],
-        appRoutes: ui?.appRoutes ?? [],
-      }
-      const item = entries[surface]?.find((candidate) => candidate.id === surfaceId)
-      const entry = item?.sandboxEntry ?? item?.entry ?? ui?.entry
-      if (!item || !entry) {
-        return c.json({ message: `Plugin sandbox surface not found: ${surface}/${surfaceId}` }, 404)
-      }
-      const entryUrl = pluginAssetUrl(pluginId, version, entry)
-
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { margin: 0; font-family: system-ui; background: var(--bg); color: var(--fg); }
-  </style>
-</head>
-<body>
-  <script src="${entryUrl}"></script>
-</body>
-</html>`
-      return c.html(html)
     },
   )
 

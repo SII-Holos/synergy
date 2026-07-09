@@ -23,9 +23,10 @@ export interface PluginPartRendererProps {
 
 export type PluginPartRenderer = Component<PluginPartRendererProps>
 
-export interface PluginPanelProps {
+export interface PluginNavigationProps {
   pluginId: string
-  panelId: string
+  navigationId: string
+  placement: "sidebar" | "page"
   scopeId?: string
 }
 
@@ -37,13 +38,15 @@ export interface PluginWorkbenchPanelTab {
   source?: string
 }
 
-export interface PluginWorkbenchPanelProps extends PluginPanelProps {
+export interface PluginWorkbenchPanelProps {
+  pluginId: string
+  panelId: string
   tab: PluginWorkbenchPanelTab
   onRequestClose?: () => void
 }
 
+export type PluginNavigation = Component<PluginNavigationProps>
 export type PluginWorkbenchPanel = Component<PluginWorkbenchPanelProps>
-export type PluginAppPanel = Component<PluginPanelProps>
 
 export interface PluginSettingsProps {
   pluginId: string
@@ -53,15 +56,31 @@ export interface PluginSettingsProps {
 
 export type PluginSettingsSection = Component<PluginSettingsProps>
 
-export type PluginMessageSlotName = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
+export type PluginMessageSlotName = string
 
 export interface PluginMessageSlotProps {
   slot: PluginMessageSlotName
   sessionId?: string
   messageId?: string
+  message?: unknown
 }
 
 export type PluginMessageSlot = Component<PluginMessageSlotProps>
+
+export type PluginComposerSlotName =
+  | "composer.above"
+  | "composer.below"
+  | "composer.toolbar.left"
+  | "composer.toolbar.right"
+  | "composer.add-menu"
+  | "composer.start-option"
+
+export interface PluginComposerSlotProps {
+  slot: PluginComposerSlotName
+  sessionId?: string
+}
+
+export type PluginComposerSlot = Component<PluginComposerSlotProps>
 
 export interface PluginCommandContext {
   pluginId: string

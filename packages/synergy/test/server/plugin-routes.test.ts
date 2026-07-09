@@ -166,29 +166,27 @@ describe("checkPathContainment (path traversal guard)", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. Asset serving — test status codes and the "empty path" guard
-//    The wildcard `c.req.param("*")` is not captured in Bun test using
-//    Hono's app.request(), so full asset serving is not testable here.
-//    The empty-path error path IS testable because Hono returns undefined
-//    for `c.req.param("*")` which triggers the "Missing asset path" guard.
+// 2. Asset serving
 // ---------------------------------------------------------------------------
 
 describe("GET /plugin/assets/:pluginId/:versionHash/* — asset edge cases", () => {
-  test("returns 400 when wildcard path is not captured (empty guard)", async () => {
+  test("serves nested plugin assets", async () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin({ pluginDir: tmp.path })
     ;(Plugin as any).get = mock(async () => plugin)
+    const asset = path.join(tmp.path, "dist", "ui", "index.js")
+    fs.mkdirSync(path.dirname(asset), { recursive: true })
+    await Bun.write(asset, "export const value = 1\n")
 
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
-        // The wildcard * is not captured by Hono's app.request() in test;
-        // c.req.param("*") returns undefined, hitting the empty-path guard.
-        const res = await app.request("/plugin/assets/test-plugin/v1/bundle.js", { method: "GET" })
-        expect(res.status).toBe(400)
-        const body = await res.json()
-        expect(body.message).toBe("Missing asset path")
+        const res = await app.request("/plugin/assets/test-plugin/v1/dist/ui/index.js", { method: "GET" })
+        expect(res.status).toBe(200)
+        expect(res.headers.get("content-type")).toContain("text/javascript")
+        expect(res.headers.get("cache-control")).toBe("public, immutable, max-age=31536000")
+        expect(await res.text()).toBe("export const value = 1\n")
       },
     })
   })
@@ -223,7 +221,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
       overallRisk: "low",
       warnings: [],
     },
-    appRoutes: [],
+    navigation: [],
     tools: [],
     ui: { contributions: 0, errors: [] },
     stores: { config: true, secrets: "none" },

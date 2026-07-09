@@ -51,7 +51,7 @@ export interface PluginStatus {
     overallRisk: "low" | "medium" | "high"
     warnings: Capability.CapabilityWarning[]
   }
-  appRoutes: string[]
+  navigation: string[]
   tools: Array<{
     id: string
     fullId: string
@@ -113,7 +113,7 @@ export const PluginStatusSchema = z
         }),
       ),
     }),
-    appRoutes: z.array(z.string()),
+    navigation: z.array(z.string()),
     tools: z.array(
       z.object({
         id: z.string(),
@@ -198,12 +198,12 @@ function countUIContributions(manifest: PluginManifest): number {
   if (ui.toolRenderers?.length) count += ui.toolRenderers.length
   if (ui.partRenderers?.length) count += ui.partRenderers.length
   if (ui.workbenchPanels?.length) count += ui.workbenchPanels.length
-  if (ui.appPanels?.length) count += ui.appPanels.length
+  if (ui.navigation?.length) count += ui.navigation.length
   if (ui.settings?.length) count += ui.settings.length
   if (ui.messageSlots?.length) count += ui.messageSlots.length
   if (ui.themes?.length) count += ui.themes.length
   if (ui.icons?.length) count += ui.icons.length
-  if (ui.appRoutes?.length) count += ui.appRoutes.length
+  if (ui.composerSlots?.length) count += ui.composerSlots.length
   if (ui.commands?.length) count += ui.commands.length
   return count
 }
@@ -238,7 +238,7 @@ export async function getStatusForLoadedPlugin(
   const { source, trust, integrity } = policy
 
   // ── Routes ──
-  const appRoutes = manifest.contributes?.ui?.appRoutes?.map((route: { id: string }) => route.id) ?? []
+  const navigation = manifest.contributes?.ui?.navigation?.map((item: { id: string }) => item.id) ?? []
 
   // ── Tools ──
   const tools = runtimeToolNames.map((id) => ({
@@ -350,7 +350,7 @@ export async function getStatusForLoadedPlugin(
       overallRisk: capabilityResult.overallRisk,
       warnings: capabilityResult.warnings,
     },
-    appRoutes,
+    navigation,
     tools,
     ui,
     stores,
@@ -400,7 +400,7 @@ export async function getStatusForDisabledPlugin(plugin: DisabledPlugin): Promis
       overallRisk: "low",
       warnings: [],
     },
-    appRoutes: [],
+    navigation: [],
     tools: [],
     ui: {
       contributions: 0,

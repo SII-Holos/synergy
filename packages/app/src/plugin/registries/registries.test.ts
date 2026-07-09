@@ -16,16 +16,7 @@ mock.module("@ericsanchezok/synergy-ui/message-part", () => ({
   PART_MAPPING: partMapping,
 }))
 
-// ── Tool Registry ──────────────────────────────────────────────────
-import {
-  registerToolRenderer,
-  getToolRenderer,
-  getToolFallback,
-  hasToolRenderer,
-  clearAllToolRenderers,
-  onToolLoaded,
-  type ToolRenderer,
-} from "./tool-registry"
+import { toolRendererRegistry, type ToolRenderer } from "./tool-registry"
 
 // ── Part Registry ──────────────────────────────────────────────────
 import { registerPartRenderer, getPartRenderer, hasPartRenderer } from "./part-registry"
@@ -38,8 +29,14 @@ import {
   clearWorkbenchPanels,
 } from "./workbench-panel-registry"
 
-// ── Panel Registry ─────────────────────────────────────────────────
-import { registerAppPanel, listAppPanels, getAppPanel, clearAppPanels } from "./app-panel-registry"
+// ── Navigation Registry ────────────────────────────────────────────
+import {
+  registerNavigation,
+  listNavigation,
+  getNavigation,
+  getPluginNavigation,
+  clearNavigation,
+} from "./navigation-registry"
 
 // ── Settings Registry ──────────────────────────────────────────────
 import { registerSettingsSection, getSettingsSections, getSettingsSection } from "./settings-registry"
@@ -54,8 +51,8 @@ import { registerIcon, getIcon, hasIcon, listIcons } from "./icon-registry"
 // ── Chat Registry ──────────────────────────────────────────────────
 import { registerMessageSlot, getMessageSlotsByName, clearMessageSlots } from "./message-slot-registry"
 
-// ── Route Registry ─────────────────────────────────────────────────
-import { registerAppRoute, listAppRoutes, getAppRoute, clearAppRoutes } from "./app-route-registry"
+// ── Composer Slot Registry ─────────────────────────────────────────
+import { registerComposerSlot, getComposerSlotsByName, clearComposerSlots } from "./composer-slot-registry"
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -71,79 +68,78 @@ function makeMockToolRenderer(): ToolRenderer {
 // Tool Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("ToolRegistry", () => {
+describe("ToolRendererRegistry", () => {
   beforeEach(() => {
-    clearAllToolRenderers()
+    toolRendererRegistry.clear()
   })
 
-  test("registerToolRenderer adds entry and returns disposer", () => {
+  test("register adds entry and returns disposer", () => {
     const render = makeMockToolRenderer()
-    const disposer = registerToolRenderer({ name: "test-tool", render })
+    const disposer = toolRendererRegistry.register("test-tool", { renderer: render })
     expect(typeof disposer).toBe("function")
-    expect(hasToolRenderer("test-tool")).toBe(true)
-    expect(getToolRenderer("test-tool")).toBe(render)
+    expect(toolRendererRegistry.has("test-tool")).toBe(true)
+    expect(toolRendererRegistry.render("test-tool")).toBe(render)
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerToolRenderer({ name: "test-tool", render: makeMockToolRenderer() })
-    expect(hasToolRenderer("test-tool")).toBe(true)
+    const disposer = toolRendererRegistry.register("test-tool", { renderer: makeMockToolRenderer() })
+    expect(toolRendererRegistry.has("test-tool")).toBe(true)
     disposer()
-    expect(hasToolRenderer("test-tool")).toBe(false)
-    expect(getToolRenderer("test-tool")).toBeUndefined()
+    expect(toolRendererRegistry.has("test-tool")).toBe(false)
+    expect(toolRendererRegistry.render("test-tool")).toBeUndefined()
   })
 
-  test("clearAllToolRenderers removes all entries", () => {
-    registerToolRenderer({ name: "tool-a", render: makeMockToolRenderer() })
-    registerToolRenderer({ name: "tool-b", render: makeMockToolRenderer() })
-    expect(hasToolRenderer("tool-a")).toBe(true)
-    expect(hasToolRenderer("tool-b")).toBe(true)
-    clearAllToolRenderers()
-    expect(hasToolRenderer("tool-a")).toBe(false)
-    expect(hasToolRenderer("tool-b")).toBe(false)
+  test("clear removes all entries", () => {
+    toolRendererRegistry.register("tool-a", { renderer: makeMockToolRenderer() })
+    toolRendererRegistry.register("tool-b", { renderer: makeMockToolRenderer() })
+    expect(toolRendererRegistry.has("tool-a")).toBe(true)
+    expect(toolRendererRegistry.has("tool-b")).toBe(true)
+    toolRendererRegistry.clear()
+    expect(toolRendererRegistry.has("tool-a")).toBe(false)
+    expect(toolRendererRegistry.has("tool-b")).toBe(false)
   })
 
-  test("getToolRenderer returns undefined for unknown tool", () => {
-    expect(getToolRenderer("nonexistent")).toBeUndefined()
+  test("render returns undefined for unknown tool", () => {
+    expect(toolRendererRegistry.render("nonexistent")).toBeUndefined()
   })
 
-  test("hasToolRenderer returns false for unknown tool", () => {
-    expect(hasToolRenderer("nonexistent")).toBe(false)
+  test("has returns false for unknown tool", () => {
+    expect(toolRendererRegistry.has("nonexistent")).toBe(false)
   })
 
-  test("hasToolRenderer returns true when only a loader is registered (no render yet)", () => {
-    registerToolRenderer({ name: "lazy-only", loader: async () => ({ default: makeMockToolRenderer() }) })
-    expect(hasToolRenderer("lazy-only")).toBe(true)
+  test("has returns true when only a loader is registered (no render yet)", () => {
+    toolRendererRegistry.register("lazy-only", { loader: async () => ({ default: makeMockToolRenderer() }) })
+    expect(toolRendererRegistry.has("lazy-only")).toBe(true)
   })
 
   test("duplicate registration replaces previous entry without crashing", () => {
     const first = makeMockToolRenderer()
     const second = makeMockToolRenderer()
-    registerToolRenderer({ name: "dup-tool", render: first })
-    registerToolRenderer({ name: "dup-tool", render: second })
-    expect(getToolRenderer("dup-tool")).toBe(second)
+    toolRendererRegistry.register("dup-tool", { renderer: first })
+    toolRendererRegistry.register("dup-tool", { renderer: second })
+    expect(toolRendererRegistry.render("dup-tool")).toBe(second)
   })
 
-  test("getToolFallback returns undefined when no fallback registered", () => {
-    registerToolRenderer({ name: "no-fallback", render: makeMockToolRenderer() })
-    expect(getToolFallback("no-fallback")).toBeUndefined()
+  test("fallback returns undefined when no fallback registered", () => {
+    toolRendererRegistry.register("no-fallback", { renderer: makeMockToolRenderer() })
+    expect(toolRendererRegistry.fallback("no-fallback")).toBeUndefined()
   })
 
-  test("getToolFallback returns fallback metadata when registered", () => {
-    registerToolRenderer({
-      name: "with-fallback",
-      render: makeMockToolRenderer(),
+  test("fallback returns fallback metadata when registered", () => {
+    toolRendererRegistry.register("with-fallback", {
+      renderer: makeMockToolRenderer(),
       fallback: { icon: "package", title: "My Tool", subtitleTemplate: "Reading {input.path}" },
     })
-    const fb = getToolFallback("with-fallback")
+    const fb = toolRendererRegistry.fallback("with-fallback")
     expect(fb).toBeDefined()
     expect(fb!.icon).toBe("package")
     expect(fb!.title).toBe("My Tool")
     expect(fb!.subtitleTemplate).toBe("Reading {input.path}")
   })
 
-  test("getToolFallback returns undefined for unknown tool", () => {
-    expect(getToolFallback("nonexistent")).toBeUndefined()
+  test("fallback returns undefined for unknown tool", () => {
+    expect(toolRendererRegistry.fallback("nonexistent")).toBeUndefined()
   })
 
   test("lazy loader fires on miss and makes renderer available after resolution", async () => {
@@ -152,72 +148,45 @@ describe("ToolRegistry", () => {
       resolveLoader = resolve
     })
 
-    registerToolRenderer({
-      name: "lazy-tool",
-      loader: () => loaderPromise,
-    })
-
-    // First call: loader triggered but not yet resolved; mock ToolRegistry.render returns undefined
-    const first = getToolRenderer("lazy-tool")
-    expect(first).toBeUndefined()
-
-    // Resolve the loader
-    const mockComponent = makeMockToolRenderer()
-    resolveLoader!({ default: mockComponent })
-    await loaderPromise
-    // Let the .then() microtask flush
-    await new Promise((r) => setTimeout(r, 0))
-
-    // Now the renderer should be available
-    const second = getToolRenderer("lazy-tool")
-    expect(second).toBe(mockComponent)
-  })
-})
-
-describe("ToolRegistry onToolLoaded signal", () => {
-  beforeEach(() => {
-    clearAllToolRenderers()
-  })
-
-  test("onToolLoaded is a callable function that accepts a callback", () => {
-    // The function is exported and typed — verifying it exists and is callable.
-    // createEffect behavior requires solid-js runtime DOM context
-    // which bun:test doesn't fully support.
-    expect(typeof onToolLoaded).toBe("function")
-    // Verify it does not throw when called with a no-op callback
-    let cbCalled = false
-    expect(() => {
-      onToolLoaded(() => {
-        cbCalled = true
-      })
-    }).not.toThrow()
-  })
-
-  test("lazy loader resolution triggers signal (verified via loadedSignal advancement)", async () => {
-    // The lazy loader's .then() handler calls setLoadedSignal.
-    // We verify this by: registering a lazy tool, calling getToolRenderer
-    // to trigger the loader, awaiting resolution, and confirming the
-    // renderer is then returned on the next call.
-    let resolveLoader: (value: { default: ToolRenderer }) => void
-    const loaderPromise = new Promise<{ default: ToolRenderer }>((resolve) => {
-      resolveLoader = resolve
-    })
-
-    registerToolRenderer({
-      name: "signal-lazy",
-      loader: () => loaderPromise,
-    })
-
-    // First call triggers the loader chain
-    expect(getToolRenderer("signal-lazy")).toBeUndefined()
+    toolRendererRegistry.register("lazy-tool", { loader: () => loaderPromise })
+    expect(toolRendererRegistry.render("lazy-tool")).toBeUndefined()
 
     const renderer = makeMockToolRenderer()
     resolveLoader!({ default: renderer })
     await loaderPromise
     await new Promise((r) => setTimeout(r, 0))
 
-    // After resolution, renderer is available — proof the signal fired
-    expect(getToolRenderer("signal-lazy")).toBe(renderer)
+    expect(toolRendererRegistry.render("lazy-tool")).toBe(renderer)
+  })
+})
+
+describe("ToolRendererRegistry onLoad signal", () => {
+  beforeEach(() => {
+    toolRendererRegistry.clear()
+  })
+
+  test("onLoad is a callable function that accepts a callback", () => {
+    expect(typeof toolRendererRegistry.onLoad).toBe("function")
+    expect(() => {
+      toolRendererRegistry.onLoad(() => {})
+    }).not.toThrow()
+  })
+
+  test("lazy loader resolution triggers onLoad callback", async () => {
+    let resolveLoader: (value: { default: ToolRenderer }) => void
+    const loaderPromise = new Promise<{ default: ToolRenderer }>((resolve) => {
+      resolveLoader = resolve
+    })
+
+    toolRendererRegistry.register("signal-lazy", { loader: () => loaderPromise })
+    expect(toolRendererRegistry.render("signal-lazy")).toBeUndefined()
+
+    const renderer = makeMockToolRenderer()
+    resolveLoader!({ default: renderer })
+    await loaderPromise
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(toolRendererRegistry.render("signal-lazy")).toBe(renderer)
   })
 })
 
@@ -426,69 +395,107 @@ describe("WorkbenchPanelRegistry", () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// Panel Registry
+// Navigation Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("AppPanelRegistry", () => {
+describe("NavigationRegistry", () => {
   beforeEach(() => {
-    clearAppPanels()
+    clearNavigation()
   })
 
-  test("registerAppPanel adds entry and returns disposer", () => {
-    const disposer = registerAppPanel({
-      id: "test-plugin:custom-panel",
-      panelId: "custom-panel",
+  test("registerNavigation adds entry and returns disposer", () => {
+    const disposer = registerNavigation({
+      id: "test-plugin:custom-page",
+      navigationId: "custom-page",
       label: "Custom",
       icon: "star",
+      placement: "sidebar",
+      path: "/plugins/test-plugin/custom-page",
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const entry = getAppPanel("test-plugin", "custom-panel")
+    const entry = getPluginNavigation("test-plugin", "custom-page")
     expect(entry).toBeDefined()
     expect(entry!.label).toBe("Custom")
     disposer()
   })
 
-  test("disposer removes only that entry", () => {
-    const disposer = registerAppPanel({
-      id: "test-plugin:removable-panel",
-      panelId: "removable-panel",
-      label: "Gone",
-      icon: "x",
+  test("disposer removes only the registered version", () => {
+    const first = registerNavigation({
+      id: "test-plugin:replaceable",
+      navigationId: "replaceable",
+      label: "First",
+      placement: "sidebar",
+      path: "/plugins/test-plugin/replaceable",
       pluginId: "test-plugin",
     })
-    expect(getAppPanel("test-plugin", "removable-panel")).toBeDefined()
-    disposer()
-    expect(getAppPanel("test-plugin", "removable-panel")).toBeUndefined()
-    expect(listAppPanels().length).toBe(0)
+    registerNavigation({
+      id: "test-plugin:replaceable",
+      navigationId: "replaceable",
+      label: "Second",
+      placement: "sidebar",
+      path: "/plugins/test-plugin/replaceable",
+      pluginId: "test-plugin",
+    })
+    first()
+    expect(getPluginNavigation("test-plugin", "replaceable")!.label).toBe("Second")
   })
 
-  test("listAppPanels includes plugin panels sorted by order then label", () => {
-    registerAppPanel({ id: "plugin-x:p1", panelId: "p1", label: "B", icon: "package", order: 20, pluginId: "plugin-x" })
-    registerAppPanel({ id: "plugin-x:p2", panelId: "p2", label: "A", icon: "package", order: 10, pluginId: "plugin-x" })
-    const list = listAppPanels()
-    expect(list.map((entry) => entry.panelId)).toEqual(["p2", "p1"])
+  test("listNavigation filters by placement and sorts by order then label", () => {
+    registerNavigation({
+      id: "plugin-x:b",
+      navigationId: "b",
+      label: "B",
+      placement: "sidebar",
+      path: "/plugins/plugin-x/b",
+      order: 20,
+      pluginId: "plugin-x",
+    })
+    registerNavigation({
+      id: "plugin-x:a",
+      navigationId: "a",
+      label: "A",
+      placement: "sidebar",
+      path: "/plugins/plugin-x/a",
+      order: 10,
+      pluginId: "plugin-x",
+    })
+    registerNavigation({
+      id: "plugin-x:page",
+      navigationId: "page",
+      label: "Page",
+      placement: "page",
+      path: "/plugins/plugin-x/page",
+      pluginId: "plugin-x",
+    })
+    expect(listNavigation("sidebar").map((entry) => entry.navigationId)).toEqual(["a", "b"])
   })
 
-  test("getAppPanel returns undefined for unknown id", () => {
-    expect(getAppPanel("plugin-x", "nonexistent")).toBeUndefined()
+  test("getNavigation returns undefined for unknown id", () => {
+    expect(getNavigation("missing")).toBeUndefined()
   })
 
-  test("clearAppPanels with pluginId removes only matching entries", () => {
-    registerAppPanel({ id: "plugin-x:p1", panelId: "p1", label: "P1", icon: "star", pluginId: "plugin-x" })
-    registerAppPanel({ id: "plugin-y:p2", panelId: "p2", label: "P2", icon: "star", pluginId: "plugin-y" })
-    clearAppPanels("plugin-x")
-    const list = listAppPanels()
+  test("clearNavigation with pluginId removes only matching entries", () => {
+    registerNavigation({
+      id: "plugin-x:p1",
+      navigationId: "p1",
+      label: "P1",
+      placement: "sidebar",
+      path: "/plugins/plugin-x/p1",
+      pluginId: "plugin-x",
+    })
+    registerNavigation({
+      id: "plugin-y:p2",
+      navigationId: "p2",
+      label: "P2",
+      placement: "sidebar",
+      path: "/plugins/plugin-y/p2",
+      pluginId: "plugin-y",
+    })
+    clearNavigation("plugin-x")
+    const list = listNavigation()
     expect(list.length).toBe(1)
-    const ids = list.map((entry) => entry.id)
-    expect(ids).not.toContain("plugin-x:p1")
-    expect(ids).toContain("plugin-y:p2")
-  })
-
-  test("duplicate registration replaces previous without crashing", () => {
-    registerAppPanel({ id: "p1:dup-panel", panelId: "dup-panel", label: "First", icon: "a", pluginId: "p1" })
-    registerAppPanel({ id: "p1:dup-panel", panelId: "dup-panel", label: "Second", icon: "b", pluginId: "p1" })
-    expect(getAppPanel("p1", "dup-panel")!.label).toBe("Second")
+    expect(list[0].id).toBe("plugin-y:p2")
   })
 })
 
@@ -551,7 +558,7 @@ describe("SettingsRegistry", () => {
     expect(section!.label).toBe("General")
   })
 
-  test("duplicate registration appends without crashing", () => {
+  test("duplicate registration replaces previous (Map semantics)", () => {
     registerSettingsSection({
       id: "dup-setting",
       label: "First",
@@ -566,9 +573,10 @@ describe("SettingsRegistry", () => {
       group: "Test",
       pluginId: "test-plugin",
     })
-    // Both present in the array (append semantics — no dedup by id)
+    // Map semantics — duplicate id replaces previous entry
     const matches = getSettingsSections().filter((s) => s.id === "dup-setting")
-    expect(matches.length).toBe(2)
+    expect(matches.length).toBe(1)
+    expect(matches[0]!.label).toBe("Second")
   })
 })
 
@@ -699,12 +707,12 @@ describe("MessageSlotRegistry", () => {
     const component = makeMockComponent()
     const disposer = registerMessageSlot({
       id: "message-slot-1",
-      slot: "before-tools",
+      slot: "message.before-tools",
       component,
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const entries = getMessageSlotsByName("before-tools")
+    const entries = getMessageSlotsByName("message.before-tools")
     expect(entries.some((entry) => entry.id === "message-slot-1")).toBe(true)
     disposer()
   })
@@ -712,130 +720,145 @@ describe("MessageSlotRegistry", () => {
   test("disposer removes the entry", () => {
     const disposer = registerMessageSlot({
       id: "message-slot-rm",
-      slot: "after-tools",
+      slot: "message.after-tools",
       component: makeMockComponent(),
       pluginId: "test-plugin",
     })
-    expect(getMessageSlotsByName("after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(true)
+    expect(getMessageSlotsByName("message.after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(true)
     disposer()
-    expect(getMessageSlotsByName("after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(false)
+    expect(getMessageSlotsByName("message.after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(false)
   })
 
   test("getMessageSlotsByName returns entries filtered by slot", () => {
     const compBefore = makeMockComponent()
     const compAfter = makeMockComponent()
-    registerMessageSlot({ id: "c-before", slot: "before-tools", component: compBefore, pluginId: "p1" })
-    registerMessageSlot({ id: "c-after", slot: "after-tools", component: compAfter, pluginId: "p1" })
+    registerMessageSlot({ id: "c-before", slot: "message.before-tools", component: compBefore, pluginId: "p1" })
+    registerMessageSlot({ id: "c-after", slot: "message.after-tools", component: compAfter, pluginId: "p1" })
 
-    const beforeEntries = getMessageSlotsByName("before-tools")
+    const beforeEntries = getMessageSlotsByName("message.before-tools")
     expect(beforeEntries.length).toBe(1)
     expect(beforeEntries[0].id).toBe("c-before")
 
-    const afterEntries = getMessageSlotsByName("after-tools")
+    const afterEntries = getMessageSlotsByName("message.after-tools")
     expect(afterEntries.length).toBe(1)
     expect(afterEntries[0].id).toBe("c-after")
   })
 
   test("getMessageSlotsByName returns empty array for slot with no entries", () => {
-    expect(getMessageSlotsByName("before-reasoning").length).toBe(0)
+    expect(getMessageSlotsByName("message.before-reasoning").length).toBe(0)
   })
 
   test("duplicate registration appends without crashing", () => {
     registerMessageSlot({
       id: "dup-slot",
-      slot: "before-tools",
+      slot: "message.before-tools",
       component: makeMockComponent(),
       pluginId: "p1",
     })
     registerMessageSlot({
       id: "dup-slot",
-      slot: "before-tools",
+      slot: "message.before-tools",
       component: makeMockComponent(),
       pluginId: "p1",
     })
-    const entries = getMessageSlotsByName("before-tools").filter((entry) => entry.id === "dup-slot")
+    const entries = getMessageSlotsByName("message.before-tools").filter((entry) => entry.id === "dup-slot")
     expect(entries.length).toBe(2)
   })
 
   test("multiple plugins can register to same slot", () => {
-    registerMessageSlot({ id: "c1", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-a" })
-    registerMessageSlot({ id: "c2", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-b" })
-    const entries = getMessageSlotsByName("before-tools")
+    registerMessageSlot({
+      id: "c1",
+      slot: "message.before-tools",
+      component: makeMockComponent(),
+      pluginId: "plugin-a",
+    })
+    registerMessageSlot({
+      id: "c2",
+      slot: "message.before-tools",
+      component: makeMockComponent(),
+      pluginId: "plugin-b",
+    })
+    const entries = getMessageSlotsByName("message.before-tools")
     expect(entries.length).toBeGreaterThanOrEqual(2)
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// Route Registry
+// Composer Slot Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("AppRouteRegistry", () => {
+describe("ComposerSlotRegistry", () => {
   beforeEach(() => {
-    clearAppRoutes()
+    clearComposerSlots()
   })
 
-  test("registerAppRoute adds entry and returns disposer", () => {
-    const disposer = registerAppRoute({
-      id: "test-plugin:test",
-      routeId: "test",
-      label: "Test Route",
-      icon: "package",
+  test("registerComposerSlot adds entry and returns disposer", () => {
+    const disposer = registerComposerSlot({
+      id: "test-plugin:composer-above",
+      slot: "composer.above",
+      component: makeMockComponent(),
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const routes = listAppRoutes()
-    expect(routes.length).toBe(1)
-    expect(getAppRoute("test-plugin", "test")).toBeDefined()
+    expect(getComposerSlotsByName("composer.above").length).toBe(1)
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerAppRoute({
-      id: "test-plugin:rm",
-      routeId: "rm",
-      label: "Removable",
+    const disposer = registerComposerSlot({
+      id: "test-plugin:composer-remove",
+      slot: "composer.toolbar.left",
+      component: makeMockComponent(),
       pluginId: "test-plugin",
     })
-    expect(listAppRoutes().length).toBe(1)
+    expect(getComposerSlotsByName("composer.toolbar.left").length).toBe(1)
     disposer()
-    expect(listAppRoutes().length).toBe(0)
+    expect(getComposerSlotsByName("composer.toolbar.left").length).toBe(0)
   })
 
-  test("listAppRoutes returns all entries", () => {
-    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
-    registerAppRoute({ id: "p1:b", routeId: "b", label: "B", pluginId: "p1" })
-    const routes = listAppRoutes()
-    expect(routes.length).toBe(2)
+  test("getComposerSlotsByName filters by slot and sorts by order", () => {
+    registerComposerSlot({
+      id: "plugin-x:b",
+      slot: "composer.toolbar.right",
+      order: 20,
+      component: makeMockComponent(),
+      pluginId: "plugin-x",
+    })
+    registerComposerSlot({
+      id: "plugin-x:a",
+      slot: "composer.toolbar.right",
+      order: 10,
+      component: makeMockComponent(),
+      pluginId: "plugin-x",
+    })
+    registerComposerSlot({
+      id: "plugin-x:below",
+      slot: "composer.below",
+      component: makeMockComponent(),
+      pluginId: "plugin-x",
+    })
+    expect(getComposerSlotsByName("composer.toolbar.right").map((entry) => entry.id)).toEqual([
+      "plugin-x:a",
+      "plugin-x:b",
+    ])
   })
 
-  test("listAppRoutes returns a copy", () => {
-    registerAppRoute({ id: "p1:x", routeId: "x", label: "X", pluginId: "p1" })
-    const routes = listAppRoutes()
-    routes.push({ id: "p2:y", routeId: "y", label: "Y", pluginId: "p2" })
-    expect(listAppRoutes().length).toBe(1)
-  })
-
-  test("clearAppRoutes removes all entries when no pluginId", () => {
-    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
-    registerAppRoute({ id: "p2:b", routeId: "b", label: "B", pluginId: "p2" })
-    clearAppRoutes()
-    expect(listAppRoutes().length).toBe(0)
-  })
-
-  test("clearAppRoutes with pluginId removes only matching entries", () => {
-    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
-    registerAppRoute({ id: "p2:b", routeId: "b", label: "B", pluginId: "p2" })
-    registerAppRoute({ id: "p1:c", routeId: "c", label: "C", pluginId: "p1" })
-    clearAppRoutes("p1")
-    const routes = listAppRoutes()
-    expect(routes.length).toBe(1)
-    expect(routes[0].id).toBe("p2:b")
-  })
-
-  test("duplicate registration replaces previous without crashing", () => {
-    registerAppRoute({ id: "p1:dup", routeId: "dup", label: "First", pluginId: "p1" })
-    registerAppRoute({ id: "p1:dup", routeId: "dup", label: "Second", pluginId: "p1" })
-    expect(listAppRoutes().length).toBe(1)
-    expect(getAppRoute("p1", "dup")!.label).toBe("Second")
+  test("clearComposerSlots with pluginId removes only matching entries", () => {
+    registerComposerSlot({
+      id: "plugin-x:a",
+      slot: "composer.above",
+      component: makeMockComponent(),
+      pluginId: "plugin-x",
+    })
+    registerComposerSlot({
+      id: "plugin-y:b",
+      slot: "composer.above",
+      component: makeMockComponent(),
+      pluginId: "plugin-y",
+    })
+    clearComposerSlots("plugin-x")
+    const entries = getComposerSlotsByName("composer.above")
+    expect(entries.length).toBe(1)
+    expect(entries[0].id).toBe("plugin-y:b")
   })
 })

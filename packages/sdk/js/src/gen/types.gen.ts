@@ -676,6 +676,11 @@ export type AgendaTrigger =
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
 
+/**
+ * Control profile used by sessions created for this item
+ */
+export type ControlProfileId = "guarded" | "autonomous" | "full_access"
+
 export type AgendaSessionRef = {
   sessionID: string
   /**
@@ -791,6 +796,7 @@ export type AgendaItem = {
     providerID: string
     modelID: string
   }
+  controlProfile?: ControlProfileId
   /**
    * Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.
    */
@@ -1512,11 +1518,6 @@ export type PermissionConfig =
       [key: string]: PermissionRuleConfig | Array<string> | PermissionActionConfig | undefined
     }
   | PermissionActionConfig
-
-/**
- * Default control profile applied to all agents
- */
-export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
@@ -4901,6 +4902,7 @@ export type AgendaCreateInput = {
     providerID: string
     modelID: string
   }
+  controlProfile?: ControlProfileId
   sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
   timeout?: number
@@ -4927,6 +4929,7 @@ export type AgendaPatchInput = {
     providerID: string
     modelID: string
   }
+  controlProfile?: ControlProfileId
   sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
   timeout?: number
@@ -5352,7 +5355,6 @@ export type PluginUiContribution = {
   pluginId: string
   name?: string
   version: string
-  trustTier: "declarative" | "trusted-import" | "sandbox"
   health?: "loaded" | "disabled"
   disabledReason?: string
   disabledPhase?: string
@@ -5408,7 +5410,7 @@ export type PluginStatus = {
       toolId?: string
     }>
   }
-  appRoutes: Array<string>
+  navigation: Array<string>
   tools: Array<{
     id: string
     fullId: string
@@ -13262,36 +13264,6 @@ export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAsse
 export type PluginServeAssetResponses = {
   /**
    * Plugin static asset
-   */
-  200: unknown
-}
-
-export type PluginSandboxData = {
-  body?: never
-  path: {
-    pluginId: string
-    surface: string
-    surfaceId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}"
-}
-
-export type PluginSandboxErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type PluginSandboxError = PluginSandboxErrors[keyof PluginSandboxErrors]
-
-export type PluginSandboxResponses = {
-  /**
-   * Sandbox HTML page
    */
   200: unknown
 }

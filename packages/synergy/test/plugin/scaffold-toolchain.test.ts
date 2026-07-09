@@ -14,7 +14,7 @@ import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
-const templates = ["tool-ui", "workbench-panel", "app-panel", "api-connector", "theme-icon"] as const
+const templates = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon"] as const
 
 async function linkDirectory(target: string, linkPath: string) {
   await fs.symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir")
@@ -88,7 +88,10 @@ describe("plugin scaffold toolchain", () => {
             skills: [{ name: "frontend", description: "Frontend workflow skill", dir: "./skills/frontend" }],
             ui: {
               entry: "./dist/ui/index.js",
-              appRoutes: [{ id: "asset-route", entry: "./src/route.js", label: "Fixture" }],
+              minUIApiVersion: "3.0",
+              navigation: [
+                { id: "asset-nav", label: "Fixture", placement: "page" as const, exportName: "default", order: 1000 },
+              ],
               workbenchPanels: [
                 {
                   id: "asset-panel",
@@ -96,8 +99,6 @@ describe("plugin scaffold toolchain", () => {
                   icon: "panel-left",
                   surface: "side",
                   cardinality: "singleton",
-                  sandbox: true,
-                  sandboxEntry: "./src/panel-sandbox.js",
                 },
               ],
               settings: [
@@ -106,8 +107,6 @@ describe("plugin scaffold toolchain", () => {
                   label: "Fixture",
                   icon: "settings",
                   group: "fixture",
-                  sandbox: true,
-                  sandboxEntry: "./src/settings-sandbox.js",
                 },
               ],
               themes: [{ id: "asset-theme", label: "Fixture", path: "./themes/default.css" }],
@@ -115,15 +114,7 @@ describe("plugin scaffold toolchain", () => {
             },
           },
           permissions: {
-            ui: {
-              workbenchPanels: true,
-              settings: true,
-              themes: true,
-              icons: true,
-              appRoutes: true,
-              trustedImport: true,
-              sandboxIframe: true,
-            },
+            ui: true,
           },
           lifecycle: {
             install: "./scripts/install.ts",
@@ -170,9 +161,6 @@ export default plugin
       "dist/plugin.json",
       "dist/runtime/index.js",
       "dist/ui/index.js",
-      "dist/src/route.js",
-      "dist/src/panel-sandbox.js",
-      "dist/src/settings-sandbox.js",
       "dist/skills/frontend/SKILL.md",
       "dist/scripts/install.ts",
       "dist/themes/default.css",
@@ -185,8 +173,6 @@ export default plugin
 
     const integrity = await Bun.file(path.join(pluginDir, "dist", "integrity.json")).json()
     expect(integrity.files["skills/frontend/SKILL.md"]).toBeDefined()
-    expect(integrity.files["src/route.js"]).toBeDefined()
-    expect(integrity.files["src/panel-sandbox.js"]).toBeDefined()
     expect(integrity.files["scripts/install.ts"]).toBeDefined()
     expect(integrity.files["icons/market.svg"]).toBeDefined()
 
@@ -201,8 +187,6 @@ export default plugin
         .filter(Boolean),
     )
     expect(files.has("skills/frontend/SKILL.md")).toBe(true)
-    expect(files.has("src/route.js")).toBe(true)
-    expect(files.has("src/panel-sandbox.js")).toBe(true)
     expect(files.has("scripts/install.ts")).toBe(true)
     expect(files.has("icons/market.svg")).toBe(true)
 

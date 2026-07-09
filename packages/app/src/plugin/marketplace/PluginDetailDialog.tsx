@@ -24,7 +24,7 @@ import {
   toTimestamp,
   type MarketplaceSummary,
 } from "./plugin-detail-model"
-import type { PermissionSeverity, PluginPermissionDiff, TrustTier } from "../consent/schema"
+import type { PermissionSeverity, PluginPermissionDiff } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
 
@@ -37,7 +37,6 @@ interface ApprovalRequiredError {
   capabilities: string[]
   diff: PluginPermissionDiff
   risk: PermissionSeverity
-  trustTier?: TrustTier
   artifactCacheKey?: string
   message?: string
 }
@@ -218,7 +217,6 @@ export function PluginDetailDialog(props: {
       <InstallConsentDialog
         manifest={approval.manifest}
         diff={approval.diff}
-        trustTier={approval.trustTier ?? "sandbox"}
         onApprove={async () => {
           await globalSDK.client.api.plugins.approveInstall({
             pluginId: approval.pluginId,

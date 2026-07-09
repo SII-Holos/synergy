@@ -1,12 +1,13 @@
-# Workbench And App Panels
+# Workbench Panels And Navigation
 
-Panels are Web UI surfaces declared in `plugin.json`.
+Plugin Web surfaces are declared under `contributes.ui` and enabled with `permissions.ui: true`.
 
 ```jsonc
 {
   "contributes": {
     "ui": {
       "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
       "workbenchPanels": [
         {
           "id": "scope-panel",
@@ -18,31 +19,27 @@ Panels are Web UI surfaces declared in `plugin.json`.
           "requiresSession": true,
         },
       ],
-      "appPanels": [
+      "navigation": [
         {
           "id": "dashboard",
           "label": "Dashboard",
           "icon": "layout-dashboard",
-          "exportName": "DashboardPanel",
+          "placement": "sidebar",
+          "exportName": "DashboardPage",
           "order": 100,
         },
       ],
     },
   },
   "permissions": {
-    "ui": {
-      "workbenchPanels": true,
-      "appPanels": true,
-      "trustedImport": true,
-    },
+    "ui": true,
   },
 }
 ```
 
-The host prefixes panel ids with the canonical plugin id at registration time, for example `my-plugin:scope-panel`.
+The host prefixes plugin surface ids with the canonical plugin id at registration time, for example `my-plugin:scope-panel`.
 
-Workbench panels are session surfaces. `surface` chooses `"side"` or `"bottom"`. `cardinality` chooses `"exclusive"`,
-`"singleton"`, or `"multi"`. `requiresSession` hides the panel until a concrete session exists.
+Workbench panels are session surfaces. `surface` chooses `"side"` or `"bottom"`. `cardinality` chooses `"exclusive"`, `"singleton"`, or `"multi"`. `requiresSession` hides the panel until a concrete session exists.
 
 Workbench panel components can import type helpers:
 
@@ -55,15 +52,13 @@ export const ScopePanel: Component<PluginWorkbenchPanelProps> = (props) => {
 }
 ```
 
-App panels create top-level sidebar entries after Synergy's built-in Agenda, Library, and Plugins entries. Their fixed URL is `/plugins/panels/:pluginId/:panelId`; ordering is by `order` and then `label`.
+Navigation entries are app-level destinations. `placement: "sidebar"` creates a top-level sidebar item and page route. `placement: "page"` creates the page route without adding a sidebar button. Both placements render at `/plugins/:pluginId/:navigationId`.
 
 ```tsx
 import type { Component } from "solid-js"
-import type { PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+import type { PluginNavigationProps } from "@ericsanchezok/synergy-plugin/ui"
 
-export const DashboardPanel: Component<PluginPanelProps> = (props) => {
+export const DashboardPage: Component<PluginNavigationProps> = (props) => {
   return <section>{props.pluginId}</section>
 }
 ```
-
-If `sandbox: true` is set, declare `permissions.ui.sandboxIframe` and provide `sandboxEntry` or `contributes.ui.entry`. The host loads iframe surfaces from `/plugin/:pluginId/sandbox/:surface/:surfaceId`, where `surface` is `workbenchPanels` or `appPanels`.

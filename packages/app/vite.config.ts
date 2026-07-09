@@ -1,6 +1,8 @@
 import { defineConfig, type PluginOption } from "vite"
 import appPlugin from "./vite"
 
+const synergyServerUrl = process.env.VITE_SYNERGY_SERVER_URL ?? "http://localhost:4096"
+
 async function performanceVisualizer(): Promise<PluginOption[]> {
   if (process.env.SYNERGY_BUNDLE_VISUALIZER !== "1") return []
   try {
@@ -33,6 +35,12 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     port: 3000,
+    proxy: {
+      "/plugin": {
+        target: synergyServerUrl,
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     target: "esnext",

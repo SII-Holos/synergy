@@ -28,7 +28,6 @@ async function reset() {
 }
 
 beforeEach(async () => {
-  await reset()
   delete process.env.SHELL
   Shell.preferred.reset()
   Shell.acceptable.reset()
@@ -48,8 +47,13 @@ function testContext() {
 }
 
 test("local bash injects stored GH_TOKEN only for GitHub CLI commands", async () => {
+  // Snapshot env so concurrent oauth-provider tests don't corrupt our state.
+  const savedGH = process.env.GH_TOKEN
+  const savedGITHUB = process.env.GITHUB_TOKEN
+  const savedPath = process.env.PATH
   delete process.env.GH_TOKEN
   delete process.env.GITHUB_TOKEN
+  await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
   await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-gh-token" })
 
   await using tmp = await tmpdir({ git: true })

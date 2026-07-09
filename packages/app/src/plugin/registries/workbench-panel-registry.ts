@@ -1,4 +1,6 @@
 import type { Component } from "solid-js"
+import { SurfaceRegistry } from "@/surface/registry"
+import type { SurfaceEntry } from "@/surface/types"
 
 export type WorkbenchPanelSurface = "side" | "bottom"
 export type WorkbenchPanelCardinality = "exclusive" | "singleton" | "multi"
@@ -25,68 +27,37 @@ export interface WorkbenchPanelTabInit {
   source?: string
 }
 
-export interface WorkbenchPanelEntry {
-  id: string
-  label: string
-  icon: string
+export interface WorkbenchPanelEntry extends SurfaceEntry {
   surface: WorkbenchPanelSurface
   cardinality: WorkbenchPanelCardinality
   requiresSession?: boolean
   component?: Component<WorkbenchPanelContentProps>
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
-  sandbox?: boolean
-  sandboxUrl?: string
-  pluginId: string
   exportName?: string
-  order?: number
   createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | Promise<void>
   title?: (tab: WorkbenchPanelTab) => string | undefined
 }
 
-const entries: Map<string, WorkbenchPanelEntry> = new Map()
-const listeners = new Set<() => void>()
-
-function notify() {
-  for (const listener of listeners) listener()
-}
+const registry = new SurfaceRegistry<WorkbenchPanelEntry>()
 
 export function registerWorkbenchPanel(entry: WorkbenchPanelEntry): () => void {
-  entries.set(entry.id, entry)
-  notify()
-  return () => {
-    entries.delete(entry.id)
-    notify()
-  }
+  return registry.register(entry)
 }
 
 export function listWorkbenchPanels(surface?: WorkbenchPanelSurface): WorkbenchPanelEntry[] {
-  const list = Array.from(entries.values())
-  const filtered = surface ? list.filter((entry) => entry.surface === surface) : list
-  return filtered.toSorted((a, b) => (a.order ?? 1000) - (b.order ?? 1000) || a.label.localeCompare(b.label))
+  if (surface) return registry.list((e) => e.surface === surface)
+  return registry.list()
 }
 
 export function getWorkbenchPanel(id: string): WorkbenchPanelEntry | undefined {
-  return entries.get(id)
+  return registry.get(id)
 }
 
 export function clearWorkbenchPanels(pluginId?: string): void {
-  if (pluginId) {
-    let changed = false
-    for (const [id, entry] of entries) {
-      if (entry.pluginId === pluginId) {
-        entries.delete(id)
-        changed = true
-      }
-    }
-    if (changed) notify()
-    return
-  }
-  entries.clear()
-  notify()
+  registry.clear(pluginId)
 }
 
 export function subscribeWorkbenchPanels(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+  return registry.subscribe(listener)
 }

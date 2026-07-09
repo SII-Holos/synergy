@@ -270,6 +270,7 @@ Each distributable plugin has a root `plugin.json`:
       "shell": false,
       "mcp": "none",
     },
+    "ui": true,
   },
   "contributes": {
     "tools": [
@@ -289,13 +290,14 @@ Each distributable plugin has a root `plugin.json`:
     ],
     "ui": {
       "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
       "toolRenderers": [{ "tool": "greet" }],
     },
   },
 }
 ```
 
-`contributes.ui.entry` is a runtime-loadable JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy-plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry.
+`contributes.ui.entry` is a runtime-loadable Solid JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy-plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry. Declare `minUIApiVersion` whenever an entry is present.
 
 Session workbench UI uses `contributes.ui.workbenchPanels`. A workbench panel declares which surface it belongs to and how its tabs behave:
 
@@ -304,6 +306,7 @@ Session workbench UI uses `contributes.ui.workbenchPanels`. A workbench panel de
   "contributes": {
     "ui": {
       "entry": "./dist/ui/index.js",
+      "minUIApiVersion": "3.0",
       "workbenchPanels": [
         {
           "id": "build-log",
@@ -318,14 +321,12 @@ Session workbench UI uses `contributes.ui.workbenchPanels`. A workbench panel de
     },
   },
   "permissions": {
-    "ui": {
-      "workbenchPanels": true,
-    },
+    "ui": true,
   },
 }
 ```
 
-`surface` is `"side"` or `"bottom"`. `cardinality` is `"exclusive"` for one active panel on that surface, `"singleton"` for one tab per panel id, or `"multi"` for a new tab each time. `requiresSession` hides the panel until the user is in a concrete session. App panels remain separate under `contributes.ui.appPanels` and create top-level sidebar entries.
+`surface` is `"side"` or `"bottom"`. `cardinality` is `"exclusive"` for one active panel on that surface, `"singleton"` for one tab per panel id, or `"multi"` for a new tab each time. `requiresSession` hides the panel until the user is in a concrete session. Top-level sidebar and page destinations use `contributes.ui.navigation`.
 
 ## UI Types
 
@@ -335,12 +336,13 @@ UI contribution types are exported separately:
 import type {
   PluginToolRendererProps,
   PluginWorkbenchPanel,
-  PluginPanelProps,
+  PluginNavigation,
   PluginMessageSlotProps,
+  PluginComposerSlotProps,
 } from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-Supported UI surfaces are tool renderers, part renderers, workbench panels, app panels, settings sections, message slots, themes, icons, app routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+Supported UI surfaces are tool renderers, part renderers, navigation, settings sections, workbench panels, message slots, composer slots, themes, icons, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
 
 ## Runtime Modes
 

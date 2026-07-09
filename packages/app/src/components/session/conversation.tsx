@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
+import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import type { UserMessage, AssistantMessage, Message, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
@@ -82,6 +83,7 @@ export function SessionConversation(props: {
         "pb-4 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
       }}
     >
+      <MessageSlotOutlet slot="message.above-conversation" sessionId={props.sessionID} />
       <BrowserViewEffects timeline={props.timeline} />
       <Show when={props.turnStart > 0}>
         <div class="w-full flex justify-center">
@@ -244,6 +246,7 @@ export function SessionConversation(props: {
           </For>
         </div>
       </Show>
+      <MessageSlotOutlet slot="message.footer" sessionId={props.sessionID} />
     </ConversationViewport>
   )
 }

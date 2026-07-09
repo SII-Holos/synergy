@@ -4,7 +4,6 @@ import type { PluginPermissions } from "../api"
 
 interface PluginPermissionsDisplayProps {
   permissions: PluginPermissions
-  trustTier: "declarative" | "trusted-import" | "sandbox"
   isUpdate?: boolean
   previousPermissions?: PluginPermissions
 }
@@ -64,64 +63,10 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
     }
 
     // UI permissions
-    if (hasPermission(p, ["ui", "toolRenderers"])) {
-      addItem({
-        icon: "message-square",
-        label: "Tool renderers in chat",
-      })
-    }
-    if (hasPermission(p, ["ui", "partRenderers"])) {
-      addItem({
-        icon: "braces",
-        label: "Part renderers in chat",
-      })
-    }
-    if (hasPermission(p, ["ui", "workbenchPanels"])) {
+    if (p?.ui === true) {
       addItem({
         icon: "panel-left",
-        label: "Custom workbench panels",
-      })
-    }
-    if (hasPermission(p, ["ui", "appPanels"])) {
-      addItem({
-        icon: "panel-left",
-        label: "Sidebar app panels",
-      })
-    }
-    if (hasPermission(p, ["ui", "settings"])) {
-      addItem({
-        icon: "settings",
-        label: "Settings page",
-      })
-    }
-    if (hasPermission(p, ["ui", "themes"])) {
-      addItem({
-        icon: "sun",
-        label: "Custom chat themes",
-      })
-    }
-    if (hasPermission(p, ["ui", "icons"])) {
-      addItem({
-        icon: "image",
-        label: "Custom icons",
-      })
-    }
-    if (hasPermission(p, ["ui", "messageSlots"])) {
-      addItem({
-        icon: "message-square",
-        label: "Message timeline slots",
-      })
-    }
-    if (hasPermission(p, ["ui", "appRoutes"])) {
-      addItem({
-        icon: "route",
-        label: "Custom application pages",
-      })
-    }
-    if (hasPermission(p, ["ui", "commands"])) {
-      addItem({
-        icon: "terminal",
-        label: "Command palette actions",
+        label: "Plugin UI surfaces",
       })
     }
     if (uiItems.length > 0) {
@@ -277,28 +222,13 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         <p class="text-13-regular text-text-weak">No specific permissions declared.</p>
       </Show>
 
-      {/* Trust tier indicator */}
+      {/* UI execution indicator */}
       <div class="flex items-center gap-3 rounded-lg border border-border-base bg-surface-base p-3">
-        <Show
-          when={props.trustTier === "trusted-import" || props.trustTier === "declarative"}
-          fallback={
-            <>
-              <Icon name="boxes" size="small" class="text-text-weak" />
-              <div>
-                <p class="text-13-medium text-text-base">Sandbox mode</p>
-                <p class="text-12-regular text-text-weak">
-                  Runs in an isolated iframe — cannot access the application directly.
-                </p>
-              </div>
-            </>
-          }
-        >
-          <Icon name="shield-check" size="small" class="text-text-success" />
-          <div>
-            <p class="text-13-medium text-text-base">Trusted mode</p>
-            <p class="text-12-regular text-text-weak">Can run code in the app with declared permissions.</p>
-          </div>
-        </Show>
+        <Icon name="shield-check" size="small" class="text-text-success" />
+        <div>
+          <p class="text-13-medium text-text-base">Host-rendered UI</p>
+          <p class="text-12-regular text-text-weak">Can render declared surfaces in Synergy after approval.</p>
+        </div>
       </div>
 
       {/* Risky permissions warning */}

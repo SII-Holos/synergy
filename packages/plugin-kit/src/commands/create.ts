@@ -6,9 +6,9 @@ import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
-type TemplateName = "tool-ui" | "workbench-panel" | "app-panel" | "api-connector" | "theme-icon"
+type TemplateName = "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon"
 
-const TEMPLATES: TemplateName[] = ["tool-ui", "workbench-panel", "app-panel", "api-connector", "theme-icon"]
+const TEMPLATES: TemplateName[] = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon"]
 
 function currentPackageRange(): string {
   const pkgPath = path.resolve(import.meta.dir, "..", "..", "package.json")
@@ -54,11 +54,11 @@ function packageJson(name: string, templateName: TemplateName): string {
     dependencies: {
       "@ericsanchezok/synergy-plugin": toolkitRange,
       zod: "^4.0.0",
-      ...(needsSolid ? { "solid-js": "^1.9.0" } : {}),
     },
     devDependencies: {
       "@ericsanchezok/synergy-plugin-kit": toolkitRange,
       typescript: "^5.8.0",
+      ...(needsSolid ? { "solid-js": "^1.9.0" } : {}),
     },
   }
   return JSON.stringify(pkg, null, 2) + EOL
@@ -141,7 +141,7 @@ export default plugin
 `
 }
 
-function indexAppPanel(name: string): string {
+function indexNavigation(name: string): string {
   return indexWorkbenchPanel(name)
 }
 
@@ -271,14 +271,14 @@ export default WorkbenchPanel
 `
 }
 
-function uiAppPanel(_name: string): string {
+function uiNavigation(_name: string): string {
   return `import type { Component } from "solid-js"
 
-const AppPanel: Component = () => {
-  return <div>App panel content</div>
+const NavigationView: Component = () => {
+  return <div>Navigation content</div>
 }
 
-export default AppPanel
+export default NavigationView
 `
 }
 
@@ -291,10 +291,7 @@ function manifestToolUI(name: string): object {
         network: false,
         mcp: "none",
       },
-      ui: {
-        toolRenderers: true,
-        trustedImport: true,
-      },
+      ui: true,
     },
     contributes: {
       tools: [
@@ -311,6 +308,7 @@ function manifestToolUI(name: string): object {
       ],
       ui: {
         entry: "./dist/ui/index.js",
+        minUIApiVersion: "1.0",
         toolRenderers: [{ tool: "greet" }],
       },
     },
@@ -320,14 +318,12 @@ function manifestToolUI(name: string): object {
 function manifestWorkbenchPanel(name: string): object {
   return {
     permissions: {
-      ui: {
-        workbenchPanels: true,
-        trustedImport: true,
-      },
+      ui: true,
     },
     contributes: {
       ui: {
         entry: "./dist/ui/index.js",
+        minUIApiVersion: "1.0",
         workbenchPanels: [
           {
             id: `${name}-panel`,
@@ -342,22 +338,21 @@ function manifestWorkbenchPanel(name: string): object {
   }
 }
 
-function manifestAppPanel(name: string): object {
+function manifestNavigation(name: string): object {
   return {
     permissions: {
-      ui: {
-        appPanels: true,
-        trustedImport: true,
-      },
+      ui: true,
     },
     contributes: {
       ui: {
         entry: "./dist/ui/index.js",
-        appPanels: [
+        minUIApiVersion: "1.0",
+        navigation: [
           {
-            id: `${name}-panel`,
+            id: `${name}-nav`,
             label: name,
             icon: "package",
+            placement: "sidebar",
           },
         ],
       },
@@ -377,10 +372,7 @@ function manifestApiConnector(_name: string): object {
       network: {
         connectDomains: ["api.example.com"],
       },
-      ui: {
-        toolRenderers: true,
-        trustedImport: true,
-      },
+      ui: true,
     },
     contributes: {
       tools: [
@@ -407,6 +399,7 @@ function manifestApiConnector(_name: string): object {
       ],
       ui: {
         entry: "./dist/ui/index.js",
+        minUIApiVersion: "1.0",
         toolRenderers: [{ tool: "getJSON" }, { tool: "postJSON" }],
       },
     },
@@ -416,10 +409,7 @@ function manifestApiConnector(_name: string): object {
 function manifestThemeIcon(name: string): object {
   return {
     permissions: {
-      ui: {
-        themes: true,
-        icons: true,
-      },
+      ui: true,
     },
     contributes: {
       ui: {
@@ -454,12 +444,12 @@ const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
       { relativePath: "src/ui.tsx", content: uiWorkbenchPanel },
     ],
   },
-  "app-panel": {
-    label: "App Panel - Solid sidebar app panel with no tools",
-    manifest: manifestAppPanel,
+  navigation: {
+    label: "Navigation - Solid sidebar navigation with no tools",
+    manifest: manifestNavigation,
     files: [
-      { relativePath: "src/index.ts", content: indexAppPanel },
-      { relativePath: "src/ui.tsx", content: uiAppPanel },
+      { relativePath: "src/index.ts", content: indexNavigation },
+      { relativePath: "src/ui.tsx", content: uiNavigation },
     ],
   },
   "api-connector": {

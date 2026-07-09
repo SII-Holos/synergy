@@ -47,12 +47,12 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
     "toolRenderers",
     "partRenderers",
     "workbenchPanels",
-    "appPanels",
+    "navigation",
     "settings",
     "messageSlots",
+    "composerSlots",
     "themes",
     "icons",
-    "appRoutes",
     "commands",
   ].filter((key) => arrayField(ui, key).length > 0)
 }
@@ -77,7 +77,7 @@ export function fallbackPluginSummary(input: {
     latestVersion: input.installed.version,
     updatedAt: Date.now(),
     risk: input.detail?.risk ?? input.installed.risk,
-    trustTier: input.installed.trustTier,
+    trustTier: input.detail?.trustTier ?? input.installed.trustTier,
     runtimeMode: runtimeModeFromManifest(manifest),
     uiSurfaces: uiSurfacesFromManifest(manifest),
     tools: toolsFromManifest(manifest),

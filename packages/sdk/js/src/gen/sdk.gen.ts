@@ -323,8 +323,6 @@ import type {
   PluginRuntimeStartResponses,
   PluginRuntimeStopErrors,
   PluginRuntimeStopResponses,
-  PluginSandboxErrors,
-  PluginSandboxResponses,
   PluginServeAssetErrors,
   PluginServeAssetResponses,
   PluginStatusErrors,
@@ -8057,42 +8055,6 @@ export class Plugin extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
       url: "/plugin/assets/{pluginId}/{versionHash}/*",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Serve plugin sandbox iframe shell
-   *
-   * Serve an HTML shell for loading a plugin panel in a sandboxed iframe.
-   */
-  public sandbox<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      surface: string
-      surfaceId: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "path", key: "surface" },
-            { in: "path", key: "surfaceId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
-      url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}",
       ...options,
       ...params,
     })

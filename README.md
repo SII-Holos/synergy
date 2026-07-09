@@ -141,7 +141,7 @@ synergy-plugin publish-market
 
 `publish-market` builds, packs, signs, uploads GitHub Release assets when `gh` is available, prepares the official `SII-Holos/synergy-plugins` registry PR, and leaves clear manual steps when a GitHub action cannot be automated.
 
-Plugin Web UI contributions can add tool and message rendering, session workbench panels, top-level sidebar app panels, settings sections, themes, icons, app routes, and command palette actions.
+Plugin Web UI contributions can add tool and message rendering, session workbench panels, top-level sidebar/page navigation, settings sections, composer slots, themes, icons, and command palette actions.
 
 ### If you already have the CLI installed
 
@@ -380,7 +380,7 @@ synergy-plugin publish-market
 
 Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.
 
-Plugin Web UI contributions can add top-level sidebar app panels through `contributes.ui.appPanels`; session-specific side and bottom workspace surfaces use `contributes.ui.workbenchPanels`.
+Plugin Web UI contributions can add top-level sidebar/page navigation through `contributes.ui.navigation`; session-specific side and bottom workspace surfaces use `contributes.ui.workbenchPanels`.
 
 ### Session commands
 

@@ -1,36 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import {
-  formatHealthSnapshot,
-  formatLogTail,
-  buildSandboxPreviewUrl,
-  resolveSandboxSurfaces,
-} from "../../src/cli/cmd/plugin-dev"
+import { formatHealthSnapshot, formatLogTail } from "../../src/cli/cmd/plugin-dev"
 import type { HealthSnapshot } from "../../src/cli/cmd/plugin-dev"
 import type { PluginLogEntry } from "../../src/plugin-runtime/logs"
-import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-
-// ---------------------------------------------------------------------------
-// Existing exports (sandbox preview) — verify they still load
-// ---------------------------------------------------------------------------
-
-describe("plugin-dev existing exports", () => {
-  test("buildSandboxPreviewUrl is callable", () => {
-    const url = buildSandboxPreviewUrl("test-plugin", "appPanels", "my-panel")
-    expect(url).toContain("localhost")
-    expect(url).toContain("test-plugin")
-    expect(url).toContain("my-panel")
-  })
-
-  test("resolveSandboxSurfaces returns empty when no UI contributes", () => {
-    const manifest: PluginManifestType = {
-      name: "test",
-      version: "1.0.0",
-      description: "test",
-    } as PluginManifestType
-    const surfaces = resolveSandboxSurfaces(manifest)
-    expect(surfaces).toEqual([])
-  })
-})
 
 // ---------------------------------------------------------------------------
 // Health snapshot formatter

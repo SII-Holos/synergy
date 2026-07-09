@@ -20,6 +20,8 @@ describe("workbench panel manifest contributions", () => {
       description: "Workbench panel plugin",
       contributes: {
         ui: {
+          entry: "./dist/ui/index.js",
+          minUIApiVersion: "1.0",
           workbenchPanels: [
             {
               id: "notes-adjacent",
@@ -40,18 +42,16 @@ describe("workbench panel manifest contributions", () => {
         },
       },
       permissions: {
-        ui: {
-          workbenchPanels: true,
-        },
+        ui: true,
       },
     })
 
     expect(manifest.contributes?.ui?.workbenchPanels?.[0]?.requiresSession).toBeUndefined()
     expect(manifest.contributes?.ui?.workbenchPanels?.[1]?.requiresSession).toBe(true)
-    expect(manifest.permissions?.ui?.workbenchPanels).toBe(true)
+    expect(manifest.permissions?.ui).toBe(true)
   })
 
-  test("accepts app panels, message slots, app routes, and UI commands", () => {
+  test("accepts navigation, message slots, composer slots, and UI commands", () => {
     const manifest = PluginManifest.parse({
       name: "web-surface-plugin",
       version: "1.0.0",
@@ -59,35 +59,31 @@ describe("workbench panel manifest contributions", () => {
       contributes: {
         ui: {
           entry: "./dist/ui/index.js",
-          appPanels: [
+          minUIApiVersion: "1.0",
+          navigation: [
             {
               id: "dashboard",
               label: "Dashboard",
               icon: "layout-dashboard",
+              placement: "sidebar" as const,
               exportName: "DashboardPanel",
               order: 25,
             },
           ],
           messageSlots: [{ id: "after-tools", slot: "after-tools", exportName: "AfterToolsSlot" }],
-          appRoutes: [{ id: "details", label: "Details", icon: "sparkles", exportName: "DetailsRoute" }],
+          composerSlots: [{ id: "toolbar-left", slot: "composer.toolbar.left" as const, exportName: "ToolbarLeft" }],
           commands: [{ id: "open", label: "Open", exportName: "openCommand" }],
         },
       },
       permissions: {
-        ui: {
-          appPanels: true,
-          messageSlots: true,
-          appRoutes: true,
-          commands: true,
-          trustedImport: true,
-        },
+        ui: true,
       },
     })
 
-    expect(manifest.contributes?.ui?.appPanels?.[0]?.order).toBe(25)
+    expect(manifest.contributes?.ui?.navigation?.[0]?.order).toBe(25)
     expect(manifest.contributes?.ui?.messageSlots?.[0]?.slot).toBe("after-tools")
-    expect(manifest.contributes?.ui?.appRoutes?.[0]?.id).toBe("details")
-    expect(manifest.permissions?.ui?.appPanels).toBe(true)
+    expect(manifest.contributes?.ui?.composerSlots?.[0]?.id).toBe("toolbar-left")
+    expect(manifest.permissions?.ui).toBe(true)
   })
 
   test("rejects removed workspacePanels contributions as an unknown UI field", () => {
@@ -141,13 +137,11 @@ describe("workbench panel manifest contributions", () => {
         version: "1.0.0",
         description: "Manifest using removed UI permission",
         permissions: {
-          ui: {
-            [field]: true,
-          },
+          ui: { [field]: true } as any,
         },
       })
 
-      expectUnknownKey(parsed, "permissions.ui", field)
+      expect(parsed.success).toBe(false)
     }
   })
 })

@@ -183,7 +183,7 @@ Validation checks:
 ## dev
 
 ```bash
-synergy plugin dev [path] [--sandbox-preview]
+synergy plugin dev [path]
 ```
 
 Development mode validates the manifest, prints permission and runtime previews, watches plugin source, and reloads plugin state on changes.
