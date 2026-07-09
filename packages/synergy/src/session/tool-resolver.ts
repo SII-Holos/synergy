@@ -41,6 +41,7 @@ import { PerformanceIssues } from "@/performance/issues"
 import { PerformanceMetrics } from "@/performance/metrics"
 import { SkillPaths } from "@/skill/paths"
 import { PerformanceSpans } from "@/performance/spans"
+import { LightLoopReviewAccess } from "./light-loop-review-access"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -889,7 +890,18 @@ export namespace ToolResolver {
     return true
   }
 
-  function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
+  async function isRecordedLightLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
+    if (!input.session?.id) return false
+    return (
+      (await LightLoopReviewAccess.resolve({
+        agent: input.agent.name,
+        reviewSessionID: input.session.id,
+        reviewSession: input.session,
+      })) !== undefined
+    )
+  }
+
+  async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const disabled = PermissionNext.disabled(
@@ -901,6 +913,7 @@ export namespace ToolResolver {
     const forcedGroups = forcedToolGroups(input.session)
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
+    const canUseLightLoopReviewTools = await isRecordedLightLoopReviewSession(input)
 
     const supportsImageInput = input.model.capabilities.input.image
 
@@ -974,6 +987,20 @@ export namespace ToolResolver {
           }),
         )
         continue
+      }
+
+      if (def.id === "light_loop_approve" || def.id === "light_loop_reject") {
+        if (!canUseLightLoopReviewTools) {
+          diagnostics.set(
+            def.id,
+            SessionModePolicy.unavailable({
+              toolName: def.id,
+              reason: "permission",
+              session: input.session,
+            }),
+          )
+          continue
+        }
       }
 
       if (disabled.has(def.id) && !isEphemeral) {
@@ -1658,7 +1685,7 @@ export namespace ToolResolver {
 
   export async function availability(input: Omit<Input, "processor">): Promise<Availability> {
     using _ = log.time("availability")
-    return applyAvailability(await collectDefinitions(input), input)
+    return await applyAvailability(await collectDefinitions(input), input)
   }
 
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {

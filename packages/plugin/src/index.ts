@@ -135,6 +135,10 @@ export interface PluginAgent {
   steps?: number
   /** Hide from the @ autocomplete menu */
   hidden?: boolean
+  /** Agent or delegation group names allowed to delegate to this subagent */
+  visibleTo?: string[]
+  /** Additional delegation catalogs this agent may use when dispatching subagents */
+  delegationGroups?: string[]
   /** Hex color code (e.g. "#FF5733") */
   color?: string
   /** Permission rules — same format as synergy.jsonc agent.permission */
