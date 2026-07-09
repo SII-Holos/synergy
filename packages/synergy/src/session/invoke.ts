@@ -28,6 +28,7 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { SessionMemoryPressure } from "./memory-pressure"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
@@ -543,7 +544,7 @@ export namespace SessionInvoke {
         })
         if (!turnPreparation) break
 
-        const [
+        let [
           toolDefinitions,
           [envParts, customParts],
           cortexExecutionContext,
@@ -558,9 +559,9 @@ export namespace SessionInvoke {
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
-        const systemParts: string[] = []
+        let systemParts: string[] = []
         let systemCacheBreakpoint: number | undefined
-        const lateSystemParts: string[] = []
+        let lateSystemParts: string[] = []
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
@@ -702,12 +703,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             )
           }
         }
-        const modelSessionMessages = WorkflowUserWrapper.projectMessages({
+        let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
         })
-        const preparedMessages = [
+        let preparedMessages = [
           ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
@@ -720,7 +721,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         ]
 
         const promptPlanTimer = log.time("promptBudgeter.buildPlan")
-        const promptPlan = await PromptBudgeter.buildPlan({
+        let promptPlan = await PromptBudgeter.buildPlan({
           sessionID,
           agent: agent.name,
           messageID: R.id,
@@ -739,7 +740,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
         const calibration = buildCalibration(msgs)
         const promptDecideTimer = log.time("promptBudgeter.decide")
-        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+        let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
         }).catch(async (error) => {
@@ -767,11 +768,18 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             type: "compaction",
             auto: true,
           })
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptPlan = undefined
+          promptDecision = undefined
           continue
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const resolvedTools = await ToolResolver.resolveWithAvailability({
+        let resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
@@ -786,6 +794,26 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         })
         toolResolveTimer.stop()
         if (!resolvedTools) break
+
+        let streamInput: LLM.StreamInput | undefined
+        function releaseTurnReferences(mutateStreamInput: boolean) {
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptDecision = undefined
+          if (mutateStreamInput && streamInput) {
+            streamInput.system = []
+            streamInput.lateSystem = undefined
+            streamInput.messages = []
+            streamInput.tools = {}
+            streamInput.activeToolIDs = undefined
+          }
+          promptPlan = undefined
+          resolvedTools = undefined
+          streamInput = undefined
+        }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         // Count LLM calls for an active Lattice run in memory; flushed to the
@@ -823,23 +851,21 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         })
         let turnSpanEnded = false
         let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+        streamInput = {
+          user: R,
+          agent,
+          abort: combinedAbort,
+          sessionID,
+          system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+          lateSystem: promptPlan.lateSystem,
+          messages: promptPlan.messages,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
+          model,
+        }
         try {
-          result = await Promise.race([
-            processor.process({
-              user: R,
-              agent,
-              abort: combinedAbort,
-              sessionID,
-              system: promptPlan.system,
-              systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-              lateSystem: promptPlan.lateSystem,
-              messages: promptPlan.messages,
-              tools: resolvedTools.tools,
-              activeToolIDs: resolvedTools.activeToolIDs,
-              model,
-            }),
-            deadlinePromise,
-          ])
+          result = await Promise.race([processor.process(streamInput), deadlinePromise])
         } catch (error) {
           if (error !== deadlineError) {
             PerformanceSpans.end(turnSpan, { status: "error", error })
@@ -860,6 +886,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         } finally {
           clearTimeout(turnTimer)
           processTimer.stop()
+          releaseTurnReferences(!turnDeadline.signal.aborted)
           if (!turnSpanEnded) {
             PerformanceSpans.end(turnSpan, {
               attributes: {
@@ -871,24 +898,33 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           }
         }
 
-        // post-LLM jobs
-        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
-        const postCtx: LoopJob.Context = {
-          ...jobCtx,
-          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
-          lastAssistant: processor.message,
-          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
-            ? processor.message
-            : jobCtx.lastFinished,
-          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
-            ? postParts
-            : jobCtx.lastFinishedParts,
+        let postRequestedStop = false
+        {
+          // post-LLM jobs
+          const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+          const postCtx: LoopJob.Context = {
+            ...jobCtx,
+            messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+            lastAssistant: processor.message,
+            lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+              ? processor.message
+              : jobCtx.lastFinished,
+            lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+              ? postParts
+              : jobCtx.lastFinishedParts,
+          }
+          const postJobs = LoopJob.collect("post", postCtx)
+          if (postJobs.length > 0) {
+            const postResult = await LoopJob.execute(postJobs, postCtx)
+            postRequestedStop = postResult === "stop"
+          }
         }
-        const postJobs = LoopJob.collect("post", postCtx)
-        if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, postCtx)
-          if (postResult === "stop") break
-        }
+        await SessionMemoryPressure.maybeCollect({
+          sessionID,
+          messageID: processor.message.id,
+          phase: "session.turn.after_post_jobs",
+        })
+        if (postRequestedStop) break
 
         if (result === "stop") {
           // If the failure was caused by exceeding context limits, inject a
