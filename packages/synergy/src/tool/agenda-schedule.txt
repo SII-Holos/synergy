@@ -5,6 +5,7 @@ Triggers:
 - `{type:"every", interval:"30m"}` — recurring at a fixed interval
 
 By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery.
+Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile.
 
 **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only.
 

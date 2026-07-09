@@ -112,6 +112,7 @@ export namespace AgendaStore {
       prompt: input.prompt,
       agent: input.agent,
       model: input.model,
+      controlProfile: input.controlProfile,
       sessionMode: input.sessionMode,
       sessionRefs: input.sessionRefs,
       timeout: input.timeout,
@@ -184,6 +185,7 @@ export namespace AgendaStore {
       if (patch.silent !== undefined) draft.silent = patch.silent
       if (patch.agent !== undefined) draft.agent = patch.agent
       if (patch.model !== undefined) draft.model = patch.model
+      if (patch.controlProfile !== undefined) draft.controlProfile = patch.controlProfile
       if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
       if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
       if (patch.timeout !== undefined) draft.timeout = patch.timeout
