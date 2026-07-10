@@ -689,6 +689,12 @@ export namespace CodexProvider {
     }
   }
 
+  async function codexRequestBody(input: RequestInfo | URL, init?: RequestInit) {
+    if (init?.body !== undefined) return init.body
+    if (!(input instanceof Request) || !input.body) return undefined
+    return input.clone().text()
+  }
+
   export async function codexFetch(input: RequestInfo | URL, init?: RequestInit) {
     const access = await resolveToken({ refreshIfExpiring: true })
     if (!access) {
@@ -700,23 +706,27 @@ export namespace CodexProvider {
       })
     }
 
-    const headers = new Headers(init?.headers)
+    const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
+    if (input instanceof Request && init?.headers) {
+      for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
+    }
     headers.set("Authorization", `Bearer ${access}`)
     for (const [key, value] of Object.entries(codexHeaders(access))) {
       headers.set(key, value)
     }
 
-    const rewritten = rewriteCodexBody(init?.body)
+    const rewritten = rewriteCodexBody(await codexRequestBody(input, init))
     if (rewritten.promptCacheKey) {
       headers.set("session_id", rewritten.promptCacheKey)
       headers.set("x-client-request-id", rewritten.promptCacheKey)
     }
 
-    return fetch(input, {
+    const requestInit: RequestInit = {
       ...init,
       headers,
-      body: rewritten.body,
-    })
+    }
+    if (rewritten.body !== undefined) requestInit.body = rewritten.body
+    return fetch(input, requestInit)
   }
 
   export async function saveImportedToken(token: TokenPayload) {
