@@ -117,13 +117,13 @@ mkdir -p "/tmp/synergy-dev-$(git branch --show-current)"
 
 ### Step 3: Copy config from main environment
 
-This avoids re-configuring API keys, providers, models, and agents:
+This avoids re-configuring provider settings, models, and agents:
 
 ```bash
 cp -r ~/.synergy/config /tmp/synergy-dev/.synergy/config
 ```
 
-This copies all domain config files (`00-general.jsonc` through `120-runtime.jsonc`) including your provider auth, model preferences, and custom agents.
+This copies all domain config files (`00-general.jsonc` through `120-runtime.jsonc`), including provider configuration, model preferences, and custom agents. Stored credentials remain isolated in `.synergy/data/auth/provider-auth.json` and are not copied by this command. Authentication-recovery tests should seed only the fixture credentials they need inside the isolated `SYNERGY_HOME`; never copy or overwrite the live credential store implicitly.
 
 ### Step 4: Choose ports that don't conflict with any running instance
 
@@ -182,5 +182,5 @@ rm -rf /tmp/synergy-dev
 
 - **Forgetting `SYNERGY_HOME`**: without it, the dev instance uses `~/.synergy/` and hits `AlreadyRunningError`
 - **Port conflicts across worktrees**: if you have multiple worktrees each running a dev instance, 4097/3001 will be taken by the first one. Always run the scan in Step 1 before picking ports.
-- **Missing config**: without copying config, the dev instance has no API keys and can't call models
+- **Missing credentials**: copying config does not copy the provider credential store. Seed an isolated fixture or connect the provider explicitly when a test must make authenticated model calls.
 - **`bun dev send` without `SYNERGY_HOME`**: sends to the main instance's server — usually what you want for normal use, but use `SYNERGY_HOME` if testing CLI changes in isolation

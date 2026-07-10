@@ -12,6 +12,7 @@ import { iife } from "@/util/iife"
 import { SYNERGY_REFERER } from "@/holos/constants"
 import type { AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
+import { ProviderAuthRecovery } from "./auth-recovery"
 
 let registered = false
 
@@ -77,7 +78,7 @@ export function registerBuiltinProviderProfiles() {
       return {
         apiKey: "synergy-codex-oauth",
         baseURL: CodexProvider.runtimeBaseURL(),
-        fetch: CodexProvider.codexFetch,
+        fetch: ProviderAuthRecovery.handled(CodexProvider.codexFetch),
         setCacheKey: true,
       }
     },
@@ -92,6 +93,8 @@ export function registerBuiltinProviderProfiles() {
       return CodexProvider.fetchModelCatalog(access, input.fetch)
     },
     fetchUsage: (input) => CodexProvider.fetchUsage(input?.fetch),
+    refreshAuth: (input) => (input.auth ? CodexProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    classifyError: CodexProvider.classifyError,
   })
 
   ProviderProfile.register({
@@ -123,7 +126,7 @@ export function registerBuiltinProviderProfiles() {
       }
       return {
         apiKey: "synergy-anthropic-oauth",
-        fetch: AnthropicOAuthProvider.anthropicFetch,
+        fetch: ProviderAuthRecovery.handled(AnthropicOAuthProvider.anthropicFetch),
         headers: {
           "anthropic-beta":
             "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
@@ -131,6 +134,8 @@ export function registerBuiltinProviderProfiles() {
       }
     },
     fetchUsage: (input) => AnthropicOAuthProvider.fetchUsage(input?.fetch),
+    refreshAuth: (input) => (input.auth ? AnthropicOAuthProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    classifyError: AnthropicOAuthProvider.classifyError,
   })
 
   ProviderProfile.register({
@@ -178,7 +183,7 @@ export function registerBuiltinProviderProfiles() {
     runtimeOptions: async () => ({
       apiKey: "synergy-copilot",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: CopilotProvider.copilotFetchFor("github-copilot"),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot")),
     }),
     getModel: async ({ sdk, modelID }) => {
       if (modelID.toLowerCase().includes("claude")) {
@@ -186,13 +191,16 @@ export function registerBuiltinProviderProfiles() {
           name: "github-copilot",
           apiKey: "synergy-copilot",
           baseURL: CopilotProvider.BASE_URL,
-          fetch: CopilotProvider.copilotFetchFor("github-copilot") as typeof fetch,
+          fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot")) as typeof fetch,
         }).languageModel(modelID)
       }
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
     fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot", input.fetch),
+    refreshAuth: (input) =>
+      input.auth ? CopilotProvider.refreshAuth("github-copilot", input.auth) : Promise.resolve(undefined),
+    classifyError: CopilotProvider.classifyError,
   })
 
   ProviderProfile.register({
@@ -209,7 +217,7 @@ export function registerBuiltinProviderProfiles() {
     runtimeOptions: async () => ({
       apiKey: "synergy-copilot-enterprise",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: CopilotProvider.copilotFetchFor("github-copilot-enterprise"),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot-enterprise")),
     }),
     getModel: async ({ sdk, modelID }) => {
       if (modelID.toLowerCase().includes("claude")) {
@@ -217,13 +225,18 @@ export function registerBuiltinProviderProfiles() {
           name: "github-copilot-enterprise",
           apiKey: "synergy-copilot-enterprise",
           baseURL: CopilotProvider.BASE_URL,
-          fetch: CopilotProvider.copilotFetchFor("github-copilot-enterprise") as typeof fetch,
+          fetch: ProviderAuthRecovery.handled(
+            CopilotProvider.copilotFetchFor("github-copilot-enterprise"),
+          ) as typeof fetch,
         }).languageModel(modelID)
       }
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
     fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot-enterprise", input.fetch),
+    refreshAuth: (input) =>
+      input.auth ? CopilotProvider.refreshAuth("github-copilot-enterprise", input.auth) : Promise.resolve(undefined),
+    classifyError: CopilotProvider.classifyError,
   })
 
   ProviderProfile.register({
@@ -497,8 +510,10 @@ export function registerBuiltinProviderProfiles() {
     runtimeOptions: async () => ({
       apiKey: "synergy-minimax-oauth",
       baseURL: MiniMaxProvider.GLOBAL_INFERENCE,
-      fetch: MiniMaxProvider.minimaxFetch,
+      fetch: ProviderAuthRecovery.handled(MiniMaxProvider.minimaxFetch),
     }),
+    refreshAuth: (input) => (input.auth ? MiniMaxProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    classifyError: MiniMaxProvider.classifyError,
   })
 
   ProviderProfile.register({

@@ -1,4 +1,8 @@
-import type { ProviderAuthResponse } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ProviderAuthHealth,
+  ProviderAuthResponse,
+  ProviderRuntimeAvailability,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -11,6 +15,14 @@ import {
   type ProviderRecommendationMetadata,
 } from "@/components/provider/provider-recommendation"
 import { SettingsPage } from "../components/SettingsPrimitives"
+import {
+  providerNeedsAction,
+  providerAuthTone,
+  providerRecoveryActionLabel,
+  providerRecoveryCopy,
+  providerStatusLabel,
+} from "@/components/provider/provider-auth-presentation"
+import { groupProviderConnections } from "./provider-groups"
 
 const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
   "deepseek",
@@ -28,14 +40,9 @@ export type ProviderConnectionSummary = {
   id: string
   name: string
   connected: boolean
-  available: boolean
   modelCount: number
-  authStatus?: string
-  availabilityReason?: string
-  reloginRequired?: boolean
-  cooldownUntil?: number
-  resetAt?: number
-  failureCode?: string
+  health?: ProviderAuthHealth
+  availability?: ProviderRuntimeAvailability
   profile?: ProviderRecommendationMetadata
 }
 
@@ -64,21 +71,18 @@ export function ProvidersPanel(props: {
     if (!q) return summaries()
     return summaries().filter((provider) => `${provider.name} ${provider.id}`.toLowerCase().includes(q))
   })
+  const groups = createMemo(() => groupProviderConnections(filtered(), SETTINGS_RECOMMENDED_PROVIDER_RANK))
   const recommended = createMemo(() =>
-    filtered()
-      .filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id))
-      .sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
+    groups().recommended.sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
   )
-  const connected = createMemo(() =>
-    filtered().filter((provider) => provider.connected && !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id)),
-  )
-  const other = createMemo(() =>
-    filtered().filter((provider) => !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected),
-  )
+  const needsAttention = () => groups().needsAttention
+  const connected = () => groups().connected
+  const other = () => groups().other
   const selected = createMemo(() => {
     const current = selectedID()
     return (
       summaries().find((provider) => provider.id === current) ??
+      needsAttention()[0] ??
       recommended()[0] ??
       connected()[0] ??
       other()[0] ??
@@ -86,13 +90,8 @@ export function ProvidersPanel(props: {
     )
   })
 
-  function statusLabel(provider: ProviderConnectionSummary) {
-    if (provider.authStatus === "dead") return "Relogin"
-    if (provider.authStatus === "exhausted") return "Exhausted"
-    if (provider.authStatus === "expired") return "Expired"
-    if (provider.connected) return provider.available ? "Connected" : "Unavailable"
-    return "Not connected"
-  }
+  const statusLabel = (provider: ProviderConnectionSummary) =>
+    providerStatusLabel(provider.health, provider.availability)
 
   return (
     <SettingsPage title="Providers" description="Connect model providers and manage runtime availability.">
@@ -112,6 +111,13 @@ export function ProvidersPanel(props: {
               when={filtered().length > 0}
               fallback={<div class="providers-list-empty">No providers match this search.</div>}
             >
+              <ProviderGroup
+                title="Needs attention"
+                providers={needsAttention()}
+                selectedID={selected()?.id}
+                onSelect={setSelectedID}
+                statusLabel={statusLabel}
+              />
               <ProviderGroup
                 title="Recommended"
                 providers={recommended()}
@@ -162,7 +168,8 @@ export function ProvidersPanel(props: {
                   </div>
                   <span
                     class="ds-inline-badge"
-                    classList={{ "ds-inline-badge-muted": !provider().connected || !provider().available }}
+                    classList={{ "ds-inline-badge-muted": providerAuthTone(provider().health) === "muted" }}
+                    data-auth-tone={providerAuthTone(provider().health)}
                   >
                     {statusLabel(provider())}
                   </span>
@@ -174,24 +181,52 @@ export function ProvidersPanel(props: {
                   <Show when={props.authMethods[provider().id]?.length}>
                     <span>{props.authMethods[provider().id].map((method) => method.label).join(", ")}</span>
                   </Show>
-                  <Show when={provider().failureCode}>
-                    <span>{provider().failureCode}</span>
-                  </Show>
-                  <Show when={provider().availabilityReason && provider().availabilityReason !== "connected"}>
-                    <span>{provider().availabilityReason?.replace(/_/g, " ")}</span>
+                  <Show when={provider().availability?.reason && provider().availability?.reason !== "connected"}>
+                    <span>{provider().availability?.reason?.replace(/_/g, " ")}</span>
                   </Show>
                 </div>
 
+                <Show when={providerNeedsAction(provider().health)}>
+                  <div class="providers-auth-warning" role="status">
+                    <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
+                    <span>
+                      {providerRecoveryCopy(provider().name, provider().health, provider().profile?.environment)}
+                    </span>
+                  </div>
+                </Show>
+
                 <div class="providers-connect-section">
                   <div>
-                    <div class="providers-connect-title">{provider().connected ? "Account" : "Connect"}</div>
+                    <div class="providers-connect-title">
+                      {providerNeedsAction(provider().health)
+                        ? providerRecoveryActionLabel(provider().health)
+                        : provider().connected
+                          ? "Account"
+                          : "Connect"}
+                    </div>
                     <p class="providers-connect-copy">
-                      {provider().connected
-                        ? "Credentials are connected. Use Usage for quota and billing details."
-                        : "Choose a sign-in method. Synergy will make available models selectable after connection."}
+                      {providerNeedsAction(provider().health)
+                        ? "Choose a recovery method. Existing backup credentials remain available."
+                        : provider().connected
+                          ? "Credentials are connected. Use Usage for quota and billing details."
+                          : "Choose a sign-in method. Synergy will make available models selectable after connection."}
                     </p>
                   </div>
-                  <ProviderConnectionFlow providerID={provider().id} compact />
+                  <Show
+                    when={provider().health?.recovery !== "update_environment"}
+                    fallback={
+                      <p class="providers-connect-copy">
+                        Update the server environment, restart Synergy, then refresh this page. Environment values are
+                        never overwritten by Settings.
+                      </p>
+                    }
+                  >
+                    <ProviderConnectionFlow
+                      providerID={provider().id}
+                      intent={providerNeedsAction(provider().health) ? "recover" : "connect"}
+                      compact
+                    />
+                  </Show>
                 </div>
               </div>
             )}
@@ -234,7 +269,8 @@ function ProviderGroup(props: {
               </div>
               <span
                 class="ds-inline-badge"
-                classList={{ "ds-inline-badge-muted": !provider.connected || !provider.available }}
+                classList={{ "ds-inline-badge-muted": providerAuthTone(provider.health) === "muted" }}
+                data-auth-tone={providerAuthTone(provider.health)}
               >
                 {props.statusLabel(provider)}
               </span>

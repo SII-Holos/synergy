@@ -332,13 +332,15 @@ Use `synergy auth login` or the Web UI's **Connect provider** dialog to connect 
 ~/.synergy/data/auth/provider-auth.json
 ```
 
-Synergy resolves providers from a built-in provider profile registry, an optional signed remote catalog, `models.dev` metadata, live model discovery, and user config overrides. The remote catalog is data-only and must verify with the configured Ed25519 public key before Synergy uses it; provider-specific auth and transport behavior comes from built-in code or explicitly installed plugins, not remote executable code.
+Synergy resolves providers from a built-in provider profile registry, an optional signed remote catalog, `models.dev` metadata, live model discovery, and user config overrides. The remote catalog is data-only and must verify with the configured Ed25519 public key before Synergy uses it; provider-specific auth and transport behavior comes from built-in code or explicitly installed plugins, not remote executable code. Static and live catalogs use separate cache entries, so opening an offline provider list cannot suppress a later account-backed model refresh.
 
-`openai-codex` is the built-in OpenAI Codex provider for ChatGPT/Codex subscription login. It uses a ChatGPT/Codex device-code sign-in and the Codex backend, then exposes account-visible Codex models such as `gpt-5.4-mini` in `synergy models openai-codex` and the model picker. This is separate from the normal `openai` provider: OpenAI Platform API keys still use `openai` and follow Platform API billing.
+`openai-codex` is the built-in OpenAI Codex provider for ChatGPT/Codex subscription login. It uses a ChatGPT/Codex device-code sign-in and the Codex backend, then exposes every account-visible model returned by live discovery in `synergy models openai-codex` and the model picker. Account model slugs are not constrained by a static version allowlist. This is separate from the normal `openai` provider: OpenAI Platform API keys still use `openai` and follow Platform API billing.
 
 Synergy also supports subscription-style provider profiles such as Claude Pro/Max OAuth, GitHub Copilot, MiniMax OAuth, and usage-aware providers such as OpenRouter. Run `synergy auth usage [provider]` to inspect quota or credit snapshots when a provider exposes a reliable endpoint. Providers without a reliable usage endpoint report usage as unavailable.
 
-When `CODEX_HOME` or `~/.codex/auth.json` exists, the CLI can copy valid Codex CLI credentials into Synergy. Synergy does not share or write back to the Codex CLI auth file, so refresh-token rotation stays isolated between the two tools.
+Provider authentication is validated only by real model, usage, and model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request refreshes once and retries once, concurrent refreshes are coalesced, and credential pools preserve backup entries. Rate limits remain quota state rather than sign-in failures, while timeouts, network failures, 5xx responses, and unclassified 403 responses leave credential health unchanged. If recovery cannot restore access, Sidebar, Providers, Usage, and GitHub Settings show one shared recovery state instead of a raw HTTP status. Environment-backed credentials direct the user to update the server environment; stored OAuth and API-key credentials provide reconnect or replacement actions.
+
+When `CODEX_HOME` or `~/.codex/auth.json` exists, the CLI can explicitly copy valid Codex CLI credentials into Synergy. Synergy never re-imports, shares, or writes back to the Codex CLI auth file automatically, so refresh-token rotation stays isolated between the two tools.
 
 ### Project instruction files
 

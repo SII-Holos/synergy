@@ -2,6 +2,8 @@ import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import type { ProviderProfile } from "./profile"
 
 export namespace MiniMaxProvider {
   export const PROVIDER_ID = "minimax-oauth"
@@ -177,8 +179,9 @@ export namespace MiniMaxProvider {
   }
 
   export async function resolveToken(options?: { allowMissing?: boolean; fetch?: FetchLike }) {
-    const auth = await Auth.get(PROVIDER_ID)
-    if (!auth || auth.type !== "oauth") {
+    const selected = await Auth.select(PROVIDER_ID)
+    const auth = selected?.auth
+    if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
         providerID: PROVIDER_ID,
@@ -190,10 +193,11 @@ export namespace MiniMaxProvider {
     if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
     try {
       return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latest = await Auth.get(PROVIDER_ID)
+        const latestSelected = await Auth.select(PROVIDER_ID)
+        const latest = latestSelected?.auth
         if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
         const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch)
-        await Auth.set(
+        await Auth.replaceSelectedCredential(
           PROVIDER_ID,
           {
             type: "oauth",
@@ -201,7 +205,7 @@ export namespace MiniMaxProvider {
             refresh: refreshed.refresh,
             expires: refreshed.expires,
           },
-          { source: "api" },
+          { credentialID: latestSelected?.credentialID ?? selected.credentialID },
         )
         return refreshed.access
       })
@@ -215,9 +219,40 @@ export namespace MiniMaxProvider {
   }
 
   export async function minimaxFetch(input: RequestInfo | URL, init?: RequestInit) {
-    const token = await resolveToken()
-    const headers = new Headers(init?.headers)
-    headers.set("Authorization", `Bearer ${token}`)
-    return fetch(input, { ...init, headers })
+    return ProviderAuthRecovery.execute({
+      providerID: PROVIDER_ID,
+      request: async () => {
+        const token = await resolveToken()
+        const headers = new Headers(init?.headers)
+        headers.set("Authorization", `Bearer ${token}`)
+        return fetch(input, { ...init, headers })
+      },
+      refresh: refreshAuth,
+      classify: classifyError,
+    })
+  }
+
+  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+    if (auth.type !== "oauth") return undefined
+    const refreshed = await refreshOAuth(auth, fetchFn)
+    return {
+      type: "oauth",
+      access: refreshed.access,
+      refresh: refreshed.refresh,
+      expires: refreshed.expires,
+    }
+  }
+
+  export function classifyError(input: {
+    status?: number
+    body?: unknown
+  }): ProviderProfile.ClassifiedError | undefined {
+    const payload = input.body && typeof input.body === "object" ? (input.body as Record<string, any>) : {}
+    const code = String(payload.error?.code ?? payload.error ?? payload.base_resp?.status_code ?? "")
+    if (input.status === 429) return { code: code || "rate_limited", retryable: true, exhausted: true }
+    if (input.status === 401 || ["invalid_token", "1004", "2049"].includes(code)) {
+      return { code: code || "credential_rejected", retryable: false, reloginRequired: true }
+    }
+    return undefined
   }
 }
