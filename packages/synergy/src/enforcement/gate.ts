@@ -29,7 +29,7 @@ import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "..
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier, checkProtectedPath } from "./classify"
-import { ShellSafety } from "./shell-safety"
+import { ShellSafety, PROTECTED_PUSH_TARGETS } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import {
   type PrefixRule,
@@ -668,7 +668,27 @@ export namespace EnforcementGate {
       // Shell operations
       if (toolName === "bash") {
         const command: string = args.command ?? ""
-        const risk = ShellSafety.classifyBashRisk(command)
+        let risk = ShellSafety.classifyBashRisk(command)
+
+        // Runtime reclassification: bare git push on a protected branch.
+        // classifyBashRisk is pure string analysis — it cannot see the current
+        // branch. Bare push uses push.default to select the destination at
+        // runtime, so a bare push from "main" effectively pushes to origin/main.
+        if (risk === "shell_remote_publish" && ShellSafety.isBarePush(command)) {
+          try {
+            const proc = Bun.spawnSync(["git", "branch", "--show-current"], {
+              cwd: activeWorkspace,
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            const branch = new TextDecoder().decode(proc.stdout).trim()
+            if (branch && PROTECTED_PUSH_TARGETS.has(branch)) {
+              risk = "shell_remote_write"
+            }
+          } catch {
+            // If we can't determine the branch, trust the static classification.
+          }
+        }
 
         if (risk === "shell_hardline") {
           caps.push({
@@ -684,8 +704,6 @@ export namespace EnforcementGate {
         // shell_remote_write is broader remote mutation and stays Smart allow eligible.
         // shell_remote_execute applies when linkID targets a remote Synergy Link host.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
-
-        // If a valid remote linkID is supplied, execution runs on the remote host,
         // not the local machine. Add a separate remote-execute capability so
         // profiles can distinguish local vs remote shell execution. Deprecated
         // envID is accepted by the tool layer as a linkID alias, so it must be

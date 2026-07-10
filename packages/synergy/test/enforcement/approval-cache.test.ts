@@ -169,14 +169,14 @@ describe("EnforcementGate approval cache", () => {
           workspaceType: "main",
           profileId: "autonomous",
         })
-        // autonomous profile denies destructive shell commands
+        // autonomous profile denies pushes to protected branches (shell_remote_write)
         const deniedEnvelope = gate.evaluate("bash", {
-          command: "git push",
+          command: "git push origin main",
         })
         expect(deniedEnvelope.decision).toBe("deny")
 
-        // Second evaluation of same destructive command — still denied
-        const again = gate.evaluate("bash", { command: "git push" })
+        // Second evaluation of same denied command — still denied
+        const again = gate.evaluate("bash", { command: "git push origin main" })
         expect(again.decision).toBe("deny")
       },
     })
