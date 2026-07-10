@@ -236,6 +236,14 @@ export namespace Provider {
       capabilities: z.object({
         temperature: z.boolean(),
         reasoning: z.boolean(),
+        reasoning_options: z
+          .array(
+            z.object({
+              type: z.enum(["effort"]),
+              values: z.array(z.string()),
+            }),
+          )
+          .optional(),
         attachment: z.boolean(),
         toolcall: z.boolean(),
         input: z.object({
@@ -348,6 +356,7 @@ export namespace Provider {
       capabilities: {
         temperature: model.temperature,
         reasoning: model.reasoning,
+        reasoning_options: model.reasoning_options as any,
         attachment: model.attachment,
         toolcall: model.tool_call,
         input: {

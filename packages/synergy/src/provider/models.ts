@@ -16,6 +16,14 @@ export namespace ModelsDev {
     release_date: z.string(),
     attachment: z.boolean(),
     reasoning: z.boolean(),
+    reasoning_options: z
+      .array(
+        z.object({
+          type: z.enum(["effort"]),
+          values: z.array(z.string()),
+        }),
+      )
+      .optional(),
     temperature: z.boolean(),
     tool_call: z.boolean(),
     interleaved: z

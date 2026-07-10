@@ -922,7 +922,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
       expect(result.low).toEqual({ reasoning: { effort: "low" } })
       expect(result.high).toEqual({ reasoning: { effort: "high" } })
     })
@@ -938,7 +938,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
     })
 
     test("grok-4 returns OPENAI_EFFORTS with reasoning", () => {
@@ -952,7 +952,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
     })
   })
 
@@ -968,7 +968,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
       expect(result.low).toEqual({ reasoningEffort: "low" })
       expect(result.high).toEqual({ reasoningEffort: "high" })
     })
@@ -1111,6 +1111,30 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
     })
+
+    test("azure model with reasoning_options uses data-driven efforts", () => {
+      const model = createMockModel({
+        id: "gpt-5.6",
+        providerID: "azure",
+        api: {
+          id: "gpt-5.6",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        capabilities: {
+          temperature: false,
+          reasoning: true,
+          reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh", "max"] }],
+          attachment: true,
+          toolcall: true,
+          input: { text: true, audio: false, image: true, video: false, pdf: false },
+          output: { text: true, audio: false, image: false, video: false, pdf: false },
+          interleaved: false,
+        },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+    })
   })
 
   describe("@ai-sdk/openai", () => {
@@ -1177,6 +1201,57 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
+  })
+
+  test("openai model with reasoning_options uses data-driven efforts", () => {
+    const model = createMockModel({
+      id: "openai/gpt-5.6",
+      providerID: "openai",
+      api: {
+        id: "gpt-5.6",
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+      capabilities: {
+        temperature: false,
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh", "max"] }],
+        attachment: true,
+        toolcall: true,
+        input: { text: true, audio: false, image: true, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      release_date: "2026-07-01",
+    })
+    const result = ProviderTransform.variants(model)
+    expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+  })
+
+  test("openai model with limited reasoning_options respects actual API data", () => {
+    const model = createMockModel({
+      id: "openai/gpt-5.4-pro",
+      providerID: "openai",
+      api: {
+        id: "gpt-5.4-pro",
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+      capabilities: {
+        temperature: false,
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["medium", "high", "xhigh"] }],
+        attachment: true,
+        toolcall: true,
+        input: { text: true, audio: false, image: true, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      release_date: "2026-03-05",
+    })
+    const result = ProviderTransform.variants(model)
+    // gpt-5.4-pro only supports medium/high/xhigh per API data — no minimal/none/low
+    expect(Object.keys(result)).toEqual(["medium", "high", "xhigh"])
   })
 
   describe("@ai-sdk/anthropic", () => {
