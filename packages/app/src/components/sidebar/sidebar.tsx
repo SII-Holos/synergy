@@ -214,6 +214,9 @@ export function Sidebar(props: SidebarProps) {
     e.stopPropagation()
     navigate(`/${base64Encode(scope.worktree)}/session`)
   }
+  const handleProjectPin = (scope: LocalScope) => {
+    layout.scopes.pinScope(scope)
+  }
 
   const handleAddProject = async () => {
     const result = await pickProjectDirectories({ title: "Add project", multiple: true })
@@ -550,6 +553,7 @@ export function Sidebar(props: SidebarProps) {
                         onProjectPlus={handleProjectPlus}
                         onProjectEdit={handleProjectEdit}
                         onProjectArchive={handleProjectArchive}
+                        onProjectPin={handleProjectPin}
                         onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.worktree)}
                         onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
                         activeSessionID={params.id}
@@ -667,6 +671,7 @@ function SidebarProjectGroup(props: {
   onProjectPlus: (event: MouseEvent, scope: LocalScope) => void
   onProjectEdit: (event: MouseEvent, scope: LocalScope) => void
   onProjectArchive: (event: MouseEvent, scope: LocalScope) => void
+  onProjectPin: (scope: LocalScope) => void
   onLoadScopeNav: (scope: LocalScope) => void
   onLoadMore: (scope: LocalScope) => void
   activeSessionID?: string
@@ -758,10 +763,19 @@ function SidebarProjectGroup(props: {
               <>
                 <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
                 <div class="sb-project-menu">
-                  <button type="button" class="sb-menu-item" disabled>
+                  <button
+                    type="button"
+                    class="sb-menu-item"
+                    onClick={() => {
+                      const scope = props.scope()
+                      if (scope) {
+                        setMenuOpen(false)
+                        props.onProjectPin(scope)
+                      }
+                    }}
+                  >
                     <Icon name={getSemanticIcon("action.pin")} size="small" />
-                    <span>Pin</span>
-                    <span class="sb-menu-disabled-label">Coming soon</span>
+                    <span>{props.scope()?.pinned ? "Unpin" : "Pin"}</span>
                   </button>
                   <button
                     type="button"

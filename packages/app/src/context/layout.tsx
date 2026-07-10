@@ -58,7 +58,7 @@ type WorkbenchSurfacesLayoutState = {
   bottom?: WorkbenchSurfaceLayoutState
 }
 
-export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean }
+export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean; pinned?: number }
 
 export type ReviewDiffStyle = "unified" | "split"
 
@@ -762,6 +762,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (aPin && bPin) return bPin - aPin
         const aCreated = (a as { time?: { created?: number } }).time?.created ?? 0
         const bCreated = (b as { time?: { created?: number } }).time?.created ?? 0
+        if (aCreated !== bCreated) return bCreated - aCreated
         if (aCreated !== bCreated) return aCreated - bCreated
         return a.worktree.localeCompare(b.worktree)
       })
@@ -1096,6 +1097,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         move(directory: string, toIndex: number) {
           server.scopes.move(directory, toIndex)
+        },
+        async pinScope(scope: { worktree: string; pinned?: number; id?: string }) {
+          const isPinned = (scope.pinned ?? 0) > 0
+          const value = isPinned ? 0 : Date.now()
+          server.scopes.pin(scope.worktree, value)
+          if (scope.id) {
+            try {
+              await globalSdk.client.scope.update({ path_scopeID: scope.id, pinned: value })
+            } catch (err) {
+              console.warn("Failed to persist scope pin state", err)
+            }
+          }
         },
       },
       sidebar: {
