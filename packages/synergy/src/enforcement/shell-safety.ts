@@ -1,4 +1,4 @@
-const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "true"])
+const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
 
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   // ── read_only ──────────────────────────────────────────────
