@@ -552,6 +552,9 @@ Key documents in the repo that agents should be aware of:
 
 - **NEVER switch branches on the main checkout.** The main workspace is shared across multiple concurrent Synergy sessions. Changing branches directly (via `git checkout`, `git switch`) will silently corrupt the working tree for every other running session that depends on the current state. This is the single most dangerous mistake in a multi-session development environment.
 - **When you need a different branch, always use a worktree.** Use `worktree_enter` (or `git worktree add`) to create an isolated checkout before switching branches. Each worktree has its own index and working directory — zero impact on other sessions.
+- **Reuse existing worktrees for the same feature.** When making follow-up changes to the same PR or feature branch, re-enter the existing worktree with `worktree_enter` instead of creating a new one. Creating a new worktree for every small change clutters the repo with stale branches and abandoned worktrees.
+- **NEVER commit or push from the main checkout.** Only make commits and push from a worktree. The main checkout is shared infrastructure; a commit may accidentally include unrelated changes from concurrent sessions, and a push can break CI for every branch built on the primary branch.
+- **Changes reach the primary branch only through pull requests, never by direct push.** Determine the repo's primary branch first — it is not always `main` or `master`. Check `git remote show origin` or the GitHub default branch. For this Synergy repo the primary branch is **`dev`**. All changes, even trivial fixes, must go through a PR to the primary branch. Pushing directly to it can break CI for every other branch that depends on it.
 - Read first, then edit.
 - Verify command names against the current CLI.
 - Verify config paths against the implementation.
