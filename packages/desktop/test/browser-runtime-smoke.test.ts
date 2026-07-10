@@ -99,7 +99,6 @@ describe("Electron Browser Host broker contract", () => {
             ...process.env,
             SYNERGY_BROWSER_HOST_SERVER_URL: serverUrl,
             SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: token,
-            SYNERGY_BROWSER_HOST_SHOW: "0",
           },
         },
       )
