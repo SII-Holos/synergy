@@ -643,7 +643,12 @@ export namespace ToolResolver {
       // should be visible both in the error message AND the frontend audit tooltip.
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
-      const smartAllow = (ctx.extra as any).smartAllowRisk
+      let smartAllow: ApprovalMetadata["smartAllow"] | undefined
+      if ((ctx.extra as any).smartAllowRisk) {
+        smartAllow = (ctx.extra as any).smartAllowRisk
+      } else if (!smartAllowEligible) {
+        smartAllow = { skipped: true, reason: "Non-bypassable capability" }
+      }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
@@ -651,7 +656,12 @@ export namespace ToolResolver {
     if (profile.profileId === "autonomous" && decision.action === "ask") {
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, { ...decision, action: "deny" }, "auto_denied")
-      const smartAllow = (ctx.extra as any).smartAllowRisk
+      let smartAllow: ApprovalMetadata["smartAllow"] | undefined
+      if ((ctx.extra as any).smartAllowRisk) {
+        smartAllow = (ctx.extra as any).smartAllowRisk
+      } else if (!smartAllowEligible) {
+        smartAllow = { skipped: true, reason: "Non-bypassable capability" }
+      }
       await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
