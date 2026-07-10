@@ -11,11 +11,25 @@ const virtuaSolidEntry = path.join(path.dirname(virtuaPackagePath), "lib/solid/i
 
 const sdkRoot = path.resolve(fileURLToPath(new URL("../sdk/js", import.meta.url)))
 const pluginRoot = path.resolve(fileURLToPath(new URL("../plugin", import.meta.url)))
-const pluginDistComplete =
-  fs.existsSync(path.join(pluginRoot, "dist/index.js")) &&
-  fs.existsSync(path.join(pluginRoot, "dist/artifact.js")) &&
-  fs.existsSync(path.join(pluginRoot, "dist/ids.js")) &&
-  fs.existsSync(path.join(pluginRoot, "dist/permissions.js"))
+// Check all exported subpaths, not just the first four — the package.json
+// exports map has 15 subpaths and we need the dist to be fully complete.
+const pluginExports = [
+  "index.js",
+  "tool.js",
+  "display.js",
+  "hooks.js",
+  "permissions.js",
+  "ids.js",
+  "policy.js",
+  "paths.js",
+  "artifact.js",
+  "market.js",
+  "spec.js",
+  "version.js",
+  "shell.js",
+  "ui.js",
+]
+const pluginDistComplete = pluginExports.every((f) => fs.existsSync(path.join(pluginRoot, "dist", f)))
 
 const sdkGenSourceExists =
   fs.existsSync(path.join(sdkRoot, "src/gen/sdk.gen.ts")) &&
@@ -42,9 +56,16 @@ function sdkAliases() {
   ]
 }
 
-const pluginAliases = pluginDistComplete
-  ? []
-  : [{ find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") }]
+function pluginAliasEntries() {
+  if (pluginDistComplete) return []
+  // Resolve source files directly when dist is missing (dev server, no prepare run).
+  return [
+    // Bare import: @ericsanchezok/synergy-plugin
+    { find: /^@ericsanchezok\/synergy-plugin$/, replacement: path.join(pluginRoot, "src/index.ts") },
+    // Subpath imports: @ericsanchezok/synergy-plugin/tool, /display, etc.
+    { find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") },
+  ]
+}
 
 /**
  * @type {import("vite").PluginOption}
@@ -65,7 +86,7 @@ export default [
               replacement: fileURLToPath(new URL("./src", import.meta.url)),
             },
             ...sdkAliases(),
-            ...pluginAliases,
+            ...pluginAliasEntries(),
           ],
         },
         worker: {

@@ -10,7 +10,7 @@ const DEFAULT_HOSTNAME = "127.0.0.1"
 const DEFAULT_APP_HOST = "127.0.0.1"
 
 export interface DevProcessSpec {
-  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox"
+  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox" | "build:plugin"
   command: string[]
   cwd: string
   env?: Record<string, string | undefined>
@@ -68,6 +68,7 @@ function directories(repoRoot: string) {
   return {
     app: path.join(repoRoot, "packages", "app"),
     desktop: path.join(repoRoot, "packages", "desktop"),
+    plugin: path.join(repoRoot, "packages", "plugin"),
     synergy: path.join(repoRoot, "packages", "synergy"),
   }
 }
@@ -341,6 +342,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
+        { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
         { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
         desktopProcess({ repoRoot, bunPath, mode: "managed" }),
       ]
@@ -600,6 +602,9 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   const initial = await runSerial([
     { label: "install", command: [bunPath, "install"], cwd: repoRoot },
     { label: "generate", command: [bunPath, "./script/generate.ts"], cwd: repoRoot },
+    // Build plugin (and its util dependency) before app so Vite can resolve
+    // @ericsanchezok/synergy-plugin from its `dist/` exports map.
+    { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
     { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
   ])
   if (initial !== 0) return initial

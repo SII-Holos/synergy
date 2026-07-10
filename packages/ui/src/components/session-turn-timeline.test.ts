@@ -689,6 +689,81 @@ describe("session turn timeline", () => {
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 
+  test("promotes reasoning to text when completed turn has no text parts", () => {
+    const message = assistant("assistant-a")
+    const parts: PartType[] = [
+      {
+        id: "reasoning-a",
+        sessionID: "session",
+        messageID: message.id,
+        type: "reasoning",
+        text: "The user asked for a simple greeting.",
+      } as PartType,
+      {
+        id: "reasoning-b",
+        sessionID: "session",
+        messageID: message.id,
+        type: "reasoning",
+        text: "I should respond with 'Hello'.",
+      } as PartType,
+    ]
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    expect(items.map((item) => item.kind)).toEqual(["part", "part"])
+    expect(items[0]).toMatchObject({
+      kind: "part",
+      part: { type: "reasoning", text: "The user asked for a simple greeting." },
+    })
+    expect(items[1]).toMatchObject({
+      kind: "part",
+      part: { type: "reasoning", text: "I should respond with 'Hello'." },
+    })
+  })
+
+  test("keeps reasoning as reasoning while turn is still working", () => {
+    const message = assistant("assistant-a")
+    const parts: PartType[] = [
+      {
+        id: "reasoning-a",
+        sessionID: "session",
+        messageID: message.id,
+        type: "reasoning",
+        text: "Still thinking...",
+      } as PartType,
+    ]
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, true)
+
+    expect(items.map((item) => item.kind)).toEqual(["reasoning"])
+  })
+
+  test("does not promote reasoning when there is a regular text part present", () => {
+    const message = assistant("assistant-a")
+    const parts: PartType[] = [
+      {
+        id: "reasoning-a",
+        sessionID: "session",
+        messageID: message.id,
+        type: "reasoning",
+        text: "I will greet the user.",
+      } as PartType,
+      {
+        id: "text-a",
+        sessionID: "session",
+        messageID: message.id,
+        type: "text",
+        text: "Hello!",
+      } as PartType,
+    ]
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    // reasoning stays hidden (not promoted), only text shows as part
+    expect(items.map((item) => item.kind)).toEqual(["part"])
+    expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
   test("renders compaction assistants as one event card while hiding streaming text", () => {
     const message = compactionAssistant("assistant-compaction")
     const streamingItems = collectSessionTurnTimelineItems(
