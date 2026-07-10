@@ -881,45 +881,87 @@ function SidebarProjectGroup(props: {
         </div>
 
         <Show when={props.scope()?.expanded}>
+          {/* Local scope: show skeleton while nav is loading, then swap to
+              the real session list once it arrives. The skeleton pre-reserves
+              vertical space so the expand FLIP animation captures the correct
+              final height — no jump when loadScopeNav completes. */}
           <Show
-            when={!isSupplemental() || navLoaded()}
+            when={!isSupplemental()}
             fallback={
-              <div class="sb-sessions">
-                <button
-                  type="button"
-                  class="sb-load-more-btn"
-                  onClick={() => {
+              <Show
+                when={navLoaded()}
+                fallback={
+                  <div class="sb-sessions">
+                    <button
+                      type="button"
+                      class="sb-load-more-btn"
+                      onClick={() => {
+                        const scope = props.scope()
+                        if (scope) props.onLoadScopeNav(scope)
+                      }}
+                    >
+                      Load sessions
+                    </button>
+                  </div>
+                }
+              >
+                <GroupedSessionList
+                  entries={entries()}
+                  scope={props.scope()}
+                  activeID={props.activeID}
+                  onSessionClick={(entry) => {
                     const scope = props.scope()
-                    if (scope) props.onLoadScopeNav(scope)
+                    if (scope) props.onSessionClick(scope, entry)
                   }}
-                >
-                  Load sessions
-                </button>
-              </div>
+                />
+                <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
+                  <div class="sb-sessions">
+                    <button
+                      type="button"
+                      class="sb-load-more-btn"
+                      onClick={() => {
+                        const scope = props.scope()
+                        if (scope) props.onLoadMore(scope)
+                      }}
+                    >
+                      Load more
+                    </button>
+                  </div>
+                </Show>
+              </Show>
             }
           >
-            <GroupedSessionList
-              entries={entries()}
-              scope={props.scope()}
-              activeID={props.activeID}
-              onSessionClick={(entry) => {
-                const scope = props.scope()
-                if (scope) props.onSessionClick(scope, entry)
-              }}
-            />
-            <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
-              <div class="sb-sessions">
-                <button
-                  type="button"
-                  class="sb-load-more-btn"
-                  onClick={() => {
-                    const scope = props.scope()
-                    if (scope) props.onLoadMore(scope)
-                  }}
-                >
-                  Load more
-                </button>
-              </div>
+            <Show
+              when={navLoaded()}
+              fallback={
+                <div class="sb-sessions">
+                  <For each={Array(6)}>{() => <div class="sb-session-skeleton" />}</For>
+                </div>
+              }
+            >
+              <GroupedSessionList
+                entries={entries()}
+                scope={props.scope()}
+                activeID={props.activeID}
+                onSessionClick={(entry) => {
+                  const scope = props.scope()
+                  if (scope) props.onSessionClick(scope, entry)
+                }}
+              />
+              <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
+                <div class="sb-sessions">
+                  <button
+                    type="button"
+                    class="sb-load-more-btn"
+                    onClick={() => {
+                      const scope = props.scope()
+                      if (scope) props.onLoadMore(scope)
+                    }}
+                  >
+                    Load more
+                  </button>
+                </div>
+              </Show>
             </Show>
           </Show>
         </Show>
