@@ -7,17 +7,15 @@ description: "Git expert for commits, rebase, and history search. Use for: atomi
 
 ## Safety Rules
 
-These rules exist to protect concurrent sessions and CI stability. The permission system enforces them automatically — do not attempt to bypass.
+These rules protect concurrent sessions and keep CI as the merge gate:
 
-| Rule                                                                    | Enforcement                                                                                                                                                                                                                                                                    |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Never `git checkout` / `git switch` on the main checkout                | `shell_branch_mutation` → deny in autonomous                                                                                                                                                                                                                                   |
-| Never `git push` from the main checkout                                 | `shell_remote_publish` → upgraded to `shell_remote_write` → deny in autonomous                                                                                                                                                                                                 |
-| Never commit or push from the main checkout                             | Only make commits and push from a worktree. The main checkout is shared infrastructure; a commit may accidentally include unrelated changes from concurrent sessions, and a push can break CI for every branch built on the primary branch.                                    |
-| Reuse existing worktrees for the same feature                           | When making follow-up changes to the same PR or feature branch, re-enter the existing worktree with `worktree_enter` instead of creating a new one. Creating a new worktree for every small change clutters the repo with stale branches and abandoned worktrees.              |
-| Changes reach the primary branch only through PRs, never by direct push | Determine the repo's primary branch first — it is not always `main` or `master`. Check `git remote show origin` or the GitHub default branch. For this Synergy repo: **`dev`**. Pushing directly to the primary branch can break CI for every other branch that depends on it. |
+- Never push directly to the protected branches `dev` or `main`. Commit repository changes on a topic branch and open a pull request against `dev`.
+- Do not run `git checkout` or `git switch` in a shared or pre-existing checkout. A branch change affects every session using that working directory. Create or enter a worktree when the task needs another branch.
+- Treat worktrees as branch-isolation tools, not as a requirement for every edit or every feature. Continue in an existing task-owned checkout when it is already on the correct branch, and reuse its worktree for later changes to the same branch.
+- Inspect `git status` before editing or staging. Preserve unrelated changes and stage only the current task's files.
+- Publish only from the task's topic branch. The autonomous profile permits ordinary remote publication from worktrees and denies remote writes from the shared checkout, so enter the task's worktree before pushing or creating a pull request.
 
-For this repo, the primary branch is **`dev`**. All changes reach `dev` through pull requests only.
+For this repo, pull requests target **`dev`**. The release workflow is the only path from `dev` to **`main`**.
 
 ## Commit Message Rules
 
@@ -73,7 +71,7 @@ git add <specific files>
 # 3. Commit
 git commit -m "type: summary" -m "details if needed"
 
-# 4. Push (only from a worktree!)
+# 4. Push the topic branch from its worktree
 git push -u origin HEAD
 ```
 
@@ -105,9 +103,9 @@ git commit -F /synergy/note/<note-id>
 
 Do not interpolate Note content into the command. Local Bash materializes the virtual path as a private, owner-readable file for the lifetime of the process and grants the sandbox read access to its staging directory, so shell metacharacters in the Note remain file content. The receiving CLI still owns the semantics of the file it reads; do not pass a Note to an option that executes or interprets the file as code. Synergy Link commands remain remote and receive virtual paths unchanged.
 
-### 1. Create PRs from a worktree only
+### 1. Create PRs from the topic branch
 
-Never `gh pr create` from the main checkout. Use `worktree_enter` first.
+Verify that the current branch is neither `dev` nor `main`. In an autonomous session, enter the topic branch's worktree before running `gh pr create`, because remote publication is denied from the shared checkout.
 
 ### 2. PR body must not contain local data
 
@@ -161,16 +159,16 @@ EOF
 
 The `gh` command is classified by the permission system:
 
-| Command                              | Autonomous                                         |
-| ------------------------------------ | -------------------------------------------------- |
-| `gh pr view/list/status/checks/diff` | ✅ allow (read)                                    |
-| `gh pr create`                       | ✅ allow (`shell_remote_publish`)                  |
-| `gh pr comment` / `gh pr review`     | ⚠️ blocked on main checkout (`shell_remote_write`) |
-| `gh issue view/list`                 | ✅ allow (read)                                    |
-| `gh issue create/comment`            | ⚠️ blocked on main checkout (`shell_remote_write`) |
-| `gh pr merge/close`                  | ❌ deny (`shell_destructive`)                      |
+| Command                              | Autonomous                                   |
+| ------------------------------------ | -------------------------------------------- |
+| `gh pr view/list/status/checks/diff` | ✅ allow (read)                              |
+| `gh pr create`                       | ✅ allow (`shell_remote_publish`)            |
+| `gh pr comment` / `gh pr review`     | ⚠️ remote write; denied by autonomous policy |
+| `gh issue view/list`                 | ✅ allow (read)                              |
+| `gh issue create/comment`            | ⚠️ remote write; denied by autonomous policy |
+| `gh pr merge/close`                  | ❌ deny (`shell_destructive`)                |
 
-For operations blocked on the main checkout, use a worktree.
+Worktrees isolate branch publication, but they do not turn broader remote-write operations into ordinary publication. Follow the active control profile for comments, reviews, issues, merges, and closes.
 
 ## Amending and Rebasing
 
@@ -189,7 +187,7 @@ For operations blocked on the main checkout, use a worktree.
 
 ### Rebase
 
-Use `git rebase` only in a worktree. `git rebase` is classified as `shell_destructive` and is denied in autonomous mode on the main checkout.
+Rebase only a task-owned topic branch in an isolated checkout. `git rebase` is classified as `shell_destructive` and is denied in autonomous mode regardless of checkout type.
 
 ## History Archaeology
 

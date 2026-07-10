@@ -510,7 +510,7 @@ The repo uses a two-branch model:
 - `dev` for ongoing development
 - `main` for releases (only updated via GitHub Actions during release)
 
-Do not push directly to `main`.
+Do not push directly to `dev` or `main`.
 
 ### Collaboration flow
 
@@ -548,13 +548,15 @@ Key documents in the repo that agents should be aware of:
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
 - `packages/app/AGENTS.md` — agent guidelines specific to the web app package
 
-## Practical Working Rules for Agents
+## Parallel Development and Git Safety
 
-- **NEVER switch branches on the main checkout.** The main workspace is shared across multiple concurrent Synergy sessions. Changing branches directly (via `git checkout`, `git switch`) will silently corrupt the working tree for every other running session that depends on the current state. This is the single most dangerous mistake in a multi-session development environment.
-- **When you need a different branch, always use a worktree.** Use `worktree_enter` (or `git worktree add`) to create an isolated checkout before switching branches. Each worktree has its own index and working directory — zero impact on other sessions.
-- **Reuse existing worktrees for the same feature.** When making follow-up changes to the same PR or feature branch, re-enter the existing worktree with `worktree_enter` instead of creating a new one. Creating a new worktree for every small change clutters the repo with stale branches and abandoned worktrees.
-- **NEVER commit or push from the main checkout.** Only make commits and push from a worktree. The main checkout is shared infrastructure; a commit may accidentally include unrelated changes from concurrent sessions, and a push can break CI for every branch built on the primary branch.
-- **Changes reach the primary branch only through pull requests, never by direct push.** Determine the repo's primary branch first — it is not always `main` or `master`. Check `git remote show origin` or the GitHub default branch. For this Synergy repo the primary branch is **`dev`**. All changes, even trivial fixes, must go through a PR to the primary branch. Pushing directly to it can break CI for every other branch that depends on it.
+The repository is commonly used by multiple agents at the same time. Protect the shared checkout from branch changes and use pull requests as the CI gate for `dev`.
+
+- **Never push directly to `dev` or `main`.** Changes intended for the repository belong on a topic branch and reach `dev` through a pull request after CI passes. `main` is updated only by the release workflow.
+- **Do not switch the branch of a shared or pre-existing checkout.** Another session may be using its current branch or uncommitted files. If the task needs a different branch, create or enter a worktree instead of running `git checkout` or `git switch` in that checkout.
+- **Use worktrees for branch isolation, not as a requirement based on task size or type.** Reuse an existing worktree for follow-up work on the same branch. If the session is already in the correct task-owned checkout, continue there rather than creating another worktree.
+- **Inspect the working tree before editing or staging.** Existing changes may belong to another session. Preserve unrelated modifications and stage only files owned by the current task.
+- **Keep commits and remote publication on topic branches.** In autonomous sessions, the permission model allows ordinary branch publication from worktrees and blocks remote writes from the shared checkout, so enter the task's worktree before pushing or creating a pull request.
 
 Detailed workflows are documented in project-local skills under `.synergy/skill/`:
 
