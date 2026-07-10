@@ -1,3 +1,6 @@
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { reencodeExperienceConfirm } from "@/components/dialog/confirm-copy"
+
 import { createSignal, Show, For, createMemo } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -152,6 +155,7 @@ function estimateDuration(count: number): string {
 
 function EncodingHealthSection() {
   const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
 
   const [scanning, setScanning] = createSignal(false)
   const [result, setResult] = createSignal<ExperienceDetectResult | null>(null)
@@ -187,11 +191,19 @@ function EncodingHealthSection() {
     }
   }
 
-  async function handleReencode(kind: "intent" | "script", reason?: string) {
-    const active = reencoding()
-    if (active) return
-    if (!window.confirm(`Re-encode all ${kind} records? This will make LLM calls and may take several minutes.`)) return
+  function handleReencode(kind: "intent" | "script", reason?: string) {
+    if (reencoding()) return
+    const r = result()
+    const total = kind === "intent" ? (r?.intent.total ?? 0) : (r?.script.total ?? 0)
+    confirm.show({
+      ...reencodeExperienceConfirm(kind, total),
+      onConfirm: () => {
+        void startReencode(kind, reason)
+      },
+    })
+  }
 
+  async function startReencode(kind: "intent" | "script", reason?: string) {
     const aborter = new AbortController()
     const reenc = {
       kind,
