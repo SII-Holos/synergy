@@ -1001,6 +1001,48 @@ export namespace LibraryDB {
         .all(sessionID) as Row[]
     }
 
+    /**
+     * Targeted intent update for re-encode. Only touches intent + embedding columns;
+     * preserves reward_status, q_values, and all other fields.
+     */
+    export function updateIntent(id: string, intent: string, embedding: Embedding.Info) {
+      const conn = open()
+      const now = Date.now()
+      const dimensions = embedding.vector.length
+      conn
+        .prepare(`UPDATE experience SET intent = ?1, intent_embedding_model = ?2, updated_at = ?3 WHERE id = ?4`)
+        .run(intent, embedding.model, now, id)
+      ensureVecTables(dimensions)
+      safeVecExperienceOp(() => {
+        conn
+          .prepare(`UPDATE vec_experience SET intent_embedding = ?1 WHERE experience_id = ?2`)
+          .run(toFloat32(embedding.vector), id)
+      }, undefined)
+      log.info("experience.updateIntent", { id })
+    }
+
+    /**
+     * Targeted script update for re-encode. Updates experience_content.script,
+     * ve_experience.script_embedding, and experience.script_embedding_model.
+     */
+    export function updateScript(id: string, script: string, embedding: Embedding.Info, raw: string) {
+      const conn = open()
+      const now = Date.now()
+      const dimensions = embedding.vector.length
+      conn
+        .prepare(`UPDATE experience SET script_embedding_model = ?1, updated_at = ?2 WHERE id = ?3`)
+        .run(embedding.model, now, id)
+      conn
+        .prepare(`UPDATE experience_content SET script = ?1, raw = ?2, updated_at = ?3 WHERE id = ?4`)
+        .run(script, raw, now, id)
+      ensureVecTables(dimensions)
+      safeVecExperienceOp(() => {
+        conn
+          .prepare(`UPDATE vec_experience SET script_embedding = ?1 WHERE experience_id = ?2`)
+          .run(toFloat32(embedding.vector), id)
+      }, undefined)
+      log.info("experience.updateScript", { id })
+    }
     export function updateTurnsRemaining(id: string, turnsRemaining: number) {
       const conn = open()
       conn

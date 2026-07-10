@@ -1,12 +1,16 @@
 import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { LibraryDB } from "../library/database"
 import { MemoryRecall } from "../library/memory-recall"
 import { ExperienceRecall } from "../library/experience-recall"
+import { ExperienceEncoder } from "../library/experience-encoder"
+import { detect } from "../library/experience-detect"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
+import { Global } from "../global"
 import { LibraryStatsEngine } from "../library"
 
 const log = Log.create({ service: "server.library" })
@@ -105,6 +109,39 @@ const ResetResult = z
     }),
   })
   .meta({ ref: "MemoryResetResult" })
+
+const ExperienceDetectGroup = z
+  .object({
+    reason: z
+      .string()
+      .meta({ description: "Detection reason: too-long, intent-in-raw, encoding_failed, empty, invalid, no-content" }),
+    count: z.number(),
+    label: z.string().meta({ description: "Human-readable label for this group" }),
+    samples: z
+      .array(
+        z.object({
+          id: z.string(),
+          detail: z.string(),
+          preview: z.string().optional().meta({ description: "First 80 chars of intent or script" }),
+        }),
+      )
+      .meta({ description: "Up to 5 sample items for preview" }),
+  })
+  .meta({ ref: "ExperienceDetectGroup" })
+
+const ExperienceDetectResult = z
+  .object({
+    scannedAt: z.number(),
+    intent: z.object({
+      total: z.number(),
+      groups: z.array(ExperienceDetectGroup),
+    }),
+    script: z.object({
+      total: z.number(),
+      groups: z.array(ExperienceDetectGroup),
+    }),
+  })
+  .meta({ ref: "ExperienceDetectResult" })
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -433,6 +470,280 @@ export const LibraryRoute = new Hono()
       const { scopeID } = c.req.valid("query")
       const rows = scopeID ? LibraryDB.Experience.list(scopeID) : LibraryDB.Experience.listAll()
       return c.json(rows.map(toExperienceInfo))
+    },
+  )
+
+  // ── Experience detect & reencode ──────────────────────────────────────
+
+  .post(
+    "/experience/detect",
+    describeRoute({
+      summary: "Detect experience encoding issues",
+      description:
+        "Scan the experience database for encoding quality issues. Groups candidates by detection reason and returns up to 5 samples per group.",
+      operationId: "library.experience.detect",
+      responses: {
+        200: {
+          description: "Detection results grouped by type and reason",
+          content: { "application/json": { schema: resolver(ExperienceDetectResult) } },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      const dbPath = Global.Path.libraryDB
+      const raw = detect(dbPath)
+      const scannedAt = Date.now()
+
+      const reasonLabels: Record<string, string> = {
+        encoding_failed: "Encoding pipeline failed",
+        empty: "Intent is empty",
+        "too-long": "Intent too long (>150 chars)",
+        "intent-in-raw": "Intent copied from raw user message",
+        invalid: "Intent.isValid returned false",
+        "no-content": "No experience content record",
+      }
+
+      const preview = (text?: string) => (text ? text.slice(0, 80) : undefined)
+
+      function buildGroups(
+        candidates: Array<{ id: string; reason: string; detail: string; intent?: string; script?: string }>,
+      ) {
+        const groups = new Map<
+          string,
+          { count: number; samples: Array<{ id: string; detail: string; preview?: string }> }
+        >()
+        for (const c of candidates) {
+          let entry = groups.get(c.reason)
+          if (!entry) {
+            entry = { count: 0, samples: [] }
+            groups.set(c.reason, entry)
+          }
+          entry.count++
+          if (entry.samples.length < 5) {
+            entry.samples.push({
+              id: c.id,
+              detail: c.detail,
+              preview: preview(c.intent ?? c.script),
+            })
+          }
+        }
+        // Sort by count descending (most frequent first)
+        return Array.from(groups.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .map(([reason, group]) => ({
+            reason,
+            count: group.count,
+            label: reasonLabels[reason] ?? reason,
+            samples: group.samples,
+          }))
+      }
+
+      return c.json({
+        scannedAt,
+        intent: { total: raw.intent.length, groups: buildGroups(raw.intent) },
+        script: { total: raw.script.length, groups: buildGroups(raw.script) },
+      })
+    },
+  )
+
+  .post(
+    "/experience/reencode",
+    describeRoute({
+      summary: "Re-encode experience records",
+      description:
+        "Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.",
+      operationId: "library.experience.reencode",
+      responses: {
+        200: {
+          description: "SSE stream of re-encode progress events",
+          content: {
+            "text/event-stream": {
+              schema: resolver(
+                z.object({
+                  type: z.enum(["start", "progress", "done", "error"]),
+                  total: z.number().optional(),
+                  id: z.string().optional(),
+                  status: z.string().optional(),
+                  reason: z.string().optional(),
+                  completed: z.number().optional(),
+                  ok: z.number().optional(),
+                  skipped: z.number().optional(),
+                  failed: z.number().optional(),
+                  message: z.string().optional(),
+                }),
+              ),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        type: z.enum(["intent", "script"]).meta({ description: "What to re-encode" }),
+        reason: z.string().optional().meta({ description: "Filter to one detection reason; omit for all" }),
+      }),
+    ),
+    async (c) => {
+      const { type, reason } = c.req.valid("json")
+      const dbPath = Global.Path.libraryDB
+      const raw = detect(dbPath)
+      const MAX_CONCURRENCY = 5
+
+      const candidates = (type === "intent" ? raw.intent : raw.script).filter((c) => !reason || c.reason === reason)
+
+      c.header("X-Accel-Buffering", "no")
+      c.header("Cache-Control", "no-cache, no-transform")
+
+      return streamSSE(c, async (stream) => {
+        let ok = 0
+        let skipped = 0
+        let failed = 0
+        let completed = 0
+
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "start", total: candidates.length }),
+        })
+
+        for (let i = 0; i < candidates.length; i += MAX_CONCURRENCY) {
+          const batch = candidates.slice(i, i + MAX_CONCURRENCY)
+          await Promise.all(
+            batch.map(async (candidate) => {
+              try {
+                // Load session — skip sub-sessions
+                const session = await (
+                  await import("../session")
+                ).Session.get(candidate.sessionID).catch(() => undefined)
+                if (!session || session.parentID) {
+                  skipped++
+                  completed++
+                  await stream.writeSSE({
+                    data: JSON.stringify({
+                      type: "progress",
+                      id: candidate.id,
+                      status: "skipped",
+                      reason: "session-gone",
+                      completed,
+                    }),
+                  })
+                  return
+                }
+
+                // Load messages
+                const msgs = await (await import("../session")).Session.messages({ sessionID: candidate.sessionID })
+                if (!msgs || msgs.length === 0) {
+                  skipped++
+                  completed++
+                  await stream.writeSSE({
+                    data: JSON.stringify({
+                      type: "progress",
+                      id: candidate.id,
+                      status: "skipped",
+                      reason: "msg-missing",
+                      completed,
+                    }),
+                  })
+                  return
+                }
+
+                const exp = LibraryDB.Experience.get(candidate.id)
+                const scopeID = exp?.scope_id ?? candidate.scopeID
+                const learning = await ExperienceEncoder.loadLearning()
+
+                let intentEmbedding:
+                  | Awaited<ReturnType<typeof ExperienceEncoder.reencodeIntent>>["embedding"]
+                  | undefined
+                let scriptEmbedding:
+                  | Awaited<ReturnType<typeof ExperienceEncoder.reencodeScript>>["embedding"]
+                  | undefined
+                let intent = ""
+                let script = ""
+
+                if (type === "intent") {
+                  const result = await ExperienceEncoder.reencodeIntent(candidate.sessionID, candidate.id, msgs)
+                  intent = result.intent
+                  intentEmbedding = result.embedding
+                  LibraryDB.Experience.updateIntent(candidate.id, intent, intentEmbedding)
+                } else {
+                  const content = LibraryDB.Experience.getContent(candidate.id)
+                  if (!content?.raw) {
+                    skipped++
+                    completed++
+                    await stream.writeSSE({
+                      data: JSON.stringify({
+                        type: "progress",
+                        id: candidate.id,
+                        status: "skipped",
+                        reason: "no-raw-content",
+                        completed,
+                      }),
+                    })
+                    return
+                  }
+                  const result = await ExperienceEncoder.reencodeScript(candidate.sessionID, candidate.id, content.raw)
+                  script = result.script
+                  scriptEmbedding = result.embedding
+                  LibraryDB.Experience.updateScript(candidate.id, script, scriptEmbedding, content.raw)
+                }
+
+                // Dedup: check if the re-encoded content duplicates an existing experience;
+                // if it does and the existing record is lower quality, supersede it.
+                if (intentEmbedding) {
+                  const duplicate = LibraryDB.Experience.findSimilar(
+                    scopeID,
+                    intentEmbedding.vector,
+                    learning.dedupIntentThreshold,
+                    scriptEmbedding?.vector,
+                    learning.dedupScriptThreshold,
+                    learning.rewardWeights,
+                  )
+                  if (duplicate && ExperienceEncoder.shouldSupersede(duplicate, learning.qInit)) {
+                    LibraryDB.Experience.supersede(duplicate.id, {
+                      sessionID: candidate.sessionID,
+                      scopeID,
+                      intent,
+                      intentEmbedding,
+                      scriptEmbedding,
+                      content: {
+                        script,
+                        raw: type === "script" ? (LibraryDB.Experience.getContent(candidate.id)?.raw ?? "") : "",
+                      },
+                      metadata: { reencoded: type },
+                      retrievedExperienceIDs: [],
+                    })
+                    log.info("reencode: superseded duplicate", { id: candidate.id, duplicateID: duplicate.id })
+                  }
+                }
+
+                ok++
+                completed++
+                await stream.writeSSE({
+                  data: JSON.stringify({ type: "progress", id: candidate.id, status: "ok", completed }),
+                })
+              } catch (err: any) {
+                failed++
+                completed++
+                await stream.writeSSE({
+                  data: JSON.stringify({
+                    type: "progress",
+                    id: candidate.id,
+                    status: "failed",
+                    reason: err?.message ?? String(err),
+                    completed,
+                  }),
+                })
+              }
+            }),
+          )
+        }
+
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "done", total: candidates.length, ok, skipped, failed }),
+        })
+        stream.close()
+      })
     },
   )
 
