@@ -11,10 +11,10 @@ const parameters = z.object({
   content: z.string().describe("The text content to send."),
   role: z
     .enum(["user", "assistant"])
-    .default("assistant")
+    .default("user")
     .describe(
-      "'assistant' = deliver as an assistant message (no response triggered), " +
-        "'user' = deliver as a user message (triggers the target session's agent to respond).",
+      "'user' = deliver as a user message (triggers the target session's agent to respond), " +
+        "'assistant' = deliver as an assistant message (no response triggered).",
     ),
   sourceName: z
     .string()
