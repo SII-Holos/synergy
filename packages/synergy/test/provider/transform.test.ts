@@ -1111,6 +1111,66 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
     })
+
+    test("azure gpt-5 with release_date >= 2025-11-13 includes 'none' effort", () => {
+      const model = createMockModel({
+        id: "gpt-5",
+        providerID: "azure",
+        api: {
+          id: "gpt-5",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        release_date: "2025-11-14",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high"])
+    })
+
+    test("azure gpt-5 with release_date >= 2025-12-04 includes 'xhigh' effort", () => {
+      const model = createMockModel({
+        id: "gpt-5",
+        providerID: "azure",
+        api: {
+          id: "gpt-5",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        release_date: "2025-12-05",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+    })
+
+    test("azure gpt-5 with release_date >= 2026-07-01 includes 'max' and 'ultra'", () => {
+      const model = createMockModel({
+        id: "gpt-5",
+        providerID: "azure",
+        api: {
+          id: "gpt-5",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        release_date: "2026-07-02",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
+    })
+
+    test("azure gpt-5 before 2026-07-01 does not include 'max' or 'ultra'", () => {
+      const model = createMockModel({
+        id: "gpt-5",
+        providerID: "azure",
+        api: {
+          id: "gpt-5",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        release_date: "2026-06-30",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+    })
   })
 
   describe("@ai-sdk/openai", () => {
@@ -1209,6 +1269,33 @@ describe("ProviderTransform.variants", () => {
     })
   })
 
+  describe("@ai-sdk/anthropic", () => {
+    test("returns high and max with thinking config", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-4",
+        providerID: "anthropic",
+        api: {
+          id: "claude-4",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["high", "max"])
+      expect(result.high).toEqual({
+        thinking: {
+          type: "enabled",
+          budgetTokens: 4095,
+        },
+      })
+      expect(result.max).toEqual({
+        thinking: {
+          type: "enabled",
+          budgetTokens: 8191,
+        },
+      })
+    })
+  })
   describe("@ai-sdk/amazon-bedrock", () => {
     test("returns WIDELY_SUPPORTED_EFFORTS with reasoningConfig", () => {
       const model = createMockModel({
