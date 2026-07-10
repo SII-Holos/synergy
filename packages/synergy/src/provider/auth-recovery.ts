@@ -352,6 +352,9 @@ export namespace ProviderAuthRecovery {
     }
 
     if (!refreshed) {
+      if (selected.auth.type === "api" && !Auth.hasUsableAlternative(selected.entry, selected.credentialID)) {
+        return retryOnce(input)
+      }
       await markFailure(input, selected, firstFailure)
       return retryWithBackup(input, selected.credentialID, first, firstFailure)
     }

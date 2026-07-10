@@ -10,6 +10,7 @@ import { tmpdir } from "../fixture/fixture"
 const PROVIDERS = [
   "test-refresh",
   "test-backup",
+  "test-api-confirm",
   "test-wrapped-api",
   "test-status",
   "test-exhausted",
@@ -75,6 +76,41 @@ test("a rejected primary API key switches to a backup within the single retry bu
   expect(keys).toEqual(["primary", "backup"])
   expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
   expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
+})
+
+test("a lone API key is invalidated only after a confirmed rejection", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "transient" })
+  let requests = 0
+
+  const recovered = await ProviderAuthRecovery.execute({
+    providerID: "test-api-confirm",
+    request: async () => new Response(null, { status: ++requests === 1 ? 401 : 200 }),
+  })
+
+  expect(recovered.status).toBe(200)
+  expect(requests).toBe(2)
+  expect(await Auth.get("test-api-confirm")).toMatchObject({ type: "api", key: "transient" })
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+    "connected",
+  )
+
+  await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
+  requests = 0
+  await expect(
+    ProviderAuthRecovery.execute({
+      providerID: "test-api-confirm",
+      request: async () => {
+        requests++
+        return new Response(null, { status: 401 })
+      },
+    }),
+  ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+  expect(requests).toBe(2)
+  expect(await Auth.get("test-api-confirm")).toBeUndefined()
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+    "action_required",
+  )
 })
 
 test("generic SDK transport rewrites common API-key headers when selecting a backup", async () => {
