@@ -289,7 +289,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       } catch (err) {
         console.warn("Failed to load scope index", err)
-        // fall through; scope ordering remains localStorage-based
+        // fall through; supplemental scope discovery will be unavailable until next reconnection
       } finally {
         setScopeIndexLoaded(true)
       }
