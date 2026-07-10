@@ -50,37 +50,36 @@ export interface BossPanelSDK {
 export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
   const [runs, setRuns] = createSignal<WorkflowRun[]>([])
   const [selectedRunID, setSelectedRunID] = createSignal<string | undefined>()
-  const [run, setRun] = createSignal<WorkflowRun | null>(null)
   const [charter, setCharter] = createSignal<WorkflowCharter | null>(null)
   const [events, setEvents] = createSignal<WorkflowEvent[]>([])
   const [busy, setBusy] = createSignal(false)
   const [newIssue, setNewIssue] = createSignal("")
+
+  // list() already returns full run objects, so the selected run is derived
+  // directly from the list — no separate get() round-trip that could return null
+  // and blank the whole panel.
+  const run = createMemo(() => runs().find((r) => r.id === selectedRunID()) ?? null)
 
   const loadRuns = async () => {
     const res = await props.sdk.client.workflowRun.list().catch(() => ({ data: [] }))
     const list = (res.data ?? []).filter(BossData.isActive)
     setRuns(list)
     // Prefer the run owned by the current session, else the first active run.
-    if (!selectedRunID()) {
+    if (!selectedRunID() || !list.some((r) => r.id === selectedRunID())) {
       const owned = list.find((r) => r.bossSessionID === props.sessionID)
       setSelectedRunID(owned?.id ?? list[0]?.id)
     }
   }
 
-  const loadRun = async (runID: string) => {
-    const res = await props.sdk.client.workflowRun.get({ path: { id: runID } }).catch(() => ({ data: null }))
-    setRun(res.data ?? null)
-    const r = res.data
-    if (r) {
-      const [charterRes, eventsRes] = await Promise.all([
-        props.sdk.client.workflowCharter
-          .get({ path: { id: r.charterRef.id, version: r.charterRef.version } })
-          .catch(() => ({ data: null })),
-        props.sdk.client.workflowRun.events({ path: { id: runID } }).catch(() => ({ data: [] })),
-      ])
-      setCharter(charterRes.data ?? null)
-      setEvents(eventsRes.data ?? [])
-    }
+  const loadCharterAndEvents = async (r: WorkflowRun) => {
+    const [charterRes, eventsRes] = await Promise.all([
+      props.sdk.client.workflowCharter
+        .get({ path: { id: r.charterRef.id, version: r.charterRef.version } })
+        .catch(() => ({ data: null })),
+      props.sdk.client.workflowRun.events({ path: { id: r.id } }).catch(() => ({ data: [] })),
+    ])
+    setCharter(charterRes.data ?? null)
+    setEvents(eventsRes.data ?? [])
   }
 
   createEffect(() => {
@@ -93,7 +92,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
         if (BossData.isActive(updated)) next.push(updated)
         return next
       })
-      if (updated.id === selectedRunID()) setRun(updated)
+      if (!selectedRunID() && BossData.isActive(updated)) setSelectedRunID(updated.id)
     })
     const unsubEvent = props.sdk.event.on("workflow.event.appended", (event) => {
       const appended = event.properties.event
@@ -106,9 +105,10 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
     })
   })
 
+  // Load the (separate) charter + event log whenever the selected run changes.
   createEffect(() => {
-    const id = selectedRunID()
-    if (id) void loadRun(id)
+    const r = run()
+    if (r) void loadCharterAndEvents(r)
   })
 
   const stateOrder = createMemo(() => charter()?.states ?? [])

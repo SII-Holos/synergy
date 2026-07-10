@@ -48,6 +48,18 @@ describe("BossData.entitiesByState", () => {
     const nonEmpty = groups.filter((g) => g.entities.length > 0).map((g) => g.state)
     expect(nonEmpty).toEqual(["queued", "reviewing", "blocked"])
   })
+
+  test("still groups entities when the charter (state order) is unavailable", () => {
+    // The panel derives the run from list() and may render before the charter
+    // loads; the board must not go blank in that window.
+    const r = run([
+      { id: "e1", state: "executing" },
+      { id: "e2", state: "queued" },
+    ])
+    const groups = BossData.entitiesByState(r, [])
+    const nonEmpty = groups.filter((g) => g.entities.length > 0).map((g) => g.state)
+    expect(nonEmpty.sort()).toEqual(["executing", "queued"])
+  })
 })
 
 describe("BossData.eventTone", () => {
