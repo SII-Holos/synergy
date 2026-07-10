@@ -41,6 +41,12 @@ export namespace WorkflowHandoff {
       "",
       `Task: ${handoff.task}`,
     ]
+    // The entity description carries the Boss's analysis (exact files, steps,
+    // acceptance details). It is the whole point of the handoff — always include
+    // it so the seat doesn't have to re-derive what the Boss already worked out.
+    if (entity.description?.trim()) {
+      lines.push("", "Entity details:", entity.description.trim())
+    }
     if (handoff.acceptance.length > 0) {
       lines.push("", "Acceptance criteria:")
       for (const a of handoff.acceptance) lines.push(`- ${a}`)

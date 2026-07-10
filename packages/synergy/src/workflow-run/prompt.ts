@@ -53,6 +53,9 @@ export namespace WorkflowPrompt {
         : "No gates currently need you.",
       "",
       "Tools: workflow_status (overview), workflow_entity_add (enqueue work), workflow_gate_resolve (decide a gate), workflow_run_control (pause/resume/cancel).",
+      "",
+      "The seats work asynchronously once you enqueue entities — you do not implement anything yourself. After you create a run or enqueue work, tell the user what is now running (which entities, which seats) and that you will surface a decision when a change reaches a gate. Do not end your turn with an empty or silent message; give the user a clear status.",
+      "Write a rich, self-contained description for every entity you enqueue: it is the brief the assigned seat receives, so include the concrete files, steps, and acceptance details you have already worked out rather than a bare title.",
       "</workflow-boss-context>",
     ].join("\n")
   }
