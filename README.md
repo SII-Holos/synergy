@@ -36,6 +36,7 @@ Synergy spans several product surfaces and workflows:
 - A `web` client for browser-based interaction
 - A production desktop application that embeds and supervises a local Synergy server
 - A built-in Browser workspace backed by Chromium, with shared control state for humans and browser tools
+- A Side Workspace file workbench with multi-file tabs, read-only source/preview modes, and a virtualized Explorer
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -68,6 +69,14 @@ Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer co
 Browser contexts are isolated by Synergy owner/session and persist page state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads appear in the Browser workspace developer drawer and compact tool cards. The normal chat transcript stays focused on user-visible results.
+
+### Built-In File Workbench
+
+Files open as resource-deduplicated tabs in the Side Workspace. Each session keeps its open files, active tab, source/preview choice, selection, scroll state, and Explorer layout. A Scope shares the Explorer's expanded folders and the “Show hidden and ignored files” preference, so changing sessions in the same project preserves a warm tree and document cache.
+
+Markdown and SVG can switch between Source and Preview. Text and code use a lazy-loaded, read-only Monaco source viewer; common images use the inline image preview; other binary formats show explicit metadata and an unsupported reason. The Explorer uses paged server directory reads and a virtual row list, so opening a large repository does not create one DOM node or one metadata request per file.
+
+The Synergy server is the authority for every file operation. Web clients, Desktop managed mode, and Desktop external-server mode all use the generated workspace-files SDK against the active Scope. Electron renderer and main processes do not bypass Scope boundaries with direct file reads. The standard project watcher updates open documents and loaded directories; set `SYNERGY_DISABLE_FILEWATCHER=1` only as a diagnostic escape hatch.
 
 ### Desktop Application
 

@@ -25,6 +25,15 @@ import type {
 } from "@/plugin/registries/workbench-panel-registry"
 import "./workbench-surface.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import {
+  DragDropProvider,
+  DragDropSensors,
+  SortableProvider,
+  closestCenter,
+  createSortable,
+  type DragEvent,
+} from "@thisbeyond/solid-dnd"
+import { ConstrainDragYAxis } from "@/utils/solid-dnd"
 
 function WorkbenchPanelContent(props: {
   entry: WorkbenchPanelEntry
@@ -68,13 +77,93 @@ function WorkbenchPanelContent(props: {
             >
               {(() => {
                 const Loaded = component()
-                return <Loaded pluginId={props.entry.pluginId ?? ""} panelId={props.entry.id} tab={props.tab} />
+                return (
+                  <Loaded
+                    pluginId={props.entry.pluginId ?? ""}
+                    panelId={props.entry.id}
+                    tab={props.tab}
+                    onRequestClose={props.onRequestClose}
+                  />
+                )
               })()}
             </Suspense>
           </ErrorBoundary>
         )}
       </Show>
     </Show>
+  )
+}
+
+function WorkbenchSortableTab(props: {
+  tab: WorkbenchPanelTab
+  tabs: WorkbenchPanelTab[]
+  active: boolean
+  title: string
+  entry?: WorkbenchPanelEntry
+  onActivate: () => void
+  onClose: () => void
+  onFocusIndex: (index: number) => void
+}) {
+  const sortable = createSortable(props.tab.id)
+  let main!: HTMLButtonElement
+  createEffect(() => {
+    if (!props.active) return
+    main?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  })
+  const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
+  return (
+    <div
+      use:sortable
+      class="workbench-surface-tab"
+      classList={{
+        "workbench-surface-tab--active": props.active,
+        "workbench-surface-tab--dragging": sortable.isActiveDraggable,
+      }}
+      title={props.tab.resourceId ?? props.title}
+      onAuxClick={(event) => {
+        if (event.button !== 1) return
+        event.preventDefault()
+        props.onClose()
+      }}
+    >
+      <button
+        ref={main}
+        type="button"
+        role="tab"
+        class="workbench-surface-tab-main"
+        aria-selected={props.active}
+        aria-label={props.tab.resourceId ?? props.title}
+        tabIndex={props.active ? 0 : -1}
+        onClick={props.onActivate}
+        onKeyDown={(event) => {
+          const index = currentIndex()
+          if (event.key === "ArrowLeft") props.onFocusIndex(index - 1)
+          else if (event.key === "ArrowRight") props.onFocusIndex(index + 1)
+          else if (event.key === "Home") props.onFocusIndex(0)
+          else if (event.key === "End") props.onFocusIndex(props.tabs.length - 1)
+          else if (event.key === "Enter" || event.key === " ") props.onActivate()
+          else if (event.key === "Delete") props.onClose()
+          else return
+          event.preventDefault()
+        }}
+      >
+        <Show when={props.entry}>
+          {(entry) => entry().tabIcon?.(props.tab) ?? <Icon name={entry().icon as IconName} size="small" />}
+        </Show>
+        <span>{props.title}</span>
+      </button>
+      <button
+        type="button"
+        class="workbench-surface-tab-close"
+        aria-label={`Close ${props.tab.resourceId ?? props.title}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          props.onClose()
+        }}
+      >
+        <Icon name={getSemanticIcon("action.close")} size="small" />
+      </button>
+    </div>
   )
 }
 
@@ -111,7 +200,7 @@ function Launcher(props: {
   )
 }
 
-export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
+export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reservedWidth?: number }) {
   const workbench = useWorkbenchPanels()
   const state = createMemo(() => workbench.surface(props.surface))
   const panels = createMemo(() => workbench.panels(props.surface))
@@ -135,6 +224,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     addOpen: false,
     resizing: false,
   })
+  let tabRun: HTMLDivElement | undefined
 
   const openPanel = (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => {
     setLocal("addOpen", false)
@@ -165,13 +255,34 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const size = () => state().size()
   const isSide = () => props.surface === "side"
   const maxSideWidth = () =>
-    computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH })
+    Math.max(
+      WORKSPACE_MIN_WIDTH,
+      computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH }) -
+        (props.reservedWidth ?? 0),
+    )
   const maxBottomHeight = () => window.innerHeight * 0.6
 
   const rootStyle = () =>
     isSide()
       ? { width: state().opened() ? `${size()}px` : "0px" }
       : { height: state().opened() ? `${size()}px` : "0px" }
+
+  const focusTab = (index: number) => {
+    const tabs = state().tabs()
+    if (tabs.length === 0) return
+    const target = Math.max(0, Math.min(tabs.length - 1, index))
+    tabRun?.querySelectorAll<HTMLButtonElement>(".workbench-surface-tab-main")[target]?.focus()
+  }
+
+  const handleDragEnd = (event: DragEvent) => {
+    const draggable = event.draggable?.id
+    const droppable = event.droppable?.id
+    if (!draggable || !droppable || draggable === droppable) return
+    const index = state()
+      .tabs()
+      .findIndex((tab) => tab.id === droppable)
+    if (index >= 0) workbench.moveTab(props.surface, String(draggable), index)
+  }
 
   return (
     <div
@@ -203,55 +314,69 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
       >
         <Show when={state().tabs().length > 0}>
           <div class="workbench-surface-tabs">
-            <For each={state().tabs()}>
-              {(tab) => (
-                <div
-                  class="workbench-surface-tab"
-                  classList={{ "workbench-surface-tab--active": state().active() === tab.id }}
+            <DragDropProvider onDragEnd={handleDragEnd} collisionDetector={closestCenter}>
+              <DragDropSensors />
+              <ConstrainDragYAxis />
+              <div
+                ref={tabRun}
+                class="workbench-surface-tab-run"
+                role="tablist"
+                aria-label={isSide() ? "Side workspace tabs" : "Bottom workspace tabs"}
+                onWheel={(event) => {
+                  if (!tabRun || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
+                  tabRun.scrollLeft += event.deltaY
+                  event.preventDefault()
+                }}
+              >
+                <SortableProvider
+                  ids={state()
+                    .tabs()
+                    .map((tab) => tab.id)}
                 >
-                  <button type="button" class="workbench-surface-tab-main" onClick={() => state().setActive(tab.id)}>
-                    <Show when={workbench.panelForTab(tab)}>
-                      {(entry) => <Icon name={entry().icon as IconName} size="small" />}
+                  <For each={state().tabs()}>
+                    {(tab) => (
+                      <WorkbenchSortableTab
+                        tab={tab}
+                        tabs={state().tabs()}
+                        active={state().active() === tab.id}
+                        title={workbench.panelTitle(tab)}
+                        entry={workbench.panelForTab(tab)}
+                        onActivate={() => state().setActive(tab.id)}
+                        onClose={() => void workbench.closeTab(tab.id)}
+                        onFocusIndex={focusTab}
+                      />
+                    )}
+                  </For>
+                </SortableProvider>
+                <Show when={addablePanels().length > 0}>
+                  <div class="workbench-surface-add-wrap">
+                    <IconButton
+                      icon={getSemanticIcon("action.add")}
+                      variant="ghost"
+                      aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
+                      aria-expanded={local.addOpen}
+                      onClick={() => setLocal("addOpen", (value) => !value)}
+                    />
+                    <Show when={local.addOpen}>
+                      <div class="workbench-surface-add-menu">
+                        <For each={addablePanels()}>
+                          {(panel) => (
+                            <button
+                              type="button"
+                              class="workbench-surface-add-row"
+                              onClick={() => openPanel(panel, "add")}
+                            >
+                              <Icon name={panel.icon as IconName} size="small" />
+                              <span>{panel.label}</span>
+                            </button>
+                          )}
+                        </For>
+                      </div>
                     </Show>
-                    <span>{workbench.panelTitle(tab)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="workbench-surface-tab-close"
-                    aria-label={`Close ${workbench.panelTitle(tab)}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void workbench.closeTab(tab.id)
-                    }}
-                  >
-                    <Icon name={getSemanticIcon("action.close")} size="small" />
-                  </button>
-                </div>
-              )}
-            </For>
-            <Show when={addablePanels().length > 0}>
-              <div class="workbench-surface-add-wrap">
-                <IconButton
-                  icon={getSemanticIcon("action.add")}
-                  variant="ghost"
-                  aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
-                  aria-expanded={local.addOpen}
-                  onClick={() => setLocal("addOpen", (value) => !value)}
-                />
-                <Show when={local.addOpen}>
-                  <div class="workbench-surface-add-menu">
-                    <For each={addablePanels()}>
-                      {(panel) => (
-                        <button type="button" class="workbench-surface-add-row" onClick={() => openPanel(panel, "add")}>
-                          <Icon name={panel.icon as IconName} size="small" />
-                          <span>{panel.label}</span>
-                        </button>
-                      )}
-                    </For>
                   </div>
                 </Show>
               </div>
-            </Show>
+            </DragDropProvider>
           </div>
         </Show>
         <div class="workbench-surface-body">

@@ -177,13 +177,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
   const sendShortcut = createMemo(() => input.sendShortcut())
-  const activeFile = createMemo(() => {
-    const tab = tabs().active()
-    if (!tab) return
-    return files.pathFromTab(tab)
-  })
+  const activeFile = createMemo(() => files.activePath())
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)

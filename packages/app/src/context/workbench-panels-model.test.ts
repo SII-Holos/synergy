@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { closeWorkbenchPanelTab, openWorkbenchPanelTab } from "./workbench-panels-model"
+import {
+  closeWorkbenchPanelTab,
+  moveWorkbenchPanelTab,
+  openWorkbenchPanelTab,
+  updateWorkbenchPanelTab,
+} from "./workbench-panels-model"
 
 describe("openWorkbenchPanelTab", () => {
   test("exclusive panels replace existing tabs", () => {
@@ -88,6 +93,27 @@ describe("openWorkbenchPanelTab", () => {
     expect(reused.tabs).toBe(created.tabs)
     expect(reused.active).toBe("terminal:1")
   })
+
+  test("multi panels reuse the same resource without changing its position", () => {
+    const tabs = [
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts" },
+      { id: "notes", panelId: "notes" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      init: { resourceId: "src/a.ts", title: "a.ts · src" },
+      createId: () => "file:duplicate",
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts · src" },
+      { id: "notes", panelId: "notes" },
+    ])
+    expect(result.active).toBe("file:a")
+    expect(result.created).toBeUndefined()
+  })
 })
 
 describe("closeWorkbenchPanelTab", () => {
@@ -110,5 +136,26 @@ describe("closeWorkbenchPanelTab", () => {
 
     expect(result.tabs).toEqual([])
     expect(result.active).toBeUndefined()
+  })
+})
+
+describe("workbench tab updates", () => {
+  test("updates a tab in place and preserves its identity", () => {
+    const tabs = [{ id: "file:a", panelId: "file", resourceId: "old.ts", title: "old.ts" }]
+    const result = updateWorkbenchPanelTab(tabs, "file:a", {
+      resourceId: "src/new.ts",
+      title: "new.ts",
+    })
+
+    expect(result).toEqual([{ id: "file:a", panelId: "file", resourceId: "src/new.ts", title: "new.ts" }])
+  })
+
+  test("moves a tab to the requested stable index", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+      { id: "c", panelId: "notes" },
+    ]
+    expect(moveWorkbenchPanelTab(tabs, "a", 2).map((tab) => tab.id)).toEqual(["b", "c", "a"])
   })
 })

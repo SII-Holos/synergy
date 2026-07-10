@@ -9179,6 +9179,15 @@
               "type": "string",
               "enum": ["true", "false"]
             }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "range",
+              "type": "string",
+              "enum": ["range", "document"]
+            }
           }
         ],
         "summary": "Read workspace file",
@@ -28923,6 +28932,10 @@
           },
           "truncated": {
             "type": "boolean"
+          },
+          "truncationReason": {
+            "type": "string",
+            "enum": ["size", "range"]
           },
           "nextRange": {
             "$ref": "#/components/schemas/WorkspaceFileTextRange"

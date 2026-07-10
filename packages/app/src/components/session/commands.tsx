@@ -7,6 +7,7 @@ import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
 import { useWorkbenchPanels } from "@/context/workbench-panels"
+import { useFile } from "@/context/file"
 import { inlineLength } from "@/components/prompt-input/content"
 import { extractPromptDraft } from "@/utils/prompt"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -55,6 +56,7 @@ export function useSessionCommands(params: {
   } = params
 
   const workbench = useWorkbenchPanels()
+  const file = useFile()
 
   command.register(() => [
     {
@@ -75,7 +77,28 @@ export function useSessionCommands(params: {
       category: "File",
       keybind: "mod+p",
       slash: "open",
-      onSelect: () => dialog.show(() => <DialogSelectFile />),
+      onSelect: () => dialog.show(() => <DialogSelectFile onSelect={(path) => void file.openWorkspaceFile(path)} />),
+    },
+    {
+      id: "file.refresh",
+      title: "Refresh current file",
+      description: "Reload the active file and expanded folders",
+      category: "File",
+      onSelect: file.explorer.refresh,
+    },
+    {
+      id: "file.tree.toggle",
+      title: "Toggle file tree",
+      description: "Show or hide the file explorer",
+      category: "View",
+      onSelect: () => file.explorer.setOpen(!file.explorer.open()),
+    },
+    {
+      id: "file.tree.collapse",
+      title: "Collapse folders",
+      description: "Collapse all folders in the file explorer",
+      category: "View",
+      onSelect: file.explorer.collapseAll,
     },
     {
       id: "terminal.toggle",

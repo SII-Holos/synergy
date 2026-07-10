@@ -16,7 +16,6 @@ import { GlobalSDKProvider } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
-import { FileProvider } from "@/context/file"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
@@ -240,17 +239,15 @@ function ConnectedApp() {
                           path="/session/:id?"
                           component={() => (
                             <TerminalProvider>
-                              <FileProvider>
-                                <ResourceOpenProvider>
-                                  <PromptProvider>
-                                    <BuiltinWorkbenchPanelsProvider>
-                                      <Suspense fallback={<Loading />}>
-                                        <Session />
-                                      </Suspense>
-                                    </BuiltinWorkbenchPanelsProvider>
-                                  </PromptProvider>
-                                </ResourceOpenProvider>
-                              </FileProvider>
+                              <ResourceOpenProvider>
+                                <PromptProvider>
+                                  <BuiltinWorkbenchPanelsProvider>
+                                    <Suspense fallback={<Loading />}>
+                                      <Session />
+                                    </Suspense>
+                                  </BuiltinWorkbenchPanelsProvider>
+                                </PromptProvider>
+                              </ResourceOpenProvider>
                             </TerminalProvider>
                           )}
                         />

@@ -97,6 +97,14 @@ describe("WorkspaceFileService", () => {
         expect(all.children.map((item) => item.name)).toContain(".env")
         expect(all.children.map((item) => item.name)).toContain("node_modules")
 
+        const hiddenOnly = await WorkspaceFileService.children({ path: "", showHidden: true })
+        expect(hiddenOnly.children.map((item) => item.name)).toContain(".env")
+        expect(hiddenOnly.children.map((item) => item.name)).not.toContain("node_modules")
+
+        const ignoredOnly = await WorkspaceFileService.children({ path: "", showIgnored: true })
+        expect(ignoredOnly.children.map((item) => item.name)).not.toContain(".env")
+        expect(ignoredOnly.children.map((item) => item.name)).toContain("node_modules")
+
         const first = await WorkspaceFileService.children({ path: "", limit: 1, showHidden: true, showIgnored: true })
         expect(first.children).toHaveLength(1)
         expect(first.truncated).toBe(true)
@@ -111,6 +119,28 @@ describe("WorkspaceFileService", () => {
         })
         expect(second.children).toHaveLength(1)
         expect(second.children[0]?.path).not.toBe(first.children[0]?.path)
+      },
+    )
+  })
+
+  test("reports internal and broken symlinks without escaping the Scope", async () => {
+    let supported = true
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "target.txt"), "inside")
+        supported = await trySymlink(path.join(dir, "target.txt"), path.join(dir, "internal-link.txt"))
+        if (!supported) return
+        await fs.symlink(path.join(dir, "missing.txt"), path.join(dir, "broken-link.txt"), "file")
+      },
+      async () => {
+        if (!supported) return
+        const internal = await WorkspaceFileService.node("internal-link.txt")
+        expect(internal.symlink).toBe(true)
+        expect(internal.type).toBe("file")
+
+        const broken = await WorkspaceFileService.node("broken-link.txt")
+        expect(broken.symlink).toBe(true)
+        expect(broken.type).toBe("symlink")
       },
     )
   })
@@ -175,20 +205,76 @@ describe("WorkspaceFileService", () => {
     )
   })
 
-  test("returns truncated large text previews with next ranges", async () => {
+  test("returns complete documents up to 4 MiB", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "document.txt"), "one\ntwo\nthree\n")
+      },
+      async () => {
+        const result = await WorkspaceFileService.read({ path: "document.txt", mode: "document" })
+        expect(result.kind).toBe("text")
+        if (result.kind === "text") {
+          expect(result.content).toBe("one\ntwo\nthree\n")
+          expect(result.truncated).toBe(false)
+          expect(result.nextRange).toBeUndefined()
+          expect(result.truncationReason).toBeUndefined()
+        }
+      },
+    )
+  })
+
+  test("keeps the exact 4 MiB document boundary complete", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "boundary.txt"), "x".repeat(4 * 1024 * 1024))
+      },
+      async () => {
+        const result = await WorkspaceFileService.read({ path: "boundary.txt", mode: "document" })
+        expect(result.kind).toBe("text")
+        if (result.kind === "text") {
+          expect(result.totalBytes).toBe(4 * 1024 * 1024)
+          expect(result.content.length).toBe(4 * 1024 * 1024)
+          expect(result.truncated).toBe(false)
+          expect(result.truncationReason).toBeUndefined()
+        }
+      },
+    )
+  })
+
+  test("returns a bounded document preview for text over 4 MiB without a continuation range", async () => {
     await withWorkspace(
       async (dir) => {
         const line = "x".repeat(1024)
         await Bun.write(path.join(dir, "large.txt"), Array.from({ length: 5000 }, () => line).join("\n"))
       },
       async () => {
-        const result = await WorkspaceFileService.read({ path: "large.txt", preview: true })
+        const result = await WorkspaceFileService.read({ path: "large.txt", mode: "document" })
         expect(result.kind).toBe("text")
         if (result.kind === "text") {
           expect(result.truncated).toBe(true)
           expect(result.totalBytes).toBeGreaterThan(4 * 1024 * 1024)
           expect(result.lineCount).toBeUndefined()
-          expect(result.nextRange?.offset).toBeGreaterThan(0)
+          expect(result.content.length).toBeLessThanOrEqual(512 * 1024)
+          expect(result.nextRange).toBeUndefined()
+          expect(result.truncationReason).toBe("size")
+        }
+      },
+    )
+  })
+
+  test("keeps range reads paginated", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "range.txt"), "one\ntwo\nthree\nfour\n")
+      },
+      async () => {
+        const result = await WorkspaceFileService.read({ path: "range.txt", mode: "range", limit: 2 })
+        expect(result.kind).toBe("text")
+        if (result.kind === "text") {
+          expect(result.content).toBe("one\ntwo")
+          expect(result.truncated).toBe(true)
+          expect(result.nextRange?.offset).toBe(2)
+          expect(result.truncationReason).toBe("range")
         }
       },
     )

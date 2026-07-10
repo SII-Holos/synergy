@@ -102,9 +102,11 @@ The flow is more nuanced than a simple pipe. The cortex layer manages DAGs, suba
 | `util/`            | Utilities                                        | Log, path, error helpers                |
 | `vector/`          | Vector storage                                   | Embedding storage                       |
 | `workspace/`       | Workspace management                             | Workspace sessions, discovery           |
-| `workspace-file/`  | Workspace file operations                        | File workspace tools                    |
+| `workspace-file/`  | Scope-authoritative stat/read/children/search    | File workbench server contracts         |
 
 ### Cross-cutting Concerns
+
+The File workbench has one frontend data owner: `packages/app/src/context/file.tsx`. File tabs live in the Side Workspace; the temporary Session Context panel does not own files. Web and Desktop always use generated `workspace.files.*` SDK calls against the active Scope. The server `workspace-file/` domain owns containment, paged directory metadata, document reads, search, and watcher-fed updates.
 
 - **Config** touches everything — changes ripple through CLI, server, agents
 - **ScopedState** — `ScopedState.create()` in `scope/scoped-state.ts` is the scoped singleton pattern (wraps `State.create()` with scope-keyed isolation)

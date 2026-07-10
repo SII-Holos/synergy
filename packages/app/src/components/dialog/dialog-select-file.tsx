@@ -3,30 +3,29 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
-import { useParams } from "@solidjs/router"
-import { createMemo } from "solid-js"
-import { useLayout } from "@/context/layout"
 import { useFile } from "@/context/file"
 
-export function DialogSelectFile() {
-  const layout = useLayout()
+export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
   const file = useFile()
   const dialog = useDialog()
-  const params = useParams()
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
   return (
     <Dialog title="Select file" size="list">
       <List
         search={{ placeholder: "Search files", autofocus: true }}
         emptyMessage="No files found"
-        items={file.searchFiles}
+        items={(query) =>
+          file
+            .searchFiles(query)
+            .then((response) =>
+              (response?.items ?? [])
+                .filter((item) => item.kind === "file" && item.type === "file")
+                .map((item) => item.path),
+            )
+        }
         key={(x) => x}
         onSelect={(path) => {
           if (path) {
-            const value = file.tab(path)
-            tabs().open(value)
-            file.load(path)
+            props.onSelect?.(path)
           }
           dialog.close()
         }}

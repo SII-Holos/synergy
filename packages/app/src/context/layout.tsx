@@ -1149,7 +1149,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       surface(sessionKey: string, surface: WorkbenchPanelSurface) {
         touch(sessionKey)
-        const current = createMemo(() => store.workbenchSurfaces[sessionKey]?.[surface] ?? {})
+        const current = () => store.workbenchSurfaces[sessionKey]?.[surface] ?? {}
         const sizeDefault = () =>
           surface === "side" ? computeDefaultWorkspaceWidth(window.innerWidth) : BOTTOM_SPACE_DEFAULT_HEIGHT
 
@@ -1168,14 +1168,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
 
         return {
-          opened: createMemo(() => current().opened === true),
-          active: createMemo(() => current().active),
-          tabs: createMemo(() => current().tabs ?? []),
-          activeTab: createMemo(() => (current().tabs ?? []).find((tab) => tab.id === current().active)),
-          size: createMemo(() => {
+          opened: () => current().opened === true,
+          active: () => current().active,
+          tabs: () => current().tabs ?? [],
+          activeTab: () => (current().tabs ?? []).find((tab) => tab.id === current().active),
+          size: () => {
             const state = current()
             return state.resized && typeof state.size === "number" ? state.size : sizeDefault()
-          }),
+          },
           open() {
             ensureSurface()
             setStore("workbenchSurfaces", sessionKey, surface, "opened", true)
@@ -1202,6 +1202,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             setStore("workbenchSurfaces", sessionKey, surface, "resized", true)
           },
         }
+      },
+      transferWorkbenchState(from: string, to: string) {
+        if (from === to) return
+        const source = store.workbenchSurfaces[from]
+        if (!source) return
+        const target = store.workbenchSurfaces[to]
+        const targetHasTabs = [target?.side, target?.bottom].some((surface) => (surface?.tabs?.length ?? 0) > 0)
+        if (targetHasTabs) return
+        setStore(
+          produce((draft) => {
+            draft.workbenchSurfaces[to] = source
+            delete draft.workbenchSurfaces[from]
+          }),
+        )
       },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),
@@ -1268,6 +1282,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             }
           },
           setAll(all: string[]) {
+            all = all.includes("context") ? ["context"] : []
             if (!store.sessionTabs[sessionKey]) {
               setStore("sessionTabs", sessionKey, { all, active: undefined })
             } else {
@@ -1275,33 +1290,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             }
           },
           async open(tab: string) {
+            if (tab !== "context") return
             const current = store.sessionTabs[sessionKey] ?? { all: [] }
-
-            if (tab === "context") {
-              const all = [tab, ...current.all.filter((x) => x !== tab)]
-              if (!store.sessionTabs[sessionKey]) {
-                setStore("sessionTabs", sessionKey, { all, active: tab })
-                return
-              }
-              setStore("sessionTabs", sessionKey, "all", all)
-              setStore("sessionTabs", sessionKey, "active", tab)
-              return
-            }
-
-            if (!current.all.includes(tab)) {
-              if (!store.sessionTabs[sessionKey]) {
-                setStore("sessionTabs", sessionKey, { all: [tab], active: tab })
-                return
-              }
-              setStore("sessionTabs", sessionKey, "all", [...current.all, tab])
-              setStore("sessionTabs", sessionKey, "active", tab)
-              return
-            }
-
+            const all = [tab, ...current.all.filter((x) => x === "context" && x !== tab)]
             if (!store.sessionTabs[sessionKey]) {
-              setStore("sessionTabs", sessionKey, { all: current.all, active: tab })
+              setStore("sessionTabs", sessionKey, { all, active: tab })
               return
             }
+            setStore("sessionTabs", sessionKey, "all", all)
             setStore("sessionTabs", sessionKey, "active", tab)
           },
           close(tab: string) {
@@ -1317,20 +1313,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               const next = all[index - 1] ?? all[0]
               setStore("sessionTabs", sessionKey, "active", next)
             })
-          },
-          move(tab: string, to: number) {
-            const current = store.sessionTabs[sessionKey]
-            if (!current) return
-            const index = current.all.findIndex((f) => f === tab)
-            if (index === -1) return
-            setStore(
-              "sessionTabs",
-              sessionKey,
-              "all",
-              produce((opened) => {
-                opened.splice(to, 0, opened.splice(index, 1)[0])
-              }),
-            )
           },
         }
       },

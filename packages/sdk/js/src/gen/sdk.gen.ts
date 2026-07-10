@@ -1227,6 +1227,7 @@ export class Files extends HeyApiClient {
       offset?: number
       limit?: number
       preview?: "true" | "false"
+      mode?: "range" | "document"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1242,6 +1243,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "offset" },
             { in: "query", key: "limit" },
             { in: "query", key: "preview" },
+            { in: "query", key: "mode" },
           ],
         },
       ],

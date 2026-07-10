@@ -252,9 +252,11 @@ a:active,
     .bg-surface-base\/70,
     .bg-surface-base\/62,
     .bg-surface-base\/55,
+    .bg-surface-base\/50,
     .bg-surface-base\/45,
     .bg-surface-base\/38,
-    .bg-surface-base\/34
+    .bg-surface-base\/34,
+    .bg-surface-weak\/40
   ) {
   background-color: var(--workbench-card-bg);
 }
@@ -311,7 +313,8 @@ a:active,
     .bg-surface-interactive-base\/10,
     .bg-surface-interactive-base\/8,
     .bg-surface-interactive-base\/5,
-    .bg-surface-interactive-selected-weak\/70
+    .bg-surface-interactive-selected-weak\/70,
+    .bg-surface-interactive-selected-weak\/40
   ) {
   background-color: var(--workbench-selected-bg);
 }

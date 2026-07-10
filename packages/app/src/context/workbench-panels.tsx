@@ -11,7 +11,12 @@ import {
   type WorkbenchPanelTab,
   type WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
-import { closeWorkbenchPanelTab, openWorkbenchPanelTab } from "./workbench-panels-model"
+import {
+  closeWorkbenchPanelTab,
+  moveWorkbenchPanelTab,
+  openWorkbenchPanelTab,
+  updateWorkbenchPanelTab,
+} from "./workbench-panels-model"
 
 export interface OpenWorkbenchPanelOptions {
   forceNew?: boolean
@@ -40,11 +45,25 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const entries = (surfaceName: WorkbenchPanelSurface) =>
       createMemo(() => {
         registryVersion()
-        return listWorkbenchPanels(surfaceName).filter((entry) => !entry.requiresSession || hasSession())
+        return listWorkbenchPanels(surfaceName).filter(
+          (entry) => !entry.requiresSession || hasSession() || entry.supportsDraftSession,
+        )
       })
 
     const sideEntries = entries("side")
     const bottomEntries = entries("bottom")
+    let previousSessionKey = sessionKey()
+    let previousSessionID = params.id
+
+    createEffect(() => {
+      const next = sessionKey()
+      const nextSessionID = params.id
+      if (previousSessionKey !== next && !previousSessionID && nextSessionID) {
+        layout.transferWorkbenchState(previousSessionKey, next)
+      }
+      previousSessionKey = next
+      previousSessionID = nextSessionID
+    })
 
     function createTabId(panelId: string) {
       nextTabIndex += 1
@@ -55,7 +74,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       registryVersion()
       const entry = getWorkbenchPanel(panelId)
       if (!entry) return undefined
-      if (entry.requiresSession && !hasSession()) return undefined
+      if (entry.requiresSession && !hasSession() && !entry.supportsDraftSession) return undefined
       return entry
     }
 
@@ -108,31 +127,37 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       }
     }
 
+    function updateTab(tabId: string, patch: Omit<WorkbenchPanelTabInit, "id">) {
+      for (const surfaceName of ["side", "bottom"] as const) {
+        const target = surface(surfaceName)
+        const next = updateWorkbenchPanelTab(target.tabs(), tabId, patch)
+        if (next === target.tabs()) continue
+        target.setTabs(next)
+        return
+      }
+    }
+
+    function moveTab(surfaceName: WorkbenchPanelSurface, tabId: string, index: number) {
+      const target = surface(surfaceName)
+      const next = moveWorkbenchPanelTab(target.tabs(), tabId, index)
+      if (next === target.tabs()) return
+      target.setTabs(next)
+    }
+
     function panelTitle(tab: WorkbenchPanelTab) {
+      registryVersion()
       const entry = getWorkbenchPanel(tab.panelId)
-      return entry?.title?.(tab) ?? tab.title ?? entry?.label ?? "Panel"
+      const siblings = (["side", "bottom"] as const)
+        .map((surfaceName) => surface(surfaceName).tabs())
+        .find((tabs) => tabs.some((candidate) => candidate.id === tab.id))
+      return entry?.title?.(tab, siblings ?? []) ?? tab.title ?? entry?.label ?? "Panel"
     }
 
     function panelForTab(tab: WorkbenchPanelTab | undefined) {
+      registryVersion()
       if (!tab) return undefined
       return getWorkbenchPanel(tab.panelId)
     }
-
-    createEffect(() => {
-      for (const surfaceName of ["side", "bottom"] as const) {
-        const target = surface(surfaceName)
-        const visible = new Set((surfaceName === "side" ? sideEntries() : bottomEntries()).map((entry) => entry.id))
-        const currentTabs = target.tabs()
-        const nextTabs = currentTabs.filter((tab) => visible.has(tab.panelId))
-        if (nextTabs.length === currentTabs.length) continue
-
-        target.setTabs(nextTabs)
-        if (!nextTabs.some((tab) => tab.id === target.active())) {
-          target.setActive(nextTabs[0]?.id)
-        }
-        if (nextTabs.length === 0) target.close()
-      }
-    })
 
     return {
       surface,
@@ -144,6 +169,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       panelTitle,
       openPanel,
       closeTab,
+      updateTab,
+      moveTab,
     }
   },
 })

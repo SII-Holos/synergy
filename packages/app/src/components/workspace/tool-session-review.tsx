@@ -1,11 +1,11 @@
 import { Show, createEffect, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { SessionReviewTab } from "@/components/session"
-import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import { useFile } from "@/context/file"
 
 export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
   const params = useParams()
@@ -13,7 +13,6 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
   const layout = useLayout()
   const file = useFile()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
   const view = createMemo(() => layout.view(sessionKey()))
   const turnDiffs = createMemo(() => {
     const sessionID = params.id
@@ -52,11 +51,7 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
             diffStyle={layout.review.diffStyle()}
             onDiffStyleChange={layout.review.setDiffStyle}
             selectedFile={selectedFile}
-            onViewFile={(path) => {
-              const value = file.tab(path)
-              tabs().open(value)
-              file.load(path)
-            }}
+            onViewFile={(path) => void file.openWorkspaceFile(path)}
           />
         )
       }}
