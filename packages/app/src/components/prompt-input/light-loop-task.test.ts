@@ -11,7 +11,6 @@ describe("Light Loop task description", () => {
         sessions: [],
         fileAttachments: [],
         contextItems: [],
-        activeTabIncluded: false,
       }),
     ).toBeUndefined()
   })
@@ -41,13 +40,10 @@ describe("Light Loop task description", () => {
         },
       ],
       contextItems: [{ type: "file", path: "src/context.ts" }],
-      activeFile: "src/active.ts",
-      activeTabIncluded: true,
     })
 
     expect(task).toContain("Finish the implementation")
     expect(task).toContain("File: src/app.ts lines 3-9")
-    expect(task).toContain("Active file: src/active.ts")
     expect(task).toContain("Context file: src/context.ts")
     expect(task).toContain("Attachment: trace.log (text/plain)")
     expect(task).toContain("Note: Plan (note_1)")

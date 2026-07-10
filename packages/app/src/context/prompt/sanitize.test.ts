@@ -54,7 +54,6 @@ describe("prompt sanitization", () => {
 
   test("sanitizes valid context items and drops invalid ones", () => {
     const context = sanitizePromptContextValue({
-      activeTab: false,
       items: [
         { type: "file", path: "src/app.ts", selection: { startLine: 1, startChar: 2, endLine: 3, endChar: 4 } },
         { type: "file", path: "" },
@@ -63,13 +62,13 @@ describe("prompt sanitization", () => {
     })
 
     expect(context).toEqual({
-      activeTab: false,
       items: [{ type: "file", path: "src/app.ts", selection: { startLine: 1, startChar: 2, endLine: 3, endChar: 4 } }],
     })
   })
 
-  test("defaults malformed context to active tab with no explicit items", () => {
-    expect(sanitizePromptContextValue("bad")).toEqual({ activeTab: true, items: [] })
+  test("drops unrecognized context fields", () => {
+    expect(sanitizePromptContextValue({ ignored: true, items: [] })).toEqual({ items: [] })
+    expect(sanitizePromptContextValue("bad")).toEqual({ items: [] })
   })
 
   test("dropped file part with empty path", () => {
@@ -101,7 +100,6 @@ describe("prompt sanitization", () => {
 
   test("non-finite selection numbers are defaulted to 0", () => {
     const context = sanitizePromptContextValue({
-      activeTab: false,
       items: [
         {
           type: "file",
@@ -112,14 +110,8 @@ describe("prompt sanitization", () => {
     })
 
     expect(context).toEqual({
-      activeTab: false,
       items: [{ type: "file", path: "src/bad.ts", selection: { startLine: 0, startChar: 0, endLine: 0, endChar: 0 } }],
     })
-  })
-
-  test("non-boolean activeTab defaults to true", () => {
-    const context = sanitizePromptContextValue({ activeTab: "yes", items: [] })
-    expect(context).toEqual({ activeTab: true, items: [] })
   })
 
   test("sanitizePromptValue defaults to empty text for completely invalid input", () => {

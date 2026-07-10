@@ -61,9 +61,8 @@ export function sanitizeContextItemsValue(value: unknown): Record<string, unknow
 }
 
 export function sanitizePromptContextValue(value: unknown) {
-  if (!isRecord(value)) return { activeTab: true, items: [] }
+  if (!isRecord(value)) return { items: [] }
   return {
-    activeTab: typeof value.activeTab === "boolean" ? value.activeTab : true,
     items: sanitizeContextItemsValue(value.items),
   }
 }

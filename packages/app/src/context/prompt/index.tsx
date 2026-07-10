@@ -139,7 +139,6 @@ export function sanitizePrompt(value: unknown): Prompt {
 }
 
 export type PromptContextSnapshot = {
-  activeTab: boolean
   items: ContextItem[]
 }
 
@@ -168,7 +167,6 @@ export function sanitizeContextItems(value: unknown): ContextItem[] {
 export function sanitizePromptContext(value: unknown): PromptContextSnapshot {
   const context = sanitizePromptContextValue(value)
   return {
-    activeTab: context.activeTab,
     items: sanitizeContextItems(context.items),
   }
 }
@@ -192,14 +190,12 @@ function createPromptSession(dir: string, id: string | undefined) {
       prompt: Prompt
       cursor?: number
       context: {
-        activeTab: boolean
         items: (ContextItem & { key: string })[]
       }
     }>({
       prompt: clonePrompt(DEFAULT_PROMPT),
       cursor: undefined,
       context: {
-        activeTab: true,
         items: [],
       },
     }),
@@ -211,14 +207,7 @@ function createPromptSession(dir: string, id: string | undefined) {
     cursor: createMemo(() => store.cursor),
     dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
     context: {
-      activeTab: createMemo(() => store.context.activeTab),
       items: createMemo(() => store.context.items),
-      addActive() {
-        setStore("context", "activeTab", true)
-      },
-      removeActive() {
-        setStore("context", "activeTab", false)
-      },
       add(item: ContextItem) {
         const sanitized = sanitizeContextItems([item])[0]
         if (!sanitized) return
@@ -229,12 +218,11 @@ function createPromptSession(dir: string, id: string | undefined) {
       set(context: PromptContextSnapshot) {
         const next = sanitizePromptContext(context)
         setStore("context", {
-          activeTab: next.activeTab,
           items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })),
         })
       },
       reset() {
-        setStore("context", { activeTab: true, items: [] })
+        setStore("context", { items: [] })
       },
       remove(key: string) {
         setStore("context", "items", (items) => items.filter((x) => x.key !== key))
@@ -257,7 +245,7 @@ function createPromptSession(dir: string, id: string | undefined) {
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
-        setStore("context", { activeTab: true, items: [] })
+        setStore("context", { items: [] })
       })
     },
   }
@@ -316,10 +304,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       cursor: () => session().cursor(),
       dirty: () => session().dirty(),
       context: {
-        activeTab: () => session().context.activeTab(),
         items: () => session().context.items(),
-        addActive: () => session().context.addActive(),
-        removeActive: () => session().context.removeActive(),
         add: (item: ContextItem) => session().context.add(item),
         set: (context: PromptContextSnapshot) => session().context.set(context),
         reset: () => session().context.reset(),

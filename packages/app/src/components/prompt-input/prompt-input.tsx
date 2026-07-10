@@ -178,7 +178,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
-  const activeFile = createMemo(() => files.activePath())
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
@@ -1454,7 +1453,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
-    activeFile,
     selectedControlProfile,
     pendingPlan,
     clearPendingPlan: () => setPendingPlan(false),
@@ -1557,37 +1555,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </div>
         </Show>
-        <Show when={prompt.context.items().length > 0 || !!activeFile()}>
+        <Show when={prompt.context.items().length > 0}>
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
-            <Show when={prompt.context.activeTab() ? activeFile() : undefined}>
-              {(path) => (
-                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
-                  <FileIcon node={{ path: path(), type: "file" }} class="shrink-0 size-4" />
-                  <div class="flex items-center text-12-regular min-w-0">
-                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(path())}</span>
-                    <span class="text-text-strong whitespace-nowrap">{getFilename(path())}</span>
-                    <span class="text-text-weak whitespace-nowrap ml-1">active</span>
-                  </div>
-                  <IconButton
-                    type="button"
-                    icon={getSemanticIcon("action.close")}
-                    variant="ghost"
-                    class="h-6 w-6"
-                    onClick={() => prompt.context.removeActive()}
-                  />
-                </div>
-              )}
-            </Show>
-            <Show when={!prompt.context.activeTab() && !!activeFile()}>
-              <button
-                type="button"
-                class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base text-12-regular text-text-weak hover:bg-surface-raised-base-hover"
-                onClick={() => prompt.context.addActive()}
-              >
-                <Icon name={getSemanticIcon("action.add")} size="small" />
-                <span>Include active file</span>
-              </button>
-            </Show>
             <For each={prompt.context.items()}>
               {(item) => (
                 <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">

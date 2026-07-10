@@ -30,8 +30,6 @@ export function buildLightLoopTaskDescription(input: {
   sessions: SessionAttachmentPart[]
   fileAttachments: FileAttachmentPart[]
   contextItems: ContextItem[]
-  activeFile?: string
-  activeTabIncluded: boolean
 }) {
   const task = input.text.trim()
   if (!task) return undefined
@@ -39,9 +37,6 @@ export function buildLightLoopTaskDescription(input: {
   const context: string[] = []
   for (const file of input.fileAttachments) {
     context.push(`File: ${file.path}${fileSelectionText(file.selection)}`)
-  }
-  if (input.activeFile && input.activeTabIncluded) {
-    context.push(`Active file: ${input.activeFile}`)
   }
   for (const item of input.contextItems) {
     if (item.type === "file") context.push(`Context file: ${item.path}${fileSelectionText(item.selection)}`)
