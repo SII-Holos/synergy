@@ -4,7 +4,7 @@ import {
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
   updateWorkbenchPanelTab,
-} from "./workbench-panels-model"
+} from "./panel-model"
 
 describe("openWorkbenchPanelTab", () => {
   test("exclusive panels replace existing tabs", () => {

@@ -1,4 +1,4 @@
-import type { NavEntry, NavListState, ScopeNavEntry } from "./layout"
+import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import type { NavEntry, NavListState, ScopeNavEntry } from "./layout"
+import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
 import {
   applySessionToNavList,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
   removeScopeFromIndex,
-} from "./layout-nav"
+} from "./nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
   return {

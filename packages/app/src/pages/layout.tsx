@@ -20,12 +20,14 @@ import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
 import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
-import { MobileDrawer } from "@/components/mobile-drawer"
-import { MobileToolsDrawer } from "@/components/mobile-tools-drawer"
-import { ConnectionBanner } from "@/components/connection-banner"
-import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
-import { DesktopNativeTitlebar } from "@/components/desktop-native-titlebar"
-import { desktopWindowNativeChromeActive } from "@/components/desktop-window-chrome-model"
+import {
+  ConnectionBanner,
+  DesktopNativeTitlebar,
+  DesktopWindowChrome,
+  MobileDrawer,
+  MobileToolsDrawer,
+  desktopWindowNativeChromeActive,
+} from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 
 export default function Layout(props: ParentProps) {

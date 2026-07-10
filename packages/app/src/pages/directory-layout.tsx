@@ -4,7 +4,7 @@ import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
-import { WorkbenchPanelsProvider } from "@/context/workbench-panels"
+import { WorkbenchPanelsProvider } from "@/context/workbench"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"

@@ -4,7 +4,7 @@ import {
   resolveSubsessionStatus,
   subsessionCursorParams,
   subsessionRangeLabel,
-} from "./status-bar-subsession"
+} from "./subsession"
 
 describe("status bar subsession helpers", () => {
   test("formats paginated ranges", () => {

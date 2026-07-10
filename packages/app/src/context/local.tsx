@@ -9,8 +9,8 @@ import { useSync } from "./sync"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
-import { createModelVariantSession } from "./model-variant"
-import * as ComposerIntent from "./composer-intent"
+import { createModelVariantSession } from "./prompt/model-variant"
+import * as ComposerIntent from "./prompt/composer-intent"
 
 export type TextSelection = { startLine: number; startChar: number; endLine: number; endChar: number }
 

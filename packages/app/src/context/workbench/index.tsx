@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { useLayout } from "./layout"
+import { useLayout } from "../layout"
 import {
   getWorkbenchPanel,
   listWorkbenchPanels,
@@ -16,7 +16,7 @@ import {
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
   updateWorkbenchPanelTab,
-} from "./workbench-panels-model"
+} from "./panel-model"
 
 export interface OpenWorkbenchPanelOptions {
   forceNew?: boolean

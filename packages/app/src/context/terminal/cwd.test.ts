@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { resolveTerminalCwd } from "./terminal-cwd"
+import { resolveTerminalCwd } from "./cwd"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 function sessionWithWorkspace(type: string, path: string, overrides?: Partial<Session>): Session {

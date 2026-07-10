@@ -55,7 +55,7 @@ import {
   type NoteDirtyField,
   type NoteDirtyRevisions,
 } from "@/components/note/note-sync"
-import "./note-panel.css"
+import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
 

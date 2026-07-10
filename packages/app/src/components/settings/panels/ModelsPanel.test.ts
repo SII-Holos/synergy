@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 const modelRoleRow = await Bun.file(new URL("../components/ModelRoleRow.tsx", import.meta.url)).text()
 const modelRoleDraft = await Bun.file(new URL("../model-role-draft.ts", import.meta.url)).text()
 const modelsPanel = await Bun.file(new URL("./ModelsPanel.tsx", import.meta.url)).text()
-const modelManager = await Bun.file(new URL("../../model-manager.tsx", import.meta.url)).text()
+const modelManager = await Bun.file(new URL("../../provider/model-manager.tsx", import.meta.url)).text()
 
 describe("Models panel UI contract", () => {
   test("uses compact popover model pickers instead of native role selects", () => {

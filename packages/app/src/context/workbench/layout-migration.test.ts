@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { migrateWorkbenchLayout } from "./workbench-layout-migration"
+import { migrateWorkbenchLayout } from "./layout-migration"
 
 describe("migrateWorkbenchLayout", () => {
   test("migrates old workspace session state into side surface tabs", () => {

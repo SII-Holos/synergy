@@ -7,7 +7,7 @@ import {
   clampWorkspaceWidth,
   computeDefaultWorkspaceWidth,
   computeMaxWorkspaceWidth,
-} from "./workspace-layout"
+} from "./workspace"
 
 describe("workspace layout constants", () => {
   test("uses a wider default workspace", () => {

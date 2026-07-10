@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makePersisted, type SyncStorage } from "@solid-primitives/storage"
-import { createScrollPersistence } from "./layout-scroll"
+import { createScrollPersistence } from "./scroll"
 
 describe("createScrollPersistence", () => {
   test("debounces persisted scroll writes", async () => {

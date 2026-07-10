@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { sanitizePromptContextValue, sanitizePromptValue } from "./prompt-sanitize"
+import { sanitizePromptContextValue, sanitizePromptValue } from "./sanitize"
 
 describe("prompt sanitization", () => {
   test("removes legacy image parts and data URL attachments", () => {

@@ -15,8 +15,8 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { useWorkbenchPanels } from "@/context/workbench-panels"
-import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import type {
   WorkbenchPanelContentProps,
   WorkbenchPanelEntry,

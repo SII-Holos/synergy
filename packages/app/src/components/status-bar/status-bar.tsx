@@ -7,7 +7,7 @@ import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
-import { ContextBar } from "@/components/context-bar"
+import { ContextBar } from "./context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -18,7 +18,7 @@ import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
+import { resolveRuntimeIconState, runtimeLabel } from "./runtime"
 import {
   normalizeSubsessionSearch,
   resolveSubsessionStatus,
@@ -26,7 +26,7 @@ import {
   subsessionCursorParams,
   subsessionRangeLabel,
   type SubsessionCursor,
-} from "./status-bar-subsession"
+} from "./subsession"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {

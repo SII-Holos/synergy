@@ -3,7 +3,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { SettingsDialog } from "@/components/settings"
-import { QuickSwitcherList } from "@/components/model-manager"
+import { QuickSwitcherList } from "@/components/provider/model-manager"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 

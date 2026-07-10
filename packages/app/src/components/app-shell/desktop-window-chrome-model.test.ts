@@ -4,7 +4,7 @@ import {
   desktopWindowNativeChromeActive,
   desktopWindowToggleIcon,
   desktopWindowToggleLabel,
-} from "@/components/desktop-window-chrome-model"
+} from "./desktop-window-chrome-model"
 
 describe("desktop window chrome model", () => {
   test("shows only for desktop shells with a window bridge", () => {

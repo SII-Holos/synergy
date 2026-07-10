@@ -1,5 +1,5 @@
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
-import type { WorkbenchSurfaceState } from "./workbench-panels-model"
+import type { WorkbenchSurfaceState } from "./panel-model"
 
 type WorkbenchSurfaceLayoutState = WorkbenchSurfaceState
 

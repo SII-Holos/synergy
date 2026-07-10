@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
+import { resolveRuntimeIconState, runtimeLabel } from "./runtime"
 
 describe("status bar runtime state", () => {
   test("shows retry as a danger state with error tooltip and copy text", () => {

@@ -9,7 +9,7 @@ import {
   sanitizePromptContextValue,
   sanitizePromptStateValue,
   sanitizePromptValue,
-} from "./prompt-sanitize"
+} from "./sanitize"
 
 interface PartBase {
   content: string

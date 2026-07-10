@@ -1,9 +1,9 @@
-import { resolveTerminalCwd } from "./terminal-cwd"
+import { resolveTerminalCwd } from "./cwd"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { useSDK } from "./sdk"
+import { useSDK } from "../sdk"
 import { Persist, persisted } from "@/utils/persist"
 
 export type LocalPTY = {

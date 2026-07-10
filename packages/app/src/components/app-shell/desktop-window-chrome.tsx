@@ -8,7 +8,7 @@ import {
   desktopWindowChromeVisible,
   desktopWindowToggleIcon,
   desktopWindowToggleLabel,
-} from "@/components/desktop-window-chrome-model"
+} from "./desktop-window-chrome-model"
 import "./desktop-window-chrome.css"
 
 export function DesktopWindowChrome() {

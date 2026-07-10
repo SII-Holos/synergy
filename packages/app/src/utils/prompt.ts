@@ -1,5 +1,5 @@
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
-import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt-sanitize"
+import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt/sanitize"
 
 type FileSelection = {
   startLine: number

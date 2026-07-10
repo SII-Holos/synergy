@@ -15,8 +15,12 @@ const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", 
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
-const nativeTitlebarCss = await Bun.file(new URL("./components/desktop-native-titlebar.css", import.meta.url)).text()
-const nativeTitlebar = await Bun.file(new URL("./components/desktop-native-titlebar.tsx", import.meta.url)).text()
+const nativeTitlebarCss = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.css", import.meta.url),
+).text()
+const nativeTitlebar = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.tsx", import.meta.url),
+).text()
 const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-top-bar.css", import.meta.url)).text()
 const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
@@ -24,7 +28,7 @@ const workbenchSurface = await Bun.file(new URL("./components/workspace/workbenc
 const workbenchSurfaceCss = await Bun.file(
   new URL("./components/workspace/workbench-surface.css", import.meta.url),
 ).text()
-const workbenchPanels = await Bun.file(new URL("./context/workbench-panels.tsx", import.meta.url)).text()
+const workbenchPanels = await Bun.file(new URL("./context/workbench/index.tsx", import.meta.url)).text()
 const builtinWorkbenchPanels = await Bun.file(
   new URL("./components/workspace/builtin-workbench-panels.tsx", import.meta.url),
 ).text()

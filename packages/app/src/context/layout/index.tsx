@@ -2,19 +2,19 @@ import { createStore, produce } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMediaQuery } from "@solid-primitives/media"
-import { useGlobalSync } from "./global-sync"
-import { useGlobalSDK } from "./global-sdk"
-import { useServer } from "./server"
+import { useGlobalSync } from "../global-sync"
+import { useGlobalSDK } from "../global-sdk"
+import { useServer } from "../server"
 import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
-import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
+import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
-import { computeDefaultWorkspaceWidth } from "./workspace-layout"
+import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
-import type { WorkbenchSurfaceState } from "./workbench-panels-model"
-import { migrateWorkbenchLayout } from "./workbench-layout-migration"
+import type { WorkbenchSurfaceState } from "../workbench/panel-model"
+import { migrateWorkbenchLayout } from "../workbench/layout-migration"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
@@ -22,7 +22,7 @@ import {
   navUpdateFromSession,
   orderNavEntries,
   removeScopeFromIndex,
-} from "./layout-nav"
+} from "./nav"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const

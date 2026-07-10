@@ -1,6 +1,6 @@
 import { Show } from "solid-js"
 import { usePlatform } from "@/context/platform"
-import { desktopWindowNativeChromeActive } from "@/components/desktop-window-chrome-model"
+import { desktopWindowNativeChromeActive } from "./desktop-window-chrome-model"
 import "./desktop-native-titlebar.css"
 
 export function DesktopNativeTitlebar() {
