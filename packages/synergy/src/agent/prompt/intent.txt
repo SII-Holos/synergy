@@ -17,7 +17,7 @@ Imagine a future user working on a similar task will search with a query like "H
 - Keep domain-specific technical terms exact: framework names, error codes, protocols, algorithms
 - Focus on the GOAL and CONDITIONS, not the step-by-step process
 - Structure: "[Action/Goal] [Target/Object] [Condition/Context]"
-- MAXIMUM 150 characters — no exceptions
+- MAXIMUM __INTENT_LIMIT__ characters — no exceptions
 - Single line, no line breaks
 - No markdown, no bullet points, no numbered lists, no code, no explanations
 - Never ask questions

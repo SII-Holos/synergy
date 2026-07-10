@@ -1,7 +1,5 @@
 import { stripXmlTags, isJunk, isAssistantReasoning, hasToolHallucination } from "./encoder-sanitize"
-
-const MIN_SCRIPT_LENGTH = 20
-const MIN_STEP_COUNT = 2
+import { SCRIPT_MIN_CHARS, SCRIPT_MIN_STEPS } from "./encoder-constants"
 
 type SanitizeReason = "ok" | "tool-hallucination" | "assistant-reasoning" | "junk" | "no-steps" | "too-few-steps"
 
@@ -26,8 +24,8 @@ export namespace Script {
     if (isAssistantReasoning(cleaned)) return "assistant-reasoning"
     if (isJunk(cleaned, 3)) return "junk"
     if (!STEP_LINE_RE.test(cleaned)) return "no-steps"
-    if (countSteps(cleaned) < MIN_STEP_COUNT) return "too-few-steps"
-    if (isJunk(cleaned, MIN_SCRIPT_LENGTH)) return "junk"
+    if (countSteps(cleaned) < SCRIPT_MIN_STEPS) return "too-few-steps"
+    if (isJunk(cleaned, SCRIPT_MIN_CHARS)) return "junk"
     return "ok"
   }
 

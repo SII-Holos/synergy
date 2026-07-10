@@ -1,7 +1,5 @@
 import { stripXmlTags, isJunk, isAssistantReasoning, hasToolHallucination, truncate } from "./encoder-sanitize"
-
-const MIN_INTENT_LENGTH = 10
-const MAX_INTENT_LENGTH = 300
+import { INTENT_MAX_CHARS, INTENT_MIN_CHARS } from "./encoder-constants"
 
 const TOOL_MARKER_RE = /\[Tool:\s*\w+/g
 const LOG_MARKER_RE = /\[Log\]\s+\w+/g
@@ -31,7 +29,7 @@ export namespace Intent {
     if (hasToolHallucination(cleaned)) return "tool-hallucination"
     if (hasExcessiveToolOutput(cleaned)) return "excessive-tool-output"
     if (isAssistantReasoning(cleaned)) return "assistant-reasoning"
-    if (isJunk(cleaned, MIN_INTENT_LENGTH)) return "junk"
+    if (isJunk(cleaned, INTENT_MIN_CHARS)) return "junk"
     return "ok"
   }
 
@@ -44,7 +42,7 @@ export namespace Intent {
     const reason = reasonFor(cleaned)
     if (reason === "ok") {
       return {
-        value: truncate(cleaned, MAX_INTENT_LENGTH),
+        value: truncate(cleaned, INTENT_MAX_CHARS),
         reason,
       }
     }
@@ -57,11 +55,11 @@ export namespace Intent {
 
   export function isValid(intent: string): boolean {
     const cleaned = clean(intent)
-    if (isJunk(cleaned, MIN_INTENT_LENGTH)) return false
+    if (isJunk(cleaned, INTENT_MIN_CHARS)) return false
     if (hasToolHallucination(cleaned)) return false
     if (hasExcessiveToolOutput(cleaned)) return false
     if (isAssistantReasoning(cleaned)) return false
-    if (cleaned.length > MAX_INTENT_LENGTH) return false
+    if (cleaned.length > INTENT_MAX_CHARS) return false
     return true
   }
 }
