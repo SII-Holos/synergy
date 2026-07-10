@@ -880,6 +880,7 @@ export type Scope = {
     url?: string
     color?: string
   }
+  pinned?: number
   time: {
     created: number
     updated: number
@@ -7526,6 +7527,7 @@ export type ScopeUpdateData = {
       url?: string
       color?: string
     }
+    pinned?: number | null
     archived?: number | null
   }
   path: {

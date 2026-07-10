@@ -102,96 +102,7 @@ export function Sidebar(props: SidebarProps) {
   const scopeWorktrees = createMemo(() => scopes().map((scope) => scope.worktree))
   const scopeByWorktree = createMemo(() => new Map(scopes().map((scope) => [scope.worktree, scope])))
 
-  let scopeListRef!: HTMLDivElement
-  let prevSnapshot = new Map<string, number>()
-
   onCleanup(subscribeNavigation(() => setNavigationRegistryVersion((version) => version + 1)))
-
-  createEffect(
-    on(
-      () => scopeWorktrees(),
-      () => {
-        const container = scopeListRef
-        if (!container) return
-
-        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        if (reduceMotion) return
-
-        requestAnimationFrame(() => {
-          const items = container.querySelectorAll<HTMLElement>("[data-scope-id]")
-          const newSnapshot = new Map<string, number>()
-          items.forEach((item) => {
-            const id = item.dataset.scopeId!
-            newSnapshot.set(id, item.getBoundingClientRect().top)
-          })
-
-          if (prevSnapshot.size === 0) {
-            prevSnapshot = newSnapshot
-            return
-          }
-
-          // Cancel any in-flight animations before starting new ones
-          items.forEach((it) => {
-            if (it.style.transition) {
-              it.style.transition = ""
-              it.style.transform = ""
-              it.style.opacity = ""
-            }
-          })
-          items.forEach((item) => {
-            const id = item.dataset.scopeId!
-            const oldY = prevSnapshot.get(id)
-            const newY = newSnapshot.get(id)
-
-            if (oldY === undefined) {
-              // New project: slide in from right + fade in
-              item.style.opacity = "0"
-              item.style.transform = "translateX(12px)"
-              item.style.transition = "none"
-              void item.offsetHeight // force reflow
-              item.style.transition =
-                "opacity 280ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 280ms cubic-bezier(0.05, 0.7, 0.1, 1)"
-              item.style.opacity = "1"
-              item.style.transform = "translateX(0)"
-              item.addEventListener(
-                "transitionend",
-                () => {
-                  item.style.transition = ""
-                  item.style.transform = ""
-                  item.style.opacity = ""
-                },
-                { once: true },
-              )
-              return
-            }
-
-            if (newY === undefined) return
-            const delta = oldY - newY
-            if (Math.abs(delta) < 0.5) return
-
-            // FLIP: invert -> play
-            item.style.transform = `translateY(${delta}px)`
-            item.style.transition = "none"
-            void item.offsetHeight
-            item.style.transition = "transform 300ms cubic-bezier(0.2, 0, 0, 1)"
-            item.style.transform = "translateY(0)"
-
-            item.addEventListener(
-              "transitionend",
-              () => {
-                item.style.transition = ""
-                item.style.transform = ""
-              },
-              { once: true },
-            )
-          })
-
-          prevSnapshot = newSnapshot
-        })
-      },
-      { defer: true },
-    ),
-  )
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
 
@@ -623,7 +534,7 @@ export function Sidebar(props: SidebarProps) {
               </div>
 
               <Show when={projectsSectionOpen()}>
-                <div ref={scopeListRef}>
+                <FlipList entries={scopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
                   <For each={scopeWorktrees()}>
                     {(worktree) => (
                       <SidebarProjectGroup
@@ -646,7 +557,7 @@ export function Sidebar(props: SidebarProps) {
                       />
                     )}
                   </For>
-                </div>
+                </FlipList>
               </Show>
             </div>
           </Show>
