@@ -29,4 +29,26 @@ describe("workflow tool visibility", () => {
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole("seat") })).toBeUndefined()
     }
   })
+
+  test("implementation tools are hidden from a boss session", () => {
+    const bossHidden = [
+      "task",
+      "task_cancel",
+      "task_list",
+      "task_output",
+      "dagwrite",
+      "dagpatch",
+      "revise_file",
+      "save_file",
+      "note_write",
+      "note_edit",
+    ]
+    for (const tool of bossHidden) {
+      expect(SessionModePolicy.visibility({ toolName: tool, session: withRole("boss") })).toBeDefined()
+      // Not a seat session = the seat role does not own these tools exclusively,
+      // but the boss role must never use them.  An unbound session can still
+      // see them.
+      expect(SessionModePolicy.visibility({ toolName: tool, session: withRole(undefined) })).toBeUndefined()
+    }
+  })
 })
