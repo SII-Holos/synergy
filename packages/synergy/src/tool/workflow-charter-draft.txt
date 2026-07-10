@@ -1,7 +1,26 @@
-Validate (and optionally persist) a Charter draft for Boss Mode.
+Validate (and optionally persist) a Charter — the data-only definition of a Boss Mode "company".
 
-Charters are data: seats, an entity state machine, guards from the fixed predicate
-library, effects from the fixed effect library, and human gates. This tool runs the
-layered validator (unknown predicate/effect, unreachable states, missing gate on
-external-write transitions, ...) and returns errors/warnings. Set persist=true to
-store a valid draft as a new charter version; a Boss can then instantiate it.
+A Charter has seats (persistent employee agents), an entity state machine, guards (from a
+FIXED predicate library), effects (from a FIXED effect library), and human gates. You compose
+these primitives; you cannot invent new guard/effect names.
+
+CRITICAL — how a charter actually drives work (most drafts get this wrong):
+- Entities enter `entityInitialState`. They can ONLY leave it via an `event` transition, because
+  no seat is assigned yet. So the FIRST transition out of the initial state MUST be
+  `trigger:{kind:"event"}` with effects that include `assign_entity` and usually `send_handoff`.
+  A charter whose transitions are all `intent` with no effects looks valid but is DEAD — nothing
+  ever dispatches to a seat and every entity sits in the backlog.
+- Trigger kinds: `event` fires automatically when its guards pass (engine-driven); `intent` is
+  submitted by a seat via workflow_submit (put allowedSeats on it); `gate` fires when the Boss
+  resolves the named human gate.
+- Typical shape per stage: an `event` transition hands the entity to seat X (send_handoff), then an
+  `intent` transition lets seat X report its result (workflow_submit), then the next `event`
+  transition (guarded on that submission) hands off to the next seat.
+
+The `blocked` state is added automatically if you omit it. The validator returns the available
+guard/effect names and concrete guidance when something is off — read them and retry; nothing is
+thrown, so iterate freely.
+
+Set persist=true to store a VALID draft as a new charter version; then instantiate it with
+workflow_run_create({ charterID }). For a standard code workflow you can skip authoring entirely:
+workflow_run_create with no charterID uses the built-in, battle-tested Issue → PR → Test charter.

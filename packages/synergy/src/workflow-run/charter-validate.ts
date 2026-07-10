@@ -3,15 +3,18 @@ import { WorkflowGuards } from "./guards"
 import { WorkflowTypes } from "./types"
 
 /**
- * Layered charter validation, mirroring Dag.validate's structure: hard errors
- * (unknown predicate/effect, unreachable states, dangling references),
- * auto-fixes, and semantic warnings (external-write effects without a gate,
- * missing budget, states with no exit). A draft is only instantiable when
- * `valid` is true.
+ * Layered charter validation, mirroring Dag.validate's forgiving structure:
+ * auto-fixes for mechanical omissions (missing `blocked` state), hard errors for
+ * things that make a run impossible or dead-on-arrival (unknown predicate/effect,
+ * dangling references, and — critically — a machine that never dispatches work to
+ * a seat), and warnings for the merely suspicious. `validate` returns a
+ * normalized draft with the auto-fixes applied so callers persist the corrected
+ * charter, not the raw input.
  */
 export namespace CharterValidate {
   export interface Draft {
     name: string
+    description?: string
     entityType: string
     entityInitialState: string
     states: string[]
@@ -27,22 +30,42 @@ export namespace CharterValidate {
     errors: string[]
     warnings: string[]
     fixes: string[]
+    /** The draft with auto-fixes applied; persist this, not the raw input. */
+    normalized: Draft
   }
 
+  /** Effects that move an entity onto a seat — a charter needs at least one. */
+  const DISPATCH_EFFECTS = new Set(["assign_entity", "send_handoff"])
   const EXTERNAL_WRITE_EFFECTS = new Set(["start_blueprint_loop"])
 
-  export function validate(draft: Draft): Result {
+  export function availableGuards(): string[] {
+    return WorkflowGuards.names().sort()
+  }
+
+  export function availableEffects(): string[] {
+    return WorkflowEffects.names().sort()
+  }
+
+  export function validate(input: Draft): Result {
     const errors: string[] = []
     const warnings: string[] = []
     const fixes: string[] = []
+
+    // Work on a shallow copy so auto-fixes don't mutate the caller's input.
+    const draft: Draft = { ...input, states: [...input.states], terminalStates: [...(input.terminalStates ?? [])] }
+
+    // --- Layer 0: auto-fixes (be forgiving about mechanical omissions) ---
+    if (!draft.states.includes(WorkflowTypes.BLOCKED_STATE)) {
+      draft.states.push(WorkflowTypes.BLOCKED_STATE)
+      fixes.push(
+        `added the reserved '${WorkflowTypes.BLOCKED_STATE}' state (required; the engine parks failed entities there)`,
+      )
+    }
 
     const states = new Set(draft.states)
     const seatNames = new Set(draft.seats.map((s) => s.name))
 
     // --- Layer 1: hard structural errors ---
-    if (!states.has(WorkflowTypes.BLOCKED_STATE)) {
-      errors.push(`states must include the reserved '${WorkflowTypes.BLOCKED_STATE}' state`)
-    }
     if (!states.has(draft.entityInitialState)) {
       errors.push(`entityInitialState '${draft.entityInitialState}' is not in states`)
     }
@@ -68,11 +91,42 @@ export namespace CharterValidate {
         if (!gate) errors.push(`transition '${t.id}' references undefined gate '${gateName}'`)
       }
       for (const guard of t.guards) {
-        if (!WorkflowGuards.has(guard.name)) errors.push(`transition '${t.id}' uses unknown predicate '${guard.name}'`)
+        if (!WorkflowGuards.has(guard.name)) {
+          errors.push(
+            `transition '${t.id}' uses unknown predicate '${guard.name}'. Available: ${availableGuards().join(", ")}`,
+          )
+        }
       }
       for (const effect of t.effects) {
-        if (!WorkflowEffects.has(effect.name)) errors.push(`transition '${t.id}' uses unknown effect '${effect.name}'`)
+        if (!WorkflowEffects.has(effect.name)) {
+          errors.push(
+            `transition '${t.id}' uses unknown effect '${effect.name}'. Available: ${availableEffects().join(", ")}`,
+          )
+        }
       }
+    }
+
+    // --- Layer 2: the "valid but dead" traps (the #1 authoring footgun) ---
+    // Entities enter the initial state and can only leave it via an EVENT
+    // transition (no seat is assigned yet, so an intent-only initial state can
+    // never fire). Without this, every enqueued entity sits in the backlog
+    // forever — a run that looks live but does nothing.
+    const initialEventTransitions = draft.transitions.filter(
+      (t) => t.from === draft.entityInitialState && t.trigger.kind === "event",
+    )
+    if (draft.transitions.length > 0 && initialEventTransitions.length === 0) {
+      errors.push(
+        `the initial state '${draft.entityInitialState}' has no outgoing event transition, so enqueued entities can never start. ` +
+          `Add an { trigger: { kind: "event" } } transition out of '${draft.entityInitialState}' whose effects include ` +
+          `assign_entity (and usually send_handoff) so the engine dispatches new entities to a seat automatically.`,
+      )
+    }
+    const dispatches = draft.transitions.some((t) => t.effects.some((e) => DISPATCH_EFFECTS.has(e.name)))
+    if (draft.transitions.length > 0 && !dispatches) {
+      errors.push(
+        `no transition dispatches work to a seat — add an assign_entity or send_handoff effect somewhere, ` +
+          `otherwise seats never receive tasks and entities never progress.`,
+      )
     }
 
     // --- Layer 1b: reachability ---
@@ -107,7 +161,7 @@ export namespace CharterValidate {
       }
     }
 
-    return { valid: errors.length === 0, errors, warnings, fixes }
+    return { valid: errors.length === 0, errors, warnings, fixes, normalized: draft }
   }
 
   function computeReachable(draft: Draft): Set<string> {

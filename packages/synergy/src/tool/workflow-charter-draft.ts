@@ -68,37 +68,62 @@ export const WorkflowCharterDraftTool = Tool.define("workflow_charter_draft", {
     }
 
     const result = CharterValidate.validate(draft)
-    const lines = [`Charter "${draft.name}" validation: ${result.valid ? "VALID" : "INVALID"}`]
-    if (result.errors.length) lines.push("", "Errors:", ...result.errors.map((e) => `  - ${e}`))
+    // Persist the auto-fixed draft (e.g. with the reserved 'blocked' state added).
+    const normalized = result.normalized
+    const lines = [`Charter "${normalized.name}" validation: ${result.valid ? "VALID" : "INVALID"}`]
+    if (result.fixes.length) lines.push("", "Auto-fixes applied:", ...result.fixes.map((f) => `  - ${f}`))
+    if (result.errors.length)
+      lines.push("", "Errors (must fix before persisting):", ...result.errors.map((e) => `  - ${e}`))
     if (result.warnings.length) lines.push("", "Warnings:", ...result.warnings.map((w) => `  - ${w}`))
-    if (result.fixes.length) lines.push("", "Auto-fixes:", ...result.fixes.map((f) => `  - ${f}`))
+
+    if (!result.valid) {
+      lines.push(
+        "",
+        "Reference — a working charter dispatches entities automatically:",
+        "  • The first transition out of the initial state must be trigger:{kind:'event'} with effects [assign_entity, send_handoff].",
+        "  • 'event' transitions fire automatically when their guards pass; 'intent' transitions are submitted by a seat via workflow_submit; 'gate' transitions fire when the Boss resolves a gate.",
+        `  • Available guard predicates: ${CharterValidate.availableGuards().join(", ")}`,
+        `  • Available effects: ${CharterValidate.availableEffects().join(", ")}`,
+        "  • For a common code flow you can skip authoring entirely: workflow_run_create with no charterID uses the built-in Issue → PR → Test charter.",
+      )
+    }
 
     let charterRef: { id: string; version: number } | undefined
-    if (params.persist) {
-      if (!result.valid) throw new Error("Cannot persist an invalid charter. Fix the errors above first.")
+    if (params.persist && result.valid) {
       const charter = await CharterStore.create({
         id: params.charterID,
-        name: draft.name,
-        entityType: draft.entityType,
-        entityInitialState: draft.entityInitialState,
-        states: draft.states,
-        terminalStates: draft.terminalStates,
-        seats: draft.seats,
-        transitions: draft.transitions,
-        gates: draft.gates,
-        budget: draft.budget,
+        name: normalized.name,
+        description: normalized.description,
+        entityType: normalized.entityType,
+        entityInitialState: normalized.entityInitialState,
+        states: normalized.states,
+        terminalStates: normalized.terminalStates,
+        seats: normalized.seats,
+        transitions: normalized.transitions,
+        gates: normalized.gates,
+        budget: normalized.budget,
       })
       charterRef = { id: charter.id, version: charter.version }
-      lines.push("", `Persisted as charter ${charter.id} v${charter.version}.`)
+      lines.push(
+        "",
+        `Persisted as charter ${charter.id} v${charter.version}. Instantiate it with workflow_run_create({ charterID: "${charter.id}" }).`,
+      )
+    } else if (params.persist && !result.valid) {
+      lines.push("", "Not persisted — fix the errors above and call workflow_charter_draft again.")
     }
 
     return {
-      title: result.valid ? "Charter valid" : "Charter invalid",
+      title: result.valid ? "Charter valid" : "Charter needs fixes",
       output: lines.join("\n"),
-      metadata: { valid: result.valid, errors: result.errors, warnings: result.warnings, charterRef } as Record<
-        string,
-        any
-      >,
+      metadata: {
+        valid: result.valid,
+        errors: result.errors,
+        warnings: result.warnings,
+        fixes: result.fixes,
+        charterRef,
+        availableGuards: CharterValidate.availableGuards(),
+        availableEffects: CharterValidate.availableEffects(),
+      } as Record<string, any>,
     }
   },
 })

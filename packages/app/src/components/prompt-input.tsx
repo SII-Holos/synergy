@@ -32,6 +32,7 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { useGlobalSync } from "@/context/global-sync"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
@@ -157,6 +158,7 @@ function WorkflowChip(props: {
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
+  const workbenchPanels = useWorkbenchPanels()
   const latticeDialog = useDialog()
   const globalSync = useGlobalSync()
   const sync = useSync()
@@ -686,6 +688,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     event?.preventDefault()
   }
 
+  // Boss Mode is a scope-level run rather than a session workflow, so its entry
+  // point is the Boss workbench panel (create/observe runs there) rather than a
+  // session-mode toggle.
+  const openBossPanel = (event?: Event) => {
+    event?.preventDefault()
+    void workbenchPanels.openPanel("boss")
+  }
+
   const selectPlanFromMenu = (event?: Event) => {
     if (blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive()) {
       event?.preventDefault()
@@ -859,6 +869,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               "opacity-60": latticeMenuState.ariaDisabled,
             },
             onSelect: selectLatticeFromMenu,
+          },
+          {
+            id: "boss-mode",
+            label: "Boss Mode",
+            description: "Run a team of agents; you supervise",
+            icon: "network",
+            selected: false,
+            onSelect: openBossPanel,
           },
         ],
       },
