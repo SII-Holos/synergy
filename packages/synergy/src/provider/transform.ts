@@ -391,7 +391,11 @@ export namespace ProviderTransform {
   }
 
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
-  const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+  const OPENAI_EFFORTS = ["none", ...WIDELY_SUPPORTED_EFFORTS, "xhigh", "max"]
+
+  function effortsFromModel(model: Provider.Model): string[] | undefined {
+    return model.capabilities.reasoning_options?.find((o) => o.type === "effort")?.values
+  }
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
@@ -422,10 +426,13 @@ export namespace ProviderTransform {
       case "@ai-sdk/azure":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/azure
         if (id === "o1-mini") return {}
-        const azureEfforts = ["low", "medium", "high"]
-        if (id.includes("gpt-5-") || id === "gpt-5") {
-          azureEfforts.unshift("minimal")
-        }
+        const azureEfforts =
+          effortsFromModel(model) ??
+          iife(() => {
+            const arr = ["low", "medium", "high"]
+            if (id.includes("gpt-5-") || id === "gpt-5") arr.unshift("minimal")
+            return arr
+          })
         return Object.fromEntries(
           azureEfforts.map((effort) => [
             effort,
@@ -439,20 +446,22 @@ export namespace ProviderTransform {
       case "@ai-sdk/openai":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/openai
         if (id === "gpt-5-pro") return {}
-        const openaiEfforts = iife(() => {
-          if (id.includes("codex")) return WIDELY_SUPPORTED_EFFORTS
-          const arr = [...WIDELY_SUPPORTED_EFFORTS]
-          if (id.includes("gpt-5-") || id === "gpt-5") {
-            arr.unshift("minimal")
-          }
-          if (model.release_date >= "2025-11-13") {
-            arr.unshift("none")
-          }
-          if (model.release_date >= "2025-12-04") {
-            arr.push("xhigh")
-          }
-          return arr
-        })
+        const openaiEfforts =
+          effortsFromModel(model) ??
+          iife(() => {
+            if (id.includes("codex")) return WIDELY_SUPPORTED_EFFORTS
+            const arr = [...WIDELY_SUPPORTED_EFFORTS]
+            if (id.includes("gpt-5-") || id === "gpt-5") {
+              arr.unshift("minimal")
+            }
+            if (model.release_date >= "2025-11-13") {
+              arr.unshift("none")
+            }
+            if (model.release_date >= "2025-12-04") {
+              arr.push("xhigh")
+            }
+            return arr
+          })
         return Object.fromEntries(
           openaiEfforts.map((effort) => [
             effort,
