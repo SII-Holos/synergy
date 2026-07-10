@@ -1,5 +1,6 @@
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
+import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { SessionInteraction } from "../session/interaction"
 import { Worktree } from "../project/worktree"
@@ -61,12 +62,7 @@ export namespace WorkflowSeats {
     // Per-seat worktree when the policy asks for one.
     if (def.worktree === "per_entity" || def.worktree === "shared") {
       try {
-        await Worktree.create({
-          sessionID,
-          name: `${run.title}-${seat}-${instance}`.slice(0, 60),
-          baseRef: "current",
-          bind: true,
-        })
+        await createSeatWorktree(sessionID, `${run.title}-${seat}-${instance}`.slice(0, 60))
       } catch (error) {
         log.warn("seat worktree create failed", { runID, seat, instance, error })
       }
@@ -125,6 +121,30 @@ export namespace WorkflowSeats {
 
   function emptyBinding(seat: string, instance: number): WorkflowTypes.SeatBinding {
     return { seat, instance, status: "unbound", lastEntityIDs: [] }
+  }
+
+  /**
+   * Create a worktree for a seat/entity session, bound to that session, without
+   * leaking the workspace switch into the caller's ambient context.
+   *
+   * Worktree.create(bind:true) calls ScopeContext.refreshWorkspace, which
+   * overlays the CURRENT async workspace frame. Seat worktrees are created inside
+   * another session's live turn (the Boss enqueues an entity → the engine
+   * assigns a seat), so without isolation that overlay repoints the Boss's own
+   * workspace and its next loop step refuses to continue "outside the session
+   * workspace". Running the create inside its own workspace frame confines the
+   * overlay; the seat session's persistent workspace (Session.updateWorkspace)
+   * is still set correctly and is what the seat uses on its own turns.
+   */
+  export async function createSeatWorktree(sessionID: string, name: string): Promise<void> {
+    const scope = ScopeContext.current.scope
+    const ambientWorkspace = ScopeContext.current.workspace
+    const run = () => Worktree.create({ sessionID, name, baseRef: "current", bind: true }).then(() => undefined)
+    if (!ambientWorkspace) {
+      await run()
+      return
+    }
+    await ScopeContext.provide({ scope, workspace: ambientWorkspace, fn: run })
   }
 
   /** Initialise seat bindings for a fresh run from the charter's seat defs. */

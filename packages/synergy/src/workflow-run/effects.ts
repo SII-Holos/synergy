@@ -334,18 +334,18 @@ export namespace WorkflowEffects {
     const entity = run.entities.find((e) => e.id === ctx.entityID)
     const sessionID = entity?.bindings.seatSessionID
     if (!sessionID) throw new Error("create_worktree requires an assigned seat session")
-    const { Worktree } = await import("../project/worktree")
-    const created = await Worktree.create({
-      sessionID,
-      name: `wf-${ctx.entityID}`.slice(0, 60),
-      baseRef: "current",
-      bind: true,
-    })
+    // Isolate the workspace switch so it does not leak into the Boss's live turn
+    // (see WorkflowSeats.createSeatWorktree). We need the created worktree id, so
+    // create unbound here and bind separately inside the seat's own context.
+    await WorkflowSeats.createSeatWorktree(sessionID, `wf-${ctx.entityID}`.slice(0, 60))
+    const { Session } = await import("../session")
+    const seatSession = await Session.get(sessionID)
+    const workspace = seatSession.workspace as Record<string, unknown> | undefined
     await WorkflowRunStore.update(ctx.scopeID, ctx.runID, (draft) => {
       const e = draft.entities.find((x) => x.id === ctx.entityID)
-      if (e) {
-        e.bindings.worktreeID = created.id
-        if (created.resolvedBaseCommit) e.bindings.baseCommit = created.resolvedBaseCommit
+      if (e && workspace) {
+        if (typeof workspace.worktreeID === "string") e.bindings.worktreeID = workspace.worktreeID
+        if (typeof workspace.resolvedBaseCommit === "string") e.bindings.baseCommit = workspace.resolvedBaseCommit
         e.time.updated = Date.now()
       }
     })
