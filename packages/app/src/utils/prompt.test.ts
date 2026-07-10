@@ -45,7 +45,6 @@ describe("prompt draft restore", () => {
         session,
       ],
       context: {
-        activeTab: false,
         items: [
           { type: "file", path: "src/context.ts", selection: { startLine: 1, startChar: 0, endLine: 3, endChar: 0 } },
         ],
@@ -63,44 +62,13 @@ describe("prompt draft restore", () => {
     expect(restored.context.items).not.toBe(snapshot.context.items)
   })
 
-  test("snapshot creation materializes active file context and disables active tab replay", () => {
-    const snapshot = createPromptDraftSnapshot({
-      prompt: [{ type: "text", content: "use file", start: 0, end: 8 }],
-      context: { activeTab: true, items: [] },
-      activeFile: "src/current.ts",
-    })
-
-    expect(snapshot.context).toEqual({
-      activeTab: false,
-      items: [{ type: "file", path: "src/current.ts", selection: undefined }],
-    })
-  })
-
-  test("snapshot creation preserves active tab when no active file exists", () => {
-    const snapshot = createPromptDraftSnapshot({
-      prompt: [{ type: "text", content: "hello", start: 0, end: 5 }],
-      context: { activeTab: true, items: [] },
-    })
-
-    expect(snapshot.context).toEqual({ activeTab: true, items: [] })
-  })
-
-  test("submit failure restore preserves the exact pre-submit active tab context", () => {
-    const undoSnapshot = createPromptDraftSnapshot({
-      prompt: [{ type: "text", content: "use file", start: 0, end: 8 }],
-      context: { activeTab: true, items: [] },
-      activeFile: "src/current.ts",
-    })
+  test("submit failure restore preserves explicit file context", () => {
     const failureSnapshot = createSubmitFailureRestoreSnapshot({
       prompt: [{ type: "text", content: "use file", start: 0, end: 8 }],
-      context: { activeTab: true, items: [] },
+      context: { items: [{ type: "file", path: "src/current.ts" }] },
     })
 
-    expect(undoSnapshot.context).toEqual({
-      activeTab: false,
-      items: [{ type: "file", path: "src/current.ts", selection: undefined }],
-    })
-    expect(failureSnapshot.context).toEqual({ activeTab: true, items: [] })
+    expect(failureSnapshot.context).toEqual({ items: [{ type: "file", path: "src/current.ts", selection: undefined }] })
   })
 
   test("invalid prompt draft metadata falls back without throwing", () => {
@@ -110,7 +78,7 @@ describe("prompt draft restore", () => {
     })
 
     expect(restored.prompt).toEqual([{ type: "text", content: "legacy", start: 0, end: 6 }])
-    expect(restored.context).toEqual({ activeTab: true, items: [] })
+    expect(restored.context).toEqual({ items: [] })
   })
 
   test("legacy fallback restores text and inline file references", () => {
@@ -221,7 +189,6 @@ describe("prompt draft restore", () => {
     const restored = extractPromptDraft({ parts, directory: "/repo" })
 
     expect(restored.context).toEqual({
-      activeTab: false,
       items: [
         { type: "file", path: "src/context.ts", selection: { startLine: 2, endLine: 4, startChar: 0, endChar: 0 } },
       ],
@@ -234,7 +201,7 @@ describe("prompt draft restore", () => {
     })
 
     expect(restored.prompt).toEqual([{ type: "text", content: "plain text", start: 0, end: 10 }])
-    expect(restored.context).toEqual({ activeTab: true, items: [] })
+    expect(restored.context).toEqual({ items: [] })
   })
 
   test("falls back to legacy when metadata has no promptDraft key", () => {
@@ -244,33 +211,13 @@ describe("prompt draft restore", () => {
     })
 
     expect(restored.prompt).toEqual([{ type: "text", content: "no draft", start: 0, end: 8 }])
-    expect(restored.context).toEqual({ activeTab: true, items: [] })
-  })
-
-  test("snapshot dedup: active file materialization skips duplicate context item path", () => {
-    const snapshot = createPromptDraftSnapshot({
-      prompt: [{ type: "text", content: "fix", start: 0, end: 3 }],
-      context: {
-        activeTab: true,
-        items: [{ type: "file", path: "src/app.ts" }],
-      },
-      activeFile: "src/app.ts",
-    })
-
-    expect(snapshot.context.activeTab).toBe(false)
-    expect(snapshot.context.items).toHaveLength(1)
-    expect(snapshot.context.items[0]).toEqual({
-      type: "file",
-      path: "src/app.ts",
-      selection: undefined,
-    })
+    expect(restored.context).toEqual({ items: [] })
   })
 
   test("snapshot dedup: same file with same selection from context items is collapsed", () => {
     const snapshot = createPromptDraftSnapshot({
       prompt: [{ type: "text", content: "dup", start: 0, end: 3 }],
       context: {
-        activeTab: false,
         items: [
           { type: "file", path: "src/app.ts", selection: { startLine: 5, startChar: 0, endLine: 10, endChar: 0 } },
           { type: "file", path: "src/app.ts", selection: { startLine: 5, startChar: 0, endLine: 10, endChar: 0 } },
@@ -287,7 +234,7 @@ describe("prompt draft restore", () => {
         { type: "text", content: "safe", start: 0, end: 4 },
         { type: "evil", payload: "malicious" } as unknown as never,
       ],
-      context: { activeTab: true, items: [] },
+      context: { items: [] },
     })
 
     expect(snapshot.prompt).toEqual([{ type: "text", content: "safe", start: 0, end: 4 }])
@@ -296,7 +243,7 @@ describe("prompt draft restore", () => {
   test("snapshot with note and session parts round-trips through extractPromptDraft", () => {
     const snapshot = createPromptDraftSnapshot({
       prompt: [{ type: "text", content: "doc", start: 0, end: 3 }, note, session],
-      context: { activeTab: true, items: [] },
+      context: { items: [] },
     })
 
     const restored = extractPromptDraft({
@@ -338,7 +285,7 @@ describe("prompt draft restore", () => {
     const restored = extractPromptDraft({ parts: [] })
 
     expect(restored.prompt).toEqual([{ type: "text", content: "", start: 0, end: 0 }])
-    expect(restored.context).toEqual({ activeTab: true, items: [] })
+    expect(restored.context).toEqual({ items: [] })
   })
 
   test("legacy fallback: no text part, only asset attachments", () => {
@@ -395,11 +342,10 @@ describe("prompt draft restore", () => {
     expect(restored.prompt.some((p) => p.type === "file")).toBe(true)
   })
 
-  test("extractPromptDraft preserves context items when snapshot has items and no activeFile", () => {
+  test("extractPromptDraft preserves explicit context items", () => {
     const snapshot = createPromptDraftSnapshot({
       prompt: [{ type: "text", content: "multi context", start: 0, end: 13 }],
       context: {
-        activeTab: false,
         items: [
           { type: "file", path: "src/a.ts" },
           { type: "file", path: "src/b.ts" },
@@ -415,7 +361,6 @@ describe("prompt draft restore", () => {
     expect(restored.context.items).toHaveLength(2)
     expect(restored.context.items[0].path).toBe("src/a.ts")
     expect(restored.context.items[1].path).toBe("src/b.ts")
-    expect(restored.context.activeTab).toBe(false)
   })
 
   test("legacy fallback: http attachment without text content", () => {

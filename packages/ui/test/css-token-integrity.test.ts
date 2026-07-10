@@ -21,7 +21,7 @@ const PHASE2_UI_FILES: FileSet[] = [
 ]
 
 const APP_FILES = [
-  "../app/src/components/quick-actions.css",
+  "../app/src/components/prompt-input/quick-actions.css",
   "../app/src/components/header-bar.css",
   "../app/src/components/context-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
@@ -273,7 +273,7 @@ describe("CSS Token Integrity", () => {
       "src/components/markdown.css",
       "src/components/session-resonance-popover.css",
       "src/components/diagram.css",
-      "../app/src/components/quick-actions.css",
+      "../app/src/components/prompt-input/quick-actions.css",
     ]
 
     const mustNotReappear = new Set([

@@ -1,7 +1,7 @@
 import { AppPanel } from "@/components/app-panel"
 import { PerformanceDashboard } from "./PerformanceDashboard"
-import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import "./performance-panel.css"
 
 export function PerformancePanel() {

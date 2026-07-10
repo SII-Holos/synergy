@@ -483,6 +483,25 @@
   color: var(--text-weak);
 }
 
+.settings-archive-control-text,
+.settings-archive-control-label {
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+}
+
+.settings-archive-control-text {
+  font-weight: var(--font-weight-regular);
+}
+
+.settings-archive-control-label {
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-archive-caption {
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
 .settings-update-status {
   display: flex;
   align-items: center;

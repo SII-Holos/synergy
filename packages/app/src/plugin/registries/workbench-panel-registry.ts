@@ -1,4 +1,4 @@
-import type { Component } from "solid-js"
+import type { Component, JSX } from "solid-js"
 import { SurfaceRegistry } from "@/surface/registry"
 import type { SurfaceEntry } from "@/surface/types"
 
@@ -31,12 +31,14 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   surface: WorkbenchPanelSurface
   cardinality: WorkbenchPanelCardinality
   requiresSession?: boolean
+  supportsDraftSession?: boolean
   component?: Component<WorkbenchPanelContentProps>
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
   exportName?: string
   createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | Promise<void>
-  title?: (tab: WorkbenchPanelTab) => string | undefined
+  title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined
+  tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
 }
 
 const registry = new SurfaceRegistry<WorkbenchPanelEntry>()

@@ -79,6 +79,7 @@ const builtinIconNames = [
   "folder-input",
   "folder-open",
   "folder-plus",
+  "folder-tree",
   "funnel",
   "gauge",
   "git-branch",

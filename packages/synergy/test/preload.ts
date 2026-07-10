@@ -55,7 +55,7 @@ process.env["SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH"] = "true"
 process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
 process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
 // Disable file watcher to avoid native module / inotify hangs in CI
-process.env["SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER"] = "true"
+process.env["SYNERGY_DISABLE_FILEWATCHER"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

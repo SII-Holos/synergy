@@ -1,4 +1,4 @@
-import { NotePanel } from "@/components/note-panel"
+import { NotePanel } from "@/components/note"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
 export function NotesWorkbenchContent(props: WorkbenchPanelContentProps) {

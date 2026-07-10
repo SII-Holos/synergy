@@ -1,5 +1,4 @@
-import { createMemo, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { type ParentProps } from "solid-js"
 import {
   ResourceOpenProvider as BaseResourceOpenProvider,
   type OpenableResource,
@@ -14,7 +13,6 @@ import {
 } from "@ericsanchezok/synergy-ui/attachment-card"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useFile } from "@/context/file"
-import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 
 function stripQueryAndHash(input: string) {
@@ -81,17 +79,11 @@ function previewImageForUrl(input: { url: string; mime?: string; filename?: stri
 export function ResourceOpenProvider(props: ParentProps) {
   const dialog = useDialog()
   const file = useFile()
-  const layout = useLayout()
-  const params = useParams()
   const sdk = useSDK()
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
 
   const openWorkspaceFile = (path: string) => {
     if (!path) return false
-    const tab = file.tab(path)
-    void tabs().open(tab)
-    void file.load(path)
+    void file.openWorkspaceFile(path)
     return true
   }
 

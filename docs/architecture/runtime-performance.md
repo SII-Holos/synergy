@@ -80,7 +80,9 @@ LLM 流式期间，每个 `text-delta` / `reasoning-delta` 触发以下完整管
 
 ### 2.7 已检查、确认无恙（排除嫌疑，避免重复排查）
 
-事件重放 journal 有界（`bus/sequencer.ts:23-25`，4096 条/5 分钟）；`util/lock.ts` 空锁即删；PerformanceStore 队列有界 + sqlite 250MB 上限 + 保留期删除；pty 输出 2MB 上限、指标 1s 节流（`process/pty.ts:148-166`，可作为 H1 修复的节流范式）；前端消息/part store 有 LRU 逐出（`app/src/context/global-sync.tsx:694-734`，#329 P3）；markdown HTML cache 有界；全项目 watcher 在实验 flag 后面（`file/watcher.ts:221`）；各类 setInterval 基本 `unref` 且成对清理。
+事件重放 journal 有界（`bus/sequencer.ts:23-25`，4096 条/5 分钟）；`util/lock.ts` 空锁即删；PerformanceStore 队列有界 + sqlite 250MB 上限 + 保留期删除；pty 输出 2MB 上限、指标 1s 节流（`process/pty.ts:148-166`，可作为 H1 修复的节流范式）；前端消息/part store 有 LRU 逐出（`app/src/context/global-sync.tsx`，#329 P3）；markdown HTML cache 有界；Project Scope 默认启用 workspace file watcher，`SYNERGY_DISABLE_FILEWATCHER` 是诊断逃生口；各类 setInterval 基本 `unref` 且成对清理。
+
+File workbench 采用分层有界模型：Server 的目录接口先对 `Dirent` 轻量过滤、目录优先自然排序和分页，只为当前页以固定 16 并发解析 Node；Git 状态请求构建一次 path map。Frontend 同一目录最多一个请求在途，目录请求并发 6、文档读取并发 3；文档内容最多 24 个或约 32 MiB，Monaco model 最多 12 个或约 24 MiB，Explorer 最多 25,000 个已加载节点。Tree 通过 `virtua/solid` 只挂载可视行与 10 行 overscan。Watcher 默认忽略 `.git`、`node_modules` 和构建产物等高成本路径，并按父目录 50 ms 合并事件；重新聚焦、手动刷新和重新展开目录仍会做验证，因此正确性不依赖 watcher 可用性。
 
 ---
 

@@ -10,10 +10,9 @@ import { createStore } from "solid-js/store"
 import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
 
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
-import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
+import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
-import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
@@ -28,11 +27,9 @@ import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
-import { getDraggableId } from "@/utils/solid-dnd"
 
 import { SessionReviewTab } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
-import { same } from "@/utils/same"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
@@ -42,10 +39,10 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
-import { TabsPanel } from "@/components/session/tabs-panel"
-import { useWorkbenchPanels } from "@/context/workbench-panels"
-import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { WorkbenchSurface } from "@/components/session/workbench-surface"
+import { SessionContextPanel } from "@/components/session/session-context-panel"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
 import {
@@ -137,59 +134,7 @@ function SessionPageContent() {
 
   const isDesktop = () => layout.isDesktop()
 
-  function normalizeTab(tab: string) {
-    if (!tab.startsWith("file://")) return tab
-    return file.tab(tab)
-  }
-
-  function normalizeTabs(list: string[]) {
-    const seen = new Set<string>()
-    const next: string[] = []
-    for (const item of list) {
-      const value = normalizeTab(item)
-      if (seen.has(value)) continue
-      seen.add(value)
-      next.push(value)
-    }
-    return next
-  }
-
-  const openTab = (value: string) => {
-    const next = normalizeTab(value)
-    tabs().open(next)
-
-    const path = file.pathFromTab(next)
-    if (path) file.load(path)
-  }
-
-  createEffect(() => {
-    const active = tabs().active()
-    if (!active) return
-
-    const path = file.pathFromTab(active)
-    if (path) file.load(path)
-  })
-
-  createEffect(() => {
-    const current = tabs().all()
-    if (current.length === 0) return
-
-    const next = normalizeTabs(current)
-    if (same(current, next)) return
-
-    tabs().setAll(next)
-
-    const active = tabs().active()
-    if (!active) return
-    if (!active.startsWith("file://")) return
-
-    const normalized = normalizeTab(active)
-    if (active === normalized) return
-    tabs().setActive(normalized)
-  })
-
   const [store, setStore] = createStore({
-    activeDraggable: undefined as string | undefined,
     messageId: undefined as string | undefined,
     turnStart: 0,
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
@@ -740,52 +685,14 @@ function SessionPageContent() {
     }
   }
 
-  const handleDragStart = (event: unknown) => {
-    const id = getDraggableId(event)
-    if (!id) return
-    setStore("activeDraggable", id)
-  }
-
-  const handleDragOver = (event: DragEvent) => {
-    const { draggable, droppable } = event
-    if (draggable && droppable) {
-      const currentTabs = tabs().all()
-      const fromIndex = currentTabs?.indexOf(draggable.id.toString())
-      const toIndex = currentTabs?.indexOf(droppable.id.toString())
-      if (fromIndex !== toIndex && toIndex !== undefined) {
-        tabs().move(draggable.id.toString(), toIndex)
-      }
-    }
-  }
-
-  const handleDragEnd = () => {
-    setStore("activeDraggable", undefined)
-  }
-
-  const contextOpen = createMemo(() => tabs().active() === "context" || tabs().all().includes("context"))
-  const openedTabs = createMemo(() =>
-    tabs()
-      .all()
-      .filter((tab) => tab !== "context"),
-  )
-
-  const showTabs = createMemo(() => (tabs().all()?.length ?? 0) > 0 || contextOpen())
-
-  const activeTab = createMemo(() => {
-    const active = tabs().active()
-    if (active) return active
-
-    const first = openedTabs()[0]
-    if (first) return first
-    if (contextOpen()) return "context"
-    return openedTabs()[0] ?? "context"
-  })
+  const contextOpen = createMemo(() => tabs().all().includes("context"))
+  const showTabs = contextOpen
 
   createEffect(() => {
     if (!layout.ready()) return
-    if (tabs().active()) return
-    if (openedTabs().length === 0 && !contextOpen()) return
-    tabs().setActive(activeTab())
+    if (!contextOpen()) return
+    if (tabs().active() === "context") return
+    tabs().setActive("context")
   })
 
   const isWorking = createMemo(() => status().type !== "idle")
@@ -994,13 +901,7 @@ function SessionPageContent() {
   createEffect(() => {
     if (!file.ready()) return
     handoff.files = Object.fromEntries(
-      tabs()
-        .all()
-        .flatMap((tab) => {
-          const path = file.pathFromTab(tab)
-          if (!path) return []
-          return [[path, file.selectedLines(path) ?? null] as const]
-        }),
+      Array.from(file.openPaths()).map((path) => [path, file.view.selectedLines(path) ?? null] as const),
     )
   })
 
@@ -1189,30 +1090,17 @@ function SessionPageContent() {
 
           {/* Desktop tabs panel */}
           <Show when={isDesktop() && showTabs()}>
-            <TabsPanel
-              activeTab={activeTab}
-              openTab={openTab}
+            <SessionContextPanel
               tabs={tabs}
               view={view}
-              file={file}
-              prompt={prompt}
-              command={command}
-              dialog={dialog}
-              contextOpen={contextOpen}
-              openedTabs={openedTabs}
               messages={messages}
               info={info}
               visibleUserMessages={visibleUserMessages}
-              handleDragStart={handleDragStart}
-              handleDragOver={handleDragOver}
-              handleDragEnd={handleDragEnd}
-              activeDraggable={store.activeDraggable}
-              handoffFiles={handoff.files}
             />
           </Show>
           {/* Desktop side workspace */}
           <div class="hidden md:block">
-            <WorkbenchSurface surface="side" />
+            <WorkbenchSurface surface="side" reservedWidth={contextOpen() ? 200 : 0} />
           </div>
 
           {/* Mobile side workspace overlay */}
@@ -1258,11 +1146,7 @@ function SessionPageContent() {
                       view={view}
                       diffStyle="unified"
                       selectedFile={() => store.mobileReviewSelectedFile}
-                      onViewFile={(path) => {
-                        const value = file.tab(path)
-                        tabs().open(value)
-                        file.load(path)
-                      }}
+                      onViewFile={(path) => void file.openWorkspaceFile(path)}
                     />
                   )
                 }}

@@ -45,9 +45,9 @@ describe("SessionTopBar contract", () => {
 })
 
 describe("Workbench surface contract", () => {
-  const layoutPath = path.join(APP_SRC, "pages/layout.tsx")
+  const layoutPath = path.join(APP_SRC, "pages/directory-layout.tsx")
   const sessionPath = path.join(APP_SRC, "pages/session.tsx")
-  const surfacePath = path.join(APP_SRC, "components/session/workbench-surface.tsx")
+  const surfacePath = path.join(APP_SRC, "components/workspace/workbench-surface.tsx")
 
   test("session uses the unified workbench provider and surface", async () => {
     const sessionSrc = await fs.readFile(sessionPath, "utf-8")
@@ -70,7 +70,7 @@ describe("Workbench surface contract", () => {
 })
 
 describe("NotePanel contract", () => {
-  const notePanelPath = path.join(APP_SRC, "components/note-panel.tsx")
+  const notePanelPath = path.join(APP_SRC, "components/note/panel.tsx")
 
   test("NotePanel must not call sdk.client.note.listAll in list fetch path", async () => {
     const src = await fs.readFile(notePanelPath, "utf-8")
