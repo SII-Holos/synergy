@@ -1618,15 +1618,15 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 
   // ── Refined git classifications (classifyBashRisk primary path) ──
 
-  test("git push (plain) is classified as shell_remote_write", async () => {
+  test("git push (plain) is classified as shell_remote_publish", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push" })
-    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
-    expect(remoteWrite).toBeDefined()
-    expect(remoteWrite.nonBypassable).toBe(false)
+    const remotePublish = result.capabilities.find((c: any) => c.class === "shell_remote_publish")!
+    expect(remotePublish).toBeDefined()
+    expect(remotePublish.nonBypassable).toBe(false)
   })
 
   test("git push origin main is classified as shell_remote_write", async () => {
