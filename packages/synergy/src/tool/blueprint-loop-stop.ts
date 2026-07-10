@@ -43,7 +43,7 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
     if (loop.status === "auditing" && loop.auditSessionID) {
       return {
         title: "BlueprintLoop review already requested",
-        output: `A review was already requested for this BlueprintLoop. The reviewer is session \`${loop.auditSessionID}\`.`,
+        output: `A review was already requested for this BlueprintLoop. The reviewer is session \`${loop.auditSessionID}\`. Do not call any tools to check on it — the reviewer will deliver results directly to this session when the audit completes.`,
         metadata: {
           loopStopRequested: true,
           reviewTaskID: loop.auditTaskID,
@@ -119,7 +119,7 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
 
     return {
       title: "BlueprintLoop review requested",
-      output: `BlueprintLoop review requested. The reviewer is session \`${task.sessionID}\`.`,
+      output: `BlueprintLoop review requested. The reviewer is session \`${task.sessionID}\`. Do not call any tools to check on it — the reviewer will deliver results directly to this session when the audit completes.`,
       metadata: { loopStopRequested: true, reviewTaskID: task.id, reviewSessionID: task.sessionID },
     }
   },
