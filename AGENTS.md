@@ -550,6 +550,8 @@ Key documents in the repo that agents should be aware of:
 
 ## Practical Working Rules for Agents
 
+- **NEVER switch branches on the main checkout.** The main workspace is shared across multiple concurrent Synergy sessions. Changing branches directly (via `git checkout`, `git switch`) will silently corrupt the working tree for every other running session that depends on the current state. This is the single most dangerous mistake in a multi-session development environment.
+- **When you need a different branch, always use a worktree.** Use `worktree_enter` (or `git worktree add`) to create an isolated checkout before switching branches. Each worktree has its own index and working directory — zero impact on other sessions.
 - Read first, then edit.
 - Verify command names against the current CLI.
 - Verify config paths against the implementation.
