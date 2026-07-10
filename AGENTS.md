@@ -555,6 +555,13 @@ Key documents in the repo that agents should be aware of:
 - **Reuse existing worktrees for the same feature.** When making follow-up changes to the same PR or feature branch, re-enter the existing worktree with `worktree_enter` instead of creating a new one. Creating a new worktree for every small change clutters the repo with stale branches and abandoned worktrees.
 - **NEVER commit or push from the main checkout.** Only make commits and push from a worktree. The main checkout is shared infrastructure; a commit may accidentally include unrelated changes from concurrent sessions, and a push can break CI for every branch built on the primary branch.
 - **Changes reach the primary branch only through pull requests, never by direct push.** Determine the repo's primary branch first — it is not always `main` or `master`. Check `git remote show origin` or the GitHub default branch. For this Synergy repo the primary branch is **`dev`**. All changes, even trivial fixes, must go through a PR to the primary branch. Pushing directly to it can break CI for every other branch that depends on it.
+
+Detailed workflows are documented in project-local skills under `.synergy/skill/`:
+
+- `skill(name: "git-guide")` — commit rules, PR workflow, data leak prevention, amend/rebase safety
+- `skill(name: "develop-synergy")` — isolated second instance, SYNERGY_HOME, multi-worktree port management
+- `skill(name: "testing-guide")` — TDD philosophy, test patterns, fixtures, quality gates
+- `skill(name: "architecture")` — package map, domain layout, request flow, common patterns
 - Read first, then edit.
 - Verify command names against the current CLI.
 - Verify config paths against the implementation.
