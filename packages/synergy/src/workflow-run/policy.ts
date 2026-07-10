@@ -38,7 +38,14 @@ export const WorkflowContinuationPolicy: ContinuationKernel.Policy = {
 
     const seatSessionID = gate.sessionID
     const entity = run.entities.find(
-      (e) => e.bindings.seatSessionID === seatSessionID && e.assignedSeat?.seat === binding.seat,
+      (e) =>
+        e.bindings.seatSessionID === seatSessionID &&
+        e.assignedSeat?.seat === binding.seat &&
+        // The seat binding must still own this entity — release_seat
+        // clears binding.entityID but entity.bindings.seatSessionID
+        // may still be stale. Only deliver a continuation when the
+        // binding and entity agree.
+        run.seats.some((s) => s.seat === binding.seat && s.instance === binding.instance && s.entityID === e.id),
     )
     if (!entity) return false
     if (entity.state === WorkflowTypes.BLOCKED_STATE) return false

@@ -63,7 +63,12 @@ export namespace SessionModePolicy {
   const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
 
   // Workflow-run (Boss Mode) tools, gated by the caller's role in a run.
-  const WORKFLOW_BOSS_TOOLS = new Set(["workflow_run_control", "workflow_entity_add", "workflow_gate_resolve"])
+  const WORKFLOW_BOSS_TOOLS = new Set([
+    "workflow_run_control",
+    "workflow_entity_add",
+    "workflow_gate_resolve",
+    "workflow_entity_unblock",
+  ])
   const WORKFLOW_SEAT_TOOLS = new Set(["workflow_submit", "workflow_block"])
   // workflow_run_create / workflow_status / workflow_charter_draft are available
   // broadly (create from an unbound session, status from either role, draft

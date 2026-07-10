@@ -7,7 +7,12 @@ function withRole(role: "boss" | "seat" | "contractor" | undefined) {
 
 describe("workflow tool visibility", () => {
   test("boss tools are hidden outside a boss session", () => {
-    for (const tool of ["workflow_run_control", "workflow_entity_add", "workflow_gate_resolve"]) {
+    for (const tool of [
+      "workflow_run_control",
+      "workflow_entity_add",
+      "workflow_gate_resolve",
+      "workflow_entity_unblock",
+    ]) {
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole("seat") })).toBeDefined()
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole(undefined) })).toBeDefined()
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole("boss") })).toBeUndefined()

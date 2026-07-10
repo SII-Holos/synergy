@@ -43,6 +43,7 @@ import { WorkflowGateResolveTool } from "./workflow-gate-resolve"
 import { WorkflowStatusTool } from "./workflow-status"
 import { WorkflowSubmitTool } from "./workflow-submit"
 import { WorkflowBlockTool } from "./workflow-block"
+import { WorkflowEntityUnblockTool } from "./workflow-entity-unblock"
 import { WorkflowCharterDraftTool } from "./workflow-charter-draft"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
@@ -410,6 +411,7 @@ export namespace ToolRegistry {
       WorkflowStatusTool,
       WorkflowSubmitTool,
       WorkflowBlockTool,
+      WorkflowEntityUnblockTool,
       WorkflowCharterDraftTool,
       SessionListTool,
       SessionReadTool,

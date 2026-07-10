@@ -32,7 +32,16 @@ async function seedRun(seatSessionID: string, entityState: string) {
     charterRef: { id: "cht_x", version: 1 },
     title: "R",
     bossSessionID: "ses_boss",
-    seats: [{ seat: "executor", instance: 0, status: "working", sessionID: seatSessionID, lastEntityIDs: [] }],
+    seats: [
+      {
+        seat: "executor",
+        instance: 0,
+        status: "working",
+        sessionID: seatSessionID,
+        entityID: "wfe_1",
+        lastEntityIDs: [],
+      },
+    ],
     maxModelCalls: 0,
   })
   const now = Date.now()

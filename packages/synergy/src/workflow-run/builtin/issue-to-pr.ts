@@ -4,10 +4,11 @@ import { WorkflowError } from "../error"
 import { WorkflowTypes } from "../types"
 
 /**
- * Built-in charter: Issue → PR → Test, driven by a Boss session. Mirrors the
- * reference flow diagram: parallel executor pool per issue branch, a review
- * loop that sends changes back to the executor, a single tester seat that
- * serialises integration verification, and a human `final_merge` gate.
+ * Built-in charter: Issue → PR → Test, driven by a Boss session. Parallel
+ * executor pool per issue branch, a review loop that sends changes back to
+ * the executor, a single tester seat that serialises integration
+ * verification, and a terminal test_passed state signalling the entity is
+ * ready for human merge. Merge itself happens outside the workflow.
  *
  * This is the Phase-1 acceptance charter and (until charter authoring lands)
  * the canonical example of how to compose the fixed predicate/effect libraries.
@@ -46,8 +47,7 @@ export namespace IssueToPrCharter {
       "changes_requested",
       "review_passed",
       "testing",
-      "awaiting_merge",
-      "merged",
+      "test_passed",
       WorkflowTypes.BLOCKED_STATE,
     ]
 
@@ -157,17 +157,18 @@ export namespace IssueToPrCharter {
         ],
       },
       {
-        id: "test_pass_to_merge_gate",
+        id: "test_pass",
         from: "testing",
-        to: "awaiting_merge",
+        to: "test_passed",
         trigger: { kind: "intent", allowedSeats: ["tester"] },
         guards: [{ name: "submission_recorded", args: { kind: "test_report", verdict: "passed", fresh: "true" } }],
-        // Release the tester now so testing continues for other changes while
-        // this one waits on the human merge decision.
+        // The entity has passed review and testing — it is ready for human
+        // merge.  Release the tester so testing continues for other entities
+        // and notify the boss.  There is no gate: merge is a human decision
+        // that happens outside the workflow.
         effects: [
           { name: "release_seat", args: {} },
-          { name: "open_gate", args: { gate: "final_merge" } },
-          { name: "notify_boss", args: { message: "A change passed testing and awaits your merge decision." } },
+          { name: "notify_boss", args: { message: "An entity passed testing and is ready to merge." } },
         ],
       },
       {
@@ -181,38 +182,24 @@ export namespace IssueToPrCharter {
         effects: [],
       },
       {
-        id: "merge",
-        from: "awaiting_merge",
-        to: "merged",
-        trigger: { kind: "gate", gate: "final_merge" },
-        guards: [{ name: "gate_resolved", args: { gate: "final_merge", accept: "merge" } }],
-        // The tester was already released at test-pass; nothing to free here.
-        effects: [],
-      },
-      {
-        id: "gate_rework",
-        from: "awaiting_merge",
-        to: "changes_requested",
-        trigger: { kind: "gate", gate: "final_merge" },
-        guards: [{ name: "gate_resolved", args: { gate: "final_merge", accept: "rework" } }],
-        effects: [],
-      },
-      {
         id: "unblock",
         from: WorkflowTypes.BLOCKED_STATE,
-        to: "executing",
+        to: "queued",
         trigger: { kind: "intent", allowedSeats: [] },
+        // Only the Boss may unblock via workflow_entity_unblock (which calls
+        // submitIntent with fromBoss: true, bypassing the seat check).
+        // Returning to "queued" lets the full event chain re-run with the
+        // current state of seats, budget, and other resources.
         guards: [],
         effects: [],
       },
     ]
-
     return {
       name: "Issue → PR → Test",
       entityType: "issue",
       entityInitialState: "queued",
       states,
-      terminalStates: ["merged"],
+      terminalStates: ["test_passed"],
       transitions,
       seats: [
         {
@@ -243,14 +230,7 @@ export namespace IssueToPrCharter {
           worktree: "shared",
         },
       ],
-      gates: [
-        {
-          name: "final_merge",
-          title: "Final merge decision",
-          description: "A change passed review and testing. Decide whether to merge it.",
-          resolutions: ["merge", "rework", "pause", "cancel"],
-        },
-      ],
+      gates: [],
       budget: { maxModelCalls: 0 },
     }
   }
