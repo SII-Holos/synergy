@@ -13,25 +13,26 @@ const owner: BrowserOwner.Info = {
 }
 
 afterEach(() => {
-  BrowserEvent.resetForTest()
   BrowserNativePresentation.resetForTest()
 })
 
 describe("Browser event sequencing", () => {
   test("publishes contiguous owner events and replays only within the current epoch", () => {
+    const eventOwner = { ...owner, sessionID: crypto.randomUUID() }
     const received: string[] = []
-    const unsubscribe = BrowserEvent.subscribe(owner, (event) => received.push(event.type))
-    const created = BrowserEvent.publish(owner, {
+    const unsubscribe = BrowserEvent.subscribe(eventOwner, (event) => received.push(event.type))
+    const created = BrowserEvent.publish(eventOwner, {
       type: "page.created",
       page: { id: "page", url: "about:blank", title: "", isLoading: false, lastActiveAt: null },
     })
-    const closed = BrowserEvent.publish(owner, { type: "page.closed", pageId: "page" })
+    const closed = BrowserEvent.publish(eventOwner, { type: "page.closed", pageId: "page" })
     unsubscribe()
 
     expect([created.seq, closed.seq]).toEqual([1, 2])
     expect(received).toEqual(["page.created", "page.closed"])
-    expect(BrowserEvent.replay(owner, 1, created.epoch)?.map((event) => event.type)).toEqual(["page.closed"])
-    expect(BrowserEvent.replay(owner, 1, "stale-epoch")).toBeNull()
+    expect(BrowserEvent.replay(eventOwner, 1, created.epoch)?.map((event) => event.type)).toEqual(["page.closed"])
+    expect(BrowserEvent.replay(eventOwner, 1, "stale-epoch")).toBeNull()
+    BrowserEvent.remove(eventOwner)
   })
 })
 
