@@ -37,6 +37,12 @@ export namespace Identifier {
     lattice_run: "ltr",
     lattice_step: "lts",
     lattice_event: "lte",
+    charter: "cht",
+    workflow_run: "wfr",
+    workflow_entity: "wfe",
+    workflow_gate: "wfg",
+    workflow_event: "wfv",
+    workflow_handoff: "wfh",
     history: "hst",
   } as const
 

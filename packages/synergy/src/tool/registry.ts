@@ -35,6 +35,14 @@ import { LightLoopRejectTool } from "./light-loop-reject"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayPatchTool } from "./pathway-patch"
+import { WorkflowRunCreateTool } from "./workflow-run-create"
+import { WorkflowRunControlTool } from "./workflow-run-control"
+import { WorkflowEntityAddTool } from "./workflow-entity-add"
+import { WorkflowGateResolveTool } from "./workflow-gate-resolve"
+import { WorkflowStatusTool } from "./workflow-status"
+import { WorkflowSubmitTool } from "./workflow-submit"
+import { WorkflowBlockTool } from "./workflow-block"
+import { WorkflowCharterDraftTool } from "./workflow-charter-draft"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -393,6 +401,14 @@ export namespace ToolRegistry {
       LightLoopRejectTool,
       PathwayReadTool,
       PathwayPatchTool,
+      WorkflowRunCreateTool,
+      WorkflowRunControlTool,
+      WorkflowEntityAddTool,
+      WorkflowGateResolveTool,
+      WorkflowStatusTool,
+      WorkflowSubmitTool,
+      WorkflowBlockTool,
+      WorkflowCharterDraftTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,

@@ -62,6 +62,13 @@ export namespace SessionModePolicy {
 
   const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
 
+  // Workflow-run (Boss Mode) tools, gated by the caller's role in a run.
+  const WORKFLOW_BOSS_TOOLS = new Set(["workflow_run_control", "workflow_entity_add", "workflow_gate_resolve"])
+  const WORKFLOW_SEAT_TOOLS = new Set(["workflow_submit", "workflow_block"])
+  // workflow_run_create / workflow_status / workflow_charter_draft are available
+  // broadly (create from an unbound session, status from either role, draft
+  // anywhere) so they are intentionally not gated here.
+
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "plan"
   }
@@ -72,10 +79,13 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "workflowRun">
   }): ToolDiagnostic | undefined {
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
+
+    const workflowDiagnostic = workflowVisibility(input.toolName, input.session)
+    if (workflowDiagnostic) return workflowDiagnostic
 
     if (!isPlan(input.session)) return undefined
     if (PLAN_EXPLICIT_ALLOW.has(input.toolName)) return undefined
@@ -209,6 +219,33 @@ export namespace SessionModePolicy {
           `The "question" tool is disabled in autonomous Lattice mode once the first BlueprintLoop has started.`,
           "Do not wait for the user: replan forward and keep advancing the Pathway.",
         ].join("\n"),
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Workflow-run tool visibility. Boss tools are hidden outside a boss session;
+   * seat tools (workflow_submit / workflow_block) are hidden outside a seat
+   * session. Runtime execute() re-checks role server-side regardless.
+   */
+  function workflowVisibility(
+    toolName: string,
+    session?: Pick<SessionInfo, "workflowRun">,
+  ): ToolDiagnostic | undefined {
+    const role = session?.workflowRun?.role
+    if (WORKFLOW_BOSS_TOOLS.has(toolName) && role !== "boss") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a Boss session that owns a workflow run.`,
+      }
+    }
+    if (WORKFLOW_SEAT_TOOLS.has(toolName) && role !== "seat") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a workflow-run seat session.`,
       }
     }
     return undefined

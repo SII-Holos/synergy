@@ -1,0 +1,5 @@
+Declare that your currently assigned entity is blocked (seat sessions only).
+
+Moves the entity to the blocked state, records the reason in the run event log, and
+notifies the Boss. Use this when you cannot make progress and need human or upstream
+intervention rather than silently stalling.

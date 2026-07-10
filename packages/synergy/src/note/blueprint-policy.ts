@@ -1,5 +1,6 @@
 export namespace NoteBlueprintPolicy {
-  export type Kind = "note" | "blueprint"
+  // "charter" notes are not blueprint-protected; they fall through like plain notes.
+  export type Kind = "note" | "blueprint" | "charter"
   export type WriteAction = "create" | "update" | "edit"
   export type WorkflowKind = "plan" | "lightloop" | "lattice"
   export type BlockReason = "non_plan_blueprint_write"

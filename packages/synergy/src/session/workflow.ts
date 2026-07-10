@@ -4,7 +4,7 @@ import { LatticeRunService } from "../lattice/run-service"
 import { Session } from "./index"
 import { SessionManager } from "./manager"
 
-type BlueprintLoopSource = "user" | "lattice"
+type BlueprintLoopSource = "user" | "lattice" | "workflow"
 
 function activeLoopStatus(status: string): boolean {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
@@ -48,6 +48,16 @@ export namespace SessionWorkflowService {
       throw new Error(`User BlueprintLoops cannot start while the ${workflow.kind} workflow is active.`)
     }
 
+    if (source === "workflow") {
+      if (!session.workflowRun) {
+        throw new Error("Workflow-owned BlueprintLoops require a session bound to a workflow run seat.")
+      }
+      if (workflow) {
+        throw new Error(`Workflow-owned BlueprintLoops cannot start while the ${workflow.kind} workflow is active.`)
+      }
+      return
+    }
+
     if (workflow?.kind === "lattice") return
     if (!workflow) {
       throw new Error("Lattice-owned BlueprintLoops require an active Lattice workflow.")
@@ -76,6 +86,12 @@ export namespace SessionWorkflowService {
 
   export async function set(sessionID: string, input: SetInput): Promise<Session.Info> {
     if (input.kind === "none") return setNone(sessionID)
+    // Seat sessions are governed by their workflow run; they must not be pulled
+    // into a session-level workflow mode.
+    const session = await Session.get(sessionID)
+    if (session.workflowRun?.role === "seat") {
+      throw new Error("Cannot change the workflow mode of a workflow-run seat session.")
+    }
     if (input.kind === "plan") return enablePlan(sessionID)
     if (input.kind === "lightloop") return enableLightloop(sessionID, input.taskDescription)
     return enableLattice(sessionID, input)

@@ -60,7 +60,7 @@ import "./note-panel.css"
 type LoopStatus = BlueprintLoopInfo["status"]
 
 type NoteCardInfo = NoteMetaInfo & {
-  kind?: "note" | "blueprint"
+  kind?: "note" | "blueprint" | "charter"
 }
 
 type BlueprintVisualState = {

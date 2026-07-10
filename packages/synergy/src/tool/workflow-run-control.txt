@@ -1,0 +1,5 @@
+Control a WorkflowRun you own as Boss: pause, resume, or cancel.
+
+pause halts new transitions (in-flight seat work continues but nothing advances);
+resume re-drives any entities that can move; cancel terminates the run. Seat sessions
+are never deleted — they remain as audit material.

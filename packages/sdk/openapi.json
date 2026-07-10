@@ -12905,6 +12905,659 @@
         ]
       }
     },
+    "/workflow-run/run": {
+      "get": {
+        "operationId": "workflowRun.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List workflow runs",
+        "responses": {
+          "200": {
+            "description": "Workflow runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowRun"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "workflowRun.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create a workflow run",
+        "responses": {
+          "200": {
+            "description": "Created run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "charterID": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "number"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "bossSessionID": {
+                    "type": "string"
+                  },
+                  "maxModelCalls": {
+                    "type": "number"
+                  }
+                },
+                "required": ["charterID", "title", "bossSessionID"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/run/{id}": {
+      "get": {
+        "operationId": "workflowRun.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get a workflow run",
+        "responses": {
+          "200": {
+            "description": "Workflow run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorkflowRun"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/run/{id}/events": {
+      "get": {
+        "operationId": "workflowRun.events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List workflow run events",
+        "responses": {
+          "200": {
+            "description": "Workflow events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowEvent"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.events({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/run/{id}/control": {
+      "post": {
+        "operationId": "workflowRun.control",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Control a workflow run",
+        "responses": {
+          "200": {
+            "description": "Updated run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["pause", "resume", "cancel"]
+                  }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.control({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/run/{id}/entity": {
+      "post": {
+        "operationId": "workflowRun.entity.add",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Add an entity to a workflow run",
+        "responses": {
+          "200": {
+            "description": "Created entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEntity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "affinityKey": {
+                    "type": "string"
+                  },
+                  "bindings": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["title"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.entity.add({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/run/{id}/gate/{gid}": {
+      "post": {
+        "operationId": "workflowRun.gate.resolve",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "gid",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Resolve a gate (human decision)",
+        "responses": {
+          "200": {
+            "description": "Updated run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resolution": {
+                    "type": "string"
+                  }
+                },
+                "required": ["resolution"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowRun.gate.resolve({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/charter": {
+      "get": {
+        "operationId": "workflowCharter.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List charters",
+        "responses": {
+          "200": {
+            "description": "Charters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowCharter"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowCharter.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow-run/charter/{id}/{version}": {
+      "get": {
+        "operationId": "workflowCharter.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "schema": {
+              "type": "number"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get a charter version",
+        "responses": {
+          "200": {
+            "description": "Charter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCharter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflowCharter.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -25175,6 +25828,26 @@
         "required": ["type", "path", "scopeID"],
         "additionalProperties": {}
       },
+      "SessionWorkflowRunInfo": {
+        "type": "object",
+        "properties": {
+          "runID": {
+            "type": "string",
+            "pattern": "^wfr.*"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["boss", "seat", "contractor"]
+          },
+          "seat": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "number"
+          }
+        },
+        "required": ["runID", "role"]
+      },
       "SessionWorkflowInfo": {
         "anyOf": [
           {
@@ -25468,6 +26141,22 @@
                 "enum": ["execution", "audit"]
               }
             }
+          },
+          "charter": {
+            "description": "Charter note injected into the system prompt every turn (compaction-immune standing instructions)",
+            "type": "object",
+            "properties": {
+              "noteID": {
+                "type": "string"
+              },
+              "version": {
+                "type": "number"
+              }
+            },
+            "required": ["noteID"]
+          },
+          "workflowRun": {
+            "$ref": "#/components/schemas/SessionWorkflowRunInfo"
           },
           "workflow": {
             "$ref": "#/components/schemas/SessionWorkflowInfo"
@@ -27580,7 +28269,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint"]
+            "enum": ["note", "blueprint", "charter"]
           },
           "blueprint": {
             "type": "object",
@@ -29935,7 +30624,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint"]
+            "enum": ["note", "blueprint", "charter"]
           },
           "version": {
             "type": "number"
@@ -30037,7 +30726,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint"]
+            "enum": ["note", "blueprint", "charter"]
           },
           "blueprint": {
             "type": "object",
@@ -30089,7 +30778,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint"]
+            "enum": ["note", "blueprint", "charter"]
           },
           "blueprint": {
             "anyOf": [
@@ -30196,7 +30885,7 @@
           "source": {
             "description": "Owner that created and drives this loop lifecycle",
             "type": "string",
-            "enum": ["user", "lattice"]
+            "enum": ["user", "lattice", "workflow"]
           },
           "audit": {
             "type": "object",
@@ -30647,6 +31336,671 @@
             },
             "required": ["kind", "mode"]
           }
+        ]
+      },
+      "WorkflowSeatBinding": {
+        "type": "object",
+        "properties": {
+          "seat": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "entityID": {
+            "type": "string",
+            "pattern": "^wfe.*"
+          },
+          "status": {
+            "default": "unbound",
+            "type": "string",
+            "enum": ["unbound", "idle", "working", "waiting"]
+          },
+          "lastEntityIDs": {
+            "description": "Recently handled entity ids (for affinity)",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["seat", "instance"]
+      },
+      "WorkflowSubmission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["review_verdict", "test_report", "deliverable", "note_ref"]
+          },
+          "seat": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["passed", "changes_requested", "blocked"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "refs": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "time": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "kind", "seat", "sessionID", "summary", "time"]
+      },
+      "WorkflowEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^wfe.*"
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^wfr.*"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "blockedReason": {
+            "type": "string"
+          },
+          "bindings": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "submissions": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSubmission"
+            }
+          },
+          "assignedSeat": {
+            "type": "object",
+            "properties": {
+              "seat": {
+                "type": "string"
+              },
+              "instance": {
+                "type": "number"
+              }
+            },
+            "required": ["seat", "instance"]
+          },
+          "affinityKey": {
+            "description": "Entities sharing this key prefer the same seat instance",
+            "type": "string"
+          },
+          "pendingHandoffID": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "stateEntered": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated", "stateEntered"]
+          }
+        },
+        "required": ["id", "runID", "title", "state", "time"]
+      },
+      "WorkflowGateInstance": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^wfg.*"
+          },
+          "gate": {
+            "type": "string"
+          },
+          "entityID": {
+            "type": "string",
+            "pattern": "^wfe.*"
+          },
+          "transitionID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "resolved", "expired"]
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "resolvedBy": {
+            "type": "string",
+            "enum": ["human_ui", "boss_agent"]
+          },
+          "context": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "resolved": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": ["id", "gate", "transitionID", "status", "time"]
+      },
+      "WorkflowRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^wfr.*"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "charterRef": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^cht.*"
+              },
+              "version": {
+                "type": "number"
+              }
+            },
+            "required": ["id", "version"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "paused", "completed", "failed", "cancelled"]
+          },
+          "statusReason": {
+            "type": "string"
+          },
+          "bossSessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSeatBinding"
+            }
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEntity"
+            }
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowGateInstance"
+            }
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "maxModelCalls": {
+                "type": "number"
+              },
+              "used": {
+                "type": "number"
+              }
+            },
+            "required": ["maxModelCalls", "used"]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": [
+          "id",
+          "scopeID",
+          "charterRef",
+          "title",
+          "status",
+          "bossSessionID",
+          "seats",
+          "entities",
+          "gates",
+          "budget",
+          "time"
+        ]
+      },
+      "WorkflowEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^wfv.*"
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^wfr.*"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "run_created",
+              "run_paused",
+              "run_resumed",
+              "run_completed",
+              "run_failed",
+              "run_cancelled",
+              "entity_added",
+              "entity_transitioned",
+              "entity_blocked",
+              "guard_failed",
+              "effect_executed",
+              "effect_failed",
+              "seat_session_created",
+              "seat_assigned",
+              "seat_released",
+              "handoff_sent",
+              "handoff_acked",
+              "submission_recorded",
+              "gate_opened",
+              "gate_resolved",
+              "contractor_spawned",
+              "contractor_finished",
+              "budget_exhausted"
+            ]
+          },
+          "entityID": {
+            "type": "string"
+          },
+          "seat": {
+            "type": "string"
+          },
+          "transitionID": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": ["id", "runID", "scopeID", "kind", "time"]
+      },
+      "WorkflowSeatDef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Seat identifier, e.g. 'executor' | 'reviewer' | 'tester'",
+            "type": "string"
+          },
+          "agent": {
+            "description": "Agent name (validated against the agent registry at run creation)",
+            "type": "string"
+          },
+          "charterPrompt": {
+            "description": "Inline standing instructions for this seat",
+            "type": "string"
+          },
+          "charterNoteID": {
+            "description": "kind:'charter' note holding this seat's charter (takes precedence)",
+            "type": "string"
+          },
+          "controlProfile": {
+            "default": "autonomous",
+            "type": "string",
+            "enum": ["guarded", "autonomous", "full_access"]
+          },
+          "interaction": {
+            "default": "unattended",
+            "type": "string",
+            "enum": ["unattended", "interactive"]
+          },
+          "pool": {
+            "description": "Number of parallel instances of this seat",
+            "default": 1,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "worktree": {
+            "default": "none",
+            "type": "string",
+            "enum": ["none", "per_entity", "shared"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": ["name", "agent"]
+      },
+      "WorkflowPredicateRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Predicate name (must exist in the guard registry)",
+            "type": "string"
+          },
+          "args": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["name"]
+      },
+      "WorkflowEffectRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Effect name (must exist in the effect registry)",
+            "type": "string"
+          },
+          "args": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["name"]
+      },
+      "WorkflowTransitionDef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "description": "Engine attempts this transition when a platform fact changes",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "event"
+                  }
+                },
+                "required": ["kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "intent"
+                  },
+                  "allowedSeats": {
+                    "description": "Seats permitted to submit this transition",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["kind", "allowedSeats"]
+              },
+              {
+                "description": "Fires after a human resolves the named gate",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "gate"
+                  },
+                  "gate": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "gate"]
+              }
+            ]
+          },
+          "guards": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPredicateRef"
+            }
+          },
+          "effects": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEffectRef"
+            }
+          },
+          "blockOnGuardFail": {
+            "description": "When a guard fails, move the entity to 'blocked' and notify the boss (default true for event triggers)",
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "from", "to", "trigger"]
+      },
+      "WorkflowGateDef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "resolutions": {
+            "description": "e.g. ['merge','rework','pause','cancel']",
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["name", "title", "resolutions"]
+      },
+      "WorkflowCharter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^cht.*"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entityType": {
+            "description": "e.g. 'issue'",
+            "type": "string"
+          },
+          "entityInitialState": {
+            "type": "string"
+          },
+          "terminalStates": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "states": {
+            "description": "All states; must include 'blocked'",
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "seats": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSeatDef"
+            }
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowTransitionDef"
+            }
+          },
+          "gates": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowGateDef"
+            }
+          },
+          "budget": {
+            "default": {
+              "maxModelCalls": 0
+            },
+            "type": "object",
+            "properties": {
+              "maxModelCalls": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "entityType",
+          "entityInitialState",
+          "states",
+          "seats",
+          "transitions",
+          "time"
         ]
       },
       "AssetInfo": {
@@ -33325,6 +34679,343 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.blueprint_loop.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.cancelled": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.cancelled"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.auditing": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.auditing"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.restarted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.restarted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "reason"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              }
+            },
+            "required": ["scopeID", "note", "meta"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
+                }
+              }
+            },
+            "required": ["scopeID", "note", "meta", "changed"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.archived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.archived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.unarchived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.unarchived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.run.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.run.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.event.appended": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.event.appended"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "event": {
+                "$ref": "#/components/schemas/LatticeEvent"
+              }
+            },
+            "required": ["event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.question.asked": {
         "type": "object",
         "properties": {
@@ -33574,298 +35265,18 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.note.created": {
+      "Event.workflow.run.created": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "note.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
-              }
-            },
-            "required": ["scopeID", "note", "meta"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
-              },
-              "changed": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
-                }
-              }
-            },
-            "required": ["scopeID", "note", "meta", "changed"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.archived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.archived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.unarchived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.unarchived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.failed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.failed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "error"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.cancelled": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.cancelled"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.auditing": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.auditing"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.restarted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.restarted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "reason"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lattice.run.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lattice.run.created"
+            "const": "workflow.run.created"
           },
           "properties": {
             "type": "object",
             "properties": {
               "run": {
-                "$ref": "#/components/schemas/LatticeRun"
+                "$ref": "#/components/schemas/WorkflowRun"
               }
             },
             "required": ["run"]
@@ -33873,18 +35284,18 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.lattice.run.updated": {
+      "Event.workflow.run.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "lattice.run.updated"
+            "const": "workflow.run.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
               "run": {
-                "$ref": "#/components/schemas/LatticeRun"
+                "$ref": "#/components/schemas/WorkflowRun"
               }
             },
             "required": ["run"]
@@ -33892,81 +35303,21 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.lattice.event.appended": {
+      "Event.workflow.event.appended": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "lattice.event.appended"
+            "const": "workflow.event.appended"
           },
           "properties": {
             "type": "object",
             "properties": {
               "event": {
-                "$ref": "#/components/schemas/LatticeEvent"
+                "$ref": "#/components/schemas/WorkflowEvent"
               }
             },
             "required": ["event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -34027,6 +35378,66 @@
               }
             },
             "required": ["tasks"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -34526,6 +35937,51 @@
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.blueprint_loop.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.archived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.unarchived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.event.appended"
+          },
+          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -34559,58 +36015,13 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.note.created"
+            "$ref": "#/components/schemas/Event.workflow.run.created"
           },
           {
-            "$ref": "#/components/schemas/Event.note.updated"
+            "$ref": "#/components/schemas/Event.workflow.run.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.note.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.archived"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.unarchived"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.run.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.run.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.event.appended"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.deleted"
+            "$ref": "#/components/schemas/Event.workflow.event.appended"
           },
           {
             "$ref": "#/components/schemas/Event.cortex.task.created"
@@ -34620,6 +36031,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"

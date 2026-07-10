@@ -3336,6 +3336,13 @@ export type SessionWorkspace = {
   [key: string]: unknown | string
 }
 
+export type SessionWorkflowRunInfo = {
+  runID: string
+  role: "boss" | "seat" | "contractor"
+  seat?: string
+  instance?: number
+}
+
 export type SessionWorkflowInfo =
   | {
       kind: "plan"
@@ -3433,6 +3440,14 @@ export type Session = {
     loopID?: string
     loopRole?: "execution" | "audit"
   }
+  /**
+   * Charter note injected into the system prompt every turn (compaction-immune standing instructions)
+   */
+  charter?: {
+    noteID: string
+    version?: number
+  }
+  workflowRun?: SessionWorkflowRunInfo
   workflow?: SessionWorkflowInfo
 }
 
@@ -4180,7 +4195,7 @@ export type NoteInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
-  kind?: "note" | "blueprint"
+  kind?: "note" | "blueprint" | "charter"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -4943,7 +4958,7 @@ export type NoteMetaInfo = {
   originScope?: string
   archived?: boolean
   tags: Array<string>
-  kind?: "note" | "blueprint"
+  kind?: "note" | "blueprint" | "charter"
   version: number
   time: {
     created: number
@@ -4977,7 +4992,7 @@ export type NoteCreateInput = {
   title: string
   content?: unknown
   tags?: Array<string>
-  kind?: "note" | "blueprint"
+  kind?: "note" | "blueprint" | "charter"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -4995,7 +5010,7 @@ export type NotePatchInput = {
   global?: boolean
   archived?: boolean
   tags?: Array<string>
-  kind?: "note" | "blueprint"
+  kind?: "note" | "blueprint" | "charter"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -5029,7 +5044,7 @@ export type BlueprintLoopInfo = {
   /**
    * Owner that created and drives this loop lifecycle
    */
-  source: "user" | "lattice"
+  source: "user" | "lattice" | "workflow"
   audit?: {
     lastReason?: string
     lastAuditedAt?: number
@@ -5225,6 +5240,252 @@ export type WorkflowSetInput =
        */
       action?: "continue" | "restart"
     }
+
+export type WorkflowSeatBinding = {
+  seat: string
+  instance: number
+  sessionID?: string
+  entityID?: string
+  status?: "unbound" | "idle" | "working" | "waiting"
+  /**
+   * Recently handled entity ids (for affinity)
+   */
+  lastEntityIDs?: Array<string>
+}
+
+export type WorkflowSubmission = {
+  id: string
+  kind: "review_verdict" | "test_report" | "deliverable" | "note_ref"
+  seat: string
+  sessionID: string
+  verdict?: "passed" | "changes_requested" | "blocked"
+  summary: string
+  refs?: Array<string>
+  time: number
+}
+
+export type WorkflowEntity = {
+  id: string
+  runID: string
+  title: string
+  description?: string
+  state: string
+  blockedReason?: string
+  bindings?: {
+    [key: string]: string
+  }
+  submissions?: Array<WorkflowSubmission>
+  assignedSeat?: {
+    seat: string
+    instance: number
+  }
+  /**
+   * Entities sharing this key prefer the same seat instance
+   */
+  affinityKey?: string
+  pendingHandoffID?: string
+  time: {
+    created: number
+    updated: number
+    stateEntered: number
+  }
+}
+
+export type WorkflowGateInstance = {
+  id: string
+  gate: string
+  entityID?: string
+  transitionID: string
+  status: "pending" | "resolved" | "expired"
+  resolution?: string
+  resolvedBy?: "human_ui" | "boss_agent"
+  context?: string
+  time: {
+    created: number
+    resolved?: number
+  }
+}
+
+export type WorkflowRun = {
+  id: string
+  scopeID: string
+  charterRef: {
+    id: string
+    version: number
+  }
+  title: string
+  status: "active" | "paused" | "completed" | "failed" | "cancelled"
+  statusReason?: string
+  bossSessionID: string
+  seats: Array<WorkflowSeatBinding>
+  entities: Array<WorkflowEntity>
+  gates: Array<WorkflowGateInstance>
+  budget: {
+    maxModelCalls: number
+    used: number
+  }
+  time: {
+    created: number
+    updated: number
+    completed?: number
+  }
+}
+
+export type WorkflowEvent = {
+  id: string
+  runID: string
+  scopeID: string
+  kind:
+    | "run_created"
+    | "run_paused"
+    | "run_resumed"
+    | "run_completed"
+    | "run_failed"
+    | "run_cancelled"
+    | "entity_added"
+    | "entity_transitioned"
+    | "entity_blocked"
+    | "guard_failed"
+    | "effect_executed"
+    | "effect_failed"
+    | "seat_session_created"
+    | "seat_assigned"
+    | "seat_released"
+    | "handoff_sent"
+    | "handoff_acked"
+    | "submission_recorded"
+    | "gate_opened"
+    | "gate_resolved"
+    | "contractor_spawned"
+    | "contractor_finished"
+    | "budget_exhausted"
+  entityID?: string
+  seat?: string
+  transitionID?: string
+  message?: string
+  data?: {
+    [key: string]: unknown
+  }
+  time: {
+    created: number
+  }
+}
+
+export type WorkflowSeatDef = {
+  /**
+   * Seat identifier, e.g. 'executor' | 'reviewer' | 'tester'
+   */
+  name: string
+  /**
+   * Agent name (validated against the agent registry at run creation)
+   */
+  agent: string
+  /**
+   * Inline standing instructions for this seat
+   */
+  charterPrompt?: string
+  /**
+   * kind:'charter' note holding this seat's charter (takes precedence)
+   */
+  charterNoteID?: string
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  interaction?: "unattended" | "interactive"
+  /**
+   * Number of parallel instances of this seat
+   */
+  pool?: number
+  worktree?: "none" | "per_entity" | "shared"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  tools?: {
+    [key: string]: boolean
+  }
+}
+
+export type WorkflowPredicateRef = {
+  /**
+   * Predicate name (must exist in the guard registry)
+   */
+  name: string
+  args?: {
+    [key: string]: string
+  }
+}
+
+export type WorkflowEffectRef = {
+  /**
+   * Effect name (must exist in the effect registry)
+   */
+  name: string
+  args?: {
+    [key: string]: unknown
+  }
+}
+
+export type WorkflowTransitionDef = {
+  id: string
+  from: string
+  to: string
+  trigger:
+    | {
+        kind: "event"
+      }
+    | {
+        kind: "intent"
+        /**
+         * Seats permitted to submit this transition
+         */
+        allowedSeats: Array<string>
+      }
+    | {
+        kind: "gate"
+        gate: string
+      }
+  guards?: Array<WorkflowPredicateRef>
+  effects?: Array<WorkflowEffectRef>
+  /**
+   * When a guard fails, move the entity to 'blocked' and notify the boss (default true for event triggers)
+   */
+  blockOnGuardFail?: boolean
+}
+
+export type WorkflowGateDef = {
+  name: string
+  title: string
+  description?: string
+  /**
+   * e.g. ['merge','rework','pause','cancel']
+   */
+  resolutions: Array<string>
+}
+
+export type WorkflowCharter = {
+  id: string
+  version: number
+  name: string
+  description?: string
+  /**
+   * e.g. 'issue'
+   */
+  entityType: string
+  entityInitialState: string
+  terminalStates?: Array<string>
+  /**
+   * All states; must include 'blocked'
+   */
+  states: Array<string>
+  seats: Array<WorkflowSeatDef>
+  transitions: Array<WorkflowTransitionDef>
+  gates?: Array<WorkflowGateDef>
+  budget?: {
+    maxModelCalls?: number
+  }
+  time: {
+    created: number
+  }
+}
 
 export type AssetInfo = {
   id: string
@@ -6089,6 +6350,123 @@ export type EventSessionInboxUpdated = {
   }
 }
 
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRestarted = {
+  type: "blueprint_loop.restarted"
+  properties: {
+    loopID: string
+    reason: string
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
+export type EventNoteArchived = {
+  type: "note.archived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventLatticeRunCreated = {
+  type: "lattice.run.created"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeRunUpdated = {
+  type: "lattice.run.updated"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeEventAppended = {
+  type: "lattice.event.appended"
+  properties: {
+    event: LatticeEvent
+  }
+}
+
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -6174,120 +6552,45 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventNoteCreated = {
-  type: "note.created"
+export type EventWorkflowRunCreated = {
+  type: "workflow.run.created"
   properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
+    run: WorkflowRun
   }
 }
 
-export type EventNoteUpdated = {
-  type: "note.updated"
+export type EventWorkflowRunUpdated = {
+  type: "workflow.run.updated"
   properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+    run: WorkflowRun
   }
 }
 
-export type EventNoteDeleted = {
-  type: "note.deleted"
+export type EventWorkflowEventAppended = {
+  type: "workflow.event.appended"
   properties: {
-    id: string
-    scopeID: string
+    event: WorkflowEvent
   }
 }
 
-export type EventNoteArchived = {
-  type: "note.archived"
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
   properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
+    task: CortexTask
   }
 }
 
-export type EventNoteUnarchived = {
-  type: "note.unarchived"
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
   properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
+    task: CortexTask
   }
 }
 
-export type EventBlueprintLoopCreated = {
-  type: "blueprint_loop.created"
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
   properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopUpdated = {
-  type: "blueprint_loop.updated"
-  properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopCompleted = {
-  type: "blueprint_loop.completed"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopFailed = {
-  type: "blueprint_loop.failed"
-  properties: {
-    loopID: string
-    error: string
-  }
-}
-
-export type EventBlueprintLoopCancelled = {
-  type: "blueprint_loop.cancelled"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopAuditing = {
-  type: "blueprint_loop.auditing"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopRestarted = {
-  type: "blueprint_loop.restarted"
-  properties: {
-    loopID: string
-    reason: string
-  }
-}
-
-export type EventLatticeRunCreated = {
-  type: "lattice.run.created"
-  properties: {
-    run: LatticeRun
-  }
-}
-
-export type EventLatticeRunUpdated = {
-  type: "lattice.run.updated"
-  properties: {
-    run: LatticeRun
-  }
-}
-
-export type EventLatticeEventAppended = {
-  type: "lattice.event.appended"
-  properties: {
-    event: LatticeEvent
+    tasks: Array<CortexTask>
   }
 }
 
@@ -6310,27 +6613,6 @@ export type EventAgendaItemDeleted = {
   properties: {
     id: string
     scopeID: string
-  }
-}
-
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
   }
 }
 
@@ -6514,6 +6796,21 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionInboxUpdated
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRestarted
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
+  | EventLatticeRunCreated
+  | EventLatticeRunUpdated
+  | EventLatticeEventAppended
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -6525,27 +6822,15 @@ export type Event =
   | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
-  | EventNoteArchived
-  | EventNoteUnarchived
-  | EventBlueprintLoopCreated
-  | EventBlueprintLoopUpdated
-  | EventBlueprintLoopCompleted
-  | EventBlueprintLoopFailed
-  | EventBlueprintLoopCancelled
-  | EventBlueprintLoopAuditing
-  | EventBlueprintLoopRestarted
-  | EventLatticeRunCreated
-  | EventLatticeRunUpdated
-  | EventLatticeEventAppended
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
+  | EventWorkflowRunCreated
+  | EventWorkflowRunUpdated
+  | EventWorkflowEventAppended
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
@@ -12581,6 +12866,302 @@ export type WorkflowSessionSetResponses = {
 }
 
 export type WorkflowSessionSetResponse = WorkflowSessionSetResponses[keyof WorkflowSessionSetResponses]
+
+export type WorkflowRunListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run"
+}
+
+export type WorkflowRunListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowRunListError = WorkflowRunListErrors[keyof WorkflowRunListErrors]
+
+export type WorkflowRunListResponses = {
+  /**
+   * Workflow runs
+   */
+  200: Array<WorkflowRun>
+}
+
+export type WorkflowRunListResponse = WorkflowRunListResponses[keyof WorkflowRunListResponses]
+
+export type WorkflowRunCreateData = {
+  body?: {
+    charterID: string
+    version?: number
+    title: string
+    bossSessionID: string
+    maxModelCalls?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run"
+}
+
+export type WorkflowRunCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowRunCreateError = WorkflowRunCreateErrors[keyof WorkflowRunCreateErrors]
+
+export type WorkflowRunCreateResponses = {
+  /**
+   * Created run
+   */
+  200: WorkflowRun
+}
+
+export type WorkflowRunCreateResponse = WorkflowRunCreateResponses[keyof WorkflowRunCreateResponses]
+
+export type WorkflowRunGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run/{id}"
+}
+
+export type WorkflowRunGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowRunGetError = WorkflowRunGetErrors[keyof WorkflowRunGetErrors]
+
+export type WorkflowRunGetResponses = {
+  /**
+   * Workflow run
+   */
+  200: WorkflowRun | null
+}
+
+export type WorkflowRunGetResponse = WorkflowRunGetResponses[keyof WorkflowRunGetResponses]
+
+export type WorkflowRunEventsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    after?: string
+  }
+  url: "/workflow-run/run/{id}/events"
+}
+
+export type WorkflowRunEventsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowRunEventsError = WorkflowRunEventsErrors[keyof WorkflowRunEventsErrors]
+
+export type WorkflowRunEventsResponses = {
+  /**
+   * Workflow events
+   */
+  200: Array<WorkflowEvent>
+}
+
+export type WorkflowRunEventsResponse = WorkflowRunEventsResponses[keyof WorkflowRunEventsResponses]
+
+export type WorkflowRunControlData = {
+  body?: {
+    action: "pause" | "resume" | "cancel"
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run/{id}/control"
+}
+
+export type WorkflowRunControlErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowRunControlError = WorkflowRunControlErrors[keyof WorkflowRunControlErrors]
+
+export type WorkflowRunControlResponses = {
+  /**
+   * Updated run
+   */
+  200: WorkflowRun
+}
+
+export type WorkflowRunControlResponse = WorkflowRunControlResponses[keyof WorkflowRunControlResponses]
+
+export type WorkflowRunEntityAddData = {
+  body?: {
+    title: string
+    description?: string
+    affinityKey?: string
+    bindings?: {
+      [key: string]: string
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run/{id}/entity"
+}
+
+export type WorkflowRunEntityAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowRunEntityAddError = WorkflowRunEntityAddErrors[keyof WorkflowRunEntityAddErrors]
+
+export type WorkflowRunEntityAddResponses = {
+  /**
+   * Created entity
+   */
+  200: WorkflowEntity
+}
+
+export type WorkflowRunEntityAddResponse = WorkflowRunEntityAddResponses[keyof WorkflowRunEntityAddResponses]
+
+export type WorkflowRunGateResolveData = {
+  body?: {
+    resolution: string
+  }
+  path: {
+    id: string
+    gid: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/run/{id}/gate/{gid}"
+}
+
+export type WorkflowRunGateResolveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowRunGateResolveError = WorkflowRunGateResolveErrors[keyof WorkflowRunGateResolveErrors]
+
+export type WorkflowRunGateResolveResponses = {
+  /**
+   * Updated run
+   */
+  200: WorkflowRun
+}
+
+export type WorkflowRunGateResolveResponse = WorkflowRunGateResolveResponses[keyof WorkflowRunGateResolveResponses]
+
+export type WorkflowCharterListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/charter"
+}
+
+export type WorkflowCharterListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorkflowCharterListError = WorkflowCharterListErrors[keyof WorkflowCharterListErrors]
+
+export type WorkflowCharterListResponses = {
+  /**
+   * Charters
+   */
+  200: Array<WorkflowCharter>
+}
+
+export type WorkflowCharterListResponse = WorkflowCharterListResponses[keyof WorkflowCharterListResponses]
+
+export type WorkflowCharterGetData = {
+  body?: never
+  path: {
+    id: string
+    version: number
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow-run/charter/{id}/{version}"
+}
+
+export type WorkflowCharterGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowCharterGetError = WorkflowCharterGetErrors[keyof WorkflowCharterGetErrors]
+
+export type WorkflowCharterGetResponses = {
+  /**
+   * Charter
+   */
+  200: WorkflowCharter
+}
+
+export type WorkflowCharterGetResponse = WorkflowCharterGetResponses[keyof WorkflowCharterGetResponses]
 
 export type AssetUploadData = {
   body?: {

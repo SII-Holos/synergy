@@ -13,7 +13,7 @@ export namespace NoteTypes {
       global: z.boolean(),
       originScope: z.string().optional(),
       tags: z.array(z.string()),
-      kind: z.enum(["note", "blueprint"]).optional(),
+      kind: z.enum(["note", "blueprint", "charter"]).optional(),
       blueprint: z
         .object({
           description: z.string().optional(),
@@ -38,7 +38,7 @@ export namespace NoteTypes {
       title: z.string(),
       content: z.any().optional(),
       tags: z.array(z.string()).optional(),
-      kind: z.enum(["note", "blueprint"]).optional(),
+      kind: z.enum(["note", "blueprint", "charter"]).optional(),
       blueprint: z
         .object({
           description: z.string().optional(),
@@ -61,7 +61,7 @@ export namespace NoteTypes {
       global: z.boolean().optional(),
       archived: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
-      kind: z.enum(["note", "blueprint"]).optional(),
+      kind: z.enum(["note", "blueprint", "charter"]).optional(),
       blueprint: z
         .object({
           description: z.string().optional(),
@@ -95,7 +95,7 @@ export namespace NoteTypes {
       originScope: z.string().optional(),
       archived: z.boolean().optional(),
       tags: z.array(z.string()),
-      kind: z.enum(["note", "blueprint"]).optional(),
+      kind: z.enum(["note", "blueprint", "charter"]).optional(),
       version: z.number(),
       time: z.object({
         created: z.number(),

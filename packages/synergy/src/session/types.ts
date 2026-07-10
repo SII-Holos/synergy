@@ -71,6 +71,16 @@ export const SuperPlanSessionInfo = z
   .meta({ ref: "SessionSuperPlanInfo" })
 export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
 
+export const WorkflowRunSessionInfo = z
+  .object({
+    runID: Identifier.schema("workflow_run"),
+    role: z.enum(["boss", "seat", "contractor"]),
+    seat: z.string().optional(),
+    instance: z.number().optional(),
+  })
+  .meta({ ref: "SessionWorkflowRunInfo" })
+export type WorkflowRunSessionInfo = z.infer<typeof WorkflowRunSessionInfo>
+
 export const WorkflowInfo = z
   .discriminatedUnion("kind", [
     z.object({
@@ -245,6 +255,14 @@ export const Info = z
           loopRole: z.enum(["execution", "audit"]).optional(),
         })
         .optional(),
+      charter: z
+        .object({
+          noteID: z.string(),
+          version: z.number().optional(),
+        })
+        .optional()
+        .describe("Charter note injected into the system prompt every turn (compaction-immune standing instructions)"),
+      workflowRun: WorkflowRunSessionInfo.optional(),
       workflow: WorkflowInfo.optional(),
     }),
   )

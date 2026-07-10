@@ -2,6 +2,7 @@ import { onCleanup, onMount, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTerminal } from "@/context/terminal"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
+import { BossWorkbenchContent } from "./tool-boss"
 import { BrowserWorkbenchContent } from "./tool-browser"
 import { NotesWorkbenchContent } from "./tool-notes"
 import { SessionReviewWorkbenchContent } from "./tool-session-review"
@@ -34,6 +35,17 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 15,
         component: SessionReviewWorkbenchContent,
         title: () => "Review",
+      }),
+      registerWorkbenchPanel({
+        id: "boss",
+        label: "Boss",
+        icon: "network",
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: false,
+        pluginId: "builtin",
+        order: 18,
+        component: BossWorkbenchContent,
       }),
       registerWorkbenchPanel({
         id: "browser",

@@ -1,0 +1,5 @@
+Resolve a pending human gate in a WorkflowRun you own as Boss.
+
+Gates are the points where the workflow requires a human responsibility decision
+(e.g. final merge). Pass the gate instance id and one of the charter's declared
+resolutions. Resolving fires the matching gate transition.

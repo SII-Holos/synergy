@@ -1,0 +1,7 @@
+Validate (and optionally persist) a Charter draft for Boss Mode.
+
+Charters are data: seats, an entity state machine, guards from the fixed predicate
+library, effects from the fixed effect library, and human gates. This tool runs the
+layered validator (unknown predicate/effect, unreachable states, missing gate on
+external-write transitions, ...) and returns errors/warnings. Set persist=true to
+store a valid draft as a new charter version; a Boss can then instantiate it.

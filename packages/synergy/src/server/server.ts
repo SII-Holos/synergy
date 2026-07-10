@@ -70,6 +70,7 @@ import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
+import { WorkflowRunRoute } from "./workflow-run"
 import { WorkflowRoute } from "./workflow"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
@@ -221,6 +222,8 @@ export namespace Server {
       pathname.startsWith("/lattice/") ||
       pathname === "/workflow" ||
       pathname.startsWith("/workflow/") ||
+      pathname === "/workflow-run" ||
+      pathname.startsWith("/workflow-run/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -1109,6 +1112,7 @@ export namespace Server {
         .route("/blueprint", BlueprintRoute)
         .route("/lattice", LatticeRoute)
         .route("/workflow", WorkflowRoute)
+        .route("/workflow-run", WorkflowRunRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)

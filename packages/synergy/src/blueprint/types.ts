@@ -23,7 +23,9 @@ export const Info = z
     userPrompt: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
-    source: z.enum(["user", "lattice"]).meta({ description: "Owner that created and drives this loop lifecycle" }),
+    source: z
+      .enum(["user", "lattice", "workflow"])
+      .meta({ description: "Owner that created and drives this loop lifecycle" }),
     audit: z
       .object({
         lastReason: z.string().optional(),

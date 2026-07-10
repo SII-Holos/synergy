@@ -1,0 +1,9 @@
+Create a new WorkflowRun (Boss Mode) from a Charter and become its Boss session.
+
+A Charter defines a "company": seats (persistent employee agents), an entity state
+machine, guards, effects, and human gates. This tool instantiates one run; the
+calling session becomes the Boss — the single human-facing control plane. Seats and
+their sessions are created lazily as work is assigned.
+
+Only call this from a session that is not already bound to a workflow run. Use
+charterID to pick a charter; omit it to use the built-in Issue → PR → Test charter.

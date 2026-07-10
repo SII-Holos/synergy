@@ -10,6 +10,7 @@ import type { Info as SessionInfo } from "./types"
 import { BlueprintContinuationPolicy } from "./blueprint-continuation"
 import { LightLoopContinuationPolicy } from "./light-loop-continuation"
 import { LatticeContinuationPolicy } from "../lattice/policy"
+import { WorkflowContinuationPolicy } from "../workflow-run/policy"
 
 /**
  * Session Continuation Kernel.
@@ -151,6 +152,7 @@ export namespace ContinuationKernel {
     register(BlueprintContinuationPolicy)
     register(LightLoopContinuationPolicy)
     register(LatticeContinuationPolicy)
+    register(WorkflowContinuationPolicy)
   }
 
   async function hasActiveCortexWork(sessionID: string): Promise<boolean> {
