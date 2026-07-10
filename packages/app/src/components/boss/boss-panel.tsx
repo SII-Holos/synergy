@@ -1,9 +1,20 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { WorkflowRun, WorkflowEntity, WorkflowEvent, WorkflowCharter } from "@ericsanchezok/synergy-sdk/client"
 import { BossData } from "./boss-data"
+
+const ICON = {
+  boss: getSemanticIcon("performance.network"),
+  gate: getSemanticIcon("holos.branch"),
+  add: getSemanticIcon("action.add"),
+  toEntity: getSemanticIcon("navigation.forward"),
+  activity: getSemanticIcon("performance.trace"),
+  entities: getSemanticIcon("blueprint.main"),
+  seats: getSemanticIcon("agents.main"),
+} satisfies Record<string, IconName>
 
 /** Visual accent for an entity state — a coloured dot + subtle tint. */
 function stateAccent(state: string): { dot: string; text: string } {
@@ -61,35 +72,32 @@ export interface BossPanelSDK {
     on: (type: string, cb: (event: { properties: { run?: WorkflowRun; event?: WorkflowEvent } }) => void) => () => void
   }
   client: {
+    // The generated hey-api client takes parameters flat as the first argument
+    // (path + body + query keys together); the scoped client injects
+    // directory/scopeID itself.
     workflowRun: {
       list: () => Promise<{ data?: WorkflowRun[] | null }>
-      create: (input: {
-        body: { charterID: string; title: string; bossSessionID: string }
+      create: (params: {
+        charterID: string
+        title: string
+        bossSessionID: string
       }) => Promise<{ data?: WorkflowRun | null }>
-      get: (input: { path: { id: string } }) => Promise<{ data?: WorkflowRun | null }>
-      events: (input: {
-        path: { id: string }
-        query?: { after?: string }
-      }) => Promise<{ data?: WorkflowEvent[] | null }>
-      control: (input: {
-        path: { id: string }
-        body: { action: "pause" | "resume" | "cancel" }
-      }) => Promise<{ data?: WorkflowRun | null }>
+      events: (params: { id: string; after?: string }) => Promise<{ data?: WorkflowEvent[] | null }>
+      control: (params: { id: string; action: "pause" | "resume" | "cancel" }) => Promise<{ data?: WorkflowRun | null }>
       entity: {
-        add: (input: {
-          path: { id: string }
-          body: { title: string; description?: string; affinityKey?: string }
+        add: (params: {
+          id: string
+          title: string
+          description?: string
+          affinityKey?: string
         }) => Promise<{ data?: WorkflowEntity | null }>
       }
       gate: {
-        resolve: (input: {
-          path: { id: string; gid: string }
-          body: { resolution: string }
-        }) => Promise<{ data?: WorkflowRun | null }>
+        resolve: (params: { id: string; gid: string; resolution: string }) => Promise<{ data?: WorkflowRun | null }>
       }
     }
     workflowCharter: {
-      get: (input: { path: { id: string; version: number } }) => Promise<{ data?: WorkflowCharter | null }>
+      get: (params: { id: string; version: number }) => Promise<{ data?: WorkflowCharter | null }>
     }
   }
 }
@@ -122,9 +130,9 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
   const loadCharterAndEvents = async (r: WorkflowRun) => {
     const [charterRes, eventsRes] = await Promise.all([
       props.sdk.client.workflowCharter
-        .get({ path: { id: r.charterRef.id, version: r.charterRef.version } })
+        .get({ id: r.charterRef.id, version: r.charterRef.version })
         .catch(() => ({ data: null })),
-      props.sdk.client.workflowRun.events({ path: { id: r.id } }).catch(() => ({ data: [] })),
+      props.sdk.client.workflowRun.events({ id: r.id }).catch(() => ({ data: [] })),
     ])
     setCharter(charterRes.data ?? null)
     setEvents(eventsRes.data ?? [])
@@ -177,7 +185,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
     if (!id) return
     setBusy(true)
     try {
-      await props.sdk.client.workflowRun.gate.resolve({ path: { id, gid }, body: { resolution } })
+      await props.sdk.client.workflowRun.gate.resolve({ id, gid, resolution })
     } catch (err) {
       showToast({
         type: "error",
@@ -194,7 +202,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
     if (!id) return
     setBusy(true)
     try {
-      await props.sdk.client.workflowRun.control({ path: { id }, body: { action } })
+      await props.sdk.client.workflowRun.control({ id, action })
     } catch (err) {
       showToast({ type: "error", title: "Control failed", description: err instanceof Error ? err.message : "Unknown" })
     } finally {
@@ -214,7 +222,9 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
     setBusy(true)
     try {
       const res = await props.sdk.client.workflowRun.create({
-        body: { charterID: "cht_builtin_issue_to_pr", title: "Issue → PR → Test", bossSessionID: props.sessionID },
+        charterID: "cht_builtin_issue_to_pr",
+        title: "Issue → PR → Test",
+        bossSessionID: props.sessionID,
       })
       if (res.data) setSelectedRunID(res.data.id)
       await loadRuns()
@@ -231,7 +241,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
     if (!id || !title) return
     setBusy(true)
     try {
-      await props.sdk.client.workflowRun.entity.add({ path: { id }, body: { title } })
+      await props.sdk.client.workflowRun.entity.add({ id, title })
       setNewIssue("")
     } catch (err) {
       showToast({ type: "error", title: "Add failed", description: err instanceof Error ? err.message : "Unknown" })
@@ -265,7 +275,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                 {/* Header: run identity + status + controls */}
                 <header class="flex flex-col gap-2 rounded-lg border border-border-weak-base bg-surface-raised-base p-3">
                   <div class="flex items-center gap-2">
-                    <Icon name="network" size="small" class="shrink-0 text-icon-interactive-base" />
+                    <Icon name={ICON.boss} size="small" class="shrink-0 text-icon-interactive-base" />
                     <Show
                       when={runs().length > 1}
                       fallback={
@@ -323,7 +333,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                 <Show when={gates().length > 0}>
                   <section class="flex flex-col gap-2 rounded-lg border border-border-warning-base/60 bg-surface-warning-weak/50 p-3">
                     <div class="flex items-center gap-1.5 text-12-semibold text-icon-warning-base">
-                      <Icon name="git-merge" size="small" />
+                      <Icon name={ICON.gate} size="small" />
                       <span>Decisions needed</span>
                     </div>
                     <For each={gates()}>
@@ -361,7 +371,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                 {/* Enqueue */}
                 <section class="flex gap-2">
                   <div class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border-weak-base bg-surface-raised-base px-2">
-                    <Icon name="plus" size="small" class="shrink-0 text-text-weak" />
+                    <Icon name={ICON.add} size="small" class="shrink-0 text-text-weak" />
                     <input
                       class="min-w-0 flex-1 bg-transparent py-1.5 text-13-regular outline-none placeholder:text-text-weak"
                       placeholder="Enqueue an issue…"
@@ -377,7 +387,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 
                 {/* Entity board */}
                 <section class="flex flex-col gap-2">
-                  <SectionHeader icon="layers" title="Entities" count={r().entities.length} />
+                  <SectionHeader icon={ICON.entities} title="Entities" count={r().entities.length} />
                   <Show
                     when={r().entities.length > 0}
                     fallback={<div class="px-1 text-12-regular text-text-weak">No work enqueued yet.</div>}
@@ -403,7 +413,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 
                 {/* Seats */}
                 <section class="flex flex-col gap-1.5">
-                  <SectionHeader icon="users" title="Seats" />
+                  <SectionHeader icon={ICON.seats} title="Seats" />
                   <div class="flex flex-col gap-1">
                     <For each={r().seats}>
                       {(seat) => (
@@ -416,7 +426,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                             <span class="text-text-weak">#{seat.instance}</span>
                           </span>
                           <Show when={seat.entityID}>
-                            <Icon name="arrow-right" size="small" class="text-text-weak" />
+                            <Icon name={ICON.toEntity} size="small" class="text-text-weak" />
                             <span class="min-w-0 flex-1 truncate text-text-weak">
                               {r().entities.find((e) => e.id === seat.entityID)?.title ?? seat.entityID}
                             </span>
@@ -441,7 +451,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                       size="small"
                       class="text-text-weak"
                     />
-                    <Icon name="activity" size="small" class="text-text-weak" />
+                    <Icon name={ICON.activity} size="small" class="text-text-weak" />
                     <span>Activity</span>
                     <span class="rounded bg-surface-raised-base px-1 text-text-weak">{events().length}</span>
                   </button>

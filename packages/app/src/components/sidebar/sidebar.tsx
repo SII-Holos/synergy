@@ -944,10 +944,15 @@ function SidebarSessionNode(props: {
   const globalSync = useGlobalSync()
   const [expanded, setExpanded] = createSignal(true)
 
+  // ensureScopeState returns a STABLE reactive store (created if missing), so
+  // reading `.session` tracks reconciles from the scope's session sync. Using
+  // the non-reactive peekScopeState here caused the nesting to flicker: if the
+  // store didn't exist at first eval the memo cached undefined and never saw the
+  // seats load in.
   const scopeStore = createMemo(() => {
     const scopeKey = props.scope ? props.scope.worktree : scopeKeyForNavEntry(props.entry, globalSync.data.scope)
     if (!scopeKey) return undefined
-    return globalSync.peekScopeState(scopeKey)?.[0]
+    return globalSync.ensureScopeState(scopeKey)[0]
   })
 
   const isBoss = createMemo(
