@@ -114,6 +114,28 @@ describe("openWorkbenchPanelTab", () => {
     expect(result.active).toBe("file:a")
     expect(result.created).toBeUndefined()
   })
+
+  test("resource panels can replace an empty tab in place", () => {
+    const tabs = [
+      { id: "file:empty", panelId: "file", title: "Open file" },
+      { id: "notes", panelId: "notes" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      init: { resourceId: "src/app.ts", title: "app.ts", source: "workspace" },
+      createId: () => "file:new",
+      replaceEmpty: true,
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "file:empty", panelId: "file", resourceId: "src/app.ts", title: "app.ts", source: "workspace" },
+      { id: "notes", panelId: "notes" },
+    ])
+    expect(result.active).toBe("file:empty")
+    expect(result.created).toBeUndefined()
+  })
 })
 
 describe("closeWorkbenchPanelTab", () => {

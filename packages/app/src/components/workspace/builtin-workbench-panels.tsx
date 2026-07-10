@@ -1,9 +1,8 @@
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTerminal } from "@/context/terminal"
-import { DialogSelectFile } from "@/components/dialog"
+import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { BrowserWorkbenchContent } from "./tool-browser"
 import { NotesWorkbenchContent } from "./tool-notes"
@@ -13,7 +12,7 @@ import { FileWorkbenchContent, shortestUniqueFileTitle } from "@/components/file
 
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
-  const dialog = useDialog()
+  const file = useFile()
   const disposers: VoidFunction[] = []
 
   onMount(() => {
@@ -42,8 +41,8 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "file",
-        label: "File",
-        icon: "file-text",
+        label: "Files",
+        icon: getSemanticIcon("workspace.files"),
         surface: "side",
         cardinality: "multi",
         requiresSession: true,
@@ -52,22 +51,8 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 18,
         component: FileWorkbenchContent,
         createTab() {
-          return new Promise((resolve) => {
-            let selected = false
-            dialog.show(
-              () => (
-                <DialogSelectFile
-                  onSelect={(path) => {
-                    selected = true
-                    resolve({ resourceId: path, title: path.split("/").at(-1), source: "picker" })
-                  }}
-                />
-              ),
-              () => {
-                if (!selected) resolve(undefined)
-              },
-            )
-          })
+          file.explorer.setOpen(true)
+          return { title: "Open file", source: "explorer" }
         },
         title(tab, siblings) {
           if (!tab.resourceId) return tab.title

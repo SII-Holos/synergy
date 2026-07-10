@@ -162,12 +162,6 @@ export function FileExplorer(props: { onClose: () => void }) {
         <span class="file-explorer-title">Files</span>
         <div class="file-explorer-actions">
           <IconButton
-            icon={getSemanticIcon("action.search")}
-            variant="ghost"
-            aria-label="Search files"
-            onClick={() => document.querySelector<HTMLInputElement>(".file-explorer-search-input")?.focus()}
-          />
-          <IconButton
             icon={getSemanticIcon(file.explorer.showHidden() ? "action.hide" : "action.view")}
             variant="ghost"
             aria-label="Show hidden and ignored files"

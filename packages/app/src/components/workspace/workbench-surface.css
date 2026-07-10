@@ -54,7 +54,7 @@
 .workbench-surface-tabs {
   position: relative;
   display: flex;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--workbench-border, var(--border-weak-base));
@@ -87,11 +87,11 @@
   display: inline-flex;
   max-width: 220px;
   min-width: 0;
-  height: 30px;
+  height: 32px;
   align-items: center;
   border-radius: 7px;
   color: var(--text-weak);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
   transition:
@@ -182,27 +182,31 @@
 }
 
 .workbench-surface-add-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  z-index: 20;
   min-width: 190px;
   border-radius: 10px;
   border: 1px solid var(--workbench-border, var(--border-weak-base));
   background: var(--workbench-popover-bg, var(--surface-raised-base));
+}
+
+.workbench-surface-add-menu [data-slot="popover-body"] {
   padding: 5px;
+}
+
+.workbench-surface-add-list {
+  display: flex;
+  flex-direction: column;
 }
 
 .workbench-surface-add-row {
   display: flex;
   width: 100%;
-  height: 32px;
+  height: 34px;
   align-items: center;
   gap: 9px;
   border-radius: 7px;
   padding: 0 8px;
   color: var(--text-base);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
 }
@@ -239,7 +243,7 @@
 .workbench-surface-launcher-row {
   display: flex;
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   align-items: center;
   gap: 9px;
   border-radius: 7px;
@@ -292,14 +296,14 @@
 }
 
 .workbench-surface-launcher-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 550;
   line-height: 1.25;
   color: var(--text-strong);
 }
 
 .workbench-surface-launcher-detail {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
   color: var(--text-weak);
 }

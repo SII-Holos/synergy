@@ -425,6 +425,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       if (existing) return existing
       const promise = workbench
         .openPanel("file", {
+          replaceEmpty: true,
           init: { resourceId: path, title: getFilename(path), source: "workspace" },
         })
         .then((tab) => {

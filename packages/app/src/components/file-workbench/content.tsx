@@ -247,6 +247,9 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
         <nav class="file-breadcrumb" aria-label="File path">
+          <Show when={breadcrumb().length === 0}>
+            <span class="file-breadcrumb-root">/</span>
+          </Show>
           <For each={breadcrumb()}>
             {(part, index) => {
               const target = () =>
@@ -318,8 +321,9 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
             </div>
           </Show>
           <IconButton
-            icon={getSemanticIcon("app.sideWorkspace")}
+            icon={getSemanticIcon("workspace.files")}
             variant="ghost"
+            class="file-tree-toggle"
             aria-label="Toggle file tree"
             aria-pressed={file.explorer.open()}
             onClick={() => file.explorer.setOpen(!file.explorer.open())}
@@ -343,6 +347,13 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
             <div class="file-state-banner">Showing the first 512 KiB of this file.</div>
           </Show>
           <Switch>
+            <Match when={!path()}>
+              <div class="file-workbench-state file-workbench-empty">
+                <FileIcon node={{ path: "workspace", type: "directory" }} expanded class="size-10" />
+                <strong>Open a file</strong>
+                <span>Choose a file from the workspace tree.</span>
+              </div>
+            </Match>
             <Match when={documentState()?.loading && !content()}>
               <div class="file-workbench-loading">
                 <Spinner class="size-5" />

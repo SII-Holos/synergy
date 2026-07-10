@@ -68,12 +68,59 @@ function languageForPath(path: string) {
   return extension ? (languages[extension] ?? "plaintext") : "plaintext"
 }
 
+function toMonacoColor(value: string, fallback: string) {
+  const hex = value.trim()
+  if (/^#[\da-f]{3,8}$/i.test(hex)) return hex
+  const rgb = hex.match(/^rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i)
+  if (!rgb) return fallback
+  const channel = (part: string) =>
+    Math.max(0, Math.min(255, Math.round(Number(part))))
+      .toString(16)
+      .padStart(2, "0")
+  const alpha = rgb[4] === undefined ? "" : channel(String(Number(rgb[4]) * 255))
+  return `#${channel(rgb[1]!)}${channel(rgb[2]!)}${channel(rgb[3]!)}${alpha}`
+}
+
+function resolveThemeColor(host: HTMLElement, property: string, fallback: string) {
+  const probe = document.createElement("span")
+  probe.style.position = "fixed"
+  probe.style.pointerEvents = "none"
+  probe.style.opacity = "0"
+  probe.style.color = `var(${property}, ${fallback})`
+  host.append(probe)
+  const value = getComputedStyle(probe).color
+  probe.remove()
+  return toMonacoColor(value, fallback)
+}
+
+function defineSourceTheme(monaco: Monaco, host: HTMLElement) {
+  const explicit = document.documentElement.dataset.colorScheme
+  const dark = explicit ? explicit === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches
+  const theme = dark ? "synergy-file-readonly-dark" : "synergy-file-readonly-light"
+  monaco.editor.defineTheme(theme, {
+    base: dark ? "vs-dark" : "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": resolveThemeColor(host, "--workbench-card-bg", dark ? "#0f0f10" : "#fafafa"),
+      "editor.foreground": resolveThemeColor(host, "--text-base", dark ? "#d4d4d4" : "#242426"),
+      "editorLineNumber.foreground": resolveThemeColor(host, "--text-weaker", dark ? "#77777c" : "#7a7a80"),
+      "editorLineNumber.activeForeground": resolveThemeColor(host, "--text-strong", dark ? "#f1f1f2" : "#111113"),
+      "editor.selectionBackground": resolveThemeColor(host, "--surface-info-base", dark ? "#264f78" : "#add6ff"),
+      "editor.lineHighlightBackground": resolveThemeColor(host, "--surface-raised-base", dark ? "#18181a" : "#f3f3f4"),
+      "editorCursor.foreground": resolveThemeColor(host, "--text-strong", dark ? "#f1f1f2" : "#111113"),
+    },
+  })
+  return theme
+}
+
 export function FileSourceView(props: { path: string; content: string }) {
   const file = useFile()
   const sdk = useSDK()
   const [loading, setLoading] = createSignal(true)
   let host!: HTMLDivElement
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
+  let themeObserver: MutationObserver | undefined
   let disposed = false
   let currentContent = props.content
 
@@ -93,21 +140,11 @@ export function FileSourceView(props: { path: string; content: string }) {
         if (cached.model.getValue() !== props.content) cached.model.setValue(props.content)
       }
 
-      const style = getComputedStyle(document.documentElement)
-      monaco.editor.defineTheme("synergy-file-readonly", {
-        base: style.colorScheme.includes("dark") ? "vs-dark" : "vs",
-        inherit: true,
-        rules: [],
-        colors: {
-          "editor.background": style.getPropertyValue("--workbench-panel-bg").trim() || "#111111",
-          "editor.foreground": style.getPropertyValue("--text-base").trim() || "#d4d4d4",
-          "editorLineNumber.foreground": style.getPropertyValue("--text-weaker").trim() || "#777777",
-          "editor.selectionBackground": style.getPropertyValue("--surface-info-base").trim() || "#264f78",
-        },
-      })
+      const style = getComputedStyle(host)
+      const theme = defineSourceTheme(monaco, host)
       editor = monaco.editor.create(host, {
         model: cached.model,
-        theme: "synergy-file-readonly",
+        theme,
         readOnly: true,
         domReadOnly: true,
         minimap: { enabled: false },
@@ -122,9 +159,9 @@ export function FileSourceView(props: { path: string; content: string }) {
         quickSuggestions: false,
         suggest: { showWords: false },
         fontFamily: style.getPropertyValue("--font-mono").trim() || "monospace",
-        fontSize: 13,
-        lineHeight: 21,
-        padding: { top: 10, bottom: 16 },
+        fontSize: 14,
+        lineHeight: 22,
+        padding: { top: 12, bottom: 18 },
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       })
       editor.setScrollPosition({
@@ -151,6 +188,8 @@ export function FileSourceView(props: { path: string; content: string }) {
         })
       })
       pruneFileSourceModels(key)
+      themeObserver = new MutationObserver(() => monaco.editor.setTheme(defineSourceTheme(monaco, host)))
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-color-scheme"] })
       setLoading(false)
     })
   })
@@ -167,6 +206,7 @@ export function FileSourceView(props: { path: string; content: string }) {
 
   onCleanup(() => {
     disposed = true
+    themeObserver?.disconnect()
     editor?.dispose()
   })
 

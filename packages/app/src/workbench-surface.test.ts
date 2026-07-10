@@ -143,7 +143,12 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurfaceCss).toContain("pointer-events: none;")
     expect(workbenchSurfaceCss).toContain("var(--workbench-tab-bg)")
     expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
-    expect(workbenchSurfaceCss).toContain("left: 0;")
+    expect(workbenchSurface).toContain("<Popover")
+    expect(workbenchSurface).toContain('aria-haspopup="menu"')
+    expect(workbenchSurface).toContain("if (local.addOpen)")
+    expect(workbenchSurfaceCss).toContain('.workbench-surface-add-menu [data-slot="popover-body"]')
+    expect(builtinWorkbenchPanels).not.toContain("DialogSelectFile")
+    expect(builtinWorkbenchPanels).toContain('return { title: "Open file", source: "explorer" }')
   })
 
   test("workbench surfaces close instead of persisting empty launchers", () => {

@@ -21,6 +21,7 @@ import {
 export interface OpenWorkbenchPanelOptions {
   forceNew?: boolean
   reuseExisting?: boolean
+  replaceEmpty?: boolean
   init?: WorkbenchPanelTabInit
 }
 
@@ -102,6 +103,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         init,
         createId: () => createTabId(panelId),
         reuseExisting: options.reuseExisting && !options.forceNew,
+        replaceEmpty: options.replaceEmpty,
       })
 
       target.setTabs(next.tabs)

@@ -19,6 +19,7 @@ export interface OpenWorkbenchPanelInput {
   init?: WorkbenchPanelTabInit
   createId: () => string
   reuseExisting?: boolean
+  replaceEmpty?: boolean
 }
 
 export function createWorkbenchTab(input: {
@@ -67,15 +68,18 @@ export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
     resource === undefined
       ? undefined
       : input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === resource)
+  const emptyMatch = input.replaceEmpty
+    ? input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
+    : undefined
   const panelMatch = input.tabs.find((tab) => tab.panelId === input.panelId)
-  const existing = resourceMatch ?? panelMatch
+  const existing = resourceMatch ?? emptyMatch ?? panelMatch
 
   if (input.cardinality === "exclusive") {
     const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init ?? existing, createId: input.createId })
     return { tabs: [tab], active: tab.id, created: existing ? undefined : tab }
   }
 
-  if (resourceMatch || input.cardinality === "singleton" || input.reuseExisting) {
+  if (resourceMatch || emptyMatch || input.cardinality === "singleton" || input.reuseExisting) {
     if (existing) {
       const updated = updateWorkbenchTab(existing, input.init)
       if (updated === existing) return { tabs: input.tabs, active: existing.id }

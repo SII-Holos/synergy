@@ -11,8 +11,8 @@
 .file-workbench-toolbar,
 .file-explorer-header {
   display: flex;
-  height: 36px;
-  min-height: 36px;
+  height: 40px;
+  min-height: 40px;
   align-items: center;
   border-bottom: 1px solid var(--workbench-border, var(--border-weak-base));
   background: var(--workbench-panel-bg, var(--background-stronger));
@@ -42,7 +42,7 @@
   height: 28px;
   padding: 0 3px;
   color: var(--text-weak);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .file-breadcrumb button:not(:disabled):hover {
@@ -57,7 +57,13 @@
 .file-breadcrumb-separator {
   color: var(--text-weaker);
   padding-inline: 1px;
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.file-breadcrumb-root {
+  color: var(--text-weak);
+  font-size: 13px;
+  font-weight: 550;
 }
 
 .file-toolbar-actions,
@@ -90,7 +96,7 @@
   border-radius: 4px;
   padding: 0 8px;
   color: var(--text-weak);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
 }
 
@@ -107,7 +113,7 @@
   border-radius: 6px;
   padding: 0 8px;
   color: var(--text-base);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .file-add-context:hover {
@@ -173,7 +179,7 @@
   gap: 9px;
   padding: 24px;
   color: var(--text-weak);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .file-workbench-state {
@@ -183,7 +189,15 @@
 
 .file-workbench-state strong {
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: 15px;
+}
+
+.file-workbench-empty {
+  gap: 7px;
+}
+
+.file-workbench-empty svg {
+  color: var(--icon-weak);
 }
 
 .file-workbench-state p {
@@ -315,14 +329,14 @@
 
 .file-explorer-title {
   color: var(--text-strong);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .file-explorer-search {
   display: flex;
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   align-items: center;
   gap: 6px;
   border-bottom: 1px solid var(--border-weaker-base);
@@ -342,7 +356,7 @@
   outline: none;
   background: transparent;
   color: var(--text-strong);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .file-explorer-list,
@@ -384,12 +398,12 @@
 .file-tree-row,
 .file-tree-state {
   display: flex;
-  height: 26px;
+  height: 29px;
   align-items: center;
   min-width: 0;
   padding-right: 6px;
   color: var(--text-base);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .file-tree-row:hover {
@@ -479,7 +493,7 @@
 .file-search-name {
   overflow: hidden;
   color: var(--text-strong);
-  font-size: 12px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -487,7 +501,7 @@
 .file-search-parent {
   overflow: hidden;
   color: var(--text-weak);
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -495,7 +509,12 @@
 .file-explorer-message {
   padding: 14px 10px;
   color: var(--text-weak);
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.file-tree-toggle[aria-pressed="true"] {
+  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
+  color: var(--icon-strong);
 }
 
 @container (max-width: 679px) {

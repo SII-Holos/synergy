@@ -15,6 +15,7 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import type {
@@ -246,10 +247,16 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       if (!state().opened()) return
+      if (local.addOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        setLocal("addOpen", false)
+        return
+      }
       state().close()
     }
-    document.addEventListener("keydown", onKey)
-    onCleanup(() => document.removeEventListener("keydown", onKey))
+    document.addEventListener("keydown", onKey, { capture: true })
+    onCleanup(() => document.removeEventListener("keydown", onKey, { capture: true }))
   })
 
   const size = () => state().size()
@@ -350,20 +357,29 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
                 </SortableProvider>
                 <Show when={addablePanels().length > 0}>
                   <div class="workbench-surface-add-wrap">
-                    <IconButton
-                      icon={getSemanticIcon("action.add")}
-                      variant="ghost"
-                      aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
-                      aria-expanded={local.addOpen}
-                      onClick={() => setLocal("addOpen", (value) => !value)}
-                    />
-                    <Show when={local.addOpen}>
-                      <div class="workbench-surface-add-menu">
+                    <Popover
+                      open={local.addOpen}
+                      onOpenChange={(open) => setLocal("addOpen", open)}
+                      placement="bottom-start"
+                      gutter={6}
+                      class="workbench-surface-add-menu"
+                      trigger={
+                        <IconButton
+                          icon={getSemanticIcon("action.add")}
+                          variant="ghost"
+                          aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
+                          aria-haspopup="menu"
+                          aria-expanded={local.addOpen}
+                        />
+                      }
+                    >
+                      <div class="workbench-surface-add-list" role="menu">
                         <For each={addablePanels()}>
                           {(panel) => (
                             <button
                               type="button"
                               class="workbench-surface-add-row"
+                              role="menuitem"
                               onClick={() => openPanel(panel, "add")}
                             >
                               <Icon name={panel.icon as IconName} size="small" />
@@ -372,7 +388,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
                           )}
                         </For>
                       </div>
-                    </Show>
+                    </Popover>
                   </div>
                 </Show>
               </div>
