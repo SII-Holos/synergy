@@ -439,6 +439,7 @@ describe("ShellSafety isReadOnly", () => {
     expect(ShellSafety.isReadOnly("pwd")).toBe(true)
     expect(ShellSafety.isReadOnly("head -5 myfile")).toBe(true)
     expect(ShellSafety.isReadOnly("wc -l input.txt")).toBe(true)
+    expect(ShellSafety.isReadOnly("jq -r '.key' input.json")).toBe(true)
   })
 
   test("git read-only commands classified via taxonomy, not isReadOnly", () => {
