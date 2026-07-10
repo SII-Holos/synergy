@@ -85,13 +85,37 @@ Builds the web app dist first, then launches Electron in managed mode where the 
 
 ## Complete Setup Recipe
 
-### Step 1: Create the isolated data directory
+### Step 1: Scan existing instances before choosing ports
+
+**Never assume** 4097/3001 are free. If you have multiple worktrees or dev instances running, those ports might be taken. Always scan first:
 
 ```bash
-mkdir -p /tmp/synergy-dev
+# Find all Synergy runtime lock files across known SYNERGY_HOME paths
+for d in ~/.synergy /tmp/synergy-dev*; do
+  lock="$d/state/daemon/runtime-lock.json"
+  if [ -f "$lock" ]; then
+    pid=$(python3 -c "import json; print(json.load(open('$lock'))['pid'])" 2>/dev/null)
+    if kill -0 "$pid" 2>/dev/null; then
+      ports=$(lsof -nP -Pan -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null | awk '/LISTEN/{print $9}' | sed 's/.*://')
+      echo "ALIVE pid=$pid ports=[$ports] home=$d"
+    fi
+  fi
+done
 ```
 
-### Step 2: Copy config from main environment
+This shows all live Synergy processes and their listening ports. Use this to pick the next free port pair.
+
+### Step 2: Create the isolated data directory
+
+```bash
+# Per-worktree isolation — use a directory named after the branch or worktree
+mkdir -p /tmp/synergy-dev
+
+# Or if you have multiple worktrees:
+mkdir -p "/tmp/synergy-dev-$(git branch --show-current)"
+```
+
+### Step 3: Copy config from main environment
 
 This avoids re-configuring API keys, providers, models, and agents:
 
@@ -101,29 +125,21 @@ cp -r ~/.synergy/config /tmp/synergy-dev/.synergy/config
 
 This copies all domain config files (`00-general.jsonc` through `120-runtime.jsonc`) including your provider auth, model preferences, and custom agents.
 
-### Step 3: Pick ports that don't conflict
+### Step 4: Choose ports that don't conflict with any running instance
 
-The running instance likely uses 4096 (server) and 3000 (app). Use different ports:
-
-```bash
-# Common choices
---server-port 4097 --app-port 3001
---server-port 4098 --app-port 3002
-```
-
-If unsure what the running instance uses, check:
+The default main instance uses 4096 (server) and 3000 (app). Based on Step 1's scan, pick the **next free pair**:
 
 ```bash
-cat ~/.synergy/state/daemon/runtime-lock.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'pid={d[\"pid\"]} cwd={d[\"cwd\"]}')"
+# Common port pairs, try each until you find a free one:
+# 4097 + 3001  (first dev instance)
+# 4098 + 3002  (second dev instance)
+# 4099 + 3003  (third dev instance)
+# ... and so on
 ```
 
-And look for the process's listening ports:
+If you ran the scan in Step 1 and 4097 is taken, move to 4098/3002. If both are taken, try 4099/3003, etc.
 
-```bash
-lsof -nP -Pan -p $(cat ~/.synergy/state/daemon/runtime-lock.json | python3 -c "import sys,json; print(json.load(sys.stdin)['pid'])") -iTCP -sTCP:LISTEN
-```
-
-### Step 4: Start the dev instance
+### Step 5: Start the dev instance
 
 ```bash
 SYNERGY_HOME=/tmp/synergy-dev bun dev web --server-port 4097 --app-port 3001
@@ -135,7 +151,7 @@ Or for desktop:
 SYNERGY_HOME=/tmp/synergy-dev bun dev desktop --server-port 4097 --app-port 3001
 ```
 
-### Step 5: Test your changes
+### Step 6: Test your changes
 
 The dev instance picks up source changes live:
 
@@ -143,7 +159,7 @@ The dev instance picks up source changes live:
 - **Web app code** (`packages/app/`, `packages/ui/`): Vite hot-reloads automatically
 - **Desktop code** (`packages/desktop/`): restart the desktop process
 
-### Step 6: Clean up when done
+### Step 7: Clean up when done
 
 ```bash
 # Kill the dev instance (it has its own PID, safe to kill)
@@ -156,14 +172,22 @@ rm -rf /tmp/synergy-dev
 ## Quick Start (Copy-Paste)
 
 ```bash
-# One-time setup
-mkdir -p /tmp/synergy-dev
-cp -r ~/.synergy/config /tmp/synergy-dev/.synergy/config
+# Step 0: Scan for existing instances
+for d in ~/.synergy /tmp/synergy-dev*; do
+  lock="$d/state/daemon/runtime-lock.json"
+  [ -f "$lock" ] && pid=$(python3 -c "import json; print(json.load(open('$lock'))['pid'])") && kill -0 "$pid" 2>/dev/null && \
+    echo "TAKEN: home=$d pid=$pid ports=$(lsof -nP -Pan -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null | awk '/LISTEN/{print $9}' | sed 's/.*://' | tr '\n' ' ')"
+done
 
-# Start dev instance (pick mode)
-SYNERGY_HOME=/tmp/synergy-dev bun dev web --server-port 4097 --app-port 3001
-# SYNERGY_HOME=/tmp/synergy-dev bun dev desktop --server-port 4097 --app-port 3001
-# SYNERGY_HOME=/tmp/synergy-dev bun dev desktop --managed --server-port 4097 --app-port 3001
+# Step 1: Choose a free port pair (based on scan above) and set up
+export SYN_HOME="/tmp/synergy-dev-$(git branch --show-current)"
+mkdir -p "$SYN_HOME"
+cp -r ~/.synergy/config "$SYN_HOME/.synergy/config"
+
+# Step 2: Start dev instance (pick mode; use the ports you confirmed free)
+SYNERGY_HOME="$SYN_HOME" bun dev web --server-port 4097 --app-port 3001
+# SYNERGY_HOME="$SYN_HOME" bun dev desktop --server-port 4097 --app-port 3001
+# SYNERGY_HOME="$SYN_HOME" bun dev desktop --managed --server-port 4097 --app-port 3001
 ```
 
 ## Key Files Referenced
@@ -178,6 +202,6 @@ SYNERGY_HOME=/tmp/synergy-dev bun dev web --server-port 4097 --app-port 3001
 ## Common Pitfalls
 
 - **Forgetting `SYNERGY_HOME`**: without it, the dev instance uses `~/.synergy/` and hits `AlreadyRunningError`
-- **Port conflicts**: dev instance on default ports (4096/3000) will fail if main instance is running
+- **Port conflicts across worktrees**: if you have multiple worktrees each running a dev instance, 4097/3001 will be taken by the first one. Always run the scan in Step 1 before picking ports.
 - **Missing config**: without copying config, the dev instance has no API keys and can't call models
 - **`bun dev send` without `SYNERGY_HOME`**: sends to the main instance's server — usually what you want for normal use, but use `SYNERGY_HOME` if testing CLI changes in isolation
