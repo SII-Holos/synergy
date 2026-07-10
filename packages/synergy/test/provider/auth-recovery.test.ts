@@ -113,6 +113,31 @@ test("a lone API key is invalidated only after a confirmed rejection", async () 
   )
 })
 
+test("a lone API key confirmation retry preserves request headers and body", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "valid" })
+  const bodies: string[] = []
+  const authorizations: string[] = []
+  let requests = 0
+  const transport = ProviderAuthRecovery.wrapFetch("test-api-confirm", async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    bodies.push(await request.text())
+    authorizations.push(new Headers(init?.headers ?? request.headers).get("authorization") ?? "")
+    return new Response(null, { status: ++requests === 1 ? 401 : 200 })
+  })
+
+  const response = await transport(
+    new Request("https://provider.test/v1/messages", {
+      method: "POST",
+      headers: { Authorization: "Bearer stale" },
+      body: JSON.stringify({ prompt: "hello" }),
+    }),
+  )
+
+  expect(response.status).toBe(200)
+  expect(bodies).toEqual(['{"prompt":"hello"}', '{"prompt":"hello"}'])
+  expect(authorizations).toEqual(["Bearer valid", "Bearer valid"])
+})
+
 test("generic SDK transport rewrites common API-key headers when selecting a backup", async () => {
   await Auth.set("test-wrapped-api", { type: "api", key: "primary" })
   await Auth.addToPool("test-wrapped-api", "backup", { type: "api", key: "backup" })
