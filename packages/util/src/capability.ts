@@ -130,6 +130,13 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Run shell commands",
     description: "Can execute non-destructive shell commands in the current workspace.",
   },
+  shell_branch_mutation: {
+    category: "runtime",
+    severity: "medium",
+    title: "Change active branch in workspace",
+    description:
+      "Can run git checkout / git switch to change the active branch, which is safe in worktrees but can corrupt concurrent sessions on the main checkout.",
+  },
   shell_remote_write: {
     category: "runtime",
     severity: "medium",
@@ -379,6 +386,7 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "file_write",
   "shell_read",
   "shell",
+  "shell_branch_mutation",
   "shell_remote_execute",
   "shell_remote_publish",
   "shell_remote_write",

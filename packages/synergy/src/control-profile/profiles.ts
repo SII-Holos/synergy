@@ -43,6 +43,7 @@ const AUTONOMOUS_MEDIUM_ALLOWED = new Set(["shell_remote_publish"])
 
 const AUTONOMOUS_DENIED = new Set([
   "shell_hardline",
+  "shell_branch_mutation",
   "shell_remote_write",
   "shell_destructive",
   "file_external_write",

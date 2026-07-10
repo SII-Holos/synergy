@@ -218,6 +218,7 @@ describe("autonomous profile summary", () => {
       fn: async () => {
         const profile = await autonomousProfile()
         expect(profile.summary?.deniedCapabilities).toEqual([
+          "shell_branch_mutation",
           "shell_remote_write",
           "shell_destructive",
           "shell_hardline",
