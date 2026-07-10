@@ -33325,6 +33325,343 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.blueprint_loop.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.cancelled": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.cancelled"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.auditing": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.auditing"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.rejected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.rejected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "reason"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              }
+            },
+            "required": ["scopeID", "note", "meta"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              "meta": {
+                "$ref": "#/components/schemas/NoteMetaInfo"
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
+                }
+              }
+            },
+            "required": ["scopeID", "note", "meta", "changed"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.archived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.archived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.unarchived": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.unarchived"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scopeID": {
+                "type": "string"
+              },
+              "metas": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NoteMetaInfo"
+                }
+              }
+            },
+            "required": ["ids", "scopeID", "metas"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.run.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.run.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.run.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "run": {
+                "$ref": "#/components/schemas/LatticeRun"
+              }
+            },
+            "required": ["run"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lattice.event.appended": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lattice.event.appended"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "event": {
+                "$ref": "#/components/schemas/LatticeEvent"
+              }
+            },
+            "required": ["event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.question.asked": {
         "type": "object",
         "properties": {
@@ -33570,343 +33907,6 @@
               }
             },
             "required": ["sessionID", "todos"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
-              }
-            },
-            "required": ["scopeID", "note", "meta"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              "meta": {
-                "$ref": "#/components/schemas/NoteMetaInfo"
-              },
-              "changed": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": ["title", "content", "tags", "pinned", "global", "kind", "blueprint", "archived"]
-                }
-              }
-            },
-            "required": ["scopeID", "note", "meta", "changed"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.archived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.archived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.unarchived": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.unarchived"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "scopeID": {
-                "type": "string"
-              },
-              "metas": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NoteMetaInfo"
-                }
-              }
-            },
-            "required": ["ids", "scopeID", "metas"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loop": {
-                "$ref": "#/components/schemas/BlueprintLoopInfo"
-              }
-            },
-            "required": ["loop"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.failed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.failed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "error"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.cancelled": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.cancelled"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.auditing": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.auditing"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.blueprint_loop.restarted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "blueprint_loop.restarted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "loopID": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["loopID", "reason"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lattice.run.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lattice.run.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "run": {
-                "$ref": "#/components/schemas/LatticeRun"
-              }
-            },
-            "required": ["run"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lattice.run.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lattice.run.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "run": {
-                "$ref": "#/components/schemas/LatticeRun"
-              }
-            },
-            "required": ["run"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lattice.event.appended": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lattice.event.appended"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "event": {
-                "$ref": "#/components/schemas/LatticeEvent"
-              }
-            },
-            "required": ["event"]
           }
         },
         "required": ["type", "properties"]
@@ -34526,6 +34526,51 @@
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.blueprint_loop.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.archived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.unarchived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.run.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lattice.event.appended"
+          },
+          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -34557,51 +34602,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.archived"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.unarchived"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
-          },
-          {
-            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.run.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.run.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lattice.event.appended"
           },
           {
             "$ref": "#/components/schemas/Event.agenda.item.created"

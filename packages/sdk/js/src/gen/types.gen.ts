@@ -6089,6 +6089,123 @@ export type EventSessionInboxUpdated = {
   }
 }
 
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRejected = {
+  type: "blueprint_loop.rejected"
+  properties: {
+    loopID: string
+    reason: string
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
+export type EventNoteArchived = {
+  type: "note.archived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventLatticeRunCreated = {
+  type: "lattice.run.created"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeRunUpdated = {
+  type: "lattice.run.updated"
+  properties: {
+    run: LatticeRun
+  }
+}
+
+export type EventLatticeEventAppended = {
+  type: "lattice.event.appended"
+  properties: {
+    event: LatticeEvent
+  }
+}
+
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -6171,123 +6288,6 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
-  }
-}
-
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventNoteArchived = {
-  type: "note.archived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventNoteUnarchived = {
-  type: "note.unarchived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventBlueprintLoopCreated = {
-  type: "blueprint_loop.created"
-  properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopUpdated = {
-  type: "blueprint_loop.updated"
-  properties: {
-    loop: BlueprintLoopInfo
-  }
-}
-
-export type EventBlueprintLoopCompleted = {
-  type: "blueprint_loop.completed"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopFailed = {
-  type: "blueprint_loop.failed"
-  properties: {
-    loopID: string
-    error: string
-  }
-}
-
-export type EventBlueprintLoopCancelled = {
-  type: "blueprint_loop.cancelled"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopAuditing = {
-  type: "blueprint_loop.auditing"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopRestarted = {
-  type: "blueprint_loop.restarted"
-  properties: {
-    loopID: string
-    reason: string
-  }
-}
-
-export type EventLatticeRunCreated = {
-  type: "lattice.run.created"
-  properties: {
-    run: LatticeRun
-  }
-}
-
-export type EventLatticeRunUpdated = {
-  type: "lattice.run.updated"
-  properties: {
-    run: LatticeRun
-  }
-}
-
-export type EventLatticeEventAppended = {
-  type: "lattice.event.appended"
-  properties: {
-    event: LatticeEvent
   }
 }
 
@@ -6514,6 +6514,21 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionInboxUpdated
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRejected
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
+  | EventLatticeRunCreated
+  | EventLatticeRunUpdated
+  | EventLatticeEventAppended
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -6525,21 +6540,6 @@ export type Event =
   | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
-  | EventNoteArchived
-  | EventNoteUnarchived
-  | EventBlueprintLoopCreated
-  | EventBlueprintLoopUpdated
-  | EventBlueprintLoopCompleted
-  | EventBlueprintLoopFailed
-  | EventBlueprintLoopCancelled
-  | EventBlueprintLoopAuditing
-  | EventBlueprintLoopRestarted
-  | EventLatticeRunCreated
-  | EventLatticeRunUpdated
-  | EventLatticeEventAppended
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted

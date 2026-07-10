@@ -1013,7 +1013,11 @@ export namespace EnforcementGate {
       }
 
       // Blueprint loop management tools — session state coordination
-      if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+      if (
+        toolName === "blueprint_loop_stop" ||
+        toolName === "blueprint_loop_approve" ||
+        toolName === "blueprint_loop_reject"
+      ) {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }

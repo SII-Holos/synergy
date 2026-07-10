@@ -179,7 +179,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           showToast({
             type: "warning",
             title: "Blueprint slot occupied",
-            description: "Wait for the current BlueprintLoop to finish before equipping another Blueprint.",
+            description: "Wait for the current BlueprintLoop to complete before equipping another Blueprint.",
           })
           return
         }

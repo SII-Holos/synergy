@@ -1219,17 +1219,14 @@ ToolRegistry.register({
   },
 })
 
-function BlueprintLoopTool(props: any & { action: "finish" | "restart" }) {
-  const title = () => (props.action === "finish" ? "Finish BlueprintLoop" : "Restart BlueprintLoop")
-  const status = () => props.input.status as string | undefined
+function BlueprintLoopTool(props: any & { icon: string; title: string; subtitle: string }) {
   return (
     <BasicTool
       {...props}
       trigger={{
-        icon: BLUEPRINT_ICON,
-        title: title(),
-        subtitle: (props.input.loopID as string) || "",
-        tags: status() ? [{ label: status()! }] : undefined,
+        icon: props.icon,
+        title: props.title,
+        subtitle: props.subtitle,
       }}
     >
       <Show when={props.output}>
@@ -1244,16 +1241,44 @@ function BlueprintLoopTool(props: any & { action: "finish" | "restart" }) {
 }
 
 ToolRegistry.register({
-  name: "blueprint_loop_finish",
+  name: "blueprint_loop_stop",
   render(props) {
-    return <BlueprintLoopTool {...props} action="finish" />
+    return (
+      <BlueprintLoopTool
+        {...props}
+        icon="circle-pause"
+        title="Request Blueprint Review"
+        subtitle={(props.input.summary as string) || ""}
+      />
+    )
   },
 })
 
 ToolRegistry.register({
-  name: "blueprint_loop_restart",
+  name: "blueprint_loop_approve",
   render(props) {
-    return <BlueprintLoopTool {...props} action="restart" />
+    return (
+      <BlueprintLoopTool
+        {...props}
+        icon="file-check-2"
+        title="Approve BlueprintLoop"
+        subtitle={(props.input.summary as string) || (props.input.sessionID as string) || ""}
+      />
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "blueprint_loop_reject",
+  render(props) {
+    return (
+      <BlueprintLoopTool
+        {...props}
+        icon="clipboard-x"
+        title="Reject BlueprintLoop"
+        subtitle={(props.input.reason as string) || (props.input.sessionID as string) || ""}
+      />
+    )
   },
 })
 

@@ -62,8 +62,7 @@ function continuationText(loop: BlueprintLoopInfo): string {
     loop.userPrompt ? `This start user instruction is run-specific contract for execution and audit.` : "",
     "",
     `If the Blueprint outcome is not complete, continue the remaining execution work now.`,
-    `If the Blueprint outcome is complete and ready for review, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`,
-    `If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${loop.id}", status: "failed", summary: "..." }).`,
+    `If the Blueprint outcome is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`,
   ]
     .filter(Boolean)
     .join("\n")

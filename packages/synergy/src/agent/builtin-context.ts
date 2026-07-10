@@ -121,6 +121,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     note_search: "allow",
     note_write: "allow",
     note_edit: "allow",
+    blueprint_loop_approve: "allow",
+    blueprint_loop_reject: "allow",
     session_list: "allow",
     session_read: "allow",
     session_search: "allow",
@@ -210,8 +212,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_search: "allow",
         note_write: "deny",
         note_edit: "deny",
-        blueprint_loop_restart: "allow",
-        blueprint_loop_finish: "allow",
       }),
     )
   }

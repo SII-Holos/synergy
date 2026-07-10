@@ -53,7 +53,7 @@ function metadataText(message: UserMessage, key: string) {
 }
 
 /**
- * The BlueprintLoop control kind (start / continuation / restart / audit) from
+ * The BlueprintLoop control kind (start / continuation / rejection / approval) from
  * the canonical origin, falling back to legacy metadata.source for messages
  * written before origin existed.
  */
@@ -101,7 +101,7 @@ function workflowKind(message: UserMessage): string | undefined {
   return undefined
 }
 
-function blueprintRestartText(message: UserMessage): string {
+function blueprintRejectionText(message: UserMessage): string {
   const reason = metadataText(message, "reason")
   const instructions = metadataText(message, "instructions")
   const remaining = metadataText(message, "remaining")
@@ -129,10 +129,10 @@ function blueprintBubbleView(message: UserMessage): Omit<ProjectedBubbleText, "k
         label: "Blueprint · Continue",
         text: `${title ? `Continue Blueprint: ${title}` : "Continue this Blueprint."}\n\nCheck progress, keep going if work remains, or send it to audit when complete.`,
       }
-    case "restart":
+    case "rejected":
       return {
         label: "Blueprint · Changes requested",
-        text: blueprintRestartText(message),
+        text: blueprintRejectionText(message),
       }
     case "completed": {
       const summary = metadataText(message, "summary")
