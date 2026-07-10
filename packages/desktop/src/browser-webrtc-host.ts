@@ -110,6 +110,7 @@ export class BrowserWebRTCHost {
       backgroundColor: desktopThemeBackground(this.options.theme.effective),
       webPreferences: {
         partition: browserProfilePartition(this.options.ownerKey),
+        backgroundThrottling: false,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -152,6 +153,7 @@ export class BrowserWebRTCHost {
       height,
       webPreferences: {
         partition: `browser-rtc-${browserHostPageHash(this.options.ownerKey, this.options.pageId)}`,
+        backgroundThrottling: false,
         contextIsolation: false,
         nodeIntegration: true,
         sandbox: false,

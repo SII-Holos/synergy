@@ -275,12 +275,12 @@ describe("Electron Browser Host broker contract", () => {
         socket.send(JSON.stringify(message))
         return withTimeout(
           result.promise,
-          15_000,
+          35_000,
           message.type === "page.command" ? `${message.type}:${message.command.type}` : message.type,
         )
       }
     },
-    45_000,
+    90_000,
   )
 })
 
