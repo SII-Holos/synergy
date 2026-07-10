@@ -3831,6 +3831,8 @@ export type ProviderAuthError = {
   data: {
     providerID: string
     message: string
+    failureCode?: string
+    actionRequired?: boolean
   }
 }
 
@@ -4405,16 +4407,18 @@ export type ProviderProfileMetadata = {
   displayName?: string
   description?: string
   signupUrl?: string
+  authKind?: string
+  environment?: Array<string>
   recommendation?: ProviderRecommendation
 }
 
 export type ProviderAuthHealth = {
   providerID: string
-  status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
+  status: "connected" | "not_configured" | "exhausted" | "action_required"
+  recovery?: "reconnect" | "update_environment"
   authKind?: string
   source?: string
   updatedAt?: number
-  reloginRequired?: boolean
   cooldownUntil?: number
   resetAt?: number
   failureCode?: string
@@ -4423,7 +4427,14 @@ export type ProviderAuthHealth = {
 export type ProviderRuntimeAvailability = {
   providerID: string
   available: boolean
-  reason?: "connected" | "not_connected" | "disabled" | "no_models"
+  reason?:
+    | "connected"
+    | "not_connected"
+    | "disabled"
+    | "no_models"
+    | "authentication_required"
+    | "exhausted"
+    | "fallback_unverified"
   healthCheck?: "models" | "none"
   modelCount: number
 }
@@ -5967,6 +5978,13 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -6022,6 +6040,15 @@ export type EventMcpFailed = {
   properties: {
     server: string
     error: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -6301,15 +6328,6 @@ export type EventFileEdited = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventDagUpdated = {
   type: "dag.updated"
   properties: {
@@ -6529,6 +6547,7 @@ export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
+  | EventProviderAuthUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
@@ -6537,6 +6556,7 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
+  | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -6573,7 +6593,6 @@ export type Event =
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
-  | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
   | EventAgendaItemCreated

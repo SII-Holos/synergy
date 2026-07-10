@@ -10,6 +10,7 @@ import type { ModelsDev } from "./models"
 import type { ProviderProfile } from "./profile"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { AccountUsage } from "./usage"
+import { ProviderAuthRecovery } from "./auth-recovery"
 
 export namespace CodexProvider {
   const log = Log.create({ service: "provider.codex" })
@@ -424,8 +425,9 @@ export namespace CodexProvider {
     allowMissing?: boolean
     fetch?: FetchLike
   }): Promise<string | undefined> {
-    const auth = await Auth.get(PROVIDER_ID)
-    if (!auth || auth.type !== "oauth") {
+    const selected = await Auth.select(PROVIDER_ID)
+    const auth = selected?.auth
+    if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
         providerID: PROVIDER_ID,
@@ -445,7 +447,8 @@ export namespace CodexProvider {
 
     try {
       return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latest = await Auth.get(PROVIDER_ID)
+        const latestSelected = await Auth.select(PROVIDER_ID)
+        const latest = latestSelected?.auth
         if (latest?.type === "oauth" && !options?.forceRefresh) {
           const latestExpires = accessTokenExpiresAt(latest.access) ?? latest.expires
           const latestShouldRefresh =
@@ -456,7 +459,7 @@ export namespace CodexProvider {
 
         const refreshSource = latest?.type === "oauth" ? latest : auth
         const refreshed = await refreshOAuth(refreshSource, options?.fetch)
-        await Auth.set(
+        await Auth.replaceSelectedCredential(
           PROVIDER_ID,
           {
             type: "oauth",
@@ -464,7 +467,7 @@ export namespace CodexProvider {
             refresh: refreshed.refresh,
             expires: refreshed.expires,
           },
-          { source: "api" },
+          { credentialID: latestSelected?.credentialID ?? selected.credentialID },
         )
         return refreshed.access
       })
@@ -609,13 +612,24 @@ export namespace CodexProvider {
   }
 
   async function fetchModelPayload(accessToken: string, fetchFn: FetchLike = fetch) {
-    const response = await fetchFn(`${baseURL()}/models?client_version=1.0.0`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-        ...codexHeaders(accessToken),
+    const response = await ProviderAuthRecovery.execute({
+      providerID: PROVIDER_ID,
+      request: async () => {
+        const current =
+          (await resolveToken({ allowMissing: true, fetch: fetchFn }).catch(() => undefined)) ?? accessToken
+        return fetchFn(`${baseURL()}/models?client_version=1.0.0`, {
+          headers: {
+            Authorization: `Bearer ${current}`,
+            Accept: "application/json",
+            ...codexHeaders(current),
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
       },
-      signal: AbortSignal.timeout(10_000),
+      refresh: (auth) => refreshAuth(auth, fetchFn),
+      classify: classifyError,
+      reloadOnTransition: false,
+      throwOnActionRequired: false,
     })
     if (!response.ok) return []
     const payload = await safeJson(response)
@@ -690,33 +704,69 @@ export namespace CodexProvider {
   }
 
   export async function codexFetch(input: RequestInfo | URL, init?: RequestInit) {
-    const access = await resolveToken({ refreshIfExpiring: true })
-    if (!access) {
-      throw new AuthError({
-        providerID: PROVIDER_ID,
-        code: "codex_auth_missing",
-        message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
-        reloginRequired: true,
-      })
-    }
+    return ProviderAuthRecovery.execute({
+      providerID: PROVIDER_ID,
+      request: async () => {
+        const access = await resolveToken({ refreshIfExpiring: true })
+        if (!access) {
+          throw new AuthError({
+            providerID: PROVIDER_ID,
+            code: "codex_auth_missing",
+            message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
+            reloginRequired: true,
+          })
+        }
 
-    const headers = new Headers(init?.headers)
-    headers.set("Authorization", `Bearer ${access}`)
-    for (const [key, value] of Object.entries(codexHeaders(access))) {
-      headers.set(key, value)
-    }
+        const headers = new Headers(init?.headers)
+        headers.set("Authorization", `Bearer ${access}`)
+        for (const [key, value] of Object.entries(codexHeaders(access))) {
+          headers.set(key, value)
+        }
 
-    const rewritten = rewriteCodexBody(init?.body)
-    if (rewritten.promptCacheKey) {
-      headers.set("session_id", rewritten.promptCacheKey)
-      headers.set("x-client-request-id", rewritten.promptCacheKey)
-    }
+        const rewritten = rewriteCodexBody(init?.body)
+        if (rewritten.promptCacheKey) {
+          headers.set("session_id", rewritten.promptCacheKey)
+          headers.set("x-client-request-id", rewritten.promptCacheKey)
+        }
 
-    return fetch(input, {
-      ...init,
-      headers,
-      body: rewritten.body,
+        return fetch(input, {
+          ...init,
+          headers,
+          body: rewritten.body,
+        })
+      },
+      refresh: async (auth) => {
+        return refreshAuth(auth)
+      },
+      classify: classifyError,
     })
+  }
+
+  export function classifyError(input: {
+    status?: number
+    body?: unknown
+  }): ProviderProfile.ClassifiedError | undefined {
+    const payload = input.body && typeof input.body === "object" ? (input.body as Record<string, any>) : {}
+    const code = errorCode(payload) ?? (input.status === 401 ? "credential_rejected" : undefined)
+    if (input.status === 429) {
+      return { code: code ?? "rate_limited", retryable: true, exhausted: true }
+    }
+    const rejected =
+      input.status === 401 ||
+      ["token_invalidated", "invalid_token", "invalid_grant", "refresh_token_reused"].includes(code ?? "")
+    if (rejected) return { code: code ?? "credential_rejected", retryable: false, reloginRequired: true }
+    return undefined
+  }
+
+  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+    if (auth.type !== "oauth") return undefined
+    const refreshed = await refreshOAuth(auth, fetchFn)
+    return {
+      type: "oauth",
+      access: refreshed.access,
+      refresh: refreshed.refresh,
+      expires: refreshed.expires,
+    }
   }
 
   export async function saveImportedToken(token: TokenPayload) {
@@ -750,25 +800,39 @@ export namespace CodexProvider {
     }
     let response: Response
     try {
-      response = await fetchFn(usageURL(), {
-        headers: {
-          Authorization: `Bearer ${access}`,
-          Accept: "application/json",
-          "User-Agent": "codex-cli",
-          ...codexHeaders(access),
+      response = await ProviderAuthRecovery.execute({
+        providerID: PROVIDER_ID,
+        request: async () => {
+          const current =
+            (await resolveToken({ refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })) ?? access
+          return fetchFn(usageURL(), {
+            headers: {
+              Authorization: `Bearer ${current}`,
+              Accept: "application/json",
+              "User-Agent": "codex-cli",
+              ...codexHeaders(current),
+            },
+            signal: AbortSignal.timeout(15_000),
+          })
         },
-        signal: AbortSignal.timeout(15_000),
+        refresh: (auth) => refreshAuth(auth, fetchFn),
+        classify: classifyError,
+        throwOnActionRequired: false,
       })
     } catch {
       return AccountUsage.error(PROVIDER_ID, "OpenAI Codex usage request failed.")
     }
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        return AccountUsage.error(PROVIDER_ID, `Codex usage request failed with status ${response.status}.`, {
+      const failure = await classifyError({ status: response.status, body: await safeJson(response.clone()) })
+      if (failure?.reloginRequired) {
+        return AccountUsage.error(PROVIDER_ID, "OpenAI rejected these credentials. Reconnect to restore usage.", {
           reloginRequired: true,
         })
       }
-      return AccountUsage.error(PROVIDER_ID, `Codex usage request failed with status ${response.status}.`)
+      if (failure?.exhausted) {
+        return AccountUsage.unavailable(PROVIDER_ID, "OpenAI Codex usage is temporarily rate limited.")
+      }
+      return AccountUsage.error(PROVIDER_ID, "OpenAI Codex usage is temporarily unavailable.")
     }
     const payload = await safeJson(response)
     const rateLimit = payload.rate_limit ?? {}

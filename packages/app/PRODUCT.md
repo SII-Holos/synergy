@@ -65,7 +65,11 @@ Model settings should keep role routing and quick-switcher visibility together i
 
 Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, and login flows together in the Providers page; provider quota, billing, and account-health details belong in Usage. The provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
 
+Provider authentication uses one product-facing health model across Sidebar, Providers, Usage, GitHub, and model availability. A refreshable OAuth access-token expiry remains connected; only a confirmed rejection that cannot recover becomes action required. Rate limits remain temporary availability state, and transient network or server failures offer retry without changing authentication health. Needs attention is mutually exclusive with Recommended, Connected, and Available to connect, and raw failure codes stay in diagnostics rather than primary copy.
+
 Usage settings should read as compact account summaries, not a wide report. Keep refresh controls inside the content flow, label quota windows with user-facing durations such as a 5-hour window, show provider reset timing inline with each quota row when available, and avoid stretching quota rows across the full modal width.
+
+The Sidebar footer contains one non-dismissible Attention rail above the account hub. Product updates retain their own state machine, while a pure selector combines update presentation with provider-auth health. Active download, install, or restart work wins; provider action-required state follows; update failures and ready updates follow after that. Multiple rejected providers aggregate into one stable notice, and resolving the underlying state removes it without a toast or dismissal preference.
 
 Integration settings such as MCP and Email should present connection management, not protocol debugging. Use compact status rows, plain task labels, and grouped connection fields that explain what Synergy will do with the connection. Keep local command, remote endpoint, SMTP, and IMAP details secondary to the user's intent: add tools, send mail, or read mail.
 
@@ -166,6 +170,8 @@ Product UI icons must use semantic tokens rather than raw Lucide literals. Each 
 Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the organization and platform behind Synergy, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks may identify the backing organization/platform layer in the app shell and account surfaces, and SII marks should only identify the institute layer.
 
 Provider discovery should use provider profile metadata for explanatory copy and external sign-up CTAs. Settings may curate a short Recommended provider set for product guidance; custom providers remain standard alphabetical entries unless they declare metadata.
+
+Online account model discovery accepts future model slugs without a client allowlist. When live discovery cannot be verified because of a transient failure, stable fallback models may remain visible but must be labeled as a fallback catalog; authentication rejection instead makes the provider unavailable and routes to recovery.
 
 Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
 

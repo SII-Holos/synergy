@@ -42,6 +42,7 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
+import { ProviderAuthRecovery } from "./auth-recovery"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -209,7 +210,7 @@ export namespace Provider {
   }
 
   async function fetchWithProxyOptions(
-    fetchFn: typeof fetch,
+    fetchFn: ProviderProfile.FetchLike,
     input: RequestInfo | URL,
     init: RequestInit | undefined,
     proxyUrl: string | undefined,
@@ -709,18 +710,19 @@ export namespace Provider {
     delete options["proxy"]
     delete options["noProxy"]
 
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
     const proxyFetch =
       proxyUrl || noProxy
-        ? (input: any, init?: any) => fetchWithProxyOptions(customFetch ?? fetch, input, init, proxyUrl, noProxy)
-        : customFetch
-    if (proxyFetch) options["fetch"] = proxyFetch
+        ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
+        : authFetch
+    options["fetch"] = proxyFetch
 
     const builtSDK = bundledFn({
       name: model.providerID,
       ...options,
     }) as SDK
 
-    if (proxyFetch) {
+    if (proxyUrl || noProxy) {
       const patchedSDK = new Proxy(builtSDK as object, {
         get(target, prop) {
           if (prop === "fetch") return proxyFetch
@@ -764,6 +766,7 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
@@ -772,7 +775,7 @@ export namespace Provider {
       const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        const fetchFn = customFetch ?? fetch
+        const fetchFn = authFetch
         const opts = init ?? {}
 
         const proxyUrlForRequest = proxyUrl

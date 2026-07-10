@@ -10,6 +10,7 @@ import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { ProviderTransform } from "@/provider/transform"
+import { ProviderAuthRecovery } from "@/provider/auth-recovery"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
@@ -87,6 +88,8 @@ export namespace MessageV2 {
     z.object({
       providerID: z.string(),
       message: z.string(),
+      failureCode: z.string().optional(),
+      actionRequired: z.boolean().optional(),
     }),
   )
   export const APIError = NamedError.create(
@@ -1238,6 +1241,16 @@ export namespace MessageV2 {
           {
             providerID: ctx.providerID,
             message: e.message,
+          },
+          { cause: e },
+        ).toObject()
+      case ProviderAuthRecovery.Error.isInstance(e):
+        return new MessageV2.AuthError(
+          {
+            providerID: e.data.providerID,
+            message: e.data.message,
+            failureCode: e.data.failureCode,
+            actionRequired: e.data.actionRequired,
           },
           { cause: e },
         ).toObject()
