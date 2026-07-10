@@ -14,9 +14,14 @@ import { tmpdir } from "../fixture/fixture"
 
 const originalTestHome = process.env.SYNERGY_TEST_HOME
 
-afterEach(() => {
+afterEach(async () => {
+  const currentHome = process.env.SYNERGY_TEST_HOME
+  const rootToClean = currentHome !== originalTestHome ? Global.Path.root : undefined
+
   if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
   else process.env.SYNERGY_TEST_HOME = originalTestHome
+
+  if (rootToClean) await fs.rm(rootToClean, { recursive: true, force: true }).catch(() => {})
 })
 
 function withAnima(autonomy: boolean, fn: () => Promise<void>) {

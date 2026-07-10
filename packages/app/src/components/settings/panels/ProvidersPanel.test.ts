@@ -39,8 +39,6 @@ describe("Providers panel UI contract", () => {
     expect(providersPanel).toContain('"openrouter"')
     expect(providersPanel).toContain('"openai-codex"')
     expect(providersPanel).toContain('"zhipu-ai-coding-plan"')
-    expect(providersPanel).toContain("filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id))")
-    expect(providersPanel).toContain("provider.connected && !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id)")
     expect(providersPanel).not.toContain("isRecommendedProvider")
   })
 

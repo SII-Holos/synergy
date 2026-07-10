@@ -29,6 +29,7 @@ export const SemanticIconToken = {
   "experience.main": "lightbulb",
   "agents.main": "users",
   "providers.main": "server",
+  "providers.reconnect": "shield-alert",
   "agenda.main": "calendar-clock",
 
   // Session runtime

@@ -49,6 +49,8 @@ export namespace ProviderProfile {
       displayName: z.string().optional(),
       description: z.string().optional(),
       signupUrl: z.string().optional(),
+      authKind: z.string().optional(),
+      environment: z.array(z.string()).optional(),
       recommendation: Recommendation.optional(),
     })
     .strict()
@@ -93,6 +95,7 @@ export namespace ProviderProfile {
   export interface Profile {
     id: string
     name: string
+    origin?: "builtin" | "plugin"
     aliases?: string[]
     displayName?: string
     description?: string
@@ -151,6 +154,15 @@ export namespace ProviderProfile {
     return [...profiles.values()]
   }
 
+  export function clearPluginProfiles() {
+    for (const [providerID, profile] of profiles) {
+      if (profile.origin === "plugin") profiles.delete(providerID)
+    }
+    for (const [alias, providerID] of aliases) {
+      if (!profiles.has(providerID)) aliases.delete(alias)
+    }
+  }
+
   export function canonicalID(providerID: string): string {
     return aliases.get(providerID) ?? providerID
   }
@@ -162,6 +174,8 @@ export namespace ProviderProfile {
       ...(profile.displayName ? { displayName: profile.displayName } : {}),
       ...(profile.description ? { description: profile.description } : {}),
       ...(profile.signupUrl ? { signupUrl: profile.signupUrl } : {}),
+      ...(profile.authKind ? { authKind: profile.authKind } : {}),
+      ...(profile.env?.length ? { environment: profile.env } : {}),
       ...(profile.recommendation ? { recommendation: profile.recommendation } : {}),
     }
   }

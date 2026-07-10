@@ -4,6 +4,8 @@ export type ProviderRecommendationMetadata = {
   displayName?: string
   description?: string
   signupUrl?: string
+  authKind?: string
+  environment?: string[]
   recommendation?: {
     level: "featured" | "recommended" | "standard"
     rank?: number

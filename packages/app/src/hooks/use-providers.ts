@@ -15,7 +15,12 @@ export function useProviders() {
     }
     return globalSync.data.provider
   })
-  const connected = createMemo(() => providers().all.filter((p) => providers().connected.includes(p.id)))
+  const connected = createMemo(() =>
+    providers().all.filter((provider) => {
+      if (!providers().connected.includes(provider.id)) return false
+      return providers().runtimeAvailability?.[provider.id]?.available ?? true
+    }),
+  )
   const popular = createMemo(() => providers().all.filter((p) => isRecommendedProvider(providers().profiles, p.id)))
   return {
     all: createMemo(() => providers().all),

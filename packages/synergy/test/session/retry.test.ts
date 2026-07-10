@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
 import { APICallError } from "ai"
+import { ProviderAuthRecovery } from "../../src/provider/auth-recovery"
 
 function apiError(headers?: Record<string, string>): MessageV2.APIError {
   return new MessageV2.APIError({
@@ -82,6 +83,26 @@ describe("session.retry.delay", () => {
 })
 
 describe("session.message-v2.fromError", () => {
+  test("preserves structured provider recovery metadata", () => {
+    const result = MessageV2.fromError(
+      new ProviderAuthRecovery.Error({
+        providerID: "openai-codex",
+        failureCode: "token_invalidated",
+        actionRequired: true,
+        message: "Reconnect the provider.",
+      }),
+      { providerID: "openai-codex" },
+    )
+
+    expect(MessageV2.AuthError.isInstance(result)).toBe(true)
+    expect((result as { data: Record<string, unknown> }).data).toEqual({
+      providerID: "openai-codex",
+      failureCode: "token_invalidated",
+      actionRequired: true,
+      message: "Reconnect the provider.",
+    })
+  })
+
   test.concurrent(
     "converts ECONNRESET socket errors to retryable APIError",
     async () => {

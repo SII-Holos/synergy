@@ -2,6 +2,7 @@ import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
+import { ProviderAuthHealth } from "./auth-health"
 
 export namespace GitHubProvider {
   export const PROVIDER_ID = "github"
@@ -76,9 +77,9 @@ export namespace GitHubProvider {
     })
     if (!response.ok) {
       throw new AuthError({
-        code: response.status === 401 || response.status === 403 ? "github_token_invalid" : "github_user_failed",
+        code: response.status === 401 ? "github_token_invalid" : "github_user_failed",
         message: `GitHub account lookup failed with status ${response.status}.`,
-        reloginRequired: response.status === 401 || response.status === 403,
+        reloginRequired: response.status === 401,
       })
     }
     return accountFromPayload(await safeJson(response))
@@ -234,21 +235,23 @@ export namespace GitHubProvider {
   export async function status(fetchFn: FetchLike = fetch): Promise<Status> {
     const resolved = await resolveToken()
     if (!resolved) return { providerID: PROVIDER_ID, status: "not_configured" }
-    if (resolved.account) {
-      return {
-        providerID: PROVIDER_ID,
-        status: "connected",
-        source: resolved.source,
-        authKind: resolved.authKind,
-        account: resolved.account,
-        updatedAt: resolved.updatedAt,
-      }
-    }
     const account = await fetchAccount(resolved.token, fetchFn).catch((error) => {
       if (AuthError.isInstance(error) && error.data.reloginRequired) return "invalid" as const
       return undefined
     })
     if (account === "invalid") {
+      if (resolved.source === "store") {
+        const selected = await Auth.select(PROVIDER_ID)
+        await Auth.markDead(PROVIDER_ID, "github_token_invalid", { credentialID: selected?.credentialID })
+      } else {
+        await ProviderAuthHealth.observe({
+          providerID: PROVIDER_ID,
+          status: "action_required",
+          recovery: "update_environment",
+          source: "env",
+          failureCode: "github_token_invalid",
+        })
+      }
       return {
         providerID: PROVIDER_ID,
         status: "invalid",
@@ -267,6 +270,16 @@ export namespace GitHubProvider {
         updatedAt: resolved.updatedAt,
         failureCode: "github_account_lookup_failed",
       }
+    }
+    if (resolved.source === "store") {
+      await ProviderAuthHealth.clearObservation(PROVIDER_ID, (await Auth.entries())[PROVIDER_ID])
+    } else {
+      await ProviderAuthHealth.observe({
+        providerID: PROVIDER_ID,
+        status: "connected",
+        source: "env",
+        authKind: "api_key",
+      })
     }
     return {
       providerID: PROVIDER_ID,

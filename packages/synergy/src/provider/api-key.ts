@@ -1,6 +1,7 @@
 import { Global } from "../global"
 import fs from "fs/promises"
 import z from "zod"
+import { ProviderAuthHealth } from "./auth-health"
 
 export namespace Auth {
   export const Oauth = z
@@ -287,6 +288,16 @@ export namespace Auth {
     await fs.rename(tmp, filename)
   }
 
+  async function mutateStore(providerID: string, mutate: (store: Store) => void | Promise<void>) {
+    await withLock("provider-auth-store:write", async () => {
+      const store = await readStore()
+      const previous = ProviderAuthHealth.fromEntry(providerID, store.credentials[providerID])
+      await mutate(store)
+      await writeStore(store)
+      await ProviderAuthHealth.commitStored(previous, providerID, store.credentials[providerID])
+    })
+  }
+
   export async function migrateLegacy(input?: { backup?: boolean }): Promise<{ migrated: boolean; count: number }> {
     const oldFile = Bun.file(legacyFilepath())
     if (!(await oldFile.exists())) return { migrated: false, count: 0 }
@@ -374,37 +385,72 @@ export namespace Auth {
   }
 
   export async function set(key: string, info: Info, options?: { source?: Source }) {
-    const store = await readStore()
-    const primary = poolEntryFromInfo(key, info, options?.source)
-    store.credentials[key] = {
-      ...entryFromInfo(key, info, options?.source),
-      pool: [primary],
-    }
-    await writeStore(store)
+    await mutateStore(key, (store) => {
+      const primary = poolEntryFromInfo(key, info, options?.source)
+      store.credentials[key] = {
+        ...entryFromInfo(key, info, options?.source),
+        pool: [primary],
+      }
+    })
   }
 
   export async function addToPool(providerID: string, credentialID: string, info: Info, options?: { source?: Source }) {
-    const store = await readStore()
-    const existing = store.credentials[providerID]
-    const next = poolEntryFromInfo(credentialID, info, options?.source)
-    if (!existing) {
-      store.credentials[providerID] = {
-        ...entryFromInfo(providerID, info, options?.source),
-        pool: [next],
+    await mutateStore(providerID, (store) => {
+      const existing = store.credentials[providerID]
+      const next = poolEntryFromInfo(credentialID, info, options?.source)
+      if (!existing) {
+        store.credentials[providerID] = {
+          ...entryFromInfo(providerID, info, options?.source),
+          pool: [next],
+        }
+        return
       }
-      await writeStore(store)
-      return
-    }
-    const pool = materializePool(existing).filter((item) => item.id !== credentialID)
-    existing.pool = [...pool, next]
-    existing.updatedAt = Date.now()
-    await writeStore(store)
+      const pool = materializePool(existing).filter((item) => item.id !== credentialID)
+      existing.pool = [...pool, next]
+      existing.updatedAt = Date.now()
+    })
+  }
+
+  export async function replaceSelectedCredential(
+    providerID: string,
+    info: Info,
+    options?: { credentialID?: string; source?: Source },
+  ) {
+    await mutateStore(providerID, (store) => {
+      const existing = store.credentials[providerID]
+      if (!existing) {
+        const credentialID = options?.credentialID ?? providerID
+        store.credentials[providerID] = {
+          ...entryFromInfo(providerID, info, options?.source),
+          pool: [poolEntryFromInfo(credentialID, info, options?.source)],
+        }
+        return
+      }
+
+      const selectedID = options?.credentialID ?? selectPoolEntry(existing)?.id ?? providerID
+      const pool = materializePool(existing)
+      const current = pool.find((item) => item.id === selectedID)
+      const replacement = poolEntryFromInfo(selectedID, info, options?.source ?? current?.source ?? existing.source)
+      existing.pool = pool.some((item) => item.id === selectedID)
+        ? pool.map((item) => (item.id === selectedID ? replacement : item))
+        : [...pool, replacement]
+      existing.updatedAt = Date.now()
+
+      if (selectedID === providerID) {
+        const primary = entryFromInfo(providerID, info, options?.source ?? current?.source ?? existing.source)
+        existing.authKind = primary.authKind
+        existing.tokens = primary.tokens
+        existing.expiresAt = primary.expiresAt
+        existing.metadata = primary.metadata
+        existing.source = primary.source
+      }
+    })
   }
 
   export async function remove(key: string) {
-    const store = await readStore()
-    delete store.credentials[key]
-    await writeStore(store)
+    await mutateStore(key, (store) => {
+      delete store.credentials[key]
+    })
   }
 
   export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -428,44 +474,44 @@ export namespace Auth {
     providerID: string,
     input: { failureCode: string; cooldownUntil?: number; resetAt?: number; credentialID?: string },
   ) {
-    const store = await readStore()
-    const entry = store.credentials[providerID]
-    if (!entry) return
-    const selected = input.credentialID ?? selectPoolEntry(entry)?.id
-    const pool = materializePool(entry)
-    entry.pool = pool.map((item) =>
-      item.id === selected
-        ? {
-            ...item,
-            status: "exhausted" as const,
-            failureCode: input.failureCode,
-            cooldownUntil: input.cooldownUntil,
-            resetAt: input.resetAt,
-            updatedAt: Date.now(),
-          }
-        : item,
-    )
-    entry.updatedAt = Date.now()
-    await writeStore(store)
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input.credentialID ?? selectPoolEntry(entry)?.id
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) =>
+        item.id === selected
+          ? {
+              ...item,
+              status: "exhausted" as const,
+              failureCode: input.failureCode,
+              cooldownUntil: input.cooldownUntil,
+              resetAt: input.resetAt,
+              updatedAt: Date.now(),
+            }
+          : item,
+      )
+      entry.updatedAt = Date.now()
+    })
   }
 
   export async function markDead(providerID: string, failureCode: string, input?: { credentialID?: string }) {
-    const store = await readStore()
-    const entry = store.credentials[providerID]
-    if (!entry) return
-    const selected = input?.credentialID ?? selectPoolEntry(entry)?.id
-    const pool = materializePool(entry)
-    entry.pool = pool.map((item) =>
-      item.id === selected
-        ? {
-            ...item,
-            status: "dead" as const,
-            failureCode,
-            updatedAt: Date.now(),
-          }
-        : item,
-    )
-    entry.updatedAt = Date.now()
-    await writeStore(store)
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input?.credentialID ?? selectPoolEntry(entry)?.id
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) =>
+        item.id === selected
+          ? {
+              ...item,
+              status: "dead" as const,
+              failureCode,
+              updatedAt: Date.now(),
+            }
+          : item,
+      )
+      entry.updatedAt = Date.now()
+    })
   }
 }
