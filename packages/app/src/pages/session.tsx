@@ -203,7 +203,6 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
-  const [emptyRefreshing, setEmptyRefreshing] = createSignal(false)
   const [workspaceProgress, setWorkspaceProgress] = createSignal<Record<string, SessionWorkspaceProgress>>({})
   const [workspaceProgressActions, setWorkspaceProgressActions] = createSignal<
     Record<string, SessionWorkspaceProgressActions>
@@ -398,6 +397,19 @@ function SessionPageContent() {
     if (!id) return true
     return sync.data.message[id] !== undefined
   })
+
+  // Loading timeout: after 10 s of waiting show a Refresh button so the user
+  // can recover from a stuck load (e.g. loadMessages swallowed an error).
+  const [loadingTooLong, setLoadingTooLong] = createSignal(false)
+  let loadingTimer: ReturnType<typeof setTimeout> | undefined
+  createEffect(() => {
+    const id = params.id
+    clearTimeout(loadingTimer)
+    setLoadingTooLong(false)
+    if (!id || messagesReady()) return
+    loadingTimer = setTimeout(() => setLoadingTooLong(true), 10_000)
+  })
+  onCleanup(() => clearTimeout(loadingTimer))
   const historyMore = createMemo(() => {
     const id = params.id
     if (!id) return false
@@ -1046,39 +1058,28 @@ function SessionPageContent() {
                     <Show
                       when={activeMessage() || (timeline()?.length ?? 0) > 0 || visibleWorkspaceProgress()}
                       fallback={
-                        <Show
-                          when={messagesReady()}
-                          fallback={
-                            <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                              <Spinner class="size-10 text-text-weak" />
-                              <span class="text-sm text-text-weak">Loading conversation…</span>
-                            </div>
-                          }
-                        >
+                        <Show when={!messagesReady()}>
                           <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                            <span class="text-sm text-text-weak">No messages yet</span>
-                            <button
-                              type="button"
-                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
-                              disabled={emptyRefreshing()}
-                              onClick={async () => {
-                                const id = params.id
-                                if (!id || emptyRefreshing()) return
-                                setEmptyRefreshing(true)
-                                try {
-                                  await sync.session.refresh(id)
-                                } finally {
-                                  setEmptyRefreshing(false)
-                                }
-                              }}
-                            >
-                              <Icon
-                                name={getSemanticIcon("action.refresh")}
-                                size="small"
-                                class={emptyRefreshing() ? "animate-spin" : undefined}
-                              />
-                              <span>Refresh</span>
-                            </button>
+                            <Spinner class="size-10 text-text-weak" />
+                            <span class="text-sm text-text-weak">Loading conversation…</span>
+                            <Show when={loadingTooLong()}>
+                              <button
+                                type="button"
+                                class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                                style={{ opacity: 0, animation: "fade-in 0.4s ease-out forwards" }}
+                                onClick={async () => {
+                                  const id = params.id
+                                  if (!id) return
+                                  setLoadingTooLong(false)
+                                  clearTimeout(loadingTimer)
+                                  loadingTimer = setTimeout(() => setLoadingTooLong(true), 10_000)
+                                  await sync.session.sync(id, { refreshVolatile: true })
+                                }}
+                              >
+                                <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                                <span>Refresh</span>
+                              </button>
+                            </Show>
                           </div>
                         </Show>
                       }
