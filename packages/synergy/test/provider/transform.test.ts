@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ProviderTransform } from "../../src/provider/transform"
+import type { Provider } from "../../src/provider/provider"
 
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
@@ -798,16 +799,12 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
 })
 
 describe("ProviderTransform.variants", () => {
-  const createMockModel = (overrides: Partial<any> = {}): any => ({
-    id: "test/test-model",
-    providerID: "test",
-    api: {
-      id: "test-model",
-      url: "https://api.test.com",
-      npm: "@ai-sdk/openai",
-    },
-    name: "Test Model",
-    capabilities: {
+  type ModelOverrides = Omit<Partial<Provider.Model>, "capabilities"> & {
+    capabilities?: Partial<Provider.Model["capabilities"]>
+  }
+
+  const createMockModel = (overrides: ModelOverrides = {}): Provider.Model => {
+    const capabilities = {
       temperature: true,
       reasoning: true,
       attachment: true,
@@ -815,22 +812,33 @@ describe("ProviderTransform.variants", () => {
       input: { text: true, audio: false, image: true, video: false, pdf: false },
       output: { text: true, audio: false, image: false, video: false, pdf: false },
       interleaved: false,
-    },
-    cost: {
-      input: 0.001,
-      output: 0.002,
-      cache: { read: 0.0001, write: 0.0002 },
-    },
-    limit: {
-      context: 128000,
-      output: 8192,
-    },
-    status: "active",
-    options: {},
-    headers: {},
-    release_date: "2024-01-01",
-    ...overrides,
-  })
+    }
+    return {
+      id: "test/test-model",
+      providerID: "test",
+      api: {
+        id: "test-model",
+        url: "https://api.test.com",
+        npm: "@ai-sdk/openai",
+      },
+      name: "Test Model",
+      cost: {
+        input: 0.001,
+        output: 0.002,
+        cache: { read: 0.0001, write: 0.0002 },
+      },
+      limit: {
+        context: 128000,
+        output: 8192,
+      },
+      status: "active",
+      options: {},
+      headers: {},
+      release_date: "2024-01-01",
+      ...overrides,
+      capabilities: { ...capabilities, ...overrides.capabilities },
+    }
+  }
 
   test("returns empty object when model has no reasoning capabilities", () => {
     const model = createMockModel({
@@ -911,7 +919,7 @@ describe("ProviderTransform.variants", () => {
       expect(result).toEqual({})
     })
 
-    test("gpt models return OPENAI_EFFORTS with reasoning", () => {
+    test("gpt models use the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/gpt-4",
         providerID: "openrouter",
@@ -922,12 +930,12 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
       expect(result.low).toEqual({ reasoning: { effort: "low" } })
       expect(result.high).toEqual({ reasoning: { effort: "high" } })
     })
 
-    test("gemini-3 returns OPENAI_EFFORTS with reasoning", () => {
+    test("gemini-3 uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/gemini-3-5-pro",
         providerID: "openrouter",
@@ -938,10 +946,10 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
 
-    test("grok-4 returns OPENAI_EFFORTS with reasoning", () => {
+    test("grok-4 uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/grok-4",
         providerID: "openrouter",
@@ -952,12 +960,28 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+    })
+
+    test("explicit model efforts enable future model families", () => {
+      const model = createMockModel({
+        id: "openrouter/future-reasoning-model",
+        providerID: "openrouter",
+        api: {
+          id: "future-reasoning-model",
+          url: "https://openrouter.ai",
+          npm: "@openrouter/ai-sdk-provider",
+        },
+        capabilities: { reasoningEfforts: ["low", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "max"])
+      expect(result.max).toEqual({ reasoning: { effort: "max" } })
     })
   })
 
   describe("@ai-sdk/gateway", () => {
-    test("returns OPENAI_EFFORTS with reasoningEffort", () => {
+    test("uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "gateway/gateway-model",
         providerID: "gateway",
@@ -968,9 +992,25 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
       expect(result.low).toEqual({ reasoningEffort: "low" })
       expect(result.high).toEqual({ reasoningEffort: "high" })
+    })
+
+    test("explicit model efforts override the routed fallback", () => {
+      const model = createMockModel({
+        id: "gateway/future-reasoning-model",
+        providerID: "gateway",
+        api: {
+          id: "future-reasoning-model",
+          url: "https://gateway.ai",
+          npm: "@ai-sdk/gateway",
+        },
+        capabilities: { reasoningEfforts: ["low", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "max"])
+      expect(result.max).toEqual({ reasoningEffort: "max" })
     })
   })
 
@@ -1112,7 +1152,7 @@ describe("ProviderTransform.variants", () => {
       expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
     })
 
-    test("azure model with reasoning_options uses data-driven efforts", () => {
+    test("explicit model efforts override the Azure fallback", () => {
       const model = createMockModel({
         id: "gpt-5.6",
         providerID: "azure",
@@ -1121,16 +1161,7 @@ describe("ProviderTransform.variants", () => {
           url: "https://azure.com",
           npm: "@ai-sdk/azure",
         },
-        capabilities: {
-          temperature: false,
-          reasoning: true,
-          reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh", "max"] }],
-          attachment: true,
-          toolcall: true,
-          input: { text: true, audio: false, image: true, video: false, pdf: false },
-          output: { text: true, audio: false, image: false, video: false, pdf: false },
-          interleaved: false,
-        },
+        capabilities: { reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
       })
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
@@ -1201,60 +1232,56 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
-  })
-
-  test("openai model with reasoning_options uses data-driven efforts", () => {
-    const model = createMockModel({
-      id: "openai/gpt-5.6",
-      providerID: "openai",
-      api: {
-        id: "gpt-5.6",
-        url: "https://api.openai.com",
-        npm: "@ai-sdk/openai",
-      },
-      capabilities: {
-        temperature: false,
-        reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh", "max"] }],
-        attachment: true,
-        toolcall: true,
-        input: { text: true, audio: false, image: true, video: false, pdf: false },
-        output: { text: true, audio: false, image: false, video: false, pdf: false },
-        interleaved: false,
-      },
-      release_date: "2026-07-01",
+    test("explicit model efforts override the OpenAI fallback", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5.6",
+        providerID: "openai",
+        api: {
+          id: "gpt-5.6",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
+        },
+        capabilities: { reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
+        release_date: "2026-07-01",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
     })
-    const result = ProviderTransform.variants(model)
-    expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
-  })
 
-  test("openai model with limited reasoning_options respects actual API data", () => {
-    const model = createMockModel({
-      id: "openai/gpt-5.4-pro",
-      providerID: "openai",
-      api: {
-        id: "gpt-5.4-pro",
-        url: "https://api.openai.com",
-        npm: "@ai-sdk/openai",
-      },
-      capabilities: {
-        temperature: false,
-        reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["medium", "high", "xhigh"] }],
-        attachment: true,
-        toolcall: true,
-        input: { text: true, audio: false, image: true, video: false, pdf: false },
-        output: { text: true, audio: false, image: false, video: false, pdf: false },
-        interleaved: false,
-      },
-      release_date: "2026-03-05",
+    test("explicit model efforts can narrow the OpenAI fallback", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5.4-pro",
+        providerID: "openai",
+        api: {
+          id: "gpt-5.4-pro",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
+        },
+        capabilities: { reasoningEfforts: ["medium", "high", "xhigh"] },
+        release_date: "2026-03-05",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["medium", "high", "xhigh"])
     })
-    const result = ProviderTransform.variants(model)
-    // gpt-5.4-pro only supports medium/high/xhigh per API data — no minimal/none/low
-    expect(Object.keys(result)).toEqual(["medium", "high", "xhigh"])
   })
 
   describe("@ai-sdk/anthropic", () => {
+    test("explicit efforts enable future model families without guessing thinking mode", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-future",
+        providerID: "anthropic",
+        api: {
+          id: "claude-future",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+        capabilities: { reasoningEfforts: ["low", "xhigh", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "xhigh", "max"])
+      expect(result.max).toEqual({ effort: "max" })
+    })
+
     test("returns high and max with thinking config", () => {
       const model = createMockModel({
         id: "anthropic/claude-4",

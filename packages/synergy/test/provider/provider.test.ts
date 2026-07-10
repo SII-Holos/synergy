@@ -4,6 +4,7 @@ import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Provider } from "../../src/provider/provider"
 import { Env } from "../../src/util/env"
+import { ModelsDev } from "../../src/provider/models"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -18,6 +19,39 @@ async function provideTestScope(input: {
     },
   })
 }
+
+test("catalog reasoning efforts survive unrelated future option types", () => {
+  const catalog = ModelsDev.Provider.parse({
+    id: "openai",
+    name: "OpenAI",
+    api: "https://api.openai.com/v1",
+    npm: "@ai-sdk/openai",
+    env: [],
+    models: {
+      "future-reasoning-model": {
+        id: "future-reasoning-model",
+        name: "Future reasoning model",
+        family: "gpt",
+        release_date: "2026-07-01",
+        attachment: true,
+        reasoning: true,
+        reasoning_options: [
+          { type: "budget_tokens" },
+          { type: "toggle" },
+          { type: "effort", values: [null, "low", "max"] },
+        ],
+        temperature: false,
+        tool_call: true,
+        modalities: { input: ["text"], output: ["text"] },
+        limit: { context: 128_000, output: 32_000 },
+        options: {},
+      },
+    },
+  })
+
+  const model = Provider.fromModelsDevProvider(catalog).models["future-reasoning-model"]
+  expect(Object.keys(model.variants ?? {})).toEqual(["low", "max"])
+})
 
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
@@ -1171,6 +1205,39 @@ test("completely new provider not in database can be configured", async () => {
       expect(model.capabilities.reasoning).toBe(true)
       expect(model.capabilities.attachment).toBe(true)
       expect(model.capabilities.input.image).toBe(true)
+    },
+  })
+})
+
+test("configured model overrides preserve catalog reasoning efforts", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            openai: {
+              models: {
+                "gpt-5.4-pro": {
+                  cost: { input: 999, output: 180 },
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("OPENAI_API_KEY", "test-openai-key")
+    },
+    fn: async () => {
+      const model = (await Provider.list()).openai.models["gpt-5.4-pro"]
+      expect(model.cost.input).toBe(999)
+      expect(Object.keys(model.variants ?? {})).toEqual(["medium", "high", "xhigh"])
     },
   })
 })

@@ -4,7 +4,6 @@ import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { PromptCachePolicy } from "./prompt-cache-policy"
-import { iife } from "@/util/iife"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -391,26 +390,53 @@ export namespace ProviderTransform {
   }
 
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
-  const OPENAI_EFFORTS = ["none", ...WIDELY_SUPPORTED_EFFORTS, "xhigh", "max"]
+  const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 
-  function effortsFromModel(model: Provider.Model): string[] | undefined {
-    return model.capabilities.reasoning_options?.find((o) => o.type === "effort")?.values
+  function effortVariants<T extends Record<string, unknown>>(
+    efforts: readonly string[],
+    options: (effort: string) => T,
+  ): Record<string, T> {
+    return Object.fromEntries(efforts.map((effort) => [effort, options(effort)]))
+  }
+
+  function azureEffortFallback(id: string) {
+    const efforts = [...WIDELY_SUPPORTED_EFFORTS]
+    if (id.includes("gpt-5-") || id === "gpt-5") efforts.unshift("minimal")
+    return efforts
+  }
+
+  function openAIEffortFallback(model: Provider.Model) {
+    const id = model.id.toLowerCase()
+    if (id.includes("codex")) return [...WIDELY_SUPPORTED_EFFORTS]
+    const efforts = [...WIDELY_SUPPORTED_EFFORTS]
+    if (id.includes("gpt-5-") || id === "gpt-5") efforts.unshift("minimal")
+    if (model.release_date >= "2025-11-13") efforts.unshift("none")
+    if (model.release_date >= "2025-12-04") efforts.push("xhigh")
+    return efforts
   }
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
 
     const id = model.id.toLowerCase()
-    if (id.includes("deepseek") || id.includes("minimax") || id.includes("glm") || id.includes("mistral")) return {}
+    const modelEfforts = model.capabilities.reasoningEfforts
+    if (
+      modelEfforts === undefined &&
+      (id.includes("deepseek") || id.includes("minimax") || id.includes("glm") || id.includes("mistral"))
+    )
+      return {}
 
     switch (model.api.npm) {
       case "@openrouter/ai-sdk-provider":
-        if (!model.id.includes("gpt") && !model.id.includes("gemini-3") && !model.id.includes("grok-4")) return {}
-        return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoning: { effort } }]))
+        if (modelEfforts === undefined && !id.includes("gpt") && !id.includes("gemini-3") && !id.includes("grok-4"))
+          return {}
+        return effortVariants(modelEfforts ?? ROUTED_MODEL_EFFORT_FALLBACK, (effort) => ({ reasoning: { effort } }))
 
       // TODO: YOU CANNOT SET max_tokens if this is set!!!
       case "@ai-sdk/gateway":
-        return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
+        return effortVariants(modelEfforts ?? ROUTED_MODEL_EFFORT_FALLBACK, (reasoningEffort) => ({
+          reasoningEffort,
+        }))
 
       case "@ai-sdk/cerebras":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/cerebras
@@ -421,73 +447,40 @@ export namespace ProviderTransform {
       case "@ai-sdk/deepinfra":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/deepinfra
       case "@ai-sdk/openai-compatible":
-        return Object.fromEntries(WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
+        return effortVariants(modelEfforts ?? WIDELY_SUPPORTED_EFFORTS, (reasoningEffort) => ({ reasoningEffort }))
 
       case "@ai-sdk/azure":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/azure
-        if (id === "o1-mini") return {}
-        const azureEfforts =
-          effortsFromModel(model) ??
-          iife(() => {
-            const arr = ["low", "medium", "high"]
-            if (id.includes("gpt-5-") || id === "gpt-5") arr.unshift("minimal")
-            return arr
-          })
-        return Object.fromEntries(
-          azureEfforts.map((effort) => [
-            effort,
-            {
-              reasoningEffort: effort,
-              reasoningSummary: "auto",
-              include: ["reasoning.encrypted_content"],
-            },
-          ]),
-        )
+        if (modelEfforts === undefined && id === "o1-mini") return {}
+        return effortVariants(modelEfforts ?? azureEffortFallback(id), (reasoningEffort) => ({
+          reasoningEffort,
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        }))
       case "@ai-sdk/openai":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/openai
-        if (id === "gpt-5-pro") return {}
-        const openaiEfforts =
-          effortsFromModel(model) ??
-          iife(() => {
-            if (id.includes("codex")) return WIDELY_SUPPORTED_EFFORTS
-            const arr = [...WIDELY_SUPPORTED_EFFORTS]
-            if (id.includes("gpt-5-") || id === "gpt-5") {
-              arr.unshift("minimal")
-            }
-            if (model.release_date >= "2025-11-13") {
-              arr.unshift("none")
-            }
-            if (model.release_date >= "2025-12-04") {
-              arr.push("xhigh")
-            }
-            return arr
-          })
-        return Object.fromEntries(
-          openaiEfforts.map((effort) => [
-            effort,
-            {
-              reasoningEffort: effort,
-              reasoningSummary: "auto",
-              include: ["reasoning.encrypted_content"],
-            },
-          ]),
-        )
+        if (modelEfforts === undefined && id === "gpt-5-pro") return {}
+        return effortVariants(modelEfforts ?? openAIEffortFallback(model), (reasoningEffort) => ({
+          reasoningEffort,
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        }))
 
       case "@ai-sdk/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
         if (["opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"].some((v) => model.api.id.includes(v))) {
-          return Object.fromEntries(
-            ["low", "medium", "high", "max"].map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
-          )
+          return effortVariants(modelEfforts ?? ["low", "medium", "high", "max"], (effort) => ({
+            thinking: { type: "adaptive" },
+            effort,
+          }))
         }
         if (["opus-4-7", "opus-4.7"].some((v) => model.api.id.includes(v))) {
-          return Object.fromEntries(
-            ["low", "medium", "high", "xhigh", "max"].map((effort) => [
-              effort,
-              { thinking: { type: "adaptive", display: "summarized" }, effort },
-            ]),
-          )
+          return effortVariants(modelEfforts ?? ["low", "medium", "high", "xhigh", "max"], (effort) => ({
+            thinking: { type: "adaptive", display: "summarized" },
+            effort,
+          }))
         }
+        if (modelEfforts !== undefined) return effortVariants(modelEfforts, (effort) => ({ effort }))
         return {
           high: {
             thinking: {
@@ -505,17 +498,12 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/amazon-bedrock":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/amazon-bedrock
-        return Object.fromEntries(
-          WIDELY_SUPPORTED_EFFORTS.map((effort) => [
-            effort,
-            {
-              reasoningConfig: {
-                type: "enabled",
-                maxReasoningEffort: effort,
-              },
-            },
-          ]),
-        )
+        return effortVariants(modelEfforts ?? WIDELY_SUPPORTED_EFFORTS, (maxReasoningEffort) => ({
+          reasoningConfig: {
+            type: "enabled",
+            maxReasoningEffort,
+          },
+        }))
 
       case "@ai-sdk/google-vertex":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/google-vertex
@@ -538,18 +526,13 @@ export namespace ProviderTransform {
           }
         }
         {
-          const levels = id.includes("3.1") ? ["low", "medium", "high"] : ["low", "high"]
-          return Object.fromEntries(
-            levels.map((effort) => [
-              effort,
-              {
-                thinkingConfig: {
-                  includeThoughts: true,
-                  thinkingLevel: effort,
-                },
-              },
-            ]),
-          )
+          const levels = modelEfforts ?? (id.includes("3.1") ? ["low", "medium", "high"] : ["low", "high"])
+          return effortVariants(levels, (thinkingLevel) => ({
+            thinkingConfig: {
+              includeThoughts: true,
+              thinkingLevel,
+            },
+          }))
         }
 
       case "@ai-sdk/mistral":
@@ -562,16 +545,10 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/groq":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/groq
-        const groqEffort = ["none", ...WIDELY_SUPPORTED_EFFORTS]
-        return Object.fromEntries(
-          groqEffort.map((effort) => [
-            effort,
-            {
-              includeThoughts: true,
-              thinkingLevel: effort,
-            },
-          ]),
-        )
+        return effortVariants(modelEfforts ?? ["none", ...WIDELY_SUPPORTED_EFFORTS], (thinkingLevel) => ({
+          includeThoughts: true,
+          thinkingLevel,
+        }))
 
       case "@ai-sdk/perplexity":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/perplexity
