@@ -28,7 +28,7 @@ import type { SessionProcessor } from "./processor"
 import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
-import type { SandboxExecutionWrapper } from "@/sandbox/backend"
+import type { BashSandboxPrepare } from "@/tool/bash/shared"
 import type { ResolvedProfile } from "@/control-profile/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
@@ -1392,16 +1392,9 @@ export namespace ToolResolver {
                 using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
 
                 // ── Sandbox wrapping for bash ──────────────────────────
-                let sandboxWrapper: SandboxExecutionWrapper | undefined
                 if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
-                    await toolTrace.phase("tool.sandbox.prepare", "sandbox prepare", {
-                      mode: sandbox.mode,
-                      backend: sandbox.backend,
-                      fallback: sandbox.fallback,
-                    })
-                    const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
                     // Register externally-approved roots into the gate so the
                     // policy engine can aggregate them with auto-approved paths.
                     const extRoots = approvedExternalRoots(ctx)
@@ -1409,33 +1402,35 @@ export namespace ToolResolver {
                       gate.registerApprovedPaths(extRoots, extRoots, false)
                     }
                     const sandboxPolicy = gate.getSandboxPolicy()
-                    sandboxWrapper = SandboxBackend.prepareWrapper({
-                      command: "/bin/sh",
-                      args: ["-c", bashCommand],
-                      workspace,
-                      sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots],
-                      extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
-                      protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
-                      dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
-                      backend: sandbox.backend,
-                    })
-                    if (sandboxWrapper.skipReason) {
-                      if (sandbox.fallback === "deny") {
-                        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                    const sandboxPrepare: BashSandboxPrepare = async (input) => {
+                      await toolTrace?.phase("tool.sandbox.prepare", "sandbox prepare", {
+                        mode: sandbox.mode,
+                        backend: sandbox.backend,
+                        fallback: sandbox.fallback,
+                      })
+                      const wrapper = SandboxBackend.prepareWrapper({
+                        command: "/bin/sh",
+                        args: ["-c", input.command],
+                        workspace,
+                        sandboxMode: sandbox.mode,
+                        extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots, ...input.extraReadRoots],
+                        extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
+                        protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
+                        dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                        backend: sandbox.backend,
+                      })
+                      if (wrapper.skipReason && sandbox.fallback !== "deny") {
+                        log.warn("sandbox.unavailable", { skipReason: wrapper.skipReason })
                       }
-                      // warn fallback: log warning and surface in context for bash tool to include in output
-                      log.warn("sandbox.unavailable", { skipReason: sandboxWrapper.skipReason })
-                      ;(toolCtx.extra as any).sandboxWarning = sandboxWrapper.skipReason
+                      await toolTrace?.phase("tool.sandbox.prepared", "sandbox prepared", {
+                        skipReason: wrapper.skipReason,
+                        command: wrapper.command,
+                        args: wrapper.args,
+                      })
+                      return wrapper
                     }
-                    // Store wrapper in context for bash tool to use
-                    ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper
+                    ;(toolCtx.extra as any).sandboxPrepare = sandboxPrepare
                     ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
-                    await toolTrace.phase("tool.sandbox.prepared", "sandbox prepared", {
-                      skipReason: sandboxWrapper.skipReason,
-                      command: sandboxWrapper.command,
-                      args: sandboxWrapper.args,
-                    })
                   }
                 }
 
