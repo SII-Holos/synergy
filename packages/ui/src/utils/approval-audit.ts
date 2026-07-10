@@ -20,6 +20,11 @@ interface ApprovalMeta {
   audit?: {
     visible?: boolean
   }
+  smartAllow?: {
+    risk?: string
+    reason?: string
+    confidence?: number
+  }
 }
 
 export interface ApprovalAudit {
@@ -131,7 +136,12 @@ export function getApprovalAudit(approval: ApprovalMeta | null | undefined): App
   const riskAdj = risk ? (RISK_ADJECTIVE[risk] ?? risk) : null
   const line1 = riskAdj ? `${label} \u00b7 ${riskAdj} risk` : label
   const line2 = explain(status, mode, risk, reason)
-  const tooltip = line2 ? `${line1}\n${line2}` : line1
+  const sa = approval.smartAllow
+  const saLine = sa
+    ? `Smart allow: ${sa.risk ?? "unknown"} risk, ${((sa.confidence ?? 0) * 100).toFixed(0)}% confidence`
+    : undefined
+  const parts = [line1, line2, saLine].filter(Boolean) as string[]
+  const tooltip = parts.join("\n")
 
   return { icon, iconClass, tooltip }
 }

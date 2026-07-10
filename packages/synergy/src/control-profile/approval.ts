@@ -41,6 +41,11 @@ export interface ApprovalMetadata {
     executionStartedAt?: number
     approvalWaitMs?: number
   }
+  smartAllow?: {
+    risk: string
+    reason: string
+    confidence: number
+  }
 }
 
 function riskForCapability(capability: string): RiskLevel {

@@ -643,14 +643,16 @@ export namespace ToolResolver {
       // should be visible both in the error message AND the frontend audit tooltip.
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
-      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      const smartAllow = (ctx.extra as any).smartAllowRisk
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
     if (profile.profileId === "autonomous" && decision.action === "ask") {
       const diagnosticReason = envelope.refusal?.reason ?? decision.reason
       const metadata = ApprovalPolicy.metadata(approval, { ...decision, action: "deny" }, "auto_denied")
-      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      const smartAllow = (ctx.extra as any).smartAllowRisk
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason, ...(smartAllow ? { smartAllow } : {}) })
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 

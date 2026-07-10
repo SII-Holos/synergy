@@ -72,4 +72,19 @@
       max-height: 120px;
     }
   }
+
+  [data-slot="error-card-input"] {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: var(--surface-critical-subtle, rgba(239, 68, 68, 0.06));
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-weak);
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
 }

@@ -11,6 +11,8 @@ export interface ErrorCardProps {
   error: string
   /** Compact single-line mode for session-level errors. Default false. */
   compact?: boolean
+  /** Optional tool input args to display alongside the error */
+  input?: Record<string, unknown>
 }
 
 function parseError(raw: string): { title: string | null; message: string } {
@@ -23,8 +25,9 @@ function parseError(raw: string): { title: string | null; message: string } {
 }
 
 export function ErrorCard(props: ErrorCardProps) {
-  const [local] = splitProps(props, ["error", "compact"])
+  const [local] = splitProps(props, ["error", "compact", "input"])
   const parsed = () => parseError(local.error)
+  const inputText = () => (local.input ? JSON.stringify(local.input, null, 2) : null)
   const copy = createCopyController({
     text: () => local.error,
     copyLabel: "Copy error",
@@ -44,6 +47,9 @@ export function ErrorCard(props: ErrorCardProps) {
               <span data-slot="error-card-title">{parsed().title}</span>
             </Show>
             <span data-slot="error-card-message">{parsed().message}</span>
+            <Show when={inputText()}>
+              <pre data-slot="error-card-input">{inputText()}</pre>
+            </Show>
           </Show>
         </div>
         <Tooltip value={copy.tooltip()} placement="top" gutter={4}>
