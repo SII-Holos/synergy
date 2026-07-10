@@ -7,14 +7,15 @@ description: "Git expert for commits, rebase, and history search. Use for: atomi
 
 ## Safety Rules
 
-These rules are enforced by the permission system. Do not attempt to bypass them — they exist to protect concurrent sessions and CI stability.
+These rules exist to protect concurrent sessions and CI stability. The permission system enforces them automatically — do not attempt to bypass.
 
-| Rule                                                      | Enforcement                                                                    |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Never `git checkout` / `git switch` on the main checkout  | `shell_branch_mutation` → deny in autonomous                                   |
-| Never `git push` from the main checkout                   | `shell_remote_publish` → upgraded to `shell_remote_write` → deny in autonomous |
-| Always use a worktree for commits and pushes              | `worktree_enter` required                                                      |
-| Always push to a feature branch, never the primary branch | `shell_remote_write` on protected refs → deny                                  |
+| Rule                                                                    | Enforcement                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Never `git checkout` / `git switch` on the main checkout                | `shell_branch_mutation` → deny in autonomous                                                                                                                                                                                                                                   |
+| Never `git push` from the main checkout                                 | `shell_remote_publish` → upgraded to `shell_remote_write` → deny in autonomous                                                                                                                                                                                                 |
+| Never commit or push from the main checkout                             | Only make commits and push from a worktree. The main checkout is shared infrastructure; a commit may accidentally include unrelated changes from concurrent sessions, and a push can break CI for every branch built on the primary branch.                                    |
+| Always use a worktree for commits and pushes                            | `worktree_enter` required                                                                                                                                                                                                                                                      |
+| Changes reach the primary branch only through PRs, never by direct push | Determine the repo's primary branch first — it is not always `main` or `master`. Check `git remote show origin` or the GitHub default branch. For this Synergy repo: **`dev`**. Pushing directly to the primary branch can break CI for every other branch that depends on it. |
 
 For this repo, the primary branch is **`dev`**. All changes reach `dev` through pull requests only.
 
