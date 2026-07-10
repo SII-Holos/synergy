@@ -201,3 +201,13 @@ export function uninstallPluginConfirm(name: string | undefined): ConfirmCopy {
     tone: "danger",
   }
 }
+
+export function reencodeExperienceConfirm(kind: "intent" | "script", count: number): ConfirmCopy {
+  return {
+    title: `Re-encode ${kind} records?`,
+    description: `Re-encode all ${count} ${kind} records? This will make LLM calls and may take several minutes.`,
+    confirmLabel: "Re-encode",
+    cancelLabel: "Cancel",
+    tone: "warning",
+  }
+}

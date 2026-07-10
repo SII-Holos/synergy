@@ -4749,6 +4749,41 @@ export type ApplyRewardResult = {
   rewards: RewardsInfo
 }
 
+export type ExperienceDetectGroup = {
+  /**
+   * Detection reason: too-long, intent-in-raw, encoding_failed, empty, invalid, no-content
+   */
+  reason: string
+  count: number
+  /**
+   * Human-readable label for this group
+   */
+  label: string
+  /**
+   * Up to 5 sample items for preview
+   */
+  samples: Array<{
+    id: string
+    detail: string
+    /**
+     * First 80 chars of intent or script
+     */
+    preview?: string
+  }>
+}
+
+export type ExperienceDetectResult = {
+  scannedAt: number
+  intent: {
+    total: number
+    groups: Array<ExperienceDetectGroup>
+  }
+  script: {
+    total: number
+    groups: Array<ExperienceDetectGroup>
+  }
+}
+
 export type MemoryStats = {
   memory: {
     count: number
@@ -11013,6 +11048,83 @@ export type LibraryExperienceListResponses = {
 }
 
 export type LibraryExperienceListResponse = LibraryExperienceListResponses[keyof LibraryExperienceListResponses]
+
+export type LibraryExperienceDetectData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/detect"
+}
+
+export type LibraryExperienceDetectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LibraryExperienceDetectError = LibraryExperienceDetectErrors[keyof LibraryExperienceDetectErrors]
+
+export type LibraryExperienceDetectResponses = {
+  /**
+   * Detection results grouped by type and reason
+   */
+  200: ExperienceDetectResult
+}
+
+export type LibraryExperienceDetectResponse = LibraryExperienceDetectResponses[keyof LibraryExperienceDetectResponses]
+
+export type LibraryExperienceReencodeData = {
+  body?: {
+    /**
+     * What to re-encode
+     */
+    type: "intent" | "script"
+    /**
+     * Filter to one detection reason; omit for all
+     */
+    reason?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode"
+}
+
+export type LibraryExperienceReencodeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LibraryExperienceReencodeError = LibraryExperienceReencodeErrors[keyof LibraryExperienceReencodeErrors]
+
+export type LibraryExperienceReencodeResponses = {
+  /**
+   * SSE stream of re-encode progress events
+   */
+  200: {
+    type: "start" | "progress" | "done" | "error"
+    total?: number
+    id?: string
+    status?: string
+    reason?: string
+    completed?: number
+    ok?: number
+    skipped?: number
+    failed?: number
+    message?: string
+  }
+}
+
+export type LibraryExperienceReencodeResponse =
+  LibraryExperienceReencodeResponses[keyof LibraryExperienceReencodeResponses]
 
 export type LibraryStatsData = {
   body?: never

@@ -246,6 +246,31 @@ describe("EnforcementGate path classification", () => {
 // 2. Shell classification
 // ------------------------------------------------------------------
 describe("EnforcementGate shell classification", () => {
+  test("keeps reserved note virtual paths inside the bash boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const command of [
+      "gh pr create --body-file /synergy/note/nte_reviewed",
+      'gh pr create --body "$(cat /synergy/note/nte_reviewed)"',
+      'gh pr create --body "`cat /synergy/note/nte_reviewed`"',
+    ]) {
+      const result = gate.classify("bash", {
+        command,
+        workdir: "/Users/test/synergy-control-profile",
+      })
+
+      expect(result.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(true)
+      expect(
+        result.capabilities.some(
+          (cap: any) => cap.class === "file_external_read" || cap.class === "file_external_write",
+        ),
+      ).toBe(false)
+    }
+  })
+
   test("simple ls within workspace is classified as shell_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

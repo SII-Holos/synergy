@@ -83,7 +83,7 @@ sandbox/
 | Config schema    | `src/config/schema.ts`                | Defines `SandboxConfig` (`enabled`, `fallbackPolicy`)                          |
 | Control profile  | `src/control-profile/profiles.ts`     | Resolves sandbox mode per profile (`workspace_write`, `none`, fallback)        |
 | Enforcement gate | `src/enforcement/gate.ts`             | Exposes resolved sandbox mode from the active profile                          |
-| Tool resolver    | `src/session/tool-resolver.ts`        | Calls `prepareWrapper()` before shell execution, manages fallback policy       |
+| Tool resolver    | `src/session/tool-resolver.ts`        | Defers wrapping until local Bash preprocessing; manages fallback policy        |
 | Sandbox detector | `src/enforcement/sandbox-detector.ts` | Scans command output for OS-level denial patterns (EACCES, read-only FS, etc.) |
 | API route        | `src/server/control-profile-route.ts` | Exposes `/sandbox/status` endpoint for platform availability                   |
 

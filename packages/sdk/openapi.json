@@ -9818,6 +9818,163 @@
         ]
       }
     },
+    "/library/experience/detect": {
+      "post": {
+        "operationId": "library.experience.detect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Detect experience encoding issues",
+        "description": "Scan the experience database for encoding quality issues. Groups candidates by detection reason and returns up to 5 samples per group.",
+        "responses": {
+          "200": {
+            "description": "Detection results grouped by type and reason",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperienceDetectResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.detect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/experience/reencode": {
+      "post": {
+        "operationId": "library.experience.reencode",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Re-encode experience records",
+        "description": "Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.",
+        "responses": {
+          "200": {
+            "description": "SSE stream of re-encode progress events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["start", "progress", "done", "error"]
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "completed": {
+                      "type": "number"
+                    },
+                    "ok": {
+                      "type": "number"
+                    },
+                    "skipped": {
+                      "type": "number"
+                    },
+                    "failed": {
+                      "type": "number"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "description": "What to re-encode",
+                    "type": "string",
+                    "enum": ["intent", "script"]
+                  },
+                  "reason": {
+                    "description": "Filter to one detection reason; omit for all",
+                    "type": "string"
+                  }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.reencode({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/library/stats": {
       "get": {
         "operationId": "library.stats",
@@ -29468,6 +29625,82 @@
           }
         },
         "required": ["compositeReward", "rewards"]
+      },
+      "ExperienceDetectGroup": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "Detection reason: too-long, intent-in-raw, encoding_failed, empty, invalid, no-content",
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "label": {
+            "description": "Human-readable label for this group",
+            "type": "string"
+          },
+          "samples": {
+            "description": "Up to 5 sample items for preview",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "preview": {
+                  "description": "First 80 chars of intent or script",
+                  "type": "string"
+                }
+              },
+              "required": ["id", "detail"]
+            }
+          }
+        },
+        "required": ["reason", "count", "label", "samples"]
+      },
+      "ExperienceDetectResult": {
+        "type": "object",
+        "properties": {
+          "scannedAt": {
+            "type": "number"
+          },
+          "intent": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExperienceDetectGroup"
+                }
+              }
+            },
+            "required": ["total", "groups"]
+          },
+          "script": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExperienceDetectGroup"
+                }
+              }
+            },
+            "required": ["total", "groups"]
+          }
+        },
+        "required": ["scannedAt", "intent", "script"]
       },
       "MemoryStats": {
         "type": "object",
