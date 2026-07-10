@@ -491,7 +491,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("uses direct execution after profile approval instead of an existing sandbox wrapper", async () => {
+  test("uses direct execution after profile approval without preparing a sandbox", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -501,10 +501,8 @@ describe("tool.bash permissions", () => {
           ...ctx,
           extra: {
             shellBypassSandbox: true,
-            sandboxWrapper: {
-              command: "false",
-              args: [],
-              sandboxed: true,
+            sandboxPrepare: async () => {
+              throw new Error("sandbox should not be prepared")
             },
           },
         }

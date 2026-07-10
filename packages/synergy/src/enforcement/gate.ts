@@ -44,6 +44,7 @@ import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { PerformanceMetrics } from "@/performance/metrics"
+import { BashVirtualPath } from "@/tool/bash/virtual-path"
 
 export interface Capability {
   class: string
@@ -762,7 +763,9 @@ export namespace EnforcementGate {
           classifyPathCapability(caps, args.workdir, pathOptions)
         }
 
-        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
+        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)].filter(
+          (candidate) => !BashVirtualPath.isShellCandidate(candidate),
+        )
         // shell_read → known read-only (cat, ls, grep, git log, etc.)
         // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
         const writeCapable = risk !== "shell_read"

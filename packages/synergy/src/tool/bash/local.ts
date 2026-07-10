@@ -18,6 +18,8 @@ import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
 import { ToolTimeout } from "../timeout"
 import { GitHubProvider } from "@/provider/github"
+import { BashVirtualFile } from "./virtual-file"
+import type { BashSandboxPrepare } from "./shared"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -180,8 +182,10 @@ export const LocalBashBackend = {
       throw new Error("Failed to parse command")
     }
     const patterns = new Set<string>()
+    let virtualFileReferences: BashVirtualFile.Reference[] = []
 
     try {
+      virtualFileReferences = BashVirtualFile.references(tree.rootNode)
       for (const node of tree.rootNode.descendantsOfType("command")) {
         if (!node) continue
         const command = []
@@ -242,10 +246,8 @@ export const LocalBashBackend = {
       })
     }
 
-    const sandboxWrapper =
-      (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
-    const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
+    let sandboxWarning: string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
     const withAttachments = async (result: BashResult): Promise<BashResult> => {
       if (AttachmentDiscovery.shouldSkip(params.command)) return result
@@ -313,22 +315,64 @@ export const LocalBashBackend = {
         })
       }
     }
-    // ── ProcessRegistry setup (shared across both paths) ──────────
-    regProc = ProcessRegistry.create({
-      command: params.command,
-      description: params.description,
-      cwd,
-    })
-    await trace("bash.process.registered", {
-      processId: regProc.id,
-    })
 
-    ctx.metadata({
-      metadata: {
-        output: "",
-        description: params.description,
-      },
+    const materialized = await BashVirtualFile.materialize({
+      command: params.command,
+      references: virtualFileReferences,
+      scopeID: ScopeContext.current.scope.id,
     })
+    const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
+    let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
+    let artifactsCleaned = false
+    const cleanupExecutionArtifacts = () => {
+      if (artifactsCleaned) return
+      artifactsCleaned = true
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+      }
+      materialized.cleanup()
+    }
+
+    try {
+      if ((ctx.extra as any)?.shellBypassSandbox !== true) {
+        sandboxWrapper = await sandboxPrepare?.({
+          command: materialized.command,
+          extraReadRoots: materialized.extraReadRoots,
+        })
+      }
+      sandboxWarning = sandboxWrapper?.skipReason
+    } catch (error) {
+      cleanupExecutionArtifacts()
+      throw error
+    }
+
+    // ── ProcessRegistry setup (shared across both paths) ──────────
+    try {
+      regProc = ProcessRegistry.create({
+        command: params.command,
+        description: params.description,
+        cwd,
+      })
+    } catch (error) {
+      cleanupExecutionArtifacts()
+      throw error
+    }
+    try {
+      await trace("bash.process.registered", {
+        processId: regProc.id,
+      })
+
+      ctx.metadata({
+        metadata: {
+          output: "",
+          description: params.description,
+        },
+      })
+    } catch (error) {
+      ProcessRegistry.remove(regProc.id)
+      cleanupExecutionArtifacts()
+      throw error
+    }
 
     const METADATA_THROTTLE_MS = 500
     let metadataTimer: ReturnType<typeof setTimeout> | null = null
@@ -386,7 +430,7 @@ export const LocalBashBackend = {
             fallback: sandboxFallback,
           })
         }
-        child = spawn(params.command, {
+        child = spawn(materialized.command, {
           shell,
           cwd,
           env: sandboxEnv,
@@ -396,9 +440,7 @@ export const LocalBashBackend = {
       }
     } catch (e: unknown) {
       ProcessRegistry.remove(regProc.id)
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       await trace(
         "bash.child.error",
         {
@@ -467,9 +509,7 @@ export const LocalBashBackend = {
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       void trace(
         "bash.child.error",
         {
@@ -501,9 +541,7 @@ export const LocalBashBackend = {
       } else {
         ProcessRegistry.remove(regProc.id)
       }
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       void trace("bash.child.exit", {
         exitCode: code,
         exitSignal: signal,

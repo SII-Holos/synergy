@@ -93,6 +93,18 @@ bun run quality:quick   # format:check + lint + typecheck + monorepo:check + pac
 
 ## Pull Request Rules
 
+### Reviewed outbound content
+
+When a PR body, issue body, commit message, or other outbound text needs user review, use a Note as the editable intermediate artifact. After the user has reviewed or edited it, pass the Note to a file-consuming command through the local Bash virtual path:
+
+```bash
+gh pr create --body-file /synergy/note/<note-id>
+gh issue comment 123 --body-file /synergy/note/<note-id>
+git commit -F /synergy/note/<note-id>
+```
+
+Do not interpolate Note content into the command. Local Bash materializes the virtual path as a private, owner-readable file for the lifetime of the process and grants the sandbox read access to its staging directory, so shell metacharacters in the Note remain file content. The receiving CLI still owns the semantics of the file it reads; do not pass a Note to an option that executes or interprets the file as code. Synergy Link commands remain remote and receive virtual paths unchanged.
+
 ### 1. Create PRs from a worktree only
 
 Never `gh pr create` from the main checkout. Use `worktree_enter` first.
