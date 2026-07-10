@@ -1,8 +1,54 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { WorkflowRun, WorkflowEntity, WorkflowEvent, WorkflowCharter } from "@ericsanchezok/synergy-sdk/client"
 import { BossData } from "./boss-data"
+
+/** Visual accent for an entity state — a coloured dot + subtle tint. */
+function stateAccent(state: string): { dot: string; text: string } {
+  if (state === "blocked" || state === "failed") return { dot: "bg-icon-error-base", text: "text-text-error-base" }
+  if (state === "merged" || state === "done" || state === "completed")
+    return { dot: "bg-icon-success-base", text: "text-text-success-base" }
+  if (state === "awaiting_merge") return { dot: "bg-icon-warning-base", text: "text-text-warning-base" }
+  if (state === "queued" || state === "backlog" || state === "pending")
+    return { dot: "bg-border-strong-base", text: "text-text-weak" }
+  return { dot: "bg-icon-interactive-base", text: "text-text-interactive-base" }
+}
+
+function seatStatusDot(status: string): string {
+  if (status === "working") return "bg-icon-success-base sb-session-icon-pulse"
+  if (status === "waiting") return "bg-icon-warning-base"
+  if (status === "idle") return "bg-icon-interactive-base"
+  return "bg-border-strong-base"
+}
+
+function statusPill(status: string): { label: string; class: string } {
+  switch (status) {
+    case "active":
+      return { label: "active", class: "bg-surface-success-subtle text-text-success-base" }
+    case "paused":
+      return { label: "paused", class: "bg-surface-warning-subtle text-text-warning-base" }
+    case "failed":
+      return { label: "failed", class: "bg-surface-error-subtle text-text-error-base" }
+    case "cancelled":
+      return { label: "cancelled", class: "bg-surface-raised-base text-text-weak" }
+    default:
+      return { label: status, class: "bg-surface-raised-base text-text-base" }
+  }
+}
+
+function SectionHeader(props: { icon: IconName; title: string; count?: number }) {
+  return (
+    <div class="flex items-center gap-1.5 text-11-medium uppercase tracking-wide text-text-weak">
+      <Icon name={props.icon} size="small" class="text-icon-weak" />
+      <span>{props.title}</span>
+      <Show when={props.count !== undefined}>
+        <span class="rounded bg-surface-raised-base px-1 text-text-weak">{props.count}</span>
+      </Show>
+    </div>
+  )
+}
 
 /**
  * Structural SDK shape the Boss panel depends on. The host passes the real
@@ -54,6 +100,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
   const [events, setEvents] = createSignal<WorkflowEvent[]>([])
   const [busy, setBusy] = createSignal(false)
   const [newIssue, setNewIssue] = createSignal("")
+  const [timelineOpen, setTimelineOpen] = createSignal(false)
 
   // list() already returns full run objects, so the selected run is derived
   // directly from the list — no separate get() round-trip that could return null
@@ -205,155 +252,218 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
           </div>
         }
       >
-        {/* Run selector */}
-        <div class="flex items-center gap-2">
-          <span class="text-12-medium text-text-weak">Run</span>
-          <select
-            class="flex-1 rounded-md border border-border-weak bg-surface-raised-base px-2 py-1 text-13-regular"
-            value={selectedRunID() ?? ""}
-            onChange={(e) => setSelectedRunID(e.currentTarget.value)}
-          >
-            <For each={runs()}>
-              {(r) => (
-                <option value={r.id}>
-                  {r.title} ({r.status})
-                </option>
-              )}
-            </For>
-          </select>
-        </div>
-
         <Show when={run()}>
-          {(r) => (
-            <>
-              {/* Section 1: Gates */}
-              <Show when={gates().length > 0}>
-                <section class="rounded-lg border border-border-interactive-base bg-surface-interactive-subtle p-3">
-                  <h3 class="mb-2 text-13-semibold text-text-strong">Decisions needed</h3>
-                  <div class="flex flex-col gap-3">
+          {(r) => {
+            const pill = () => statusPill(r().status)
+            const budgetPct = () =>
+              r().budget.maxModelCalls > 0
+                ? Math.min(100, Math.round((r().budget.used / r().budget.maxModelCalls) * 100))
+                : 0
+            return (
+              <>
+                {/* Header: run identity + status + controls */}
+                <header class="flex flex-col gap-2 rounded-lg border border-border-weak bg-surface-raised-base p-3">
+                  <div class="flex items-center gap-2">
+                    <Icon name="network" size="small" class="shrink-0 text-icon-interactive-base" />
+                    <Show
+                      when={runs().length > 1}
+                      fallback={
+                        <span class="min-w-0 flex-1 truncate text-13-semibold text-text-strong">{r().title}</span>
+                      }
+                    >
+                      <select
+                        class="min-w-0 flex-1 truncate rounded-md border border-border-weak bg-surface-base px-1.5 py-1 text-13-semibold text-text-strong"
+                        value={selectedRunID() ?? ""}
+                        onChange={(e) => setSelectedRunID(e.currentTarget.value)}
+                      >
+                        <For each={runs()}>{(item) => <option value={item.id}>{item.title}</option>}</For>
+                      </select>
+                    </Show>
+                    <span class={`shrink-0 rounded-full px-2 py-0.5 text-11-medium ${pill().class}`}>
+                      {pill().label}
+                    </span>
+                  </div>
+
+                  {/* Budget */}
+                  <Show when={r().budget.maxModelCalls > 0}>
+                    <div class="flex items-center gap-2">
+                      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-base">
+                        <div
+                          class="h-full rounded-full bg-icon-interactive-base"
+                          style={{ width: `${budgetPct()}%` }}
+                        />
+                      </div>
+                      <span class="shrink-0 text-11-regular text-text-weak">
+                        {r().budget.used}/{r().budget.maxModelCalls}
+                      </span>
+                    </div>
+                  </Show>
+
+                  {/* Controls */}
+                  <div class="flex items-center gap-2">
+                    <Show when={r().status === "active"}>
+                      <Button size="small" variant="secondary" disabled={busy()} onClick={() => control("pause")}>
+                        Pause
+                      </Button>
+                    </Show>
+                    <Show when={r().status === "paused"}>
+                      <Button size="small" variant="secondary" disabled={busy()} onClick={() => control("resume")}>
+                        Resume
+                      </Button>
+                    </Show>
+                    <div class="flex-1" />
+                    <Button size="small" variant="ghost" disabled={busy()} onClick={() => control("cancel")}>
+                      Cancel run
+                    </Button>
+                  </div>
+                </header>
+
+                {/* Gates — the only thing that needs the human */}
+                <Show when={gates().length > 0}>
+                  <section class="flex flex-col gap-2 rounded-lg border border-border-warning-base/60 bg-surface-warning-subtle/50 p-3">
+                    <div class="flex items-center gap-1.5 text-12-semibold text-text-warning-base">
+                      <Icon name="git-merge" size="small" />
+                      <span>Decisions needed</span>
+                    </div>
                     <For each={gates()}>
-                      {(gate) => (
-                        <div class="rounded-md border border-border-weak bg-surface-raised-base p-2">
-                          <div class="text-13-medium text-text-strong">{gate.gate}</div>
-                          <Show when={gate.context}>
-                            <pre class="mt-1 whitespace-pre-wrap text-12-regular text-text-weak">{gate.context}</pre>
-                          </Show>
-                          <div class="mt-2 flex flex-wrap gap-2">
-                            <For each={gateResolutions(gate.gate)}>
-                              {(resolution) => (
-                                <Button
-                                  size="small"
-                                  variant={resolution === "merge" ? "primary" : "secondary"}
-                                  disabled={busy()}
-                                  onClick={() => resolveGate(gate.id, resolution)}
-                                >
-                                  {resolution}
-                                </Button>
-                              )}
-                            </For>
+                      {(gate) => {
+                        const gateEntity = () => r().entities.find((e) => e.id === gate.entityID)
+                        return (
+                          <div class="flex flex-col gap-2 rounded-md border border-border-weak bg-surface-raised-base p-2.5">
+                            <div class="text-13-medium text-text-strong">{gateEntity()?.title ?? gate.gate}</div>
+                            <Show when={gate.context}>
+                              <pre class="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-base p-2 text-11-regular text-text-weak">
+                                {gate.context}
+                              </pre>
+                            </Show>
+                            <div class="flex flex-wrap gap-2">
+                              <For each={gateResolutions(gate.gate)}>
+                                {(resolution) => (
+                                  <Button
+                                    size="small"
+                                    variant={resolution === "merge" ? "primary" : "secondary"}
+                                    disabled={busy()}
+                                    onClick={() => resolveGate(gate.id, resolution)}
+                                  >
+                                    {resolution}
+                                  </Button>
+                                )}
+                              </For>
+                            </div>
                           </div>
+                        )
+                      }}
+                    </For>
+                  </section>
+                </Show>
+
+                {/* Enqueue */}
+                <section class="flex gap-2">
+                  <div class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border-weak bg-surface-raised-base px-2">
+                    <Icon name="plus" size="small" class="shrink-0 text-icon-weak" />
+                    <input
+                      class="min-w-0 flex-1 bg-transparent py-1.5 text-13-regular outline-none placeholder:text-text-weak"
+                      placeholder="Enqueue an issue…"
+                      value={newIssue()}
+                      onInput={(e) => setNewIssue(e.currentTarget.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addEntity()}
+                    />
+                  </div>
+                  <Button size="small" variant="primary" disabled={busy() || !newIssue().trim()} onClick={addEntity}>
+                    Add
+                  </Button>
+                </section>
+
+                {/* Entity board */}
+                <section class="flex flex-col gap-2">
+                  <SectionHeader icon="layers" title="Entities" count={r().entities.length} />
+                  <Show
+                    when={r().entities.length > 0}
+                    fallback={<div class="px-1 text-12-regular text-text-weak">No work enqueued yet.</div>}
+                  >
+                    <For each={board()}>
+                      {(group) => (
+                        <Show when={group.entities.length > 0}>
+                          <div class="flex flex-col gap-1">
+                            <div class={`flex items-center gap-1.5 text-11-medium ${stateAccent(group.state).text}`}>
+                              <span class={`inline-block h-2 w-2 rounded-full ${stateAccent(group.state).dot}`} />
+                              <span>{group.state.replace(/_/g, " ")}</span>
+                              <span class="text-text-weak">· {group.entities.length}</span>
+                            </div>
+                            <div class="flex flex-col gap-1 pl-3.5">
+                              <For each={group.entities}>{(entity) => <EntityCard entity={entity} />}</For>
+                            </div>
+                          </div>
+                        </Show>
+                      )}
+                    </For>
+                  </Show>
+                </section>
+
+                {/* Seats */}
+                <section class="flex flex-col gap-1.5">
+                  <SectionHeader icon="users" title="Seats" />
+                  <div class="flex flex-col gap-1">
+                    <For each={r().seats}>
+                      {(seat) => (
+                        <div class="flex items-center gap-2 rounded-md px-1.5 py-1 text-12-regular hover:bg-surface-raised-base-hover">
+                          <span
+                            class={`inline-block h-2 w-2 shrink-0 rounded-full ${seatStatusDot(seat.status ?? "unbound")}`}
+                          />
+                          <span class="text-text-base">
+                            {seat.seat}
+                            <span class="text-text-weak">#{seat.instance}</span>
+                          </span>
+                          <Show when={seat.entityID}>
+                            <Icon name="arrow-right" size="small" class="text-icon-weak" />
+                            <span class="min-w-0 flex-1 truncate text-text-weak">
+                              {r().entities.find((e) => e.id === seat.entityID)?.title ?? seat.entityID}
+                            </span>
+                          </Show>
+                          <div class="flex-1" />
+                          <span class="shrink-0 text-11-regular text-text-weak">{seat.status}</span>
                         </div>
                       )}
                     </For>
                   </div>
                 </section>
-              </Show>
 
-              {/* Run controls + enqueue */}
-              <section class="flex flex-wrap items-center gap-2">
-                <span class="text-12-regular text-text-weak">
-                  {r().status} · budget {r().budget.used}/{r().budget.maxModelCalls || "∞"}
-                </span>
-                <div class="flex-1" />
-                <Show when={r().status === "active"}>
-                  <Button size="small" variant="secondary" disabled={busy()} onClick={() => control("pause")}>
-                    Pause
-                  </Button>
-                </Show>
-                <Show when={r().status === "paused"}>
-                  <Button size="small" variant="secondary" disabled={busy()} onClick={() => control("resume")}>
-                    Resume
-                  </Button>
-                </Show>
-                <Button size="small" variant="secondary" disabled={busy()} onClick={() => control("cancel")}>
-                  Cancel
-                </Button>
-              </section>
-              <section class="flex gap-2">
-                <input
-                  class="flex-1 rounded-md border border-border-weak bg-surface-raised-base px-2 py-1 text-13-regular"
-                  placeholder="Enqueue an issue…"
-                  value={newIssue()}
-                  onInput={(e) => setNewIssue(e.currentTarget.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addEntity()}
-                />
-                <Button size="small" variant="primary" disabled={busy() || !newIssue().trim()} onClick={addEntity}>
-                  Add
-                </Button>
-              </section>
-
-              {/* Section 2: Entity board */}
-              <section class="flex flex-col gap-2">
-                <h3 class="text-13-semibold text-text-strong">Entities</h3>
-                <For each={board()}>
-                  {(group) => (
-                    <Show when={group.entities.length > 0}>
-                      <div>
-                        <div
-                          class={`mb-1 text-12-medium ${group.state === "blocked" ? "text-text-error-base" : "text-text-weak"}`}
-                        >
-                          {group.state} ({group.entities.length})
-                        </div>
-                        <div class="flex flex-col gap-1">
-                          <For each={group.entities}>{(entity) => <EntityCard entity={entity} />}</For>
-                        </div>
-                      </div>
-                    </Show>
-                  )}
-                </For>
-              </section>
-
-              {/* Section 3: Seats */}
-              <section class="flex flex-col gap-1">
-                <h3 class="text-13-semibold text-text-strong">Seats</h3>
-                <For each={r().seats}>
-                  {(seat) => (
-                    <div class="flex items-center gap-2 text-12-regular">
-                      <span
-                        class={`inline-block h-2 w-2 rounded-full ${seat.status === "working" ? "bg-icon-success-base" : seat.status === "waiting" ? "bg-icon-warning-base" : "bg-border-weak"}`}
-                      />
-                      <span class="text-text-base">
-                        {seat.seat}#{seat.instance}
-                      </span>
-                      <span class="text-text-weak">{seat.status}</span>
-                      <Show when={seat.entityID}>
-                        <span class="text-text-weak">→ {seat.entityID}</span>
-                      </Show>
+                {/* Timeline */}
+                <section class="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    class="flex items-center gap-1.5 text-11-medium uppercase tracking-wide text-text-weak"
+                    onClick={() => setTimelineOpen((v) => !v)}
+                  >
+                    <Icon
+                      name={timelineOpen() ? "chevron-down" : "chevron-right"}
+                      size="small"
+                      class="text-icon-weak"
+                    />
+                    <Icon name="activity" size="small" class="text-icon-weak" />
+                    <span>Activity</span>
+                    <span class="rounded bg-surface-raised-base px-1 text-text-weak">{events().length}</span>
+                  </button>
+                  <Show when={timelineOpen()}>
+                    <div class="flex flex-col gap-0.5 border-l border-border-weak pl-2.5">
+                      <For each={[...events()].reverse().slice(0, 80)}>
+                        {(event) => {
+                          const tone = BossData.eventTone(event.kind)
+                          return (
+                            <div
+                              class={`text-11-regular ${tone === "error" ? "text-text-error-base" : tone === "warn" ? "text-text-warning-base" : "text-text-weak"}`}
+                            >
+                              {BossData.eventLabel(event)}
+                            </div>
+                          )
+                        }}
+                      </For>
                     </div>
-                  )}
-                </For>
-              </section>
-
-              {/* Section 4: Timeline */}
-              <section class="flex flex-col gap-1">
-                <h3 class="text-13-semibold text-text-strong">Timeline</h3>
-                <div class="flex flex-col gap-0.5">
-                  <For each={[...events()].reverse().slice(0, 60)}>
-                    {(event) => {
-                      const tone = BossData.eventTone(event.kind)
-                      return (
-                        <div
-                          class={`text-12-regular ${tone === "error" ? "text-text-error-base" : tone === "warn" ? "text-text-warning-base" : "text-text-weak"}`}
-                        >
-                          {BossData.eventLabel(event)}
-                        </div>
-                      )
-                    }}
-                  </For>
-                </div>
-              </section>
-            </>
-          )}
+                  </Show>
+                </section>
+              </>
+            )
+          }}
         </Show>
       </Show>
     </div>
@@ -361,23 +471,25 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 }
 
 function EntityCard(props: { entity: WorkflowEntity }) {
+  const accent = () => stateAccent(props.entity.state)
   return (
-    <div class="rounded-md border border-border-weak bg-surface-raised-base px-2 py-1">
-      <div class="flex items-center justify-between gap-2">
-        <span class="truncate text-13-regular text-text-strong">{props.entity.title}</span>
+    <div class="flex flex-col gap-0.5 rounded-md border border-border-weak bg-surface-raised-base px-2 py-1.5">
+      <div class="flex items-center gap-2">
+        <span class={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${accent().dot}`} />
+        <span class="min-w-0 flex-1 truncate text-12-medium text-text-strong">{props.entity.title}</span>
         <Show when={props.entity.assignedSeat}>
           {(seat) => (
-            <span class="shrink-0 text-11-regular text-text-weak">
+            <span class="shrink-0 rounded bg-surface-base px-1 text-11-regular text-text-weak">
               {seat().seat}#{seat().instance}
             </span>
           )}
         </Show>
       </div>
       <Show when={props.entity.blockedReason}>
-        <div class="mt-0.5 text-11-regular text-text-error-base">{props.entity.blockedReason}</div>
+        <div class="pl-3.5 text-11-regular text-text-error-base">{props.entity.blockedReason}</div>
       </Show>
       <Show when={props.entity.bindings?.prNumber}>
-        <div class="mt-0.5 text-11-regular text-text-weak">PR {props.entity.bindings?.prNumber}</div>
+        <div class="pl-3.5 text-11-regular text-text-weak">PR #{props.entity.bindings?.prNumber}</div>
       </Show>
     </div>
   )

@@ -946,17 +946,13 @@ function SidebarSessionList(props: {
           const entry = createMemo(() => entryByID().get(id))
           return (
             <Show when={entry()}>
-              <SidebarSessionRow
+              <SidebarSessionNode
                 entry={entry()!}
                 scope={props.scope}
-                active={id === props.activeID}
+                activeID={props.activeID}
                 flyout={props.flyout}
-                onClick={(event) => {
-                  const navEntry = entry()
-                  if (!navEntry) return
-                  if (props.stopPropagation) event.stopPropagation()
-                  props.onSessionClick(navEntry)
-                }}
+                stopPropagation={props.stopPropagation}
+                onSessionClick={props.onSessionClick}
               />
             </Show>
           )
@@ -964,6 +960,117 @@ function SidebarSessionList(props: {
       </For>
     </FlipList>
   )
+}
+
+/**
+ * A session row that, for a Boss Mode session, nests its seat (child) sessions
+ * beneath it — collapsible, each clickable like any normal session.
+ */
+function SidebarSessionNode(props: {
+  entry: NavEntry
+  scope?: LocalScope
+  activeID?: string
+  flyout?: boolean
+  stopPropagation?: boolean
+  onSessionClick: (entry: NavEntry) => void
+}) {
+  const globalSync = useGlobalSync()
+  const [expanded, setExpanded] = createSignal(true)
+
+  const scopeStore = createMemo(() => {
+    const scopeKey = props.scope ? props.scope.worktree : scopeKeyForNavEntry(props.entry, globalSync.data.scope)
+    if (!scopeKey) return undefined
+    return globalSync.peekScopeState(scopeKey)?.[0]
+  })
+
+  const isBoss = createMemo(
+    () =>
+      (scopeStore()?.session.find((s) => s.id === props.entry.id) as SidebarSessionInfo | undefined)?.workflowRun
+        ?.role === "boss",
+  )
+
+  const seatEntries = createMemo<NavEntry[]>(() => {
+    if (!isBoss()) return []
+    const sessions = (scopeStore()?.session ?? []) as SidebarSessionInfo[]
+    return sessions
+      .filter((s) => s.parentID === props.entry.id && s.workflowRun?.role === "seat" && !s.time?.archived)
+      .sort(
+        (a, b) =>
+          (a.workflowRun?.seat ?? "").localeCompare(b.workflowRun?.seat ?? "") ||
+          (a.workflowRun?.instance ?? 0) - (b.workflowRun?.instance ?? 0),
+      )
+      .map((s) => seatNavEntry(s, props.entry))
+  })
+
+  const clickHandler = (target: NavEntry) => (event: MouseEvent) => {
+    if (props.stopPropagation) event.stopPropagation()
+    props.onSessionClick(target)
+  }
+
+  return (
+    <>
+      <SidebarSessionRow
+        entry={props.entry}
+        scope={props.scope}
+        active={props.entry.id === props.activeID}
+        flyout={props.flyout}
+        onClick={clickHandler(props.entry)}
+      />
+      <Show when={isBoss() && seatEntries().length > 0}>
+        <div class="sb-boss-seats">
+          <button type="button" class="sb-boss-seats-toggle" onClick={() => setExpanded((v) => !v)}>
+            <Icon name={expanded() ? "chevron-down" : "chevron-right"} size="small" class="sb-boss-seats-chevron" />
+            <span>
+              {seatEntries().length} seat{seatEntries().length === 1 ? "" : "s"}
+            </span>
+          </button>
+          <Show when={expanded()}>
+            <div class="sb-boss-seat-list">
+              <For each={seatEntries()}>
+                {(seat) => (
+                  <SidebarSessionRow
+                    entry={seat}
+                    scope={props.scope}
+                    active={seat.id === props.activeID}
+                    flyout={props.flyout}
+                    onClick={clickHandler(seat)}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </Show>
+    </>
+  )
+}
+
+type SidebarSessionInfo = {
+  id: string
+  title?: string
+  parentID?: string
+  pinned?: number
+  time?: { updated?: number; archived?: number }
+  completionNotice?: { unread?: boolean }
+  workflowRun?: { role?: "boss" | "seat" | "contractor"; seat?: string; instance?: number }
+}
+
+function seatNavEntry(session: SidebarSessionInfo, boss: NavEntry): NavEntry {
+  const seatLabel = session.workflowRun?.seat
+    ? `${session.workflowRun.seat}#${session.workflowRun.instance ?? 0}`
+    : undefined
+  return {
+    id: session.id,
+    scopeID: boss.scopeID,
+    scopeType: boss.scopeType,
+    title: session.title || seatLabel || "Seat",
+    category: "background",
+    lastActivityAt: session.time?.updated ?? 0,
+    pinned: 0,
+    archived: !!session.time?.archived,
+    parentID: session.parentID,
+    completionNotice: { unread: !!session.completionNotice?.unread },
+  }
 }
 
 // --- RootNavSection: reusable collapsible section for Home / Channel / Background ---
@@ -1074,6 +1181,8 @@ function SidebarSessionRow(props: {
           "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
           "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
           "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
+          "sb-session-icon-workflow-boss-tone": visual()?.tone === "workflow-boss",
+          "sb-session-icon-workflow-seat-tone": visual()?.tone === "workflow-seat",
           "sb-session-icon-pulse": !!visual()?.pulse,
         }}
         title={visual()?.label ?? ""}
