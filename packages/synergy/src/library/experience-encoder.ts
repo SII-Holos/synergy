@@ -4,6 +4,7 @@ import { Embedding } from "../vector/embedding"
 import { LibraryDB } from "./database"
 import { ExperienceRecall } from "./experience-recall"
 import { Intent } from "./intent"
+import { Script } from "./script"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { LLM } from "../session/llm"
@@ -123,11 +124,12 @@ export namespace ExperienceEncoder {
       if (!extracted || extracted.digest.segments.length === 0) {
         return { encoded: false, skipped: true }
       }
-
       const { digest, turn } = extracted
       const sourceAssistant = turn.assistants.at(-1)
 
-      const scriptContent = buildScriptContent(digest, learning)
+      const raw = TurnDigest.renderToText(digest)
+      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
+
       const assistantInfo = turn.assistants.find((m) => m.info.role === "assistant")?.info as
         | MessageV2.Assistant
         | undefined
@@ -135,13 +137,22 @@ export namespace ExperienceEncoder {
         ? await Provider.getModel(assistantInfo.providerID, assistantInfo.modelID)
         : undefined
       const scriptCtx: AgentContext = { sessionID, userMsg: userInfo, model: scriptModel, learning }
-      const script = await generateScript(scriptCtx, scriptContent)
+      const rawScript = await generateScript(scriptCtx, buildScriptContent(digest, learning))
+      const scriptResult = Script.sanitizeWithReason(rawScript, raw)
+      const script = scriptResult.value
+      log.info("script generated", {
+        sessionID,
+        userMessageID,
+        reason: scriptResult.reason,
+        rawLen: rawScript.length,
+        sanitizedLen: script.length,
+        usedFallback: script === raw,
+        rawHash: hashForLog(rawScript),
+        rawPreview: preview(rawScript),
+      })
       const scriptEmbedding = script
         ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
         : undefined
-
-      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
-      const raw = TurnDigest.renderToText(digest)
 
       const duplicate = LibraryDB.Experience.findSimilar(
         scope.id,
