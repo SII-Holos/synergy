@@ -53,6 +53,55 @@ test("catalog reasoning efforts survive unrelated future option types", () => {
   expect(Object.keys(model.variants ?? {})).toEqual(["low", "max"])
 })
 
+test.each([
+  ["non-array options", { reasoning_options: {} }],
+  ["non-array values", { reasoning_options: [{ type: "effort", values: {} }] }],
+])("malformed catalog reasoning metadata falls back for %s", (_name, metadata) => {
+  const model = {
+    ...metadata,
+    id: "gpt-5.6",
+    release_date: "2026-07-01",
+    reasoning: true,
+  }
+  expect(ModelsDev.reasoningEfforts(model as never)).toBeUndefined()
+  const capabilities = Provider.mergeModelCapabilities(model as never)
+  expect(capabilities.reasoningEfforts).toBeUndefined()
+})
+
+test.each([
+  ["empty values", []],
+  ["all invalid values", [null, 3]],
+])("empty catalog reasoning efforts preserve provider fallbacks for %s", (_name, values) => {
+  const capabilities = Provider.mergeModelCapabilities({
+    reasoning: true,
+    reasoning_options: [{ type: "effort", values }],
+  })
+  const variants = Provider.fromModelsDevProvider(
+    ModelsDev.Provider.parse({
+      id: "openai",
+      name: "OpenAI",
+      api: "https://api.openai.com/v1",
+      npm: "@ai-sdk/openai",
+      env: [],
+      models: {
+        "gpt-5.6": {
+          id: "gpt-5.6",
+          name: "GPT-5.6",
+          release_date: "2026-07-01",
+          attachment: true,
+          reasoning: capabilities.reasoning,
+          reasoning_options: [{ type: "effort", values }],
+          temperature: false,
+          tool_call: true,
+          limit: { context: 128_000, output: 32_000 },
+          options: {},
+        },
+      },
+    }),
+  ).models["gpt-5.6"].variants
+  expect(Object.keys(variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
+})
+
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
