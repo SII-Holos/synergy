@@ -922,7 +922,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
       expect(result.low).toEqual({ reasoning: { effort: "low" } })
       expect(result.high).toEqual({ reasoning: { effort: "high" } })
     })
@@ -938,7 +938,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
     })
 
     test("grok-4 returns OPENAI_EFFORTS with reasoning", () => {
@@ -952,7 +952,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
     })
   })
 
@@ -968,7 +968,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
       expect(result.low).toEqual({ reasoningEffort: "low" })
       expect(result.high).toEqual({ reasoningEffort: "high" })
     })
@@ -1177,33 +1177,35 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
-  })
 
-  describe("@ai-sdk/anthropic", () => {
-    test("returns high and max with thinking config", () => {
+    test("models after 2026-07-01 include 'max' and 'ultra' efforts", () => {
       const model = createMockModel({
-        id: "anthropic/claude-4",
-        providerID: "anthropic",
+        id: "openai/gpt-5-chat",
+        providerID: "openai",
         api: {
-          id: "claude-4",
-          url: "https://api.anthropic.com",
-          npm: "@ai-sdk/anthropic",
+          id: "gpt-5-chat",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
         },
+        release_date: "2026-07-02",
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["high", "max"])
-      expect(result.high).toEqual({
-        thinking: {
-          type: "enabled",
-          budgetTokens: 4095,
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
+    })
+
+    test("openai models before 2026-07-01 do not include 'max' or 'ultra'", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5-chat",
+        providerID: "openai",
+        api: {
+          id: "gpt-5-chat",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
         },
+        release_date: "2026-06-30",
       })
-      expect(result.max).toEqual({
-        thinking: {
-          type: "enabled",
-          budgetTokens: 8191,
-        },
-      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
   })
 

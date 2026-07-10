@@ -391,7 +391,7 @@ export namespace ProviderTransform {
   }
 
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
-  const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+  const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh", "max", "ultra"]
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
@@ -426,6 +426,15 @@ export namespace ProviderTransform {
         if (id.includes("gpt-5-") || id === "gpt-5") {
           azureEfforts.unshift("minimal")
         }
+        if (model.release_date >= "2025-11-13") {
+          azureEfforts.unshift("none")
+        }
+        if (model.release_date >= "2025-12-04") {
+          azureEfforts.push("xhigh")
+        }
+        if (model.release_date >= "2026-07-01") {
+          azureEfforts.push("max", "ultra")
+        }
         return Object.fromEntries(
           azureEfforts.map((effort) => [
             effort,
@@ -450,6 +459,9 @@ export namespace ProviderTransform {
           }
           if (model.release_date >= "2025-12-04") {
             arr.push("xhigh")
+          }
+          if (model.release_date >= "2026-07-01") {
+            arr.push("max", "ultra")
           }
           return arr
         })
