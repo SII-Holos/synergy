@@ -43,7 +43,7 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["filter-repo", "shell_destructive"],
 ])
 
-const PROTECTED_PUSH_TARGETS = new Set(["main", "master", "dev", "develop", "trunk"])
+export const PROTECTED_PUSH_TARGETS = new Set(["main", "master", "dev", "develop", "trunk"])
 
 function pushTargetBranchName(target: string): string | null {
   if (target.startsWith("refs/heads/")) return target.slice("refs/heads/".length) || null
@@ -56,7 +56,9 @@ function analyzePushTargets(
   subIndex: number,
 ): { destructive: boolean; protected: boolean; explicitPublish: boolean } {
   const positionals = words.slice(subIndex + 1).filter((word) => word && !word.startsWith("-") && !word.includes("="))
-  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: false }
+  // Bare push or push with only remote (no refspec) — equivalent to
+  // explicit feature-branch push via push.default (typically "simple").
+  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: true }
   return positionals.slice(1).reduce<{ destructive: boolean; protected: boolean; explicitPublish: boolean }>(
     (result, refspec) => {
       const force = refspec.startsWith("+")
@@ -269,7 +271,9 @@ function classifyGitCommand(words: string[]): BashRisk | null {
       !targetRisk.explicitPublish
     )
       return "shell_remote_write"
-    return "shell_remote_publish" // explicit non-protected feature-branch push for PR automation
+    // Bare push (no refspec, explicitPublish: true from analyzePushTargets) or
+    // explicit non-protected feature-branch push — safe for automation.
+    return "shell_remote_publish"
   }
 
   // ── reset ──────────────────────────────────────────────────
@@ -744,6 +748,42 @@ export namespace ShellSafety {
   }
 
   export const isHardline = checkHardline
+  /** Returns true when the command is a bare git push (no refspec, no repo selector, no flags).
+   *  Bare push uses push.default to determine the destination at runtime — typically it pushes
+   *  the current branch to its tracked upstream. This is reclassified at the enforcement gate
+   *  when the current git branch is protected. */
+  export function isBarePush(command: string): boolean {
+    const words = shellWords(normalizeCommand(command))
+    let idx = 0
+    while (words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+    if (words[idx] !== "git") return false
+    idx++
+    // Skip git options (-c, -C, etc.) — bare push is only bare if no options
+    let hasGitOption = false
+    while (idx < words.length && words[idx]?.startsWith("-")) {
+      hasGitOption = true
+      idx++
+      // Skip argument for two-arg options like -C <path>
+      if (
+        words[idx - 1] === "-C" ||
+        words[idx - 1] === "-c" ||
+        words[idx - 1] === "--git-dir" ||
+        words[idx - 1] === "--work-tree" ||
+        words[idx - 1] === "--namespace" ||
+        words[idx - 1] === "--exec-path"
+      ) {
+        idx++
+      }
+    }
+    if (words[idx] !== "push") return false
+    if (hasGitOption) return false
+    // Check for flags
+    const flags = words.slice(idx + 1).filter((w) => w.startsWith("-"))
+    if (flags.length > 0) return false
+    // Check for positional args (remote, refspec)
+    const positionals = words.slice(idx + 1).filter((w) => w && !w.startsWith("-") && !w.includes("="))
+    return positionals.length === 0
+  }
 
   // ── compound command recursion ───────────────────────────────────────
   const RISK_ORDER: Record<BashRisk, number> = {
