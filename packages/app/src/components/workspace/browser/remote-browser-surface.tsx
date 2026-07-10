@@ -1,7 +1,7 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createSignal, onCleanup, Show } from "solid-js"
-import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useBrowser } from "./browser-store"
 import { BrowserWebRTCClient, createBrowserWebRTCSignalingUrl, type BrowserWebRTCStatus } from "./browser-webrtc"
@@ -31,12 +31,10 @@ export function RemoteBrowserSurface(props: {
   let webrtcClient: BrowserWebRTCClient | null = null
   let composing = false
   let suppressNextInputValue: string | null = null
-  let lastWebRTCResizeKey = ""
   let activeWebRTCKey = ""
   const rawKeys = new Set<string>()
 
   const browser = useBrowser()
-  const platform = usePlatform()
   const sdk = useSDK()
   const [webrtcStatus, setWebrtcStatus] = createSignal<BrowserWebRTCStatus>("idle")
   const [webrtcDetail, setWebrtcDetail] = createSignal<unknown>(null)
@@ -67,32 +65,48 @@ export function RemoteBrowserSurface(props: {
     }
 
     const traceId = browser.browserTraceId()
-    const signalingUrl = createBrowserWebRTCSignalingUrl({
-      serverUrl: sdk.url,
-      sessionID: props.sessionID,
-      pageId,
-      routeDirectory: props.routeDirectory,
-      directory: sdk.directory,
-      scopeID: sdk.scopeID,
-      scopeKey: sdk.scopeKey,
-      client: platform.platform === "desktop" ? "desktop" : "web",
-      sameHost: platform.platform === "desktop",
-      traceId,
-    })
-
-    if (!signalingUrl) {
+    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
+    if (!routeDirectory) {
       if (webrtcClient) closeWebRTCClient()
       setWebrtcStatus("error")
       setWebrtcDetail({ message: "Missing browser signaling route" })
       return
     }
 
-    const clientKey = `${pageId}:${signalingUrl}`
+    const clientKey = `${pageId}:${routeDirectory}`
     if (webrtcClient && activeWebRTCKey === clientKey) return
     closeWebRTCClient()
 
     const client = new BrowserWebRTCClient({
-      signalingUrl,
+      signalingUrl: async () => {
+        const response = await sdk.client.browser.createViewerTicket({
+          path_directory: routeDirectory,
+          query_directory: sdk.directory,
+          scopeID: sdk.scopeID,
+          mode: "session",
+          sessionID: props.sessionID,
+          presentation: "webrtc",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          browserViewerTicketRequest: { protocolVersion: BROWSER_PROTOCOL_VERSION, pageId },
+        })
+        if (!response.data) throw new Error(response.error?.message ?? "Could not create a Browser viewer ticket")
+        const url = createBrowserWebRTCSignalingUrl({
+          serverUrl: sdk.url,
+          sessionID: props.sessionID,
+          pageId,
+          routeDirectory,
+          directory: sdk.directory,
+          scopeID: sdk.scopeID,
+          scopeKey: sdk.scopeKey,
+          ticket: response.data.ticket,
+          traceId,
+        })
+        if (!url) throw new Error("Missing browser signaling route")
+        return {
+          url,
+          rtcConfiguration: { iceServers: response.data.iceServers as RTCIceServer[] },
+        }
+      },
       pageId,
       traceId,
       onStatus: (status, detail) => {
@@ -114,10 +128,14 @@ export function RemoteBrowserSurface(props: {
         if (msg.type !== "browser.host.status") return
         if (typeof msg.pageId !== "string") return
         if (
+          msg.status === "unavailable" ||
+          msg.status === "installing" ||
+          msg.status === "starting" ||
           msg.status === "pending" ||
           msg.status === "ready" ||
           msg.status === "detached" ||
           msg.status === "restarting" ||
+          msg.status === "idle" ||
           msg.status === "failed"
         ) {
           browser.setHostStatus(msg.pageId, msg.status)
@@ -132,19 +150,6 @@ export function RemoteBrowserSurface(props: {
       setWebrtcStatus("error")
       setWebrtcDetail({ message })
     })
-  })
-
-  createEffect(() => {
-    const pageId = browser.pageId()
-    const width = browser.viewportWidth()
-    const height = browser.viewportHeight()
-    webrtcStatus()
-    if (!pageId) return
-    const key = `${pageId}:${width}x${height}`
-    if (key === lastWebRTCResizeKey) return
-    if (webrtcClient?.sendInput({ type: "input.resize", pageId, width, height })) {
-      lastWebRTCResizeKey = key
-    }
   })
 
   onCleanup(closeWebRTCClient)

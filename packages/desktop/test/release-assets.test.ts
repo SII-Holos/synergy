@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
+  browserHostArtifactName,
+  browserHostManifestName,
+  browserHostManifestSignatureName,
   desktopChecksumsName,
   desktopPortableArtifactNames,
   desktopPrimaryArtifactName,
+  expectedBrowserHostArtifacts,
   expectedDesktopPrimaryArtifacts,
   isDesktopUpdateMetadata,
 } from "../src/release-assets.js"
@@ -34,5 +38,14 @@ describe("desktop release asset names", () => {
     expect(isDesktopUpdateMetadata("latest.yml")).toBe(true)
     expect(isDesktopUpdateMetadata("latest-mac.yml")).toBe(true)
     expect(isDesktopUpdateMetadata("notes.md")).toBe(false)
+  })
+
+  test("names version-locked Browser Host artifacts and signed manifests", () => {
+    expect(browserHostArtifactName("1.2.3", "darwin", "arm64")).toBe("synergy-browser-host-darwin-arm64-1.2.3.zip")
+    expect(browserHostManifestName("1.2.3", "win32", "x64")).toBe("synergy-browser-host-win32-x64-1.2.3.manifest.json")
+    expect(browserHostManifestSignatureName("1.2.3", "linux", "arm64")).toBe(
+      "synergy-browser-host-linux-arm64-1.2.3.manifest.json.sig",
+    )
+    expect(expectedBrowserHostArtifacts("1.2.3")).toHaveLength(18)
   })
 })

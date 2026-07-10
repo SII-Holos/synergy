@@ -1,25 +1,30 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { BROWSER_PROTOCOL_VERSION, browserOwnerKey } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, Show } from "solid-js"
+import { createEffect, createMemo, lazy, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { usePlatform } from "@/context/platform"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
 import { AddressBar } from "./address-bar"
 import { BrowserSurface } from "./browser-surface"
-import { ConsolePanel } from "./console-panel"
-import { NetworkPanel } from "./network-panel"
-import { ElementsPanel } from "./elements-panel"
 import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
-import { DownloadsPanel } from "./downloads-panel"
-import { AssetsPanel } from "./assets-panel"
 import { browserDebug } from "./browser-debug"
+import { useSDK } from "@/context/sdk"
+import { createBrowserCommandId } from "./browser-command"
+
+const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
+const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
+const ElementsPanel = lazy(() => import("./elements-panel").then((module) => ({ default: module.ElementsPanel })))
+const DownloadsPanel = lazy(() => import("./downloads-panel").then((module) => ({ default: module.DownloadsPanel })))
+const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ default: module.AssetsPanel })))
 
 export function BrowserPanel() {
   const params = useParams()
-  const ownerKey = createMemo(() => `${params.dir}:session:${params.id}`)
+  const ownerKey = createMemo(() =>
+    params.dir && params.id ? browserOwnerKey({ mode: "session", scopeID: params.dir, sessionID: params.id }) : null,
+  )
   createEffect(() => {
     browserDebug("panel.route", { dir: params.dir, sessionID: params.id, ownerKey: ownerKey() })
   })
@@ -28,7 +33,7 @@ export function BrowserPanel() {
     <Show keyed when={ownerKey()}>
       {(key) => {
         const browser = createBrowserStore()
-        return <BrowserPanelInner browser={browser} routeDirectory={params.dir} sessionID={params.id!} />
+        return <BrowserPanelInner browser={browser} ownerKey={key} routeDirectory={params.dir} sessionID={params.id!} />
       }}
     </Show>
   )
@@ -36,23 +41,59 @@ export function BrowserPanel() {
 
 function BrowserPanelInner(props: {
   browser: ReturnType<typeof createBrowserStore>
+  ownerKey: string
   routeDirectory?: string
   sessionID: string
 }) {
   const browser = props.browser
-  const platform = usePlatform()
+  const sdk = useSDK()
   browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory })
 
   const ws = createBrowserWebSocket(browser, {
     sessionID: props.sessionID,
+    ownerKey: props.ownerKey,
     routeDirectory: props.routeDirectory,
-    client: platform.platform === "desktop" ? "desktop" : "web",
-    sameHost: platform.platform === "desktop",
   })
 
   const page = createMemo(() => browser.page())
 
   const showDevPanel = () => browser.devPanel() !== "closed"
+
+  const requestDiagnostics = async (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => {
+    const pageId = browser.pageId()
+    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
+    if (!pageId || !routeDirectory) return
+    try {
+      const response = await sdk.client.browser.diagnostics({
+        path_directory: routeDirectory,
+        query_directory: sdk.directory,
+        scopeID: sdk.scopeID,
+        mode: "session",
+        sessionID: props.sessionID,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        browserDiagnosticsRequest: {
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          pageId,
+          commandId: createBrowserCommandId(),
+          action,
+          limit: action === "console" ? 100 : 200,
+        },
+      })
+      if (!response.data) throw new Error(response.error?.message ?? "Browser diagnostics failed")
+      const data = Array.isArray(response.data.data) ? response.data.data : []
+      if (action === "console") browser.setConsoleEntries(pageId, data)
+      if (action === "network") browser.setNetworkRequests(pageId, data)
+      if (action === "elements") browser.setElements(pageId, data)
+      if (action === "assets") browser.setPageAssets(pageId, data)
+      if (action === "downloads") browser.setDownloads(pageId, data)
+      if (action === "clear") {
+        browser.setConsoleEntries(pageId, [])
+        browser.setNetworkRequests(pageId, [])
+      }
+    } catch (error) {
+      browser.setBrowserError({ severity: "error", message: error instanceof Error ? error.message : String(error) })
+    }
+  }
 
   const sendPageCommand = (message: Record<string, unknown>) => {
     const pageId = browser.pageId()
@@ -67,14 +108,36 @@ function BrowserPanelInner(props: {
 
   const handleAnnotationSubmit = (comment: string, styleFeedback?: Record<string, string>) => {
     const target = browser.annotationTarget()
-    browser.send({
-      type: "createAnnotation",
-      comment,
-      styleFeedback,
-      pageId: browser.pageId(),
-      x: target?.pageX,
-      y: target?.pageY,
-    })
+    const pageId = browser.pageId()
+    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
+    if (target && pageId && routeDirectory) {
+      void sdk.client.browser
+        .createAnnotation({
+          path_directory: routeDirectory,
+          query_directory: sdk.directory,
+          scopeID: sdk.scopeID,
+          mode: "session",
+          sessionID: props.sessionID,
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          browserAnnotationRequest: {
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            pageId,
+            x: target.pageX,
+            y: target.pageY,
+            comment,
+            styleFeedback,
+          },
+        })
+        .then((response) => {
+          if (!response.data) throw new Error(response.error?.message ?? "Browser annotation failed")
+        })
+        .catch((error) => {
+          browser.setBrowserError({
+            severity: "error",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        })
+    }
     dismissAnnotation()
   }
 
@@ -107,6 +170,7 @@ function BrowserPanelInner(props: {
             onReload={() => sendPageCommand({ type: "reload" })}
             onStop={() => sendPageCommand({ type: "stop" })}
             onNavigate={browser.navigate}
+            onRequestDiagnostics={(action) => void requestDiagnostics(action)}
           />
           <div class="browser-content relative flex-1">
             <Show
@@ -125,7 +189,11 @@ function BrowserPanelInner(props: {
                     </div>
                   }
                 >
-                  <BrowserSurface sessionID={props.sessionID} routeDirectory={props.routeDirectory} />
+                  <BrowserSurface
+                    sessionID={props.sessionID}
+                    routeDirectory={props.routeDirectory}
+                    ownerKey={props.ownerKey}
+                  />
                 </Show>
               }
             >

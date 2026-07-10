@@ -1,67 +1,48 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BrowserToolHelper } from "./browser-shared"
-import { BrowserOwner } from "../browser/owner"
+import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
 export const BrowserConsoleTool = Tool.define("browser_console", {
   description:
-    "Get console entries from a browser page's console buffer. Returns entries formatted as plain text lines with timestamp, level, and message. Use this to inspect JavaScript runtime errors, warnings, and log output from the page.",
-  parameters: z.object({
-    pageId: z.string().describe("Browser page ID. Uses the session page if omitted.").optional(),
-    maxEntries: z.number().describe("Maximum entries to return (default 50).").default(50).optional(),
-    filter: z.string().describe("Optional regex pattern to filter entries by text content.").optional(),
-  }),
+    "Page, filter, inspect, or clear redacted browser console entries, including source and stack information.",
+  parameters: z
+    .object({
+      action: z.enum(["list", "get", "clear"]).default("list"),
+      id: z.string().max(20_000).optional().describe("Required only for get."),
+      level: z.string().max(1_000).optional(),
+      filter: z.string().max(20_000).optional(),
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(500).optional(),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (value.action === "get" && !value.id)
+        ctx.addIssue({ code: "custom", path: ["id"], message: "id is required for get." })
+      if (value.action !== "get" && value.id !== undefined)
+        ctx.addIssue({ code: "custom", path: ["id"], message: "id is valid only for get." })
+      if (value.action !== "list") {
+        for (const field of ["level", "filter", "page", "pageSize"] as const) {
+          if (value[field] !== undefined)
+            ctx.addIssue({ code: "custom", path: [field], message: `${field} is valid only for list.` })
+        }
+      }
+    }),
   async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+    const browserPage = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
+      browserPage,
       "reading",
       "browser_console",
-      "Reading console entries",
+      `${params.action} console`,
       async () => {
-        const result = await BrowserToolHelper.executeControl(owner, {
-          type: "console",
-          pageId: tab.id,
-          maxEntries: params.maxEntries ?? 50,
-        })
-        if (result.type !== "console") throw new Error("Browser console command returned an unexpected result")
-        const entries = result.entries
-
-        let filtered = entries
-        if (params.filter) {
-          let filterRegex: RegExp
-          try {
-            filterRegex = new RegExp(params.filter, "i")
-          } catch {
-            throw new Error(`Invalid regex filter: ${params.filter}`)
-          }
-          filtered = entries.filter((e) => filterRegex.test(e.text))
-        }
-
-        if (filtered.length === 0) {
-          return {
-            title: `Console entries (0, tab: ${tab.id})`,
-            output: "No console entries found.",
-            metadata: { entryCount: 0 },
-          }
-        }
-
-        const lines = filtered.map((entry) => {
-          const ts = new Date(entry.timestamp).toISOString()
-          const level = entry.type.toUpperCase().padEnd(5)
-          let line = `[${ts}] ${level} ${entry.text}`
-          if (entry.stackTrace) {
-            line += `\n  stack: ${entry.stackTrace}`
-          }
-          return line
-        })
-
+        const result = await BrowserToolHelper.execute(ctx, { type: "console", ...params })
+        if (result.type !== "data") throw new Error("Browser console returned an unexpected result.")
+        const formatted = formatBrowserJSON(result.data)
         return {
-          title: `Console entries (${filtered.length}, tab: ${tab.id})`,
-          output: lines.join("\n"),
-          metadata: { entryCount: filtered.length },
+          title: `Browser console: ${params.action}`,
+          output: formatted.output,
+          metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
         }
       },
     )

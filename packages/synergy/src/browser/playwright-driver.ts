@@ -1,9 +1,11 @@
 import fs from "fs/promises"
+import path from "node:path"
 import type { Browser, BrowserContext, Page } from "playwright"
 import { BrowserOwner } from "./owner.js"
 import type { BrowserDriver } from "./driver.js"
 import { BrowserInstall } from "./install.js"
 import { BrowserStorage } from "./storage.js"
+import { BrowserNetworkGateway } from "./network-gateway.js"
 
 interface InternalContext {
   owner: BrowserOwner.Info
@@ -20,13 +22,8 @@ let seq = 0
 function nextContextId(): string {
   return `ctx-${++seq}`
 }
-function nextPageId(): string {
-  return `page-${++seq}`
-}
-
 export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private contexts = new Map<string, InternalContext>()
-  private pages = new Map<string, Map<string, Page>>()
   private _running = false
   private _browserType: string
   private _browser: Browser | null = null
@@ -82,26 +79,26 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   }
 
   async stop(): Promise<void> {
+    const failures: unknown[] = []
     for (const ctx of this.contexts.values()) {
-      if (ctx.browserContext) {
-        try {
-          await ctx.browserContext.close()
-        } catch {
-          // ignore close failures
-        }
+      if (!ctx.browserContext) continue
+      try {
+        await ctx.browserContext.close()
+      } catch (error) {
+        failures.push(error)
       }
     }
     if (this._browser) {
       try {
         await this._browser.close()
-      } catch {
-        // ignore close failures
+      } catch (error) {
+        failures.push(error)
       }
       this._browser = null
     }
     this.contexts.clear()
-    this.pages.clear()
     this._running = false
+    if (failures.length) throw new AggregateError(failures, "Playwright Browser driver did not stop cleanly.")
   }
 
   async contextFor(owner: BrowserOwner.Info): Promise<BrowserDriver.BrowserContextHandle> {
@@ -117,58 +114,81 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
       const storageState = BrowserStorage.storageStatePath(owner)
       let storageStateOption: string | undefined
       try {
-        await fs.access(storageState)
-        storageStateOption = storageState
+        const info = await fs.lstat(storageState)
+        const real = await fs.realpath(storageState)
+        const realProfile = await fs.realpath(BrowserStorage.profileDir(owner))
+        if (
+          info.isFile() &&
+          !info.isSymbolicLink() &&
+          info.size <= 32 * 1024 * 1024 &&
+          real.startsWith(`${realProfile}${path.sep}`)
+        ) {
+          storageStateOption = storageState
+        }
       } catch {
         storageStateOption = undefined
       }
 
+      const proxy = await BrowserNetworkGateway.proxyFor(owner)
       ctx.browserContext = await this._browser.newContext({
         viewport: { width: 1280, height: 720 },
         acceptDownloads: true,
         storageState: storageStateOption,
+        proxy,
       })
       this.contexts.set(key, ctx)
-      this.pages.set(key, new Map())
     }
     return { browserContextId: ctx.browserContextId }
   }
 
-  async newPage(owner: BrowserOwner.Info, url?: string): Promise<Page> {
+  async newPage(owner: BrowserOwner.Info): Promise<Page> {
     const key = BrowserOwner.key(owner)
     await this.contextFor(owner)
     const ctx = this.contexts.get(key)!
     if (!ctx.browserContext) throw new Error("Browser context is not available")
-    const page = await ctx.browserContext.newPage()
-    const pageID = nextPageId()
-    ;(page as unknown as Record<string, unknown>)._synergyPageID = pageID
-    this.pages.get(key)!.set(pageID, page)
-    // Do not navigate here. BrowserSession/BrowserTab.navigate performs URL policy checks.
-    return page
+    return ctx.browserContext.newPage()
   }
 
   async saveContextStorage(owner: BrowserOwner.Info): Promise<void> {
     const ctx = this.contexts.get(BrowserOwner.key(owner))
     if (!ctx?.browserContext) return
     await BrowserStorage.ensureOwnerDirs(owner)
-    await ctx.browserContext.storageState({ path: BrowserStorage.storageStatePath(owner) })
-  }
-
-  getPage(owner: BrowserOwner.Info, pageId: string): Page | undefined {
-    return this.pages.get(BrowserOwner.key(owner))?.get(pageId)
-  }
-
-  async closePage(owner: BrowserOwner.Info, pageId: string): Promise<void> {
-    const key = BrowserOwner.key(owner)
-    const page = this.pages.get(key)?.get(pageId)
-    if (page) {
-      try {
-        await page.close()
-      } catch {
-        // ignore close failures
+    const target = BrowserStorage.storageStatePath(owner)
+    const temporary = `${target}.${crypto.randomUUID()}.tmp`
+    let failure: unknown
+    try {
+      await ctx.browserContext.storageState({ path: temporary })
+      const info = await fs.lstat(temporary)
+      if (!info.isFile() || info.isSymbolicLink() || info.size > 32 * 1024 * 1024) {
+        throw new Error("Browser storage state is unsafe or exceeds 32 MB.")
       }
+      await fs.chmod(temporary, 0o600)
+      await BrowserStorage.replaceFileAtomically(temporary, target)
+    } catch (error) {
+      failure = error
     }
-    this.pages.get(key)?.delete(pageId)
+    try {
+      await fs.rm(temporary, { force: true })
+    } catch (cleanupError) {
+      if (failure) throw new AggregateError([failure, cleanupError], "Browser profile save and cleanup both failed.")
+      throw cleanupError
+    }
+    if (failure) throw failure
+  }
+
+  async releaseOwner(owner: BrowserOwner.Info): Promise<void> {
+    const key = BrowserOwner.key(owner)
+    const context = this.contexts.get(key)?.browserContext
+    if (!context) {
+      this.contexts.delete(key)
+      return
+    }
+    try {
+      await context.close()
+      this.contexts.delete(key)
+    } catch (error) {
+      throw new AggregateError([error], "Playwright Browser owner context did not close cleanly.")
+    }
   }
 
   listOwners(): BrowserOwner.Info[] {

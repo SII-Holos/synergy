@@ -32,25 +32,40 @@ describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
     expect(
       parseBrowserNativeAttach({
-        sessionID: "session",
+        protocolVersion: 2,
+        ownerKey: "scope:scope:session:session",
         pageId: "page",
-        serverUrl: "http://127.0.0.1:3000",
-        url: "https://example.com",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
       }),
     ).toEqual({
-      sessionID: "session",
+      protocolVersion: 2,
+      ownerKey: "scope:scope:session:session",
       pageId: "page",
-      serverUrl: "http://127.0.0.1:3000",
-      url: "https://example.com",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
     })
   })
 
   test("rejects malformed browser native payloads", () => {
-    expect(() => parseBrowserNativePage({ pageId: "" })).toThrow()
-    expect(() => parseBrowserNativeResize({ pageId: "page", bounds: { width: -1, height: 1, x: 0, y: 0 } })).toThrow()
-    expect(() => parseBrowserNativeAttach({ sessionID: "session", pageId: "page", extra: true })).toThrow()
+    expect(() =>
+      parseBrowserNativePage({ protocolVersion: 2, ownerKey: "scope:scope:session:session", pageId: "" }),
+    ).toThrow()
+    expect(() =>
+      parseBrowserNativeResize({
+        protocolVersion: 2,
+        ownerKey: "scope:scope:session:session",
+        pageId: "page",
+        bounds: { width: -1, height: 1, x: 0, y: 0 },
+      }),
+    ).toThrow()
+    expect(() =>
+      parseBrowserNativeAttach({
+        protocolVersion: 2,
+        ownerKey: "scope:scope:session:session",
+        pageId: "page",
+        extra: true,
+      }),
+    ).toThrow()
+    expect(() => parseBrowserNativeAttach({ pageId: "page" })).toThrow()
   })
 
   test("allows only safe external protocols", () => {

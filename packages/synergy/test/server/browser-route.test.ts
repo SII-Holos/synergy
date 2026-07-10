@@ -1,101 +1,46 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { BrowserHost } from "../../src/browser/host"
-import { BrowserHostControl } from "../../src/browser/host-control"
-import { BrowserOwner } from "../../src/browser/owner"
+import { BrowserCommandService } from "../../src/browser/command-service"
+import type { BrowserOwner } from "../../src/browser/owner"
+import type { BrowserSession } from "../../src/browser/types"
 import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
-function fakePage(id: string, url = "https://www.google.com/") {
-  return {
-    id,
-    url,
-    title: "Google",
-    loading: false,
-    pinned: false,
-    kept: false,
-    lastActiveAt: null,
-    async navigate() {
-      throw new Error("runtime page should not navigate in this test")
-    },
-    async navigateForUser() {
-      throw new Error("runtime page should not navigate in this test")
-    },
-    async navigateWithOverride() {
-      throw new Error("runtime page should not navigate in this test")
-    },
-    async reload() {},
-    async goBack() {},
-    async goForward() {},
-    async stop() {},
-    async setViewport() {},
-    async click() {},
-    async type() {},
-    async scroll() {},
-    async dispatchMouse() {},
-    async dispatchKey() {},
-    async insertText() {},
-    async respondToFileChooser() {},
-    async respondToDialog() {},
-    async ensureCDP() {
-      throw new Error("not implemented")
-    },
-    async detachCDP() {},
-    async screenshot() {
-      return { buffer: Buffer.alloc(0), width: 0, height: 0 }
-    },
-    async snapshot() {
-      return { elements: [], truncated: false }
-    },
-    async consoleEntries() {
-      return []
-    },
-    async networkRequests() {
-      return []
-    },
-    async clearDiagnostics() {},
-    async resolveRef() {
-      return null
-    },
-    async evaluate() {
-      return null
-    },
-    async waitFor() {
-      return true
-    },
-    async close() {},
-  }
-}
+let restoreRuntime: (() => void) | undefined
+afterEach(() => {
+  restoreRuntime?.()
+  restoreRuntime = undefined
+  BrowserCommandService.clear()
+})
 
-function fakeSession(owner: BrowserOwner.Info, page = fakePage("page_google")) {
-  let currentPage = page
+function suspended(owner: BrowserOwner.Info): BrowserSession {
   return {
     owner,
-    get page() {
-      return currentPage
-    },
+    page: null,
+    status: "suspended",
+    descriptor: { id: "page-1", url: "https://example.com/", title: "Example", lastActiveAt: 1 },
     annotations: [],
+    checkpoint: null,
+    error: null,
     async ensurePage() {
-      return currentPage
+      throw new Error("A read-only route must not create a page.")
     },
-    async closePage() {
-      currentPage = null as any
+    async resumePage() {
+      throw new Error("A read-only route must not resume a page.")
     },
-    getPage(id: string) {
-      return currentPage?.id === id ? currentPage : undefined
+    async closePage() {},
+    getPage() {
+      return undefined
     },
-    addAnnotation() {
+    async addAnnotation() {
       throw new Error("not implemented")
     },
-    removeAnnotation() {
+    async removeAnnotation() {
       return false
     },
-    clearAnnotations() {},
+    async clearAnnotations() {},
     formatAnnotationsForContext() {
       return ""
-    },
-    addObserver() {
-      return () => {}
     },
     async notifyPageNavigated() {},
     async notifyAgentActivity() {},
@@ -105,269 +50,127 @@ function fakeSession(owner: BrowserOwner.Info, page = fakePage("page_google")) {
       return true
     },
     async dispose() {},
-  } as any
+  }
 }
 
-function fakeEmptySession(owner: BrowserOwner.Info) {
-  return {
-    ...fakeSession(owner),
-    get page() {
-      return null
+async function withRoute(
+  fn: (app: ReturnType<typeof Server.App>) => Promise<void>,
+  sessionFactory: (owner: BrowserOwner.Info) => BrowserSession = suspended,
+) {
+  await ScopeContext.provide({
+    scope: Scope.home(),
+    fn: async () => {
+      const owner: BrowserOwner.Info = {
+        mode: "session",
+        scopeID: ScopeContext.current.scope.id,
+        sessionID: "session-route",
+        directory: ScopeContext.current.directory,
+      }
+      restoreRuntime = BrowserCommandService.useRuntimeForTest({
+        async getOrCreateSession() {
+          return sessionFactory(owner)
+        },
+      })
+      await fn(Server.App())
     },
-    async ensurePage() {
-      throw new Error("GET /browser/session must not create a page")
-    },
-    getPage() {
-      return undefined
-    },
-  } as any
+  })
 }
 
-describe("BrowserRoute control readiness", () => {
-  afterEach(() => {
-    BrowserHostControl.resetForTest()
-  })
-
-  test("reads browser session state without creating an initial page", async () => {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const owner = BrowserOwner.fromRoute({
-          directory: ScopeContext.current.directory,
-          scopeID: ScopeContext.current.scope.id,
-          sessionID: "ses_route_empty",
-          mode: "session",
-        })
-        const restore = BrowserHost.useRuntimeForTest({
-          async ensure() {},
-          async health() {
-            return { running: false, chromiumPath: null, installed: false, version: null }
-          },
-          async getOrCreateSession() {
-            return fakeEmptySession(owner)
-          },
-        })
-
-        try {
-          const app = Server.App()
-          const response = await app.request(
-            "/home/browser/session?mode=session&sessionID=ses_route_empty&presentation=webrtc&client=web&scopeID=home",
-          )
-
-          expect(response.status).toBe(200)
-          const body = await response.json()
-          expect(body.page).toBeNull()
-        } finally {
-          restore()
-        }
-      },
+describe("BrowserRoute protocol v2", () => {
+  test("GET session exposes a suspended descriptor without starting a page", async () => {
+    await withRoute(async (app) => {
+      const response = await app.request(
+        "/home/browser/session?mode=session&sessionID=session-route&presentation=webrtc",
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        type: "session.state",
+        protocolVersion: 2,
+        status: "suspended",
+        page: { id: "page-1", url: "https://example.com/" },
+      })
     })
   })
 
-  test("returns a retryable pending response instead of 500 when WebRTC host control is not ready", async () => {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const owner = BrowserOwner.fromRoute({
-          directory: ScopeContext.current.directory,
-          scopeID: ScopeContext.current.scope.id,
-          sessionID: "ses_route_pending",
-          mode: "session",
-        })
-        BrowserHostControl.markStatus(owner, "page_google", "pending", { traceId: "browser_trace_route" })
-        const restore = BrowserHost.useRuntimeForTest({
-          async ensure() {},
-          async health() {
-            return { running: false, chromiumPath: null, installed: false, version: null }
-          },
-          async getOrCreateSession() {
-            return fakeSession(owner)
-          },
-        })
-
-        try {
-          const app = Server.App()
-          const response = await app.request(
-            "/home/browser/control?mode=session&sessionID=ses_route_pending&presentation=webrtc&client=web&scopeID=home",
-            {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "x-synergy-browser-trace": "browser_trace_route",
-              },
-              body: JSON.stringify({
-                commandId: "browser_cmd_route",
-                command: {
-                  type: "reload",
-                  pageId: "page_google",
-                },
-              }),
-            },
-          )
-
-          expect(response.status).toBe(409)
-          const body = await response.json()
-          expect(body).toMatchObject({
-            type: "error",
-            code: "browser_host_pending",
-            retryable: true,
-            traceId: "browser_trace_route",
-            pageId: "page_google",
-            commandId: "browser_cmd_route",
-            commandType: "reload",
-          })
-        } finally {
-          restore()
-        }
-      },
+  test("does not issue a viewer ticket for a suspended descriptor", async () => {
+    await withRoute(async (app) => {
+      const response = await app.request("/home/browser/webrtc/ticket?mode=session&sessionID=session-route", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ protocolVersion: 2, pageId: "page-1" }),
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ type: "error", code: "browser_ticket_page_unavailable" })
     })
   })
 
-  test("ignores mismatched WebRTC host page state when reading the canonical session", async () => {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const owner = BrowserOwner.fromRoute({
-          directory: ScopeContext.current.directory,
-          scopeID: ScopeContext.current.scope.id,
-          sessionID: "ses_route_merge",
-          mode: "session",
-        })
-        const restore = BrowserHost.useRuntimeForTest({
-          async ensure() {},
-          async health() {
-            return { running: false, chromiumPath: null, installed: false, version: null }
-          },
-          async getOrCreateSession() {
-            return fakeSession(owner)
-          },
-        })
-
-        try {
-          const blank = { send() {}, close() {} }
-          const blankConnection = BrowserHostControl.attach(owner, blank, { pageId: "page_blank" })
-          blankConnection.handleMessage({
-            type: "browser.host.ready",
-            session: {
-              page: {
-                id: "page_blank",
-                url: "about:blank",
-                title: "Blank Host",
-                isLoading: false,
-                lastActiveAt: null,
-              },
-            },
-          })
-
-          const app = Server.App()
-          const response = await app.request(
-            "/home/browser/session?mode=session&sessionID=ses_route_merge&presentation=webrtc&client=web&scopeID=home",
-          )
-
-          expect(response.status).toBe(200)
-          const body = await response.json()
-          expect(body.page).toMatchObject({ id: "page_google", title: "Google" })
-        } finally {
-          restore()
-        }
-      },
+  test("rejects an oversized Browser body using its actual streamed bytes", async () => {
+    await withRoute(async (app) => {
+      const response = await app.request("/home/browser/webrtc/ticket?mode=session&sessionID=session-route", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ protocolVersion: 2, pageId: "page-1", padding: "x".repeat(20 * 1024) }),
+      })
+      expect(response.status).toBe(413)
+      expect(await response.json()).toMatchObject({ type: "error", code: "browser_payload_too_large" })
     })
   })
 
-  test("sends navigate to a ready WebRTC host for the existing page", async () => {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const owner = BrowserOwner.fromRoute({
-          directory: ScopeContext.current.directory,
-          scopeID: ScopeContext.current.scope.id,
-          sessionID: "ses_route_navigate",
-          mode: "session",
+  test("GET session preserves a recoverable failed descriptor and structured reason", async () => {
+    await withRoute(
+      async (app) => {
+        const response = await app.request(
+          "/home/browser/session?mode=session&sessionID=session-route&presentation=webrtc",
+        )
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          type: "session.state",
+          status: "failed",
+          page: { id: "page-1" },
+          error: { type: "error", code: "browser_host_unavailable", retryable: true },
         })
-        const restore = BrowserHost.useRuntimeForTest({
-          async ensure() {},
-          async health() {
-            return { running: false, chromiumPath: null, installed: false, version: null }
-          },
-          async getOrCreateSession() {
-            return fakeSession(owner)
-          },
-        })
-
-        try {
-          const sentHostMessages: string[] = []
-          const connection = BrowserHostControl.attach(
-            owner,
-            {
-              send(data: string) {
-                sentHostMessages.push(data)
-              },
-              close() {},
-            },
-            { pageId: "page_google" },
-          )
-          connection.handleMessage({
-            type: "browser.host.ready",
-            session: {
-              page: {
-                id: "page_google",
-                url: "https://www.google.com/",
-                title: "Google",
-                isLoading: false,
-                lastActiveAt: null,
-              },
-            },
-          })
-
-          const app = Server.App()
-          const responsePromise = app.request(
-            "/home/browser/control?mode=session&sessionID=ses_route_navigate&presentation=webrtc&client=web&scopeID=home",
-            {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                commandId: "browser_cmd_navigate",
-                command: { type: "navigate", pageId: "page_google", url: "www.google.com/search?q=synergy" },
-              }),
-            },
-          )
-
-          for (let attempt = 0; attempt < 10 && sentHostMessages.length === 0; attempt++) {
-            await Promise.resolve()
-          }
-          const request = sentHostMessages.map((message) => JSON.parse(message)).find((message) => message.id)
-          expect(request).toMatchObject({
-            type: "browser.host.command",
-            command: { type: "navigate", pageId: "page_google", url: "https://www.google.com/search?q=synergy" },
-          })
-          connection.handleMessage({
-            type: "browser.host.result",
-            id: request.id,
-            result: {
-              type: "navigation",
-              url: "https://www.google.com/search?q=synergy",
-              title: "Google Search",
-              page: {
-                id: "page_google",
-                url: "https://www.google.com/search?q=synergy",
-                title: "Google Search",
-                isLoading: false,
-                lastActiveAt: null,
-              },
-            },
-          })
-
-          const response = await responsePromise
-          expect(response.status).toBe(200)
-          const body = await response.json()
-          expect(body.result).toMatchObject({
-            type: "navigation",
-            page: { id: "page_google", title: "Google Search" },
-          })
-        } finally {
-          restore()
-        }
       },
+      (owner) => ({
+        ...suspended(owner),
+        status: "failed",
+        error: {
+          type: "error",
+          code: "browser_host_unavailable",
+          message: "Browser Host is unavailable.",
+          retryable: true,
+        },
+      }),
+    )
+  })
+
+  test("requires commandId before any browser side effect", async () => {
+    await withRoute(async (app) => {
+      const response = await app.request("/home/browser/control?mode=session&sessionID=session-route", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: { type: "reload" } }),
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ type: "error", code: "browser_command_id_required" })
+    })
+  })
+
+  test("rejects pageId, evaluate, CDP, and unknown fields in UI control commands", async () => {
+    await withRoute(async (app) => {
+      for (const command of [
+        { type: "reload", pageId: "page-1" },
+        { type: "evaluate", expression: "document.cookie" },
+        { type: "cdp", method: "Runtime.evaluate" },
+        { type: "navigate", url: "https://example.com", unexpected: true },
+      ]) {
+        const response = await app.request("/home/browser/control?mode=session&sessionID=session-route", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ commandId: crypto.randomUUID(), command }),
+        })
+        expect(response.status, await response.clone().text()).toBe(400)
+        expect((await response.json()).type).toBe("error")
+      }
     })
   })
 })

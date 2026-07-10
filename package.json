@@ -37,6 +37,7 @@
   "workspaces": {
     "packages": [
       "packages/app",
+      "packages/browser",
       "packages/desktop",
       "packages/synergy-link-protocol",
       "packages/synergy-link",

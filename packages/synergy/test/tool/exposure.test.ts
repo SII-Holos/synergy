@@ -123,7 +123,7 @@ describe("tool exposure", () => {
     )
 
     expect(ToolExposure.normalize("ordinary_tool")).toEqual({ mode: "resident" })
-    expect(ToolExposure.normalize("browser_navigate")).toEqual({ mode: "group", group: "browser" })
+    expect(ToolExposure.normalize("browser_navigation")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
     expect(internal.exposure).toEqual({ mode: "internal" })
   })
@@ -156,7 +156,7 @@ describe("tool exposure", () => {
 
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
-        expect(ids.has("browser_navigate")).toBe(false)
+        expect(ids.has("browser_navigation")).toBe(false)
         expect(ids.has("agenda_list")).toBe(false)
         expect(ids.has("session_list")).toBe(false)
         expect(ids.has("note_list")).toBe(false)
@@ -170,7 +170,7 @@ describe("tool exposure", () => {
 
         const expanded = await Session.get(session.id)
         ids = await definitionIDs(expanded)
-        expect(ids.has("browser_navigate")).toBe(true)
+        expect(ids.has("browser_navigation")).toBe(true)
         expect(ids.has("browser_screenshot")).toBe(true)
         expect(ids.has("agenda_list")).toBe(false)
 
@@ -325,12 +325,12 @@ describe("tool exposure", () => {
         )
         expect(result.metadata.availableNextStep).toBe(true)
         expect(result.metadata.availableOn).toBe("next_model_request")
-        expect(result.metadata.availableRequestedTools).toContain("browser_navigate")
-        expect(result.metadata.newlyVisibleTools).toContain("browser_navigate")
+        expect(result.metadata.availableRequestedTools).toContain("browser_navigation")
+        expect(result.metadata.newlyVisibleTools).toContain("browser_navigation")
         expect(result.metadata.newlyVisibleTools).not.toContain("search_tools")
         expect(result.metadata.visibleTools).toBeUndefined()
         expect(result.output).toContain("You can call these tools directly:")
-        expect(result.output).toContain("browser_navigate")
+        expect(result.output).toContain("browser_navigation")
         expect(result.output).not.toContain("availableNextStep")
         expect(result.output).not.toContain("availableOn")
         expect(result.output).not.toContain("activatedTools: (none)")
@@ -353,12 +353,12 @@ describe("tool exposure", () => {
         const expanded = await Session.get(session.id)
         const denyNavigate: Agent.Info = {
           ...allowAllAgent,
-          permission: PermissionNext.fromConfig({ "*": "allow", browser_navigate: "deny" }),
+          permission: PermissionNext.fromConfig({ "*": "allow", browser_navigation: "deny" }),
         }
 
-        expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_navigate")).toBe(false)
+        expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_navigation")).toBe(false)
         expect(
-          (await definitionIDs(expanded, { userTools: { browser_navigate: false } })).has("browser_navigate"),
+          (await definitionIDs(expanded, { userTools: { browser_navigation: false } })).has("browser_navigation"),
         ).toBe(false)
         expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_screenshot")).toBe(true)
       },

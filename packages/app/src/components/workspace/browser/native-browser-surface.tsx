@@ -1,27 +1,15 @@
 import { createEffect, onCleanup, onMount } from "solid-js"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
 import { usePlatform } from "@/context/platform"
-import { useSDK } from "@/context/sdk"
 import { useBrowser } from "./browser-store"
 
-export function NativeBrowserSurface(props: {
-  sessionID: string
-  routeDirectory?: string
-  container: () => HTMLDivElement | undefined
-}) {
+export function NativeBrowserSurface(props: { container: () => HTMLDivElement | undefined; ownerKey: string }) {
   const browser = useBrowser()
   const platform = usePlatform()
-  const sdk = useSDK()
 
   const bridge = () => {
     if (browser.presentation()?.kind !== "native") return null
     return platform.browserNative ?? null
-  }
-
-  function syncNativeNavigation(pageId: string, url?: string) {
-    if (!url || url === "about:blank") return
-    const page = browser.page()
-    if (page?.id !== pageId || page.url === url) return
-    browser.send({ type: "navigate", source: "user", pageId, url })
   }
 
   function syncBounds() {
@@ -31,11 +19,10 @@ export function NativeBrowserSurface(props: {
     if (!native || !pageId || !container) return
     const rect = container.getBoundingClientRect()
     void native.resizeView({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: props.ownerKey,
       pageId,
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
+      bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     })
   }
 
@@ -46,7 +33,6 @@ export function NativeBrowserSurface(props: {
         case "native.loading": {
           browser.setPageLoading(event.pageId, true)
           if (event.url) {
-            syncNativeNavigation(event.pageId, event.url)
             browser.setPageUrl(event.pageId, event.url)
           }
           break
@@ -58,7 +44,6 @@ export function NativeBrowserSurface(props: {
           break
         }
         case "native.navigated": {
-          syncNativeNavigation(event.pageId, event.url)
           browser.setPageUrl(event.pageId, event.url)
           break
         }
@@ -92,14 +77,9 @@ export function NativeBrowserSurface(props: {
 
     const rect = container.getBoundingClientRect()
     void native.attachView({
-      serverUrl: sdk.url,
-      sessionID: props.sessionID,
-      routeDirectory: props.routeDirectory,
-      directory: sdk.directory,
-      scopeID: sdk.scopeID,
-      scopeKey: sdk.scopeKey,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: props.ownerKey,
       pageId: page.id,
-      url: page.url || undefined,
       bounds: {
         x: rect.x,
         y: rect.y,
@@ -118,13 +98,22 @@ export function NativeBrowserSurface(props: {
 
   onCleanup(() => {
     const pageId = browser.pageId()
-    if (pageId) void platform.browserNative?.detachView({ pageId })
+    if (pageId)
+      void platform.browserNative?.detachView({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: props.ownerKey,
+        pageId,
+      })
   })
 
   function focusNativeView() {
     const pageId = browser.pageId()
     if (!pageId) return
-    void platform.browserNative?.focusView({ pageId })
+    void platform.browserNative?.focusView({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: props.ownerKey,
+      pageId,
+    })
   }
 
   return <div class="absolute inset-0" onPointerDown={focusNativeView} />

@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@aarkue/tiptap-math-extension": "1.4.0",
+    "@ericsanchezok/synergy-browser": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-ui": "workspace:*",

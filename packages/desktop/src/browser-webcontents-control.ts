@@ -1,4 +1,15 @@
-import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
+import { clipboard } from "electron"
+import {
+  BrowserBackendCommandSchema,
+  BrowserNavigationPolicy,
+  BrowserProtocolError,
+  CdpPageController,
+  cdpCommandTimeoutMs,
+  withCdpCommandTimeout,
+  type BrowserBackendCommand,
+  type BrowserBackendResult,
+  type CdpTransport,
+} from "@ericsanchezok/synergy-browser"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 import { inputModifiers } from "./browser-input.js"
 
@@ -16,19 +27,142 @@ export interface BrowserWebContentsControlTarget {
   diagnostics?(): BrowserHostDiagnostics | undefined
   resize?(width: number, height: number): void
   pageState(): BrowserWebContentsPageState
+  onNavigationBlocked?(url: string, reason: string): void
 }
 
-export class UnsupportedBrowserWebContentsCommandError extends Error {
-  constructor(command: string) {
-    super(command)
-    this.name = "UnsupportedBrowserWebContentsCommandError"
+class ElectronCdpTransport implements CdpTransport {
+  private listeners = new Map<string, Set<(params: unknown) => void>>()
+  private attachedContents: Electron.WebContents | null = null
+  private ownsAttachment = false
+  private messageListener = (_event: Electron.Event, method: string, params: unknown) => {
+    for (const listener of this.listeners.get(method) ?? []) listener(params)
+  }
+
+  constructor(private contents: () => Electron.WebContents | undefined) {}
+
+  async send<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
+    const contents = this.requireContents()
+    this.attach(contents)
+    const command = contents.debugger.sendCommand(method, params) as Promise<T>
+    return withCdpCommandTimeout(command, method, cdpCommandTimeoutMs(method, params))
+  }
+
+  on(event: string, listener: (params: unknown) => void): () => void {
+    const listeners = this.listeners.get(event) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(event, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) this.listeners.delete(event)
+    }
+  }
+
+  async dispose(): Promise<void> {
+    this.listeners.clear()
+    if (this.attachedContents && !this.attachedContents.isDestroyed()) {
+      this.attachedContents.debugger.off("message", this.messageListener)
+      if (this.ownsAttachment && this.attachedContents.debugger.isAttached()) this.attachedContents.debugger.detach()
+    }
+    this.attachedContents = null
+    this.ownsAttachment = false
+  }
+
+  private requireContents(): Electron.WebContents {
+    const contents = this.contents()
+    if (!contents || contents.isDestroyed()) throw new Error("Browser webContents is unavailable")
+    return contents
+  }
+
+  private attach(contents: Electron.WebContents) {
+    if (this.attachedContents === contents && contents.debugger.isAttached()) return
+    if (this.attachedContents && !this.attachedContents.isDestroyed()) {
+      this.attachedContents.debugger.off("message", this.messageListener)
+      if (this.ownsAttachment && this.attachedContents.debugger.isAttached()) this.attachedContents.debugger.detach()
+    }
+    this.ownsAttachment = false
+    if (!contents.debugger.isAttached()) {
+      contents.debugger.attach("1.3")
+      this.ownsAttachment = true
+    }
+    contents.debugger.on("message", this.messageListener)
+    this.attachedContents = contents
   }
 }
 
 export class BrowserWebContentsControl {
-  private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
+  private transport: ElectronCdpTransport
+  private controller: CdpPageController
+  private navigation: BrowserNavigationPolicy
+  private navigationListener: (event: Electron.Event, url: string) => void
+  private committedListener: (_event: Electron.Event, url: string) => void
+  private mouseListener: (_event: Electron.Event, input: Electron.MouseInputEvent) => void
+  private keyListener: (_event: Electron.Event, input: Electron.Input) => void
+  private commandInFlight = false
+  private navigationBlocked: { url: string; reason: string } | null = null
 
-  constructor(private target: BrowserWebContentsControlTarget) {}
+  constructor(private target: BrowserWebContentsControlTarget) {
+    this.transport = new ElectronCdpTransport(target.contents)
+    this.navigation = new BrowserNavigationPolicy({
+      allowUserNavigation: (url) => {
+        try {
+          const protocol = new URL(url).protocol
+          return protocol === "http:" || protocol === "https:"
+        } catch {
+          return false
+        }
+      },
+    })
+    this.navigationListener = (event, url) => {
+      const decision = this.navigation.decide(url)
+      if (decision.allowed) return
+      event.preventDefault()
+      const reason = decision.reason ?? "Browser navigation policy denied the request."
+      if (this.commandInFlight) this.navigationBlocked = { url, reason }
+      target.onNavigationBlocked?.(url, reason)
+    }
+    this.committedListener = (_event, url) => this.navigation.noteCommitted(url)
+    this.mouseListener = (_event, input) => {
+      if (!this.commandInFlight && input.type === "mouseDown") this.navigation.noteUserGesture()
+    }
+    this.keyListener = (_event, input) => {
+      if (!this.commandInFlight && input.type === "keyDown") this.navigation.noteUserGesture()
+    }
+    const contents = target.contents()
+    contents?.on("will-navigate", this.navigationListener)
+    contents?.on("will-redirect", this.navigationListener)
+    contents?.on("did-navigate", this.committedListener)
+    contents?.on("before-mouse-event", this.mouseListener)
+    contents?.on("before-input-event", this.keyListener)
+    contents?.setWindowOpenHandler(({ url }) => {
+      const decision = this.navigation.decide(url)
+      if (decision.allowed) {
+        void contents
+          .loadURL(url)
+          .catch((error) =>
+            target.onNavigationBlocked?.(
+              url,
+              error instanceof Error ? error.message : "Browser popup navigation failed.",
+            ),
+          )
+      } else target.onNavigationBlocked?.(url, decision.reason ?? "Browser popup navigation was denied.")
+      return { action: "deny" }
+    })
+    this.controller = new CdpPageController({
+      pageId: target.pageId,
+      transport: this.transport,
+      clipboard: {
+        readText: () => clipboard.readText(),
+        writeText: (text) => clipboard.writeText(text),
+      },
+      stageFiles: async (files) => {
+        const diagnostics = target.diagnostics?.()
+        if (!diagnostics) throw new Error("Browser upload staging is unavailable")
+        return diagnostics.stageFiles(
+          files.map((file) => ({ name: file.name, mimeType: file.mimeType, data: file.dataBase64 })),
+        )
+      },
+    })
+  }
 
   dispatchInput(payload: Record<string, unknown>): void {
     if (payload.type === "input.resize") {
@@ -46,145 +180,93 @@ export class BrowserWebContentsControl {
     }
 
     if (payload.type === "input.mouse") {
+      if (payload.action === "down") this.navigation.noteUserGesture()
       this.dispatchMouse(payload, contents)
       return
     }
 
     if (payload.type === "input.key") {
+      if (payload.action === "down") this.navigation.noteUserGesture()
       this.dispatchKey(payload, contents)
     }
   }
 
-  async execute(command: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const contents = this.requireContents()
+  async execute(input: BrowserBackendCommand): Promise<BrowserBackendResult> {
+    const command = BrowserBackendCommandSchema.parse(input)
     const diagnostics = this.target.diagnostics?.()
-    const pageId = this.target.pageId
 
-    switch (command.type) {
-      case "navigate": {
-        const url = normalizeBrowserURL(String(command.url ?? "about:blank"))
-        await contents.loadURL(url)
-        return {
-          type: "navigation",
-          page: this.target.pageState(),
-          url: contents.getURL(),
-          title: contents.getTitle(),
-        }
-      }
-      case "reload":
-        if (command.ignoreCache) contents.reloadIgnoringCache()
-        else contents.reload()
-        return { type: "void" }
-      case "stop":
-        contents.stop()
-        return { type: "void" }
-      case "history":
-        if (command.direction === "back" && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
-        if (command.direction === "forward" && contents.navigationHistory.canGoForward()) {
-          contents.navigationHistory.goForward()
-        }
-        return { type: "void" }
-      case "setViewport":
-        this.resize(command.width, command.height)
-        return { type: "page", page: this.target.pageState() }
-      case "click":
-        contents.focus()
-        this.dispatchMouse({ action: "down", x: command.x, y: command.y, button: "left" }, contents)
-        this.dispatchMouse({ action: "up", x: command.x, y: command.y, button: "left" }, contents)
-        return { type: "void" }
-      case "typeText":
-        contents.focus()
-        await contents.insertText(String(command.text ?? ""))
-        return { type: "void" }
-      case "scroll":
-        contents.focus()
-        this.dispatchMouse({ action: "wheel", deltaX: command.deltaX, deltaY: command.deltaY }, contents)
-        return { type: "void" }
-      case "mouse":
-        contents.focus()
-        this.dispatchMouse((command.input as Record<string, unknown>) ?? command, contents)
-        return { type: "void" }
-      case "key":
-        contents.focus()
-        this.dispatchKey((command.input as Record<string, unknown>) ?? command, contents)
-        return { type: "void" }
-      case "insertText":
-        contents.focus()
-        await contents.insertText(String(command.text ?? ""))
-        return { type: "void" }
-      case "evaluate":
-        return {
-          type: "evaluation",
-          pageId,
-          value: await contents.executeJavaScript(String(command.expression ?? ""), true),
-        }
-      case "cdp":
-        return {
-          type: "cdp",
-          pageId,
-          value: await this.sendCDP(contents, String(command.method ?? ""), command.params as Record<string, unknown>),
-        }
-      case "snapshot": {
-        const snapshot = await this.snapshot(contents)
-        return { type: "snapshot", pageId, elements: snapshot.elements, truncated: snapshot.truncated }
-      }
-      case "resolveRef": {
-        const ref = String(command.ref ?? "")
-        return { type: "resolvedRef", pageId, ref, box: this.refMap.get(ref) ?? null }
-      }
-      case "console":
-        return {
-          type: "console",
-          pageId,
-          entries: (diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? []).map((e) => ({
-            type: e.level,
-            text: e.text,
-            timestamp: e.timestamp,
-            stackTrace: e.stackTrace,
-          })),
-        }
-      case "network":
-        return {
-          type: "network",
-          pageId,
-          requests: diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
-        }
-      case "assets":
-        return {
-          type: "assets",
-          pageId,
-          assets: diagnostics?.pageAssets(pageId, Number(command.maxEntries ?? 100)) ?? [],
-        }
-      case "filechooser.select":
-        await diagnostics?.respondToFileChooser(
-          String(command.requestId ?? ""),
-          (command.files as BrowserHostUploadFile[]) ?? [],
-        )
-        return { type: "void" }
-      case "dialog.respond":
-        await diagnostics?.respondToDialog(
-          String(command.requestId ?? ""),
-          Boolean(command.accept),
-          typeof command.promptText === "string" ? command.promptText : undefined,
-        )
-        return { type: "void" }
-      case "screenshot": {
-        const image = await contents.capturePage()
-        const size = image.getSize()
-        return {
-          type: "screenshot",
-          pageId,
-          dataUrl: image.toDataURL(),
-          width: size.width,
-          height: size.height,
-        }
-      }
-      case "clearDiagnostics":
-        diagnostics?.clear()
-        return { type: "diagnostics.cleared", pageId }
-      default:
-        throw new UnsupportedBrowserWebContentsCommandError(String(command.type ?? "unknown"))
+    if (command.type === "navigate") this.navigation.begin(command.url, command.source)
+    if (command.type === "checkpoint" && command.action === "restore") {
+      if (!command.checkpoint) throw new Error("checkpoint is required for restore.")
+      this.navigation.begin(command.checkpoint.url, "agent")
     }
+
+    if (command.type === "setViewport") this.resize(command.width, command.height)
+
+    if (command.type === "dialog.respond") {
+      await diagnostics?.respondToDialog(command.requestId, command.accept, command.promptText)
+      return { type: "void" }
+    }
+
+    if (command.type === "filechooser.select") {
+      await diagnostics?.respondToFileChooser(
+        command.requestId,
+        command.files.map(
+          (file): BrowserHostUploadFile => ({
+            name: file.name,
+            mimeType: file.mimeType,
+            data: file.dataBase64,
+          }),
+        ),
+      )
+      return { type: "void" }
+    }
+
+    if (command.type === "download.cancel") {
+      await diagnostics?.cancelDownload(command.id)
+      return { type: "void" }
+    }
+
+    this.commandInFlight = true
+    try {
+      const result = await this.controller.execute(command)
+      await Promise.resolve()
+      if (this.navigationBlocked) {
+        const blocked = this.navigationBlocked
+        this.navigationBlocked = null
+        throw new BrowserProtocolError({
+          code: "browser_navigation_denied",
+          message: blocked.reason,
+          retryable: false,
+          pageId: this.target.pageId,
+          url: blocked.url,
+        })
+      }
+      return result
+    } catch (error) {
+      this.navigationBlocked = null
+      throw error
+    } finally {
+      this.commandInFlight = false
+    }
+  }
+
+  async dispose(): Promise<void> {
+    const contents = this.target.contents()
+    if (contents && !contents.isDestroyed()) {
+      contents.off("will-navigate", this.navigationListener)
+      contents.off("will-redirect", this.navigationListener)
+      contents.off("did-navigate", this.committedListener)
+      contents.off("before-mouse-event", this.mouseListener)
+      contents.off("before-input-event", this.keyListener)
+      contents.setWindowOpenHandler(() => ({ action: "deny" }))
+    }
+    const results = await Promise.allSettled([
+      this.controller.dispose(),
+      Promise.resolve().then(() => this.transport.dispose()),
+    ])
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length) throw new AggregateError(failures, "Browser WebContents control did not dispose cleanly.")
   }
 
   private resize(widthInput: unknown, heightInput: unknown): void {
@@ -215,126 +297,23 @@ export class BrowserWebContentsControl {
     }
 
     const type = action === "down" ? "mouseDown" : action === "up" ? "mouseUp" : action === "move" ? "mouseMove" : null
-    if (!type) return
-
     contents.sendInputEvent({
       type,
       x: Number(payload.x ?? 0),
       y: Number(payload.y ?? 0),
-      button: this.mouseButton(payload.button),
+      button: payload.button === "middle" ? "middle" : payload.button === "right" ? "right" : "left",
       clickCount: Number(payload.clickCount ?? 1),
       modifiers: inputModifiers(payload.modifiers),
     } as Electron.MouseInputEvent)
   }
 
   private dispatchKey(payload: Record<string, unknown>, contents: Electron.WebContents): void {
-    const action = payload.action
-    const type = action === "down" ? "keyDown" : action === "up" ? "keyUp" : null
+    const type = payload.action === "down" ? "keyDown" : payload.action === "up" ? "keyUp" : null
     if (!type) return
     contents.sendInputEvent({
       type,
       keyCode: String(payload.key ?? payload.code ?? ""),
       modifiers: inputModifiers(payload.modifiers, { autoRepeat: payload.autoRepeat }),
     } as Electron.KeyboardInputEvent)
-  }
-
-  private mouseButton(button: unknown): "left" | "middle" | "right" {
-    if (button === "middle") return "middle"
-    if (button === "right") return "right"
-    return "left"
-  }
-
-  private async sendCDP(
-    contents: Electron.WebContents,
-    method: string,
-    params?: Record<string, unknown>,
-  ): Promise<unknown> {
-    if (!method) throw new Error("Missing CDP method")
-    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
-    return contents.debugger.sendCommand(method, params)
-  }
-
-  private async snapshot(contents: Electron.WebContents): Promise<{
-    elements: { ref: string; role: string; name: string; value?: string; children: never[] }[]
-    truncated: boolean
-  }> {
-    const result = (await contents.executeJavaScript(
-      `(() => {
-        const selector = [
-          "a[href]",
-          "button",
-          "input",
-          "textarea",
-          "select",
-          "[role]",
-          "[contenteditable='true']",
-          "[tabindex]:not([tabindex='-1'])"
-        ].join(",")
-        const roleFor = (element) => {
-          const explicit = element.getAttribute("role")
-          if (explicit) return explicit
-          const tag = element.tagName.toLowerCase()
-          if (tag === "a") return "link"
-          if (tag === "button") return "button"
-          if (tag === "textarea") return "textbox"
-          if (tag === "select") return "combobox"
-          if (tag === "input") {
-            const type = (element.getAttribute("type") || "text").toLowerCase()
-            if (type === "checkbox") return "checkbox"
-            if (type === "radio") return "radio"
-            if (type === "search") return "searchbox"
-            if (type === "range") return "slider"
-            return "textbox"
-          }
-          return "generic"
-        }
-        const nameFor = (element) => {
-          return element.getAttribute("aria-label")
-            || element.getAttribute("title")
-            || element.getAttribute("placeholder")
-            || element.innerText
-            || element.value
-            || element.textContent
-            || ""
-        }
-        const nodes = Array.from(document.querySelectorAll(selector)).slice(0, 300)
-        return nodes.map((element, index) => {
-          const rect = element.getBoundingClientRect()
-          return {
-            ref: "@e" + (index + 1),
-            role: roleFor(element),
-            name: String(nameFor(element)).replace(/\\s+/g, " ").trim().slice(0, 200),
-            value: "value" in element && typeof element.value === "string" ? element.value : undefined,
-            box: {
-              backendNodeId: index + 1,
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height)
-            }
-          }
-        }).filter((item) => item.box.width > 0 && item.box.height > 0 && item.name)
-      })()`,
-      true,
-    )) as {
-      ref: string
-      role: string
-      name: string
-      value?: string
-      box: { backendNodeId: number; x: number; y: number; width: number; height: number }
-    }[]
-
-    this.refMap.clear()
-    const elements = result.map((item) => {
-      this.refMap.set(item.ref, item.box)
-      return {
-        ref: item.ref,
-        role: item.role,
-        name: item.name,
-        value: item.value,
-        children: [],
-      }
-    })
-    return { elements, truncated: result.length >= 300 }
   }
 }

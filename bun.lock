@@ -25,6 +25,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@aarkue/tiptap-math-extension": "1.4.0",
+        "@ericsanchezok/synergy-browser": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-ui": "workspace:*",
@@ -99,10 +100,22 @@
         "vite-plugin-solid": "catalog:",
       },
     },
+    "packages/browser": {
+      "name": "@ericsanchezok/synergy-browser",
+      "version": "1.1.26",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/desktop": {
       "name": "@ericsanchezok/synergy-desktop",
       "version": "1.1.26",
       "dependencies": {
+        "@ericsanchezok/synergy-browser": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "electron-updater": "6.6.8",
         "zod": "catalog:",
@@ -204,6 +217,7 @@
         "@ai-sdk/vercel": "1.0.31",
         "@ai-sdk/xai": "2.0.42",
         "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-browser": "workspace:*",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-script": "workspace:*",
@@ -282,6 +296,7 @@
         "@types/bun": "catalog:",
         "@types/nodemailer": "7.0.11",
         "@types/turndown": "5.0.5",
+        "@types/unzipper": "0.10.11",
         "@types/yargs": "17.0.33",
         "@typescript/native-preview": "catalog:",
         "typescript": "catalog:",
@@ -594,6 +609,8 @@
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
 
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:packages/app"],
+
+    "@ericsanchezok/synergy-browser": ["@ericsanchezok/synergy-browser@workspace:packages/browser"],
 
     "@ericsanchezok/synergy-desktop": ["@ericsanchezok/synergy-desktop@workspace:packages/desktop"],
 
@@ -1358,6 +1375,8 @@
     "@types/turndown": ["@types/turndown@5.0.5", "", {}, "sha512-TL2IgGgc7B5j78rIccBtlYAnkuv8nUQqhQc+DSYV5j9Be9XOcm/SKOVRuA47xAVI3680Tk9B1d8flK2GWT2+4w=="],
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
+
+    "@types/unzipper": ["@types/unzipper@0.10.11", "", { "dependencies": { "@types/node": "*" } }, "sha512-D25im2zjyMCcgL9ag6N46+wbtJBnXIr7SI4zHf9eJD2Dw2tEB5e+p5MYkrxKIVRscs5QV0EhtU9rgXSPx90oJg=="],
 
     "@types/verror": ["@types/verror@1.10.11", "", {}, "sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg=="],
 

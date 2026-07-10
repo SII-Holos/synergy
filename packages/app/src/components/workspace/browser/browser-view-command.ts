@@ -5,17 +5,19 @@ export interface BrowserWorkspaceController {
 
 const AUTO_SHOW_BROWSER_TOOLS = new Set([
   "browser_action",
-  "browser_click",
+  "browser_audit",
   "browser_console",
+  "browser_dialog",
+  "browser_emulate",
   "browser_eval",
   "browser_inspect",
-  "browser_navigate",
+  "browser_navigation",
   "browser_network",
+  "browser_performance",
   "browser_read",
   "browser_screenshot",
-  "browser_scroll",
   "browser_snapshot",
-  "browser_type",
+  "browser_upload",
   "browser_wait",
 ])
 
