@@ -1017,7 +1017,7 @@ function SessionPageContent() {
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
           <div
-            class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
+            class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-col min-h-0 h-full min-h-dvh bg-background-stronger pt-3 pb-0 md:py-3"
             classList={{
               "flex-1": !(isDesktop() && showTabs()),
             }}

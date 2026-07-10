@@ -60,6 +60,105 @@ export namespace ExperienceEncoder {
       })
   }
 
+  // ── Re-encode helpers ─────────────────────────────────────────────────
+
+  export async function loadLearning(): Promise<Required<Config.Learning>> {
+    const config = await Config.current()
+    const library = (config as any).library as
+      | { experience?: { encode?: boolean; learning?: Config.Learning } }
+      | undefined
+    return {
+      ...Config.LEARNING_DEFAULTS,
+      ...library?.experience?.learning,
+      rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...library?.experience?.learning?.rewardWeights },
+    } as Required<Config.Learning>
+  }
+
+  async function resolveModel(expID: string): Promise<Provider.Model | undefined> {
+    const exp = LibraryDB.Experience.get(expID)
+    if (!exp?.source_provider_id || !exp?.source_model_id) return undefined
+    return Provider.getModel(exp.source_provider_id, exp.source_model_id).catch(() => undefined)
+  }
+
+  function buildReencodeScriptContent(raw: string): string {
+    return [
+      "Distill the conversation turn below into a numbered trajectory script.",
+      "",
+      raw,
+      "",
+      "Output only numbered steps — no commentary, no evaluation.",
+    ].join("\n")
+  }
+
+  export async function reencodeIntent(
+    sessionID: string,
+    userMessageID: string,
+    msgs: MessageV2.WithParts[],
+  ): Promise<{ intent: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
+    const userText = Turn.resolveUserText(msgs, userMessageID)
+    if (!userText) throw new Error("no-user-text")
+
+    const learning = await loadLearning()
+    const model = await resolveModel(userMessageID)
+
+    const userMsg = msgs.find((m) => m.info.id === userMessageID)
+    const userInfo = userMsg?.info as MessageV2.User | undefined
+    const ctx: AgentContext = { sessionID, userMsg: userInfo ?? ({} as MessageV2.User), model, learning }
+
+    const history = buildIntentHistory(msgs, userMessageID)
+    const rawIntent = await generateIntent(ctx, history, userText)
+    const result = Intent.sanitizeWithReason(rawIntent, userText)
+    const intent = result.value
+    const usedFallback = intent === userText
+    const embedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
+
+    log.info("reencode intent", {
+      sessionID,
+      userMessageID,
+      reason: result.reason,
+      rawLen: rawIntent.length,
+      sanitizedLen: intent.length,
+      usedFallback,
+      rawHash: hashForLog(rawIntent),
+      rawPreview: preview(rawIntent),
+    })
+
+    return { intent, embedding, reason: result.reason, usedFallback }
+  }
+
+  export async function reencodeScript(
+    sessionID: string,
+    userMessageID: string,
+    raw: string,
+  ): Promise<{ script: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
+    const learning = await loadLearning()
+    const model = await resolveModel(userMessageID)
+
+    const ctx: AgentContext = { sessionID, userMsg: {} as MessageV2.User, model, learning }
+
+    const content = buildReencodeScriptContent(raw)
+    const rawScript = await generateScript(ctx, content)
+    const result = Script.sanitizeWithReason(rawScript, raw)
+    const script = result.value
+    const usedFallback = script === raw
+    const embedding = script
+      ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
+      : await Embedding.generate({ id: `${userMessageID}:script`, text: raw })
+
+    log.info("reencode script", {
+      sessionID,
+      userMessageID,
+      reason: result.reason,
+      rawLen: rawScript.length,
+      sanitizedLen: script.length,
+      usedFallback,
+      rawHash: hashForLog(rawScript),
+      rawPreview: preview(rawScript),
+    })
+
+    return { script, embedding, reason: result.reason, usedFallback }
+  }
+
   async function encode(sessionID: string, userMessageID: string): Promise<EncodeOutcome> {
     const existing = LibraryDB.Experience.get(userMessageID)
     if (existing && existing.reward_status !== "encoding_failed") {
@@ -575,7 +674,7 @@ export namespace ExperienceEncoder {
     return parts.join("\n")
   }
 
-  function shouldSupersede(duplicate: LibraryDB.Experience.DuplicateInfo, qInit: number): boolean {
+  export function shouldSupersede(duplicate: LibraryDB.Experience.DuplicateInfo, qInit: number): boolean {
     if (duplicate.rewardStatus === "encoding_failed") return true
     if (duplicate.rewardStatus === "pending") return true
     return duplicate.compositeQ <= qInit

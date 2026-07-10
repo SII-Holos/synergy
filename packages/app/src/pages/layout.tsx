@@ -468,7 +468,7 @@ function LayoutContent(
           <Show when={layout.isDesktop()}>
             <Sidebar onSearchOpen={props.onSearchOpen} />
           </Show>
-          <main class="relative flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col contain-strict">
+          <main class="relative flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col contain-[layout_style_paint]">
             {props.children}
           </main>
         </div>
