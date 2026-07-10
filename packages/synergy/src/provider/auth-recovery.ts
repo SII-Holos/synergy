@@ -364,21 +364,24 @@ export namespace ProviderAuthRecovery {
 
   export function wrapFetch(providerID: string, fetchFn: FetchLike = fetch): FetchLike {
     if (handledFetches.has(fetchFn)) return fetchFn
-    const wrapped: FetchLike = (input, init) =>
-      execute({
+    const wrapped: FetchLike = (input, init) => {
+      const template = new Request(input, init)
+      return execute({
         providerID,
         request: async () => {
           const selected = await Auth.select(providerID)
-          const headers = new Headers(init?.headers)
+          const request = template.clone()
+          const headers = new Headers(request.headers)
           if (selected?.auth.type === "api") {
             const key = selected.auth.key
             if (headers.has("authorization")) headers.set("authorization", `Bearer ${key}`)
             if (headers.has("x-api-key")) headers.set("x-api-key", key)
             if (headers.has("api-key")) headers.set("api-key", key)
           }
-          return fetchFn(input, { ...init, headers })
+          return fetchFn(request, { ...init, body: undefined, headers })
         },
       })
+    }
     handledFetches.add(wrapped)
     return wrapped
   }
