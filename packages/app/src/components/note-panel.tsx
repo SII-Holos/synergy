@@ -378,6 +378,7 @@ function RunMenu(props: {
     const list: ModelOption[] = []
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
+      if (data.runtimeAvailability?.[provider.id]?.available === false) continue
       for (const [modelId, model] of Object.entries(provider.models)) {
         list.push({
           kind: "model",

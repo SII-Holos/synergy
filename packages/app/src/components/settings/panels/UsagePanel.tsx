@@ -1,4 +1,4 @@
-import type { AccountUsageSnapshot } from "@ericsanchezok/synergy-sdk/client"
+import type { AccountUsageSnapshot, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
@@ -17,6 +17,12 @@ import {
   nextUsageReset,
   usageWindowMeterPercent,
 } from "./UsagePanel.model"
+import {
+  providerNeedsAction,
+  providerRecoveryActionLabel,
+  providerRecoveryCopy,
+  providerUsageStatusLabel,
+} from "@/components/provider/provider-auth-presentation"
 
 const USAGE_FIRST_PROVIDER_IDS = ["openai-codex", "anthropic", "github-copilot", "openrouter", "openai"]
 
@@ -37,13 +43,24 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
       { id: b, name: providerName(b) },
     )
   const usageCapableIDs = createMemo(() => {
-    const ids = new Set([...USAGE_FIRST_PROVIDER_IDS, ...Object.keys(usage() ?? {})])
+    const attentionIDs = Object.values(globalSync.data.provider.authHealth ?? {})
+      .filter((health) => health.status === "action_required")
+      .map((health) => health.providerID)
+    const ids = new Set([...USAGE_FIRST_PROVIDER_IDS, ...Object.keys(usage() ?? {}), ...attentionIDs])
     return [...ids].filter((id) => providers().some((provider) => provider.id === id)).sort(sortProviderIDs)
   })
-  const unconnected = createMemo(() => usageCapableIDs().filter((id) => !connected().has(id)))
+  const needsAttention = createMemo(() =>
+    usageCapableIDs()
+      .filter((id) => providerNeedsAction(globalSync.data.provider.authHealth?.[id], usage()?.[id]))
+      .map((id) => ({ providerID: id, snapshot: usage()?.[id] })),
+  )
+  const attentionIDs = createMemo(() => new Set(needsAttention().map((item) => item.providerID)))
+  const unconnected = createMemo(() =>
+    usageCapableIDs().filter((id) => !connected().has(id) && !attentionIDs().has(id)),
+  )
   const connectedUsage = createMemo(() =>
     usageCapableIDs()
-      .filter((id) => connected().has(id))
+      .filter((id) => connected().has(id) && !attentionIDs().has(id))
       .map((id) => ({ providerID: id, snapshot: usage()?.[id] }))
       .sort((a, b) => sortProviderIDs(a.providerID, b.providerID)),
   )
@@ -75,6 +92,12 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
               <span class="usage-overview-value">{unconnected().length}</span>
               <span class="usage-overview-label">Available to connect</span>
             </div>
+            <Show when={needsAttention().length > 0}>
+              <div class="usage-overview-metric">
+                <span class="usage-overview-value">{needsAttention().length}</span>
+                <span class="usage-overview-label">Needs attention</span>
+              </div>
+            </Show>
             <Show when={nextReset()}>
               {(reset) => (
                 <div class="usage-overview-metric" title={reset().title}>
@@ -105,6 +128,42 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
             </Button>
           </div>
         </div>
+
+        <Show when={usage.error}>
+          <div class="usage-request-error" role="alert">
+            <Icon name={getSemanticIcon("state.error")} size="small" />
+            <span>Usage data could not be loaded.</span>
+            <Button type="button" variant="secondary" size="small" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </div>
+        </Show>
+
+        <SettingsSection
+          title="Needs attention"
+          description="These accounts were rejected and remain here until their credentials are recovered."
+        >
+          <SettingsEntityList
+            isEmpty={needsAttention().length === 0}
+            emptyTitle="No provider accounts need attention"
+            emptyDescription="Credential recovery actions will appear here when a provider rejects a request."
+          >
+            <div class="usage-panel-list">
+              <For each={needsAttention()}>
+                {(item) => (
+                  <UsageProviderPanel
+                    providerID={item.providerID}
+                    providerName={providerName(item.providerID)}
+                    snapshot={item.snapshot}
+                    health={globalSync.data.provider.authHealth?.[item.providerID]}
+                    environment={globalSync.data.provider.profiles?.[item.providerID]?.environment}
+                    onConnect={() => props.onConnectProvider(item.providerID)}
+                  />
+                )}
+              </For>
+            </div>
+          </SettingsEntityList>
+        </SettingsSection>
 
         <SettingsSection
           title="Connectable providers"
@@ -159,10 +218,8 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
                       providerID={item.providerID}
                       providerName={providerName(item.providerID)}
                       snapshot={item.snapshot}
-                      reloginRequired={globalSync.data.provider.authHealth?.[item.providerID]?.reloginRequired}
-                      cooldownUntil={globalSync.data.provider.authHealth?.[item.providerID]?.cooldownUntil}
-                      resetAt={globalSync.data.provider.authHealth?.[item.providerID]?.resetAt}
-                      status={globalSync.data.provider.authHealth?.[item.providerID]?.status}
+                      health={globalSync.data.provider.authHealth?.[item.providerID]}
+                      environment={globalSync.data.provider.profiles?.[item.providerID]?.environment}
                       onConnect={() => props.onConnectProvider(item.providerID)}
                     />
                   )}
@@ -180,12 +237,12 @@ function UsageProviderPanel(props: {
   providerID: string
   providerName: string
   snapshot?: AccountUsageSnapshot
-  reloginRequired?: boolean
-  cooldownUntil?: number
-  resetAt?: number
-  status?: string
+  health?: ProviderAuthHealth
+  environment?: string[]
   onConnect: () => void
 }) {
+  const needsAction = createMemo(() => providerNeedsAction(props.health, props.snapshot))
+  const badge = createMemo(() => providerUsageStatusLabel(props.health, props.snapshot))
   return (
     <div class="usage-provider-panel">
       <div class="usage-provider-panel-head">
@@ -197,24 +254,24 @@ function UsageProviderPanel(props: {
           </div>
         </div>
         <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": props.snapshot?.status !== "available" }}>
-          {props.snapshot?.status ?? props.status ?? "connected"}
+          {badge()}
         </span>
       </div>
 
-      <Show when={props.reloginRequired}>
+      <Show when={needsAction()}>
         <div class="usage-warning-row">
-          <Icon name={getSemanticIcon("state.warning")} size="small" />
-          <span>Relogin required.</span>
+          <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
+          <span>{providerRecoveryCopy(props.providerName, props.health, props.environment)}</span>
           <Button type="button" variant="secondary" size="small" onClick={props.onConnect}>
-            Reconnect
+            {providerRecoveryActionLabel(props.health)}
           </Button>
         </div>
       </Show>
 
-      <Show when={props.cooldownUntil}>
+      <Show when={props.health?.cooldownUntil}>
         {(value) => <div class="usage-muted-row">Cooldown until {formatUnix(value())}</div>}
       </Show>
-      <Show when={props.resetAt}>
+      <Show when={props.health?.resetAt}>
         {(value) => <div class="usage-muted-row">Provider renews {formatUnix(value())}</div>}
       </Show>
 

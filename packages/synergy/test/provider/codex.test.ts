@@ -256,6 +256,71 @@ test("codexFetch rewrites authorization, Codex headers, session headers, and req
   expect(body.max_output_tokens).toBeUndefined()
 })
 
+test("codexFetch refreshes an invalidated access token and retries once", async () => {
+  const oldToken = accessToken({ accountID: "acct_old" })
+  const newToken = accessToken({ accountID: "acct_new" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: oldToken,
+    refresh: "refresh-old",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  const calls: string[] = []
+  globalThis.fetch = asFetch(async (input, init) => {
+    const url = String(input)
+    calls.push(url)
+    if (url === CodexProvider.OAUTH_TOKEN_URL) {
+      return jsonResponse({ access_token: newToken, refresh_token: "refresh-new", expires_in: 3600 })
+    }
+    const authorization = new Headers(init?.headers).get("authorization")
+    if (authorization === `Bearer ${oldToken}`) {
+      return jsonResponse({ error: { code: "token_invalidated", message: "token invalidated" } }, { status: 401 })
+    }
+    expect(authorization).toBe(`Bearer ${newToken}`)
+    return jsonResponse({ ok: true })
+  })
+
+  const response = await CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    body: JSON.stringify({ model: "gpt-5.6-sol", input: "hello" }),
+  })
+
+  expect(response.status).toBe(200)
+  expect(calls.filter((url) => url === CodexProvider.OAUTH_TOKEN_URL)).toHaveLength(1)
+  expect(calls.filter((url) => url.endsWith("/responses"))).toHaveLength(2)
+  const stored = await Auth.get(CodexProvider.PROVIDER_ID)
+  expect(stored?.type === "oauth" ? stored.refresh : undefined).toBe("refresh-new")
+})
+
+test("codexFetch marks credentials dead when invalidated access cannot refresh", async () => {
+  const token = accessToken({ accountID: "acct_dead" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-dead",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  globalThis.fetch = asFetch(async (input) => {
+    if (String(input) === CodexProvider.OAUTH_TOKEN_URL) {
+      return jsonResponse({ error: "invalid_grant", error_description: "refresh token revoked" }, { status: 400 })
+    }
+    return jsonResponse({ error: { code: "token_invalidated" } }, { status: 401 })
+  })
+
+  await expect(
+    CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.5", input: "hello" }),
+    }),
+  ).rejects.toMatchObject({
+    name: "ProviderAuthenticationRequiredError",
+    data: { providerID: CodexProvider.PROVIDER_ID, actionRequired: true },
+  })
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeUndefined()
+})
+
 test("fetchModelIDs sorts visible Codex models and sends Codex headers", async () => {
   const token = accessToken({ accountID: "acct_models" })
   const ids = await CodexProvider.fetchModelIDs(token, async (input, init) => {
@@ -274,6 +339,20 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
   })
 
   expect(ids).toEqual(["gpt-5.4-mini", "gpt-5.5"])
+})
+
+test("fetchModelIDs preserves future account-visible model slugs", async () => {
+  const token = accessToken({ accountID: "acct_future" })
+  const ids = await CodexProvider.fetchModelIDs(token, async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.6-sol", priority: 1 },
+        { slug: "future-codex-model", priority: 2 },
+      ],
+    }),
+  )
+
+  expect(ids).toEqual(["gpt-5.6-sol", "future-codex-model"])
 })
 
 test("fetchModelCatalog parses Codex context windows without filtering supported_in_api false", async () => {

@@ -10,6 +10,7 @@ import { Provider } from "../../src/provider/provider"
 
 const originalCodexHome = process.env.CODEX_HOME
 const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
+const originalFetch = globalThis.fetch
 let isolatedCodexHome: string | undefined
 
 function nowSeconds() {
@@ -46,6 +47,7 @@ function restoreOpenAIAPIKey() {
 }
 
 async function reset() {
+  globalThis.fetch = originalFetch
   if (isolatedCodexHome) await fs.rm(isolatedCodexHome, { recursive: true, force: true })
   isolatedCodexHome = path.join(os.tmpdir(), `synergy-provider-route-codex-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(isolatedCodexHome, { recursive: true })
@@ -57,6 +59,7 @@ async function reset() {
 
 beforeEach(reset)
 afterEach(async () => {
+  globalThis.fetch = originalFetch
   await Auth.remove(CodexProvider.PROVIDER_ID).catch(() => {})
   await Provider.reload()
   if (isolatedCodexHome) await fs.rm(isolatedCodexHome, { recursive: true, force: true })
@@ -73,6 +76,7 @@ test("/provider returns catalog, auth health, and runtime availability", async (
 
   expect(body.all.some((provider: any) => provider.id === CodexProvider.PROVIDER_ID)).toBe(true)
   expect(body.catalogProviders).toContain(CodexProvider.PROVIDER_ID)
+  expect(body.authHealth.github.providerID).toBe("github")
   expect(body.authHealth[CodexProvider.PROVIDER_ID]).toMatchObject({
     providerID: CodexProvider.PROVIDER_ID,
     status: "not_configured",
@@ -101,6 +105,39 @@ test("/provider returns catalog, auth health, and runtime availability", async (
         url: "https://openrouter.ai/keys",
       },
     },
+  })
+})
+
+test("usage rejection completes the durable auth-health transition before responding", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken(),
+    refresh: "revoked-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (String(input) === CodexProvider.OAUTH_TOKEN_URL) {
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      })
+    }
+    return new Response(JSON.stringify({ error: { code: "token_invalidated" } }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    })
+  }) as typeof fetch
+
+  const app = Server.App()
+  const usageResponse = await app.request(`/provider/${CodexProvider.PROVIDER_ID}/usage?scopeID=home`)
+  expect(usageResponse.status).toBe(200)
+  expect(await usageResponse.json()).toMatchObject({ status: "error", reloginRequired: true })
+
+  const providerResponse = await app.request("/provider")
+  const providers = await providerResponse.json()
+  expect(providers.authHealth[CodexProvider.PROVIDER_ID]).toMatchObject({
+    status: "action_required",
+    recovery: "reconnect",
   })
 })
 

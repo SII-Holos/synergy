@@ -678,14 +678,14 @@
   display: none;
 }
 
-/* ===== Product update notice ===== */
+/* ===== App attention notice ===== */
 
-.sb-update-notice {
+.sb-attention-notice {
   flex-shrink: 0;
   padding: 6px 8px 0;
 }
 
-.sb-update-button {
+.sb-attention-button {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -702,15 +702,15 @@
     opacity 150ms;
 }
 
-.sb-update-button:not(:disabled):hover {
+.sb-attention-button:not(:disabled):hover {
   background: var(--sb-active-bg);
 }
 
-.sb-update-button:disabled {
+.sb-attention-button:disabled {
   cursor: default;
 }
 
-.sb-update-icon {
+.sb-attention-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -722,7 +722,7 @@
   background: color-mix(in srgb, var(--text-base) 8%, transparent);
 }
 
-.sb-update-copy {
+.sb-attention-copy {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -730,7 +730,7 @@
   gap: 2px;
 }
 
-.sb-update-title {
+.sb-attention-title {
   font-size: var(--font-size-small);
   font-weight: 600;
   color: var(--text-strong);
@@ -739,7 +739,7 @@
   text-overflow: ellipsis;
 }
 
-.sb-update-detail {
+.sb-attention-detail {
   font-size: var(--font-size-x-small);
   font-weight: 500;
   color: var(--text-weak);
@@ -748,14 +748,14 @@
   text-overflow: ellipsis;
 }
 
-.sb-update-action {
+.sb-attention-action {
   flex-shrink: 0;
   font-size: var(--font-size-x-small);
   font-weight: 650;
   color: var(--text-base);
 }
 
-.sb-update-progress {
+.sb-attention-progress {
   height: 3px;
   margin: 5px 2px 0;
   overflow: hidden;
@@ -763,43 +763,52 @@
   background: color-mix(in srgb, var(--text-base) 12%, transparent);
 }
 
-.sb-update-progress span {
+.sb-attention-progress span {
   display: block;
-  width: var(--sb-update-progress);
+  width: var(--sb-attention-progress);
   height: 100%;
   border-radius: inherit;
   background: var(--text-base);
   transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.sb-update-notice[data-tone="ready"] .sb-update-icon {
+.sb-attention-notice[data-tone="ready"] .sb-attention-icon {
   color: var(--icon-success-base);
   background: color-mix(in srgb, var(--icon-success-base) 14%, transparent);
 }
 
-.sb-update-notice[data-tone="ready"] .sb-update-progress span {
+.sb-attention-notice[data-tone="ready"] .sb-attention-progress span {
   background: var(--icon-success-base);
 }
 
-.sb-update-notice[data-tone="active"] .sb-update-icon {
+.sb-attention-notice[data-tone="active"] .sb-attention-icon {
   color: var(--icon-base);
   background: color-mix(in srgb, var(--icon-base) 14%, transparent);
 }
 
-.sb-update-notice[data-tone="active"] .sb-update-progress span {
+.sb-attention-notice[data-tone="active"] .sb-attention-progress span {
   background: var(--icon-base);
 }
 
-.sb-update-notice[data-tone="error"] .sb-update-icon {
+.sb-attention-notice[data-tone="error"] .sb-attention-icon {
   color: var(--icon-critical-base);
   background: color-mix(in srgb, var(--icon-critical-base) 14%, transparent);
 }
 
-.sb-update-notice[data-tone="error"] .sb-update-progress span {
+.sb-attention-notice[data-tone="error"] .sb-attention-progress span {
   background: var(--icon-critical-base);
 }
 
-.sb-update-notice--collapsed {
+.sb-attention-notice[data-tone="warning"] .sb-attention-icon {
+  color: var(--icon-warning-base);
+  background: color-mix(in srgb, var(--icon-warning-base) 14%, transparent);
+}
+
+.sb-attention-notice[data-tone="warning"] .sb-attention-progress span {
+  background: var(--icon-warning-base);
+}
+
+.sb-attention-notice--collapsed {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -807,7 +816,7 @@
   padding: 6px 8px 0;
 }
 
-.sb-update-notice--collapsed .sb-update-button {
+.sb-attention-notice--collapsed .sb-attention-button {
   width: 32px;
   min-height: 32px;
   justify-content: center;
@@ -815,13 +824,13 @@
   border-radius: 8px;
 }
 
-.sb-update-notice--collapsed .sb-update-progress {
+.sb-attention-notice--collapsed .sb-attention-progress {
   width: 32px;
   margin: 4px 0 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sb-update-progress span {
+  .sb-attention-progress span {
     transition: none;
   }
 }

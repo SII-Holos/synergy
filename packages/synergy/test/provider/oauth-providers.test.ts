@@ -131,6 +131,33 @@ test("anthropic oauth refresh rotates tokens and marks invalid grants dead", asy
   expect(await Auth.get(AnthropicOAuthProvider.PROVIDER_ID)).toBeUndefined()
 })
 
+test("anthropic request rejection refreshes once and retries with the rotated token", async () => {
+  await Auth.set(AnthropicOAuthProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "anthropic-old",
+    refresh: "anthropic-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  let refreshes = 0
+  let requests = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (AnthropicOAuthProvider.OAUTH_TOKEN_URLS.some((url) => url === String(input))) {
+      refreshes++
+      return jsonResponse({ access_token: "anthropic-new", refresh_token: "anthropic-refresh-2", expires_in: 3600 })
+    }
+    requests++
+    const token = new Headers(init?.headers).get("authorization")
+    return token === "Bearer anthropic-new"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ type: "authentication_error" }, { status: 401 })
+  })
+
+  const response = await AnthropicOAuthProvider.anthropicFetch("https://api.anthropic.com/v1/messages")
+  expect(response.status).toBe(200)
+  expect(refreshes).toBe(1)
+  expect(requests).toBe(2)
+})
+
 test("github copilot device login exchanges a GitHub token for Copilot models", async () => {
   const authorize = await CopilotProvider.authorizeDeviceCode(
     CopilotProvider.PROVIDER_ID,
@@ -323,4 +350,61 @@ test("minimax user-code oauth refreshes short tokens and injects bearer auth", a
     return jsonResponse({ ok: true })
   })
   await MiniMaxProvider.minimaxFetch("https://api.minimax.io/anthropic/v1/messages")
+})
+
+test("minimax request rejection recovers once and invalid refresh requires reconnect", async () => {
+  await Auth.set(MiniMaxProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "minimax-old",
+    refresh: "minimax-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  let refreshes = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (String(input) === `${MiniMaxProvider.GLOBAL_BASE}/oauth/token`) {
+      refreshes++
+      return jsonResponse({ access_token: "minimax-new", refresh_token: "minimax-refresh-2", expired_in: 3600 })
+    }
+    return new Headers(init?.headers).get("authorization") === "Bearer minimax-new"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 })
+  })
+  expect((await MiniMaxProvider.minimaxFetch(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)).status).toBe(200)
+  expect(refreshes).toBe(1)
+
+  await Auth.set(MiniMaxProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "minimax-rejected",
+    refresh: "minimax-invalid-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = asFetch(async (input) =>
+    String(input) === `${MiniMaxProvider.GLOBAL_BASE}/oauth/token`
+      ? jsonResponse({ error: "invalid_grant" }, { status: 401 })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 }),
+  )
+  await expect(MiniMaxProvider.minimaxFetch(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)).rejects.toMatchObject({
+    name: "ProviderAuthenticationRequiredError",
+  })
+})
+
+test("copilot clears a rejected API token, exchanges once, and retries", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  let exchanges = 0
+  let requests = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (String(input) === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      exchanges++
+      return jsonResponse({ token: `copilot-${exchanges}`, expires_at: nowSeconds() + 3600 })
+    }
+    requests++
+    return new Headers(init?.headers).get("authorization") === "Bearer copilot-2"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 })
+  })
+
+  const response = await CopilotProvider.copilotFetch("https://api.githubcopilot.com/chat/completions")
+  expect(response.status).toBe(200)
+  expect(exchanges).toBe(2)
+  expect(requests).toBe(2)
 })

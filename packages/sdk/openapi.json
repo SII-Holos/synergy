@@ -2065,6 +2065,16 @@
                       }
                     }
                   },
+                  "pinned": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "archived": {
                     "anyOf": [
                       {
@@ -20589,6 +20599,9 @@
               }
             }
           },
+          "pinned": {
+            "type": "number"
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -26501,6 +26514,12 @@
               },
               "message": {
                 "type": "string"
+              },
+              "failureCode": {
+                "type": "string"
+              },
+              "actionRequired": {
+                "type": "boolean"
               }
             },
             "required": ["providerID", "message"]
@@ -28224,6 +28243,15 @@
           "signupUrl": {
             "type": "string"
           },
+          "authKind": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "recommendation": {
             "$ref": "#/components/schemas/ProviderRecommendation"
           }
@@ -28239,7 +28267,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["connected", "not_configured", "expired", "exhausted", "dead"]
+            "enum": ["connected", "not_configured", "exhausted", "action_required"]
+          },
+          "recovery": {
+            "type": "string",
+            "enum": ["reconnect", "update_environment"]
           },
           "authKind": {
             "type": "string"
@@ -28249,9 +28281,6 @@
           },
           "updatedAt": {
             "type": "number"
-          },
-          "reloginRequired": {
-            "type": "boolean"
           },
           "cooldownUntil": {
             "type": "number"
@@ -28276,7 +28305,15 @@
           },
           "reason": {
             "type": "string",
-            "enum": ["connected", "not_connected", "disabled", "no_models"]
+            "enum": [
+              "connected",
+              "not_connected",
+              "disabled",
+              "no_models",
+              "authentication_required",
+              "exhausted",
+              "fallback_unverified"
+            ]
           },
           "healthCheck": {
             "type": "string",
@@ -32889,6 +32926,25 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.provider.auth.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "provider.auth.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "health": {
+                "$ref": "#/components/schemas/ProviderAuthHealth"
+              }
+            },
+            "required": ["health"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -33042,6 +33098,40 @@
               }
             },
             "required": ["server", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -33821,40 +33911,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.dag.updated": {
         "type": "object",
         "properties": {
@@ -34463,6 +34519,9 @@
             "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
+            "$ref": "#/components/schemas/Event.provider.auth.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
@@ -34485,6 +34544,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.mcp.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -34593,9 +34655,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.dag.updated"

@@ -54,7 +54,7 @@ Do not bypass pre-push hooks. If a hook check fails, fix the root cause rather t
 - **Event sequencing**: `Bus.publish` stamps state events with a scope-monotonic `seq` + per-runtime `epoch` and journals them for `/event/replay`; mark high-frequency coalescible events (part deltas) `streaming` in `BusEvent.define` so they stay unsequenced. Scoped GET responses advertise the snapshot watermark via `x-synergy-seq`/`x-synergy-epoch`. See `docs/architecture/frontend-data-sync.md`.
 - **API Client**: When modifying server endpoints in `packages/synergy/src/server/server.ts`, run `./script/generate.ts` to regenerate the SDK.
 - **Provider framework**: Provider existence comes from the profile/catalog resolver, not directly from `models.dev`. Keep remote catalogs data-only and signature-verified; complex auth, transport, and usage behavior belongs in built-in strategies or explicitly installed plugins.
-- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the provider auth store at `~/.synergy/data/auth/provider-auth.json`; imported auth files are handled by migrations only.
+- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the provider auth store at `~/.synergy/data/auth/provider-auth.json`; imported auth files are handled by migrations only. Real provider requests drive authentication recovery and health transitions; do not add startup or periodic third-party credential probes.
 
 ### Sandbox Architecture
 

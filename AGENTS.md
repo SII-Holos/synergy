@@ -164,7 +164,7 @@ SYNERGY_HOME=/tmp/synergy-dev bun dev web --server-port 4097 --app-port 3001
 Rules:
 
 - Always use explicit `--server-port` and `--app-port` that differ from the running instance
-- Always copy `~/.synergy/config` into the isolated directory (avoids reconfiguring API keys)
+- Always copy `~/.synergy/config` into the isolated directory (preserves provider settings without copying the separate credential store)
 - Never run `synergy stop` or `kill` on the main instance process
 
 The `develop-synergy` skill (`skill(name: "develop-synergy")`) has the full workflow.
