@@ -53,8 +53,8 @@ export namespace ProviderCatalog {
     .strict()
   type RemoteCatalog = z.infer<typeof RemoteCatalog>
 
-  let inFlight: Promise<Record<string, ModelsDev.Provider>> | undefined
-  let memoryCache: { value: Record<string, ModelsDev.Provider>; createdAt: number } | undefined
+  const memoryCache = new Map<string, { value: Record<string, ModelsDev.Provider>; createdAt: number }>()
+  const inFlightMap = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
     return {
@@ -293,19 +293,27 @@ export namespace ProviderCatalog {
     return next
   }
 
+  function cacheKey(includeLive: boolean): string {
+    return includeLive ? "live" : "static"
+  }
+
   export async function resolve(input?: {
     config?: unknown
     includeLive?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
-    if (!input?.forceRefresh && memoryCache && Date.now() - memoryCache.createdAt < DEFAULT_CACHE_TTL_MS) {
-      return memoryCache.value
+    const key = cacheKey(input?.includeLive ?? false)
+    const cached = memoryCache.get(key)
+    if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < DEFAULT_CACHE_TTL_MS) {
+      return cached.value
     }
-    if (!input?.forceRefresh && inFlight) return inFlight
-    inFlight = doResolve(input).finally(() => {
-      inFlight = undefined
+    const existingInFlight = inFlightMap.get(key)
+    if (!input?.forceRefresh && existingInFlight) return existingInFlight
+    const promise = doResolve(input).finally(() => {
+      inFlightMap.delete(key)
     })
-    return inFlight
+    inFlightMap.set(key, promise)
+    return promise
   }
 
   async function doResolve(input?: {
@@ -368,7 +376,7 @@ export namespace ProviderCatalog {
       }
     }
 
-    memoryCache = { value: result, createdAt: Date.now() }
+    memoryCache.set(cacheKey(input?.includeLive ?? false), { value: result, createdAt: Date.now() })
     return result
   }
 
@@ -425,7 +433,7 @@ export namespace ProviderCatalog {
   }
 
   export function reset() {
-    memoryCache = undefined
-    inFlight = undefined
+    memoryCache.clear()
+    inFlightMap.clear()
   }
 }
