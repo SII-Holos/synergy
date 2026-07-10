@@ -1,0 +1,9 @@
+Use this when the Blueprint outcome is complete and ready for independent review.
+
+Parameters:
+- summary: Concise summary of the completed outcome
+- completed: Completed Blueprint requirement statements
+- evidence: Concrete verification evidence such as checks, artifacts, and file paths
+- remaining: Any known remaining work or limitations
+
+This launches the configured Blueprint reviewer. The reviewer will either approve completion or return concrete work to resume. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.

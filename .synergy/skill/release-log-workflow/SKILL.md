@@ -103,8 +103,10 @@ Use `lark-cli docs +create` with `--wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc`.
 Pattern:
 
 ```bash
-lark-cli docs +create --title "Synergy 1.2.1" --wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc --markdown "..."
+lark-cli docs +create --title "1.2.1-20260413" --wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc --markdown "..."
 ```
+
+The title follows `<version>-<YYYYMMDD>` format per `references/feishu-template.md`. Example: `1.2.1-20260413`.
 
 Important:
 

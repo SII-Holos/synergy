@@ -690,6 +690,15 @@ export namespace EnforcementGate {
           }
         }
 
+        // Worktree-aware reclassification: branch mutation (git checkout /
+        // git switch) is safe inside a worktree — each worktree has its own
+        // index and working directory. On the main checkout however, switching
+        // branches corrupts every concurrent session. Upgrade to a denied
+        // capability so autonomous/guarded profiles can gate it.
+        if (risk === "shell_branch_mutation" && workspaceType === "worktree") {
+          risk = "shell"
+        }
+
         if (risk === "shell_hardline") {
           caps.push({
             class: "shell_hardline",
@@ -1013,7 +1022,11 @@ export namespace EnforcementGate {
       }
 
       // Blueprint loop management tools — session state coordination
-      if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+      if (
+        toolName === "blueprint_loop_stop" ||
+        toolName === "blueprint_loop_approve" ||
+        toolName === "blueprint_loop_reject"
+      ) {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }

@@ -7,17 +7,25 @@ const DURATION_ENTRANCE = 160
 const STAGGER_MS = 18
 const MAX_STAGGER = 120
 
-export function FlipList(props: { entries: readonly unknown[]; children: JSX.Element; class?: string }) {
+export function FlipList(props: {
+  entries: readonly unknown[]
+  children: JSX.Element
+  class?: string
+  selector?: string
+  dataKey?: string
+}) {
   let container: HTMLDivElement | undefined
   let previousPositions: Map<string, number> | undefined
   const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
-  const query = (): HTMLElement[] => Array.from(container?.querySelectorAll<HTMLElement>("[data-session-id]") ?? [])
+  const query = (): HTMLElement[] =>
+    Array.from(container?.querySelectorAll<HTMLElement>(props.selector ?? "[data-session-id]") ?? [])
 
   function snapshot(rows: HTMLElement[]) {
+    const key = props.dataKey ?? "sessionId"
     const next = new Map<string, number>()
     for (const row of rows) {
-      const id = row.dataset.sessionId
+      const id = row.dataset[key as keyof typeof row.dataset] as string | undefined
       if (!id) continue
       next.set(id, row.getBoundingClientRect().top)
     }
@@ -45,8 +53,9 @@ export function FlipList(props: { entries: readonly unknown[]; children: JSX.Ele
     const entering: HTMLElement[] = []
     let index = 0
 
+    const key = props.dataKey ?? "sessionId"
     for (const row of rows) {
-      const id = row.dataset.sessionId
+      const id = row.dataset[key as keyof typeof row.dataset] as string | undefined
       if (!id) continue
       const currentY = nextPositions.get(id)
       const previousY = storedPositions.get(id)

@@ -880,6 +880,7 @@ export type Scope = {
     url?: string
     color?: string
   }
+  pinned?: number
   time: {
     created: number
     updated: number
@@ -6393,8 +6394,8 @@ export type EventBlueprintLoopAuditing = {
   }
 }
 
-export type EventBlueprintLoopRestarted = {
-  type: "blueprint_loop.restarted"
+export type EventBlueprintLoopRejected = {
+  type: "blueprint_loop.rejected"
   properties: {
     loopID: string
     reason: string
@@ -6802,7 +6803,7 @@ export type Event =
   | EventBlueprintLoopFailed
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
-  | EventBlueprintLoopRestarted
+  | EventBlueprintLoopRejected
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
@@ -7811,6 +7812,7 @@ export type ScopeUpdateData = {
       url?: string
       color?: string
     }
+    pinned?: number | null
     archived?: number | null
   }
   path: {

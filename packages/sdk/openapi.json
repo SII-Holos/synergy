@@ -2065,6 +2065,16 @@
                       }
                     }
                   },
+                  "pinned": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "archived": {
                     "anyOf": [
                       {
@@ -21242,6 +21252,9 @@
               }
             }
           },
+          "pinned": {
+            "type": "number"
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -34796,12 +34809,12 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.blueprint_loop.restarted": {
+      "Event.blueprint_loop.rejected": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "blueprint_loop.restarted"
+            "const": "blueprint_loop.rejected"
           },
           "properties": {
             "type": "object",
@@ -35955,7 +35968,7 @@
             "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
           },
           {
-            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
+            "$ref": "#/components/schemas/Event.blueprint_loop.rejected"
           },
           {
             "$ref": "#/components/schemas/Event.note.created"

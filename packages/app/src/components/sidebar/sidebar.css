@@ -459,6 +459,24 @@
   overflow: hidden;
 }
 
+.sb-session-skeleton {
+  height: 32px;
+  margin: 1px 0;
+  border-radius: 7px;
+  background: var(--sb-hover-bg);
+  animation: sb-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sb-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
 .sb-session-row:hover {
   background: var(--sb-hover-bg);
 }

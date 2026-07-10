@@ -41,10 +41,10 @@ Use the Specialist Selection Guide above to dispatch agents via `task` for evide
 
 After collecting evidence, classify the overall audit result:
 
-- **completed**: every verifiable requirement is Verified complete; any Cannot verify items are documented and non-blocking
-- **blocked/restart**: at least one requirement is Not found or Partially done at blocking severity
+- **approve**: every verifiable requirement is Verified complete; any Cannot verify items are documented and non-blocking
+- **reject**: at least one requirement is Not found or Partially done at blocking severity
 
-# Restart instructions (when NOT complete)
+# Rejection instructions (when NOT complete)
 
 When the audit finds missing or incorrect work, call `light_loop_reject` with structured fields. The execution agent must be able to resume from these fields without re-interpreting the audit:
 
@@ -71,7 +71,7 @@ instructions: |
 The `remaining` field must mark each item as BLOCKING or NON-BLOCKING.
 The `instructions` field must be a concrete todo list the execution agent can follow without further clarification.
 
-# Completion (when fully delivered)
+# Approval (when fully delivered)
 
 Before calling `light_loop_approve`, produce a completion summary:
 

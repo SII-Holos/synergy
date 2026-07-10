@@ -7,17 +7,18 @@ import { BossData } from "./boss-data"
 
 /** Visual accent for an entity state — a coloured dot + subtle tint. */
 function stateAccent(state: string): { dot: string; text: string } {
-  if (state === "blocked" || state === "failed") return { dot: "bg-icon-error-base", text: "text-text-error-base" }
+  if (state === "blocked" || state === "failed")
+    return { dot: "bg-icon-critical-base", text: "text-icon-critical-base" }
   if (state === "merged" || state === "done" || state === "completed")
-    return { dot: "bg-icon-success-base", text: "text-text-success-base" }
-  if (state === "awaiting_merge") return { dot: "bg-icon-warning-base", text: "text-text-warning-base" }
+    return { dot: "bg-icon-success-base", text: "text-icon-success-base" }
+  if (state === "awaiting_merge") return { dot: "bg-icon-warning-base", text: "text-icon-warning-base" }
   if (state === "queued" || state === "backlog" || state === "pending")
     return { dot: "bg-border-strong-base", text: "text-text-weak" }
   return { dot: "bg-icon-interactive-base", text: "text-text-interactive-base" }
 }
 
 function seatStatusDot(status: string): string {
-  if (status === "working") return "bg-icon-success-base sb-session-icon-pulse"
+  if (status === "working") return "bg-icon-success-base animate-pulse"
   if (status === "waiting") return "bg-icon-warning-base"
   if (status === "idle") return "bg-icon-interactive-base"
   return "bg-border-strong-base"
@@ -26,11 +27,11 @@ function seatStatusDot(status: string): string {
 function statusPill(status: string): { label: string; class: string } {
   switch (status) {
     case "active":
-      return { label: "active", class: "bg-surface-success-subtle text-text-success-base" }
+      return { label: "active", class: "bg-surface-success-weak text-icon-success-base" }
     case "paused":
-      return { label: "paused", class: "bg-surface-warning-subtle text-text-warning-base" }
+      return { label: "paused", class: "bg-surface-warning-weak text-icon-warning-base" }
     case "failed":
-      return { label: "failed", class: "bg-surface-error-subtle text-text-error-base" }
+      return { label: "failed", class: "bg-surface-critical-weak text-icon-critical-base" }
     case "cancelled":
       return { label: "cancelled", class: "bg-surface-raised-base text-text-weak" }
     default:
@@ -41,7 +42,7 @@ function statusPill(status: string): { label: string; class: string } {
 function SectionHeader(props: { icon: IconName; title: string; count?: number }) {
   return (
     <div class="flex items-center gap-1.5 text-11-medium uppercase tracking-wide text-text-weak">
-      <Icon name={props.icon} size="small" class="text-icon-weak" />
+      <Icon name={props.icon} size="small" class="text-text-weak" />
       <span>{props.title}</span>
       <Show when={props.count !== undefined}>
         <span class="rounded bg-surface-raised-base px-1 text-text-weak">{props.count}</span>
@@ -262,7 +263,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
             return (
               <>
                 {/* Header: run identity + status + controls */}
-                <header class="flex flex-col gap-2 rounded-lg border border-border-weak bg-surface-raised-base p-3">
+                <header class="flex flex-col gap-2 rounded-lg border border-border-weak-base bg-surface-raised-base p-3">
                   <div class="flex items-center gap-2">
                     <Icon name="network" size="small" class="shrink-0 text-icon-interactive-base" />
                     <Show
@@ -272,7 +273,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                       }
                     >
                       <select
-                        class="min-w-0 flex-1 truncate rounded-md border border-border-weak bg-surface-base px-1.5 py-1 text-13-semibold text-text-strong"
+                        class="min-w-0 flex-1 truncate rounded-md border border-border-weak-base bg-surface-base px-1.5 py-1 text-13-semibold text-text-strong"
                         value={selectedRunID() ?? ""}
                         onChange={(e) => setSelectedRunID(e.currentTarget.value)}
                       >
@@ -320,8 +321,8 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 
                 {/* Gates — the only thing that needs the human */}
                 <Show when={gates().length > 0}>
-                  <section class="flex flex-col gap-2 rounded-lg border border-border-warning-base/60 bg-surface-warning-subtle/50 p-3">
-                    <div class="flex items-center gap-1.5 text-12-semibold text-text-warning-base">
+                  <section class="flex flex-col gap-2 rounded-lg border border-border-warning-base/60 bg-surface-warning-weak/50 p-3">
+                    <div class="flex items-center gap-1.5 text-12-semibold text-icon-warning-base">
                       <Icon name="git-merge" size="small" />
                       <span>Decisions needed</span>
                     </div>
@@ -329,7 +330,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                       {(gate) => {
                         const gateEntity = () => r().entities.find((e) => e.id === gate.entityID)
                         return (
-                          <div class="flex flex-col gap-2 rounded-md border border-border-weak bg-surface-raised-base p-2.5">
+                          <div class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-raised-base p-2.5">
                             <div class="text-13-medium text-text-strong">{gateEntity()?.title ?? gate.gate}</div>
                             <Show when={gate.context}>
                               <pre class="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-base p-2 text-11-regular text-text-weak">
@@ -359,8 +360,8 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 
                 {/* Enqueue */}
                 <section class="flex gap-2">
-                  <div class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border-weak bg-surface-raised-base px-2">
-                    <Icon name="plus" size="small" class="shrink-0 text-icon-weak" />
+                  <div class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border-weak-base bg-surface-raised-base px-2">
+                    <Icon name="plus" size="small" class="shrink-0 text-text-weak" />
                     <input
                       class="min-w-0 flex-1 bg-transparent py-1.5 text-13-regular outline-none placeholder:text-text-weak"
                       placeholder="Enqueue an issue…"
@@ -415,7 +416,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                             <span class="text-text-weak">#{seat.instance}</span>
                           </span>
                           <Show when={seat.entityID}>
-                            <Icon name="arrow-right" size="small" class="text-icon-weak" />
+                            <Icon name="arrow-right" size="small" class="text-text-weak" />
                             <span class="min-w-0 flex-1 truncate text-text-weak">
                               {r().entities.find((e) => e.id === seat.entityID)?.title ?? seat.entityID}
                             </span>
@@ -438,20 +439,20 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
                     <Icon
                       name={timelineOpen() ? "chevron-down" : "chevron-right"}
                       size="small"
-                      class="text-icon-weak"
+                      class="text-text-weak"
                     />
-                    <Icon name="activity" size="small" class="text-icon-weak" />
+                    <Icon name="activity" size="small" class="text-text-weak" />
                     <span>Activity</span>
                     <span class="rounded bg-surface-raised-base px-1 text-text-weak">{events().length}</span>
                   </button>
                   <Show when={timelineOpen()}>
-                    <div class="flex flex-col gap-0.5 border-l border-border-weak pl-2.5">
+                    <div class="flex flex-col gap-0.5 border-l border-border-weak-base pl-2.5">
                       <For each={[...events()].reverse().slice(0, 80)}>
                         {(event) => {
                           const tone = BossData.eventTone(event.kind)
                           return (
                             <div
-                              class={`text-11-regular ${tone === "error" ? "text-text-error-base" : tone === "warn" ? "text-text-warning-base" : "text-text-weak"}`}
+                              class={`text-11-regular ${tone === "error" ? "text-icon-critical-base" : tone === "warn" ? "text-icon-warning-base" : "text-text-weak"}`}
                             >
                               {BossData.eventLabel(event)}
                             </div>
@@ -473,7 +474,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
 function EntityCard(props: { entity: WorkflowEntity }) {
   const accent = () => stateAccent(props.entity.state)
   return (
-    <div class="flex flex-col gap-0.5 rounded-md border border-border-weak bg-surface-raised-base px-2 py-1.5">
+    <div class="flex flex-col gap-0.5 rounded-md border border-border-weak-base bg-surface-raised-base px-2 py-1.5">
       <div class="flex items-center gap-2">
         <span class={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${accent().dot}`} />
         <span class="min-w-0 flex-1 truncate text-12-medium text-text-strong">{props.entity.title}</span>
@@ -486,7 +487,7 @@ function EntityCard(props: { entity: WorkflowEntity }) {
         </Show>
       </div>
       <Show when={props.entity.blockedReason}>
-        <div class="pl-3.5 text-11-regular text-text-error-base">{props.entity.blockedReason}</div>
+        <div class="pl-3.5 text-11-regular text-icon-critical-base">{props.entity.blockedReason}</div>
       </Show>
       <Show when={props.entity.bindings?.prNumber}>
         <div class="pl-3.5 text-11-regular text-text-weak">PR #{props.entity.bindings?.prNumber}</div>

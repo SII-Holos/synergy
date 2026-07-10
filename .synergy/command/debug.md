@@ -3,7 +3,7 @@ Debug a problem by analyzing the symptoms, finding the root cause, and suggestin
 The user will describe a bug or unexpected behavior. Follow this process:
 
 1. **Understand the symptom** — ask clarifying questions if the report is vague
-2. **Locate the relevant code** — use the architecture skill to navigate: `skill(name: "architecture")`
+2. **Locate the relevant code** — use the architecture skill to understand module layout: `skill(name: "architecture")`
 3. **Read the actual code** — don't guess, read the implementation
 4. **Trace the execution path** — follow the call chain from entry point to the symptom
 5. **Identify the root cause** — not just the symptom, the underlying reason

@@ -18,7 +18,7 @@ export namespace LatticeBridge {
     () => {
       const unsubscribe = Bus.subscribe(LoopEvent.Updated, (event) =>
         // Return the promise so Bus.publish awaits the phase transition — the
-        // finish tool relies on the run advancing before the session is woken.
+        // approval tool relies on the run advancing before the session is woken.
         handle(event.properties.loop).catch((error) => {
           log.error("lattice bridge failed", { loopID: event.properties.loop.id, error })
         }),

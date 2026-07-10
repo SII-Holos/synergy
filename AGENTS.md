@@ -40,6 +40,8 @@ Use repository vocabulary consistently.
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
 - `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
+- `packages/synergy-link` — Synergy Link remote collaboration
+- `packages/synergy-link-protocol` — Link protocol definitions
 - `packages/ui` — shared UI component library
 - `packages/util` — shared utilities and error helpers
 - `packages/script` — build and release utilities
@@ -56,18 +58,23 @@ Work commonly touches these domains:
 - `config/` — config loading, merging, resolution, setup
 - `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
+- `daemon/` — daemon process lifecycle and lock management
 - `enforcement/` — capability classification and centralized tool boundary gate
+- `global/` — global paths, `SYNERGY_HOME` resolution, installation root
 - `library/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
+- `migration/` — central migration runner for persisted state upgrades
 - `note/` — notes system
+- `observability/` — structured event tracing and diagnostics
 - `permission/` — permission model
 - `process/` and `pty/` — process/runtime plumbing
 - `provider/` — LLM provider integration
-- `scope/` — scope resolution and context
 - `sandbox/` — OS sandbox backend wrappers for process execution
+- `scope/` — scope resolution and context
 - `server/` — HTTP server and API routes
 - `session/` — session lifecycle, prompting, recall, summaries, progress
 - `skill/` — skill loading and built-ins
+- `storage/` — file-based JSON persistence (sessions, messages, permissions, etc.)
 - `tool/` — tool implementations
 
 If you touch files in one area, scan adjacent domains before assuming the abstraction boundary.
@@ -136,6 +143,31 @@ bun dev build desktop
 ```
 
 `packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server. Use `bun dev desktop --managed` when validating the production-style managed server path; it rebuilds the Web app dist before launching Electron so stale frontend assets do not mix with current desktop/server code.
+
+### Developing Synergy with Synergy
+
+When you are modifying Synergy source code while using Synergy itself, always use an **isolated second instance**. Never stop, restart, or disrupt the running session you are talking to.
+
+Synergy uses `SYNERGY_HOME` to redirect the entire `.synergy/` directory (data, logs, config, daemon state, lock files). Set it to a temporary path to avoid `AlreadyRunningError` and port conflicts:
+
+```bash
+# One-time setup — creates isolated directory and copies your config
+mkdir -p /tmp/synergy-dev
+cp -r ~/.synergy/config /tmp/synergy-dev/.synergy/config
+
+# Start an isolated dev instance (pick mode; use ports that don't conflict)
+SYNERGY_HOME=/tmp/synergy-dev bun dev web --server-port 4097 --app-port 3001
+# SYNERGY_HOME=/tmp/synergy-dev bun dev desktop --server-port 4097 --app-port 3001
+# SYNERGY_HOME=/tmp/synergy-dev bun dev desktop --managed --server-port 4097 --app-port 3001
+```
+
+Rules:
+
+- Always use explicit `--server-port` and `--app-port` that differ from the running instance
+- Always copy `~/.synergy/config` into the isolated directory (avoids reconfiguring API keys)
+- Never run `synergy stop` or `kill` on the main instance process
+
+The `develop-synergy` skill (`skill(name: "develop-synergy")`) has the full workflow.
 
 ### Quality commands
 
@@ -394,7 +426,7 @@ When editing tool definitions:
 
 ### Tool frontend registration
 
-Adding a new tool requires registering it in **four** places for full UI support:
+Adding a new tool requires registering it in **five** places for full UI support:
 
 1. **`packages/ui/src/components/icon.tsx`** — import the Lucide icon component and add it to the `icons` map. Pick an icon not used by any existing tool.
 2. **`packages/ui/src/components/message-part.tsx`** — add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives the tool card display for both direct renders and the task summary list.
@@ -452,6 +484,8 @@ You must review docs when a change affects:
 - user-facing product areas such as MCP, channels, login, identity, agenda, notes, library, Agora, or Web behavior
 
 At minimum, check whether `README.md` and `AGENTS.md` need updates.
+
+When a change affects agent-facing workflows — adding/modifying/removing agents, CLI commands, tools, startup flows, config paths, log locations, storage layout, test patterns, or development workflows — also update the relevant project skill or command under `.synergy/skill/` and `.synergy/command/`. These files are the agent's primary source of truth for how to develop Synergy correctly. Letting them drift produces broken instructions on the next `skill(name: "...")` load.
 
 ### Documentation style
 
@@ -516,6 +550,8 @@ Key documents in the repo that agents should be aware of:
 
 ## Practical Working Rules for Agents
 
+- **NEVER switch branches on the main checkout.** The main workspace is shared across multiple concurrent Synergy sessions. Changing branches directly (via `git checkout`, `git switch`) will silently corrupt the working tree for every other running session that depends on the current state. This is the single most dangerous mistake in a multi-session development environment.
+- **When you need a different branch, always use a worktree.** Use `worktree_enter` (or `git worktree add`) to create an isolated checkout before switching branches. Each worktree has its own index and working directory — zero impact on other sessions.
 - Read first, then edit.
 - Verify command names against the current CLI.
 - Verify config paths against the implementation.

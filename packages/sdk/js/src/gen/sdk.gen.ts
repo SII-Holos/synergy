@@ -4461,6 +4461,7 @@ export class Scope extends HeyApiClient {
         url?: string
         color?: string
       }
+      pinned?: number | null
       archived?: number | null
     },
     options?: Options<never, ThrowOnError>,
@@ -4483,6 +4484,7 @@ export class Scope extends HeyApiClient {
             },
             { in: "body", key: "name" },
             { in: "body", key: "icon" },
+            { in: "body", key: "pinned" },
             { in: "body", key: "archived" },
           ],
         },

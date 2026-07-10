@@ -16,6 +16,7 @@ export interface Project {
   name?: string
   icon?: { url?: string; color?: string }
   sandboxes: string[]
+  pinned?: number
   time: { created: number; updated: number; initialized?: number; archived?: number }
 }
 
@@ -35,6 +36,7 @@ export const Info = z
         color: z.string().optional(),
       })
       .optional(),
+    pinned: z.number().optional(),
     time: z.object({
       created: z.number(),
       updated: z.number(),

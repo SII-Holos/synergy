@@ -97,6 +97,7 @@ export const ScopeRoute = new Hono()
       z.object({
         name: z.string().optional(),
         icon: Scope.Info.shape.icon.optional(),
+        pinned: z.number().nullable().optional(),
         archived: z.number().nullable().optional(),
       }),
     ),

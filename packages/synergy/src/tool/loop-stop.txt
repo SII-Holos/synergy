@@ -6,4 +6,4 @@ Parameters:
 - evidence: Concrete verification evidence (test results, file paths, checks)
 - remaining: Any known remaining work or limitations
 
-This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish.
+This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.

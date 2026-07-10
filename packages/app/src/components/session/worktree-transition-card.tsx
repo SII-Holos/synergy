@@ -29,19 +29,11 @@ export function WorktreeTransitionCard(props: {
 
   const handleDismiss = () => {
     setExiting(true)
-    const el = cardRef
-    if (el) {
-      el.addEventListener("animationend", () => props.onDismiss?.(), { once: true })
-    } else {
-      props.onDismiss?.()
-    }
+    setTimeout(() => props.onDismiss?.(), 180)
   }
-
-  let cardRef: HTMLDivElement | undefined
 
   return (
     <div
-      ref={cardRef}
       class="wtd-card"
       classList={{ "wtd-card-exit": exiting() }}
       data-phase={props.progress.phase}

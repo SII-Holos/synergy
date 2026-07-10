@@ -28,11 +28,12 @@ import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
 import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
-import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
+import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
+import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
+import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
 import { LoopStopTool } from "./loop-stop"
 import { LightLoopApproveTool } from "./light-loop-approve"
 import { LightLoopRejectTool } from "./light-loop-reject"
-import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayPatchTool } from "./pathway-patch"
 import { WorkflowRunCreateTool } from "./workflow-run-create"
@@ -394,9 +395,10 @@ export namespace ToolRegistry {
       NoteWriteTool,
       NoteEditTool,
       NoteDeleteTool,
-      BlueprintLoopFinishTool,
+      BlueprintLoopStopTool,
+      BlueprintLoopApproveTool,
+      BlueprintLoopRejectTool,
       LoopStopTool,
-      BlueprintLoopRestartTool,
       LightLoopApproveTool,
       LightLoopRejectTool,
       PathwayReadTool,

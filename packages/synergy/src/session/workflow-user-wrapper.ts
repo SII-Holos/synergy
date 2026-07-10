@@ -17,7 +17,7 @@ export namespace WorkflowUserWrapper {
   const CONTROL_SOURCES = new Set([
     "blueprint_loop_start",
     "blueprint_loop_continuation",
-    "blueprint_loop_restart",
+    "blueprint_loop_rejected",
     "light_loop_continuation",
     "light_loop_approved",
     "light_loop_rejected",

@@ -73,7 +73,7 @@ describe("special user messages", () => {
   test("projects Blueprint controls into concise badged user bubbles", () => {
     const cases = [
       ["blueprint_loop_continuation", "Blueprint · Continue", "Check progress"],
-      ["blueprint_loop_restart", "Blueprint · Changes requested", "Run the suite again"],
+      ["blueprint_loop_rejected", "Blueprint · Changes requested", "Run the suite again"],
       ["blueprint_loop_completed", "Blueprint · Completed", "Shipped the change"],
     ] as const
 

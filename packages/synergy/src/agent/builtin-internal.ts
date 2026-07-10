@@ -1,4 +1,5 @@
 import { PermissionNext } from "@/permission/next"
+import { INTENT_MAX_CHARS } from "../library/encoder-constants"
 import type { Agent } from "./agent"
 import { resolveAgentModelRole, type BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ANIMA from "./prompt/anima.txt"
@@ -110,7 +111,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       native: true,
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
-      prompt: PROMPT_INTENT,
+      prompt: PROMPT_INTENT.replace("__INTENT_LIMIT__", String(INTENT_MAX_CHARS)),
       ...resolveAgentModelRole(ctx, "mini"),
     },
     script: {
