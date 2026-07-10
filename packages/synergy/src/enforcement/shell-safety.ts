@@ -56,7 +56,9 @@ function analyzePushTargets(
   subIndex: number,
 ): { destructive: boolean; protected: boolean; explicitPublish: boolean } {
   const positionals = words.slice(subIndex + 1).filter((word) => word && !word.startsWith("-") && !word.includes("="))
-  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: false }
+  // Bare push or push with only remote (no refspec) — equivalent to
+  // explicit feature-branch push via push.default (typically "simple").
+  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: true }
   return positionals.slice(1).reduce<{ destructive: boolean; protected: boolean; explicitPublish: boolean }>(
     (result, refspec) => {
       const force = refspec.startsWith("+")
@@ -269,7 +271,9 @@ function classifyGitCommand(words: string[]): BashRisk | null {
       !targetRisk.explicitPublish
     )
       return "shell_remote_write"
-    return "shell_remote_publish" // explicit non-protected feature-branch push for PR automation
+    // Bare push (no refspec, explicitPublish: true from analyzePushTargets) or
+    // explicit non-protected feature-branch push — safe for automation.
+    return "shell_remote_publish"
   }
 
   // ── reset ──────────────────────────────────────────────────

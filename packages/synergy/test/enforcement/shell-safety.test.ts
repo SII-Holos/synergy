@@ -773,9 +773,9 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git pull -r")).toBe("shell_destructive")
   })
 
-  test("explicit branch push is shell_remote_publish; ambiguous/protected/force/delete pushes are stricter", () => {
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_write")
-    expect(ShellSafety.classifyBashRisk("git push origin")).toBe("shell_remote_write")
+  test("bare push and publishable push are shell_remote_publish; protected/force/delete pushes are stricter", () => {
+    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("git push origin")).toBe("shell_remote_publish")
     expect(ShellSafety.classifyBashRisk("git -c push.default=matching push origin")).toBe("shell_remote_write")
     expect(ShellSafety.classifyBashRisk("git -c remote.origin.push=refs/heads/main:refs/heads/main push origin")).toBe(
       "shell_remote_write",
