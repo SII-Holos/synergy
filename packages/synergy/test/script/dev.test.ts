@@ -53,13 +53,13 @@ describe("dev orchestrator planner", () => {
 
     expect(plan.kind).toBe("run")
     expect(plan.mode).toBe("serial")
-    expect(plan.processes.map((process) => process.label)).toEqual(["install", "build", "desktop"])
-    expect(plan.processes[2]?.env).toMatchObject({
+    expect(plan.processes.map((process) => process.label)).toEqual(["install", "build:plugin", "build", "desktop"])
+    expect(plan.processes[3]?.env).toMatchObject({
       BUN_BIN: "/bun",
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "managed",
     })
-    expect(plan.processes[2]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+    expect(plan.processes[3]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
   })
 
   test("plans managed desktop with app build even when app/dist already exists", async () => {
@@ -73,15 +73,15 @@ describe("dev orchestrator planner", () => {
 
       expect(plan.kind).toBe("run")
       expect(plan.mode).toBe("serial")
-      expect(plan.processes.map((process) => process.label)).toEqual(["build", "desktop"])
-      expect(plan.processes[0]?.command).toEqual(["/bun", "run", "build"])
-      expect(plan.processes[0]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
-      expect(plan.processes[1]?.env).toMatchObject({
+      expect(plan.processes.map((process) => process.label)).toEqual(["build:plugin", "build", "desktop"])
+      expect(plan.processes[1]?.command).toEqual(["/bun", "run", "build"])
+      expect(plan.processes[1]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
+      expect(plan.processes[2]?.env).toMatchObject({
         BUN_BIN: "/bun",
         SYNERGY_DESKTOP_CHANNEL: "dev",
         SYNERGY_DESKTOP_SERVER_MODE: "managed",
       })
-      expect(plan.processes[1]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+      expect(plan.processes[2]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
     } finally {
       await rm(repoRoot, { recursive: true, force: true })
     }
