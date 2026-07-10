@@ -608,6 +608,9 @@ export const LibraryRoute = new Hono()
         })
 
         for (let i = 0; i < candidates.length; i += MAX_CONCURRENCY) {
+          // Client disconnect check — stop processing if the client went away
+          if (stream.aborted) break
+
           const batch = candidates.slice(i, i + MAX_CONCURRENCY)
           await Promise.all(
             batch.map(async (candidate) => {
@@ -688,8 +691,10 @@ export const LibraryRoute = new Hono()
                   LibraryDB.Experience.updateScript(candidate.id, script, scriptEmbedding, content.raw)
                 }
 
-                // Dedup: check if the re-encoded content duplicates an existing experience;
-                // if it does and the existing record is lower quality, supersede it.
+                // Dedup: check if the re-encoded content duplicates an existing experience
+                // that is NOT the same record we just re-encoded (the updated vector
+                // embedding would match itself), and if the existing record is lower
+                // quality, supersede it.
                 if (intentEmbedding) {
                   const duplicate = LibraryDB.Experience.findSimilar(
                     scopeID,
@@ -699,7 +704,13 @@ export const LibraryRoute = new Hono()
                     learning.dedupScriptThreshold,
                     learning.rewardWeights,
                   )
-                  if (duplicate && ExperienceEncoder.shouldSupersede(duplicate, learning.qInit)) {
+                  // Skip self-match: after updateIntent/updateScript the updated
+                  // embedding is the nearest neighbor of itself (distance ≈ 0).
+                  if (
+                    duplicate &&
+                    duplicate.id !== candidate.id &&
+                    ExperienceEncoder.shouldSupersede(duplicate, learning.qInit)
+                  ) {
                     LibraryDB.Experience.supersede(duplicate.id, {
                       sessionID: candidate.sessionID,
                       scopeID,
