@@ -13,7 +13,6 @@ import { Session } from "../session"
 import { Scope } from "../scope"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
-import { SessionEndpoint } from "../session/endpoint"
 import { Plugin } from "../plugin"
 import { createHash } from "crypto"
 
