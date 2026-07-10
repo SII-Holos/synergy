@@ -184,13 +184,45 @@ export namespace WorkflowMachine {
     })
     if (!applied.ok) return { ok: false, reason: applied.reason }
 
-    const updated = await WorkflowRunStore.get(input.scopeID, input.runID)
-    const updatedEntity = updated.entities.find((e) => e.id === input.entityID)
     // Chain: a freshly-entered state may have event transitions ready.
     await evaluateEventTransitions(input.scopeID, input.runID, input.entityID).catch((error) =>
       log.error("post-intent event evaluation failed", { runID: input.runID, error }),
     )
+    // A transition may have freed a seat (e.g. handing off to another seat);
+    // give queued/waiting siblings a chance to advance.
+    await redrivePending(input.scopeID, input.runID).catch((error) =>
+      log.error("post-intent redrive failed", { runID: input.runID, error }),
+    )
+    const updated = await WorkflowRunStore.get(input.scopeID, input.runID)
+    const updatedEntity = updated.entities.find((e) => e.id === input.entityID)
     return { ok: true, run: updated, entityState: updatedEntity?.state ?? entity.state }
+  }
+
+  /**
+   * Re-evaluate event transitions for every non-terminal, non-blocked entity —
+   * used after a transition that may have changed shared resources (a freed seat
+   * pool slot, budget). Runs a bounded fixpoint so a single release can drain
+   * multiple queued entities that in turn free further resources, without
+   * risking an unbounded loop.
+   */
+  export async function redrivePending(scopeID: string, runID: string): Promise<void> {
+    const first = await WorkflowRunStore.getOrUndefined(scopeID, runID)
+    if (!first || first.status !== "active") return
+    const charter = await charterFor(first)
+    const maxPasses = Math.max(1, first.entities.length)
+    let previousSignature = ""
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
+      if (!run || run.status !== "active") return
+      const signature = run.entities.map((e) => `${e.id}:${e.state}`).join("|")
+      if (signature === previousSignature) return // stable — nothing more to do
+      previousSignature = signature
+      for (const entity of run.entities) {
+        if (entity.state === WorkflowTypes.BLOCKED_STATE) continue
+        if (WorkflowTypes.isTerminalState(charter, entity.state)) continue
+        await evaluateEventTransitions(scopeID, runID, entity.id)
+      }
+    }
   }
 
   /**
@@ -284,6 +316,8 @@ export namespace WorkflowMachine {
         }
       }
     }
+    // A gate transition (e.g. merge → release_seat) may have freed a seat.
+    await redrivePending(input.scopeID, input.runID).catch(() => undefined)
     return WorkflowRunStore.get(input.scopeID, input.runID)
   }
 }

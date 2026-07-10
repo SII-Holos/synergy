@@ -134,7 +134,7 @@ export namespace WorkflowGuards {
         : { ok: false, reason: "no base commit and no result commit recorded" }
     }
     const { $ } = await import("bun")
-    const counted = await $`git -C ${status.path} rev-list --count ${baseCommit}..HEAD`.quiet().nothrow()
+    const counted = await $`git rev-list --count ${baseCommit}..HEAD`.cwd(status.path).quiet().nothrow()
     const ahead = Number(counted.stdout.toString().trim())
     if (!Number.isFinite(ahead)) return { ok: false, reason: "unable to count commits ahead of base" }
     return ahead > 0 ? { ok: true } : { ok: false, reason: "no commits beyond base" }
@@ -145,6 +145,15 @@ export namespace WorkflowGuards {
     const binding = ctx.run.seats.find((s) => s.seat === seat && s.status === "idle")
     if (!binding) return { ok: false, reason: `no idle instance of seat '${seat}'` }
     return { ok: true }
+  })
+
+  // Whether the seat pool has an instance free to take new work. Unlike
+  // session_idle this also accepts never-yet-used ("unbound") instances, so the
+  // first entity to reach a seat can be assigned before any session exists.
+  register("seat_available", (ctx, args) => {
+    const seat = args.seat
+    const free = ctx.run.seats.some((s) => s.seat === seat && (s.status === "idle" || s.status === "unbound"))
+    return free ? { ok: true } : { ok: false, reason: `no free instance of seat '${seat}'` }
   })
 
   register("gate_resolved", (ctx, args) => {

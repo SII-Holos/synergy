@@ -255,6 +255,12 @@ export namespace WorkflowEffects {
       expectedSubmission: expected,
     }
 
+    // Handing the entity to a different seat frees the seat that held it — so a
+    // pool of N executors is only occupied while they are actually executing,
+    // not for the whole review/test lifecycle.
+    const previous = entity.assignedSeat
+    const releasesPrevious = previous && (previous.seat !== targetSeat || previous.instance !== instance)
+
     await WorkflowRunStore.update(ctx.scopeID, ctx.runID, (draft) => {
       const e = draft.entities.find((x) => x.id === ctx.entityID)
       if (e) {
@@ -263,12 +269,26 @@ export namespace WorkflowEffects {
         e.bindings.seatSessionID = sessionID
         e.time.updated = Date.now()
       }
+      if (releasesPrevious && previous) {
+        const prevBinding = WorkflowSeats.find(draft, previous.seat, previous.instance)
+        if (prevBinding && prevBinding.entityID === ctx.entityID) {
+          prevBinding.status = "idle"
+          prevBinding.entityID = undefined
+        }
+      }
       const binding = WorkflowSeats.find(draft, targetSeat, instance!)
       if (binding) {
         binding.status = "working"
         binding.entityID = ctx.entityID
       }
     })
+    if (releasesPrevious && previous) {
+      await WorkflowRunStore.appendEvent(
+        ctx.scopeID,
+        { id: ctx.runID },
+        { kind: "seat_released", entityID: ctx.entityID, seat: previous.seat, data: { instance: previous.instance } },
+      )
+    }
     await WorkflowHandoff.deliver(sessionID, handoff, entity)
     await WorkflowRunStore.appendEvent(
       ctx.scopeID,
@@ -337,7 +357,6 @@ export namespace WorkflowEffects {
     const prompt = argString(args, "prompt") ?? "Perform the requested independent task and report a concise result."
     const run = await WorkflowRunStore.get(ctx.scopeID, ctx.runID)
     const boss = run.bossSessionID
-    const bossSession = await SessionManager.getSession(boss)
     const { Cortex } = await import("../cortex")
     const task = await Cortex.launch({
       description: `Contractor for ${ctx.entityID}`,
@@ -349,7 +368,6 @@ export namespace WorkflowEffects {
     }).catch((error) => {
       throw new Error(`contractor launch failed: ${error instanceof Error ? error.message : String(error)}`)
     })
-    void bossSession
     await WorkflowRunStore.appendEvent(
       ctx.scopeID,
       { id: ctx.runID },

@@ -57,7 +57,13 @@ export namespace IssueToPrCharter {
         from: "queued",
         to: "executing",
         trigger: { kind: "event" },
-        guards: [{ name: "budget_available", args: {} }],
+        // Only leave the queue when the budget allows AND an executor is free —
+        // otherwise the entity waits in "queued" instead of moving to
+        // "executing" and immediately blocking on a full pool.
+        guards: [
+          { name: "budget_available", args: {} },
+          { name: "seat_available", args: { seat: "executor" } },
+        ],
         effects: [
           { name: "assign_entity", args: { seat: "executor" } },
           {
@@ -84,7 +90,7 @@ export namespace IssueToPrCharter {
         from: "pr_open",
         to: "reviewing",
         trigger: { kind: "event" },
-        guards: [],
+        guards: [{ name: "seat_available", args: { seat: "reviewer" } }],
         effects: [
           {
             name: "send_handoff",
@@ -119,7 +125,7 @@ export namespace IssueToPrCharter {
         from: "changes_requested",
         to: "executing",
         trigger: { kind: "event" },
-        guards: [],
+        guards: [{ name: "seat_available", args: { seat: "executor" } }],
         effects: [
           {
             name: "send_handoff",
@@ -137,7 +143,7 @@ export namespace IssueToPrCharter {
         from: "review_passed",
         to: "testing",
         trigger: { kind: "event" },
-        guards: [{ name: "session_idle", args: { seat: "tester" } }],
+        guards: [{ name: "seat_available", args: { seat: "tester" } }],
         effects: [
           {
             name: "send_handoff",
@@ -156,7 +162,10 @@ export namespace IssueToPrCharter {
         to: "awaiting_merge",
         trigger: { kind: "intent", allowedSeats: ["tester"] },
         guards: [{ name: "submission_recorded", args: { kind: "test_report", verdict: "passed", fresh: "true" } }],
+        // Release the tester now so testing continues for other changes while
+        // this one waits on the human merge decision.
         effects: [
+          { name: "release_seat", args: {} },
           { name: "open_gate", args: { gate: "final_merge" } },
           { name: "notify_boss", args: { message: "A change passed testing and awaits your merge decision." } },
         ],
@@ -177,7 +186,8 @@ export namespace IssueToPrCharter {
         to: "merged",
         trigger: { kind: "gate", gate: "final_merge" },
         guards: [{ name: "gate_resolved", args: { gate: "final_merge", accept: "merge" } }],
-        effects: [{ name: "release_seat", args: {} }],
+        // The tester was already released at test-pass; nothing to free here.
+        effects: [],
       },
       {
         id: "gate_rework",
