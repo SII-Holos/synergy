@@ -30,6 +30,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       complete: {} as Record<string, boolean>,
       loading: {} as Record<string, boolean>,
     })
+    // Track the reconnectVersion at the time of each session's last explicit
+    // load, so we can force a re-fetch after a backend restart — whose
+    // in-memory state the server cannot replay via events. Follows the same
+    // pattern as blueprint loop refetch (issue #331). Without this, a session
+    // that was already in the store before the restart short-circuits
+    // sync.session.sync() and never refreshes persisted metadata such as
+    // workflow kind (plan/lightloop/lattice), causing mode chips to disappear.
+    const sessionReconnectVersions = new Map<string, number>()
 
     const getSession = (sessionID: string) => {
       const match = Binary.search(store.session, sessionID, (s) => s.id)
@@ -96,6 +104,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       await retry(() => sdk.client.session.get({ sessionID })).then((session) => {
         if (!session.data) return
         upsertSession(session.data)
+        sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
       })
     }
 
@@ -296,8 +305,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               })
               .catch(() => {})
 
+          // Force a session reload after a backend restart, whose in-memory
+          // state the server cannot replay via events (same pattern as issue
+          // #331 for blueprint loops). Without this, sync() short-circuits
+          // because hasSession is true from the stale pre-restart store copy,
+          // and persisted fields such as workflow kind (plan/lightloop/lattice)
+          // never refresh — causing mode chips to disappear.
+          const currentReconnectVersion = globalSync.reconnectVersion()
+          const versionStale = sessionReconnectVersions.get(sessionID) !== currentReconnectVersion
+
           const session = getSession(sessionID)
-          const hasSession = session !== undefined
+          const hasSession = session !== undefined && !versionStale
           const needsDerivedHistoryRefresh = session?.history?.rollback?.canUnrollback === true
           hydrateMessages(sessionID)
 
@@ -313,7 +331,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   const sessionReq =
                     hasSession && !needsDerivedHistoryRefresh
                       ? Promise.resolve()
-                      : loadSession(sessionID, { force: needsDerivedHistoryRefresh })
+                      : loadSession(sessionID, { force: needsDerivedHistoryRefresh || versionStale })
                   const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
                   const promise = Promise.all([sessionReq, messagesReq])
                     .then(() => {})

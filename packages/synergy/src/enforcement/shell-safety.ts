@@ -25,7 +25,7 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["init", "shell"],
   ["mv", "shell"],
   ["restore", "shell"],
-  ["switch", "shell"],
+  ["switch", "shell_branch_mutation"],
   // ── warn ──────────────────────────────────────────────────
   ["am", "shell"],
   ["cherry-pick", "shell"],
@@ -229,7 +229,7 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   if (sub === "checkout") {
     if (words.includes("--")) return "shell_destructive" // checkout -- <path>
     if (hasExact("-b") || hasExact("-B")) return "shell" // create branch
-    return "shell" // switch branch → warn
+    return "shell_branch_mutation" // switch branch
   }
 
   // ── clean ──────────────────────────────────────────────────
@@ -723,11 +723,11 @@ function checkHardline(command: string): boolean {
 export type BashRisk =
   | "shell_read"
   | "shell"
+  | "shell_branch_mutation"
   | "shell_remote_publish"
   | "shell_remote_write"
   | "shell_destructive"
   | "shell_hardline"
-
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
     const padded = " " + normalizeCommand(command).toLowerCase() + " "
@@ -789,10 +789,11 @@ export namespace ShellSafety {
   const RISK_ORDER: Record<BashRisk, number> = {
     shell_read: 0,
     shell: 1,
-    shell_remote_publish: 2,
-    shell_remote_write: 3,
-    shell_destructive: 4,
-    shell_hardline: 5,
+    shell_branch_mutation: 2,
+    shell_remote_publish: 3,
+    shell_remote_write: 4,
+    shell_destructive: 5,
+    shell_hardline: 6,
   }
 
   function maxRisk(a: BashRisk, b: BashRisk): BashRisk {

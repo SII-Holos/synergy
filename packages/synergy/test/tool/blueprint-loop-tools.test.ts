@@ -2,37 +2,37 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { BlueprintLoopStore } from "../../src/blueprint"
 import { Cortex } from "../../src/cortex"
 import { Identifier } from "../../src/id/id"
-import { Session } from "../../src/session"
-import { SessionManager } from "../../src/session/manager"
+import { LatticeBridge } from "../../src/lattice/bridge"
+import { LatticeMachine } from "../../src/lattice/machine"
+import { LatticeStore } from "../../src/lattice/store"
 import { ScopeContext } from "../../src/scope/context"
-import { BlueprintLoopFinishTool } from "../../src/tool/blueprint-loop-finish"
-import { BlueprintLoopRestartTool } from "../../src/tool/blueprint-loop-restart"
+import { Session } from "../../src/session"
+import { BlueprintLoopReviewAccess } from "../../src/session/blueprint-loop-review-access"
+import { SessionManager } from "../../src/session/manager"
+import { BlueprintLoopApproveTool } from "../../src/tool/blueprint-loop-approve"
+import { BlueprintLoopRejectTool } from "../../src/tool/blueprint-loop-reject"
+import { BlueprintLoopStopTool } from "../../src/tool/blueprint-loop-stop"
+import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
 let originalLaunch: typeof Cortex.launch
-let originalCancelAll: typeof Cortex.cancelAll
-let originalGet: typeof Cortex.get
+let originalCancel: typeof Cortex.cancel
 let originalDeliver: typeof SessionManager.deliver
-let originalSignalAbort: typeof SessionManager.signalAbort
 
 beforeEach(() => {
   originalLaunch = Cortex.launch
-  originalCancelAll = Cortex.cancelAll
-  originalGet = Cortex.get
+  originalCancel = Cortex.cancel
   originalDeliver = SessionManager.deliver
-  originalSignalAbort = SessionManager.signalAbort
 })
 
 afterEach(() => {
   ;(Cortex.launch as any) = originalLaunch
-  ;(Cortex.cancelAll as any) = originalCancelAll
-  ;(Cortex.get as any) = originalGet
+  ;(Cortex.cancel as any) = originalCancel
   ;(SessionManager.deliver as any) = originalDeliver
-  ;(SessionManager.signalAbort as any) = originalSignalAbort
 })
 
-function ctx(sessionID: string, agent: string): Tool.Context {
+function ctx(sessionID: string, agent = "synergy"): Tool.Context {
   return {
     sessionID,
     messageID: Identifier.ascending("message"),
@@ -56,472 +56,326 @@ async function createRunningLoop(input?: { auditAgent?: string; userPrompt?: str
     userPrompt: input?.userPrompt ?? null,
   })
   await Session.update(session.id, (draft) => {
-    draft.blueprint = { loopID: loop.id }
+    draft.blueprint = { loopID: loop.id, loopRole: "execution" }
   })
   return { session, loop: running }
 }
 
-function auditTask(
-  input: Parameters<typeof Cortex.launch>[0],
-  auditSessionID: string,
-  status: "running" | "error" = "running",
-) {
-  return {
-    id: Identifier.short("cortex"),
-    sessionID: auditSessionID,
-    parentSessionID: input.parentSessionID,
-    parentMessageID: input.parentMessageID,
-    description: input.description,
-    prompt: input.prompt,
-    agent: input.agent,
-    executionRole: input.executionRole,
-    category: input.category,
-    status,
-    startedAt: Date.now(),
-    notifyParentOnComplete: input.notifyParentOnComplete,
-  } as Awaited<ReturnType<typeof Cortex.launch>>
+function installReviewerLaunch(launches: Parameters<typeof Cortex.launch>[0][] = []) {
+  ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
+    launches.push(input)
+    const reviewSession = await Session.create({
+      parentID: input.parentSessionID,
+      cortex: {
+        parentSessionID: input.parentSessionID,
+        parentMessageID: input.parentMessageID,
+        description: input.description,
+        agent: input.agent,
+        executionRole: input.executionRole,
+        startedAt: Date.now(),
+        status: "running",
+      },
+    })
+    return {
+      id: Identifier.short("cortex"),
+      sessionID: reviewSession.id,
+      parentSessionID: input.parentSessionID,
+      parentMessageID: input.parentMessageID,
+      description: input.description,
+      prompt: input.prompt,
+      agent: input.agent,
+      executionRole: input.executionRole,
+      category: input.category,
+      status: "running",
+      startedAt: Date.now(),
+      notifyParentOnComplete: input.notifyParentOnComplete,
+    } as Awaited<ReturnType<typeof Cortex.launch>>
+  })
+  return launches
 }
 
-describe("BlueprintLoop tools", () => {
-  test("launches configured audit agent without automatic Cortex parent notification", async () => {
+async function requestReview(input?: { auditAgent?: string; userPrompt?: string }) {
+  const running = await createRunningLoop(input)
+  const launches = installReviewerLaunch()
+  const tool = await BlueprintLoopStopTool.init()
+  const result = await tool.execute(
+    {
+      summary: "All Blueprint requirements are implemented.",
+      completed: ["Implemented the requested behavior"],
+      evidence: ["Focused tests pass"],
+      remaining: [],
+    },
+    ctx(running.session.id),
+  )
+  const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, running.loop.id)
+  return { ...running, loop, launches, result, reviewSessionID: loop.auditSessionID! }
+}
+
+describe("blueprint_loop_stop", () => {
+  test("registry contains exactly the three BlueprintLoop lifecycle tools", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop } = await createRunningLoop({ auditAgent: "security-reviewer" })
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
+        const ids = (await ToolRegistry.tools("test-provider"))
+          .map((tool) => tool.id)
+          .filter((id) => id.startsWith("blueprint_loop_"))
+          .sort()
+        expect(ids).toEqual(["blueprint_loop_approve", "blueprint_loop_reject", "blueprint_loop_stop"])
+      },
+    })
+  })
+
+  test("launches the configured reviewer and records one auditing transition", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop, launches, result, reviewSessionID } = await requestReview({
+          auditAgent: "security-reviewer",
+          userPrompt: "Do not change the public CLI contract.",
         })
 
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
-
+        expect(result.metadata.loopStopRequested).toBe(true)
         expect(launches).toHaveLength(1)
         expect(launches[0].agent).toBe("security-reviewer")
         expect(launches[0].parentSessionID).toBe(session.id)
         expect(launches[0].notifyParentOnComplete).toBe(false)
-        expect(launches[0].prompt).toContain("execution evidence")
-        expect(launches[0].prompt).not.toContain("implementation evidence")
-        expect(launches[0].prompt).toContain("blueprint_loop_restart")
-        expect(launches[0].prompt).toContain("blueprint_loop_finish")
-
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.auditSessionID).toBeDefined()
-        expect(updated.auditTaskID).toBeDefined()
-        const auditSession = await Session.get(updated.auditSessionID!)
-        expect(auditSession.blueprint?.loopID).toBe(loop.id)
-        expect(auditSession.blueprint?.loopRole).toBe("audit")
-      },
-    })
-  })
-
-  test("audit launch includes durable start user prompt context", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop({ userPrompt: "Do not change the public CLI contract." })
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
-        })
-
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
-
-        expect(launches).toHaveLength(1)
-        expect(launches[0].prompt).toContain("Start user instruction")
+        expect(launches[0].visibility).toBe("hidden")
+        expect(launches[0].prompt).toContain(`Session ID: ${session.id}`)
         expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
+        expect(launches[0].prompt).toContain("blueprint_loop_approve")
+        expect(launches[0].prompt).toContain("blueprint_loop_reject")
+
+        expect(loop.status).toBe("auditing")
+        expect(loop.auditTaskID).toBeDefined()
+        const reviewSession = await Session.get(reviewSessionID)
+        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
       },
     })
   })
 
-  test("returns already auditing when audit taskID is still active in Cortex", async () => {
+  test("is idempotent while a recorded review is pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        const firstAuditSession = await Session.create({})
-        const activeTaskID = Identifier.short("cortex")
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: firstAuditSession.id,
-          auditTaskID: activeTaskID,
-        })
-        await Session.update(firstAuditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-
-        const activeCortexTask = auditTask(
-          {
-            description: "",
-            prompt: "",
-            agent: "supervisor",
-            parentSessionID: session.id,
-            parentMessageID: ctx(session.id, "synergy").messageID,
-            notifyParentOnComplete: false,
-            executionRole: "delegated_subagent",
-            category: "general",
-          },
-          firstAuditSession.id,
-          "running",
-        )
-        ;(Cortex.get as any) = mock((_taskID: string) => activeCortexTask)
-
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
-        })
-
-        const tool = await BlueprintLoopFinishTool.init()
-        const result = await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
-
-        expect(launches).toHaveLength(0)
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.status).toBe("auditing")
-        expect(updated.auditSessionID).toBe(firstAuditSession.id)
-        expect(updated.auditTaskID).toBe(activeTaskID)
-        expect(result.metadata.status).toBe("auditing")
-        expect(result.metadata.auditTaskID).toBe(activeTaskID)
-      },
-    })
-  })
-
-  test("returns already auditing when legacy audit session is still running", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        const firstAuditSession = await Session.create({})
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: firstAuditSession.id,
-        })
-        await Session.update(firstAuditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-
-        // Simulate that we have an active runtime for the audit session
-        const realIsRunning = SessionManager.isRunning
-        ;(SessionManager.isRunning as any) = mock((sid: string) => sid === firstAuditSession.id)
-
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
-        })
-
-        try {
-          const tool = await BlueprintLoopFinishTool.init()
-          const result = await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
-
-          expect(launches).toHaveLength(0)
-          const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-          expect(updated.status).toBe("auditing")
-          expect(updated.auditSessionID).toBe(firstAuditSession.id)
-          expect(result.metadata.status).toBe("auditing")
-        } finally {
-          ;(SessionManager.isRunning as any) = realIsRunning
-        }
-      },
-    })
-  })
-
-  test("restarts audit when prior audit Cortex task is no longer active", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        const firstAuditSession = await Session.create({})
-        const staleTaskID = Identifier.short("cortex")
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: firstAuditSession.id,
-          auditTaskID: staleTaskID,
-        })
-        await Session.update(firstAuditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
-        })
-
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+        const { session, launches, reviewSessionID } = await requestReview()
+        const tool = await BlueprintLoopStopTool.init()
+        const result = await tool.execute({ summary: "Still done" }, ctx(session.id))
 
         expect(launches).toHaveLength(1)
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.status).toBe("auditing")
-        expect(updated.auditSessionID).not.toBe(firstAuditSession.id)
-        expect(updated.auditTaskID).toBeDefined()
-        expect(updated.auditTaskID).not.toBe(staleTaskID)
-        const clearedFirstAuditSession = await Session.get(firstAuditSession.id)
-        expect(clearedFirstAuditSession.blueprint?.loopID).toBeUndefined()
+        expect(result.metadata.reviewSessionID).toBe(reviewSessionID)
+        expect(result.output).toContain("already requested")
       },
     })
   })
 
-  test("restarts legacy audit when no audit task is recorded and audit runtime is gone", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        const firstAuditSession = await Session.create({})
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: firstAuditSession.id,
-        })
-        await Session.update(firstAuditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-
-        const launches: Parameters<typeof Cortex.launch>[0][] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          launches.push(input)
-          return auditTask(input, auditSession.id)
-        })
-
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
-
-        expect(launches).toHaveLength(1)
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.status).toBe("auditing")
-        expect(updated.auditSessionID).not.toBe(firstAuditSession.id)
-        expect(updated.auditTaskID).toBeDefined()
-        const clearedFirstAuditSession = await Session.get(firstAuditSession.id)
-        expect(clearedFirstAuditSession.blueprint?.loopID).toBeUndefined()
-      },
-    })
-  })
-
-  test("restart wakes the execution session with user mail", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        const auditSession = await Session.create({})
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: auditSession.id,
-        })
-        await Session.update(auditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
-        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-          deliveries.push(input)
-        })
-
-        const tool = await BlueprintLoopRestartTool.init()
-        await tool.execute(
-          {
-            loopID: loop.id,
-            reason: "Missing tests",
-            completed: "Implementation exists",
-            remaining: "Add test coverage",
-            instructions: "Write the missing tests",
-          },
-          ctx(auditSession.id, "security-reviewer"),
-        )
-
-        expect(deliveries).toHaveLength(1)
-        expect(deliveries[0].target).toBe(session.id)
-        expect(deliveries[0].waitForProcessing).toBe(false)
-        const mail = deliveries[0].mail
-        expect(mail.type).toBe("user")
-        if (mail.type !== "user") throw new Error("expected user mail")
-        expect(mail.summary?.title).toBe("Blueprint audit requested changes")
-        expect(mail.metadata?.source).toBe("blueprint_loop_restart")
-        expect(mail.metadata?.sourceSessionID).toBe(auditSession.id)
-        expect(mail.metadata?.loopID).toBe(loop.id)
-        expect(mail.metadata?.noteID).toBe(loop.noteID)
-        expect(mail.metadata?.title).toBe(loop.title)
-        expect(mail.metadata?.reason).toBe("Missing tests")
-        expect(mail.metadata?.remaining).toBe("Add test coverage")
-        expect(mail.metadata?.mailbox).toBeUndefined()
-        expect(mail.parts[0].type).toBe("text")
-
-        const restarted = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(restarted.auditSessionID).toBeUndefined()
-        const clearedAuditSession = await Session.get(auditSession.id)
-        expect(clearedAuditSession.blueprint?.loopID).toBeUndefined()
-      },
-    })
-  })
-
-  test("finish with status=failed calls cancelAll and signalAbort", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        let cancelAllCalls: string[] = []
-        let signalAbortCalls: string[] = []
-        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
-          cancelAllCalls.push(sessionID)
-          return 0
-        })
-        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
-          signalAbortCalls.push(sessionID)
-        })
-
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "failed", summary: "task failed" }, ctx(session.id, "synergy"))
-
-        expect(cancelAllCalls).toEqual([session.id])
-        expect(signalAbortCalls).toEqual([session.id])
-
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.status).toBe("failed")
-      },
-    })
-  })
-
-  test("finish with status=completed calls cancelAll and signalAbort", async () => {
+  test("rejects calls outside the bound execution session", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const { loop } = await createRunningLoop()
-        const auditSession = await Session.create({})
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: auditSession.id,
-        })
-        await Session.update(auditSession.id, (draft) => {
+        const unrelated = await Session.create({})
+        await Session.update(unrelated.id, (draft) => {
           draft.blueprint = { loopID: loop.id, loopRole: "audit" }
         })
-        let cancelAllCalls: string[] = []
-        let signalAbortCalls: string[] = []
-        ;(SessionManager.deliver as any) = mock(async () => {})
-        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
-          cancelAllCalls.push(sessionID)
-          return 0
-        })
-        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
-          signalAbortCalls.push(sessionID)
-        })
 
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute(
-          { loopID: loop.id, status: "completed", summary: "all done" },
-          ctx(auditSession.id, "synergy"),
+        const tool = await BlueprintLoopStopTool.init()
+        await expect(tool.execute({ summary: "done" }, ctx(unrelated.id))).rejects.toThrow(
+          "Only the BlueprintLoop execution session may request review",
         )
-
-        expect(cancelAllCalls).toEqual([auditSession.id])
-        expect(signalAbortCalls).toEqual([auditSession.id])
-
-        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(updated.status).toBe("completed")
       },
     })
   })
+})
 
-  test("finish with status=completed wakes the execution session with user mail", async () => {
+describe("BlueprintLoopReviewAccess", () => {
+  test("resolves only the reviewer recorded on the active audit", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop } = await createRunningLoop({ userPrompt: "Prepare a PR after completion." })
-        const auditSession = await Session.create({})
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
-          status: "auditing",
-          auditSessionID: auditSession.id,
+        const { session, reviewSessionID } = await requestReview({ auditAgent: "security-reviewer" })
+        const access = await BlueprintLoopReviewAccess.resolve({
+          agent: "security-reviewer",
+          reviewSessionID,
         })
-        await Session.update(auditSession.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-        })
+        expect(access?.executionSession.id).toBe(session.id)
+
+        expect(
+          await BlueprintLoopReviewAccess.resolve({
+            agent: "supervisor",
+            reviewSessionID,
+          }),
+        ).toBeUndefined()
+      },
+    })
+  })
+})
+
+describe("blueprint_loop_approve", () => {
+  test("completes the loop and notifies the execution session from the recorded reviewer", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop, reviewSessionID } = await requestReview()
         const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-        const cancelAllCalls: string[] = []
-        const signalAbortCalls: string[] = []
         ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
           deliveries.push(input)
         })
-        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
-          cancelAllCalls.push(sessionID)
-          return 0
-        })
-        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
-          signalAbortCalls.push(sessionID)
-        })
 
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute(
-          { loopID: loop.id, status: "completed", summary: "Audit passed; ready for final follow-up." },
-          ctx(auditSession.id, "security-reviewer"),
+        const tool = await BlueprintLoopApproveTool.init()
+        const result = await tool.execute(
+          { sessionID: session.id, summary: "All acceptance criteria are verified." },
+          ctx(reviewSessionID, "supervisor"),
         )
 
+        expect(result.metadata.loopApproved).toBe(true)
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("completed")
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].target).toBe(session.id)
-        expect(deliveries[0].waitForProcessing).toBe(false)
-        const mail = deliveries[0].mail
-        expect(mail.type).toBe("user")
-        if (mail.type !== "user") throw new Error("expected user mail")
-        expect(mail.noReply).not.toBe(true)
-        expect(mail.summary?.title).toBe("Blueprint audit completed")
-        expect(mail.metadata?.source).toBe("blueprint_loop_completed")
-        expect(mail.metadata?.sourceSessionID).toBe(auditSession.id)
-        expect(mail.metadata?.loopID).toBe(loop.id)
-        expect(mail.metadata?.noteID).toBe(loop.noteID)
-        expect(mail.metadata?.title).toBe(loop.title)
-        expect(mail.metadata?.status).toBe("completed")
-        expect(mail.metadata?.summary).toBe("Audit passed; ready for final follow-up.")
-        expect(mail.metadata?.userPrompt).toBe("Prepare a PR after completion.")
-        expect(mail.parts[0].type).toBe("text")
-        const text = mail.parts[0].type === "text" ? mail.parts[0].text : ""
-        expect(text).toContain("Audit passed")
-        expect(text).toContain("now complete")
-        expect(text).toContain("Do not call blueprint_loop_finish or blueprint_loop_restart")
-        expect(cancelAllCalls).toEqual([auditSession.id])
-        expect(signalAbortCalls).toEqual([auditSession.id])
+        expect(deliveries[0].mail.metadata).toMatchObject({
+          source: "blueprint_loop_completed",
+          sourceSessionID: reviewSessionID,
+          summary: "All acceptance criteria are verified.",
+        })
+        const part = deliveries[0].mail.parts[0]
+        expect(part.type).toBe("text")
+        if (part.type === "text") expect(part.origin).toBe("system")
       },
     })
   })
 
-  test("finish with status=auditing does not call cancelAll or signalAbort", async () => {
+  test("rejects approval from the execution session", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop } = await createRunningLoop()
-        let cancelAllCalls: string[] = []
-        let signalAbortCalls: string[] = []
-        ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
-          const auditSession = await Session.create({})
-          return auditTask(input, auditSession.id)
+        const { session } = await requestReview()
+        const tool = await BlueprintLoopApproveTool.init()
+        await expect(
+          tool.execute({ sessionID: session.id, summary: "approved" }, ctx(session.id, "supervisor")),
+        ).rejects.toThrow("Only the recorded reviewer session may approve this BlueprintLoop review")
+      },
+    })
+  })
+
+  test("advances a Lattice run before waking the execution session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        LatticeBridge.init()
+        const scopeID = ScopeContext.current.scope.id
+        const session = await Session.create({})
+        await LatticeStore.reset({ sessionID: session.id, mode: "auto" })
+        await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "Complete A" }] })
+        const bound = await LatticeMachine.patch(scopeID, session.id, {
+          bindCurrentBlueprint: { noteID: "note_blueprint" },
         })
-        ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
-          cancelAllCalls.push(sessionID)
-          return 0
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_blueprint",
+          title: "Test Blueprint",
+          sessionID: session.id,
+          source: "lattice",
         })
-        ;(SessionManager.signalAbort as any) = mock((sessionID: string) => {
-          signalAbortCalls.push(sessionID)
+        await LatticeMachine.onLoopStarted(scopeID, session.id, bound.currentStepID!, loop.id)
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
         })
 
-        const tool = await BlueprintLoopFinishTool.init()
-        await tool.execute({ loopID: loop.id, status: "auditing" }, ctx(session.id, "synergy"))
+        installReviewerLaunch()
+        const stop = await BlueprintLoopStopTool.init()
+        await stop.execute({ summary: "A is complete", evidence: ["Checks pass"] }, ctx(session.id))
+        const auditing = await BlueprintLoopStore.get(scopeID, loop.id)
+        let phaseAtDelivery: string | undefined
+        let deliveredText = ""
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          phaseAtDelivery = (await LatticeStore.get(scopeID, session.id)).phase
+          const part = input.mail.parts[0]
+          if (part.type === "text") deliveredText = part.text
+        })
 
-        expect(cancelAllCalls).toEqual([])
-        expect(signalAbortCalls).toEqual([])
+        const approve = await BlueprintLoopApproveTool.init()
+        await approve.execute(
+          { sessionID: session.id, summary: "All requirements verified" },
+          ctx(auditing.auditSessionID!, "supervisor"),
+        )
+
+        expect(phaseAtDelivery).toBe("result_analysis")
+        expect(deliveredText).toContain("result_analysis")
+        expect(deliveredText).toContain("pathway_patch")
+      },
+    })
+  })
+})
+
+describe("blueprint_loop_reject", () => {
+  test("returns the loop to execution with structured audit feedback", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop, reviewSessionID } = await requestReview()
+        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          deliveries.push(input)
+        })
+
+        const tool = await BlueprintLoopRejectTool.init()
+        const result = await tool.execute(
+          {
+            sessionID: session.id,
+            reason: "One acceptance criterion is not verified.",
+            completed: "Core implementation is correct.",
+            remaining: "The CLI contract test is missing. BLOCKING",
+            instructions: "Add and run the CLI contract test.",
+          },
+          ctx(reviewSessionID, "supervisor"),
+        )
+
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(updated.status).toBe("running")
+        expect(updated.audit?.attempts).toBe(1)
+        expect(updated.audit?.lastReason).toBe("One acceptance criterion is not verified.")
+        expect(updated.auditSessionID).toBeUndefined()
+        expect(result.metadata.loopRejected).toBe(true)
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0].mail.metadata).toMatchObject({
+          source: "blueprint_loop_rejected",
+          sourceSessionID: reviewSessionID,
+          reason: "One acceptance criterion is not verified.",
+        })
+        const part = deliveries[0].mail.parts[0]
+        expect(part.type).toBe("text")
+        if (part.type === "text") expect(part.origin).toBe("system")
+      },
+    })
+  })
+
+  test("rejects feedback from an unrecorded reviewer session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session } = await requestReview()
+        const unrelated = await Session.create({})
+        const tool = await BlueprintLoopRejectTool.init()
+        await expect(
+          tool.execute(
+            {
+              sessionID: session.id,
+              reason: "missing evidence",
+              remaining: "Verification is missing. BLOCKING",
+              instructions: "Run the required checks.",
+            },
+            ctx(unrelated.id, "supervisor"),
+          ),
+        ).rejects.toThrow("Only the recorded reviewer session may reject this BlueprintLoop review")
       },
     })
   })

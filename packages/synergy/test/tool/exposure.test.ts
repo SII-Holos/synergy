@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { Agent } from "../../src/agent/agent"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { BlueprintLoopStore } from "../../src/blueprint"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -493,6 +494,96 @@ describe("tool exposure", () => {
         })
         expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
         expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+      },
+    })
+  })
+
+  test("BlueprintLoop execution and recorded reviewer sessions expose symmetric control tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_blueprint",
+          title: "Test Blueprint",
+          sessionID: execution.id,
+          auditAgent: "security-reviewer",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await Session.update(execution.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+
+        let availability = await ToolResolver.availability({
+          agent: allowAllAgent,
+          model,
+          sessionID: execution.id,
+          session: await Session.get(execution.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_stop")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
+
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            parentSessionID: execution.id,
+            parentMessageID: "msg_parent",
+            description: "Audit BlueprintLoop",
+            agent: "security-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(reviewer.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: reviewer.id,
+          auditTaskID: "ctx_review",
+        })
+
+        const reviewerAgent = createBuiltinMaxSubagents(builtinCtx)["security-reviewer"]
+        if (!reviewerAgent) throw new Error("missing security-reviewer")
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: reviewer.id,
+          session: await Session.get(reviewer.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_stop")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(true)
+
+        const unrelatedReviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            parentSessionID: execution.id,
+            parentMessageID: "msg_parent",
+            description: "Unrecorded Blueprint audit",
+            agent: "security-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(unrelatedReviewer.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: unrelatedReviewer.id,
+          session: await Session.get(unrelatedReviewer.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
       },
     })
   })

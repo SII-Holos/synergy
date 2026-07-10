@@ -215,11 +215,15 @@ import type {
   LatticeSessionGetRunResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
+  LibraryExperienceDetectErrors,
+  LibraryExperienceDetectResponses,
   LibraryExperienceGetErrors,
   LibraryExperienceGetResponses,
   LibraryExperienceListResponses,
   LibraryExperiencePageErrors,
   LibraryExperiencePageResponses,
+  LibraryExperienceReencodeErrors,
+  LibraryExperienceReencodeResponses,
   LibraryExperienceRemoveErrors,
   LibraryExperienceRemoveResponses,
   LibraryExperienceSearchErrors,
@@ -4443,6 +4447,7 @@ export class Scope extends HeyApiClient {
         url?: string
         color?: string
       }
+      pinned?: number | null
       archived?: number | null
     },
     options?: Options<never, ThrowOnError>,
@@ -4465,6 +4470,7 @@ export class Scope extends HeyApiClient {
             },
             { in: "body", key: "name" },
             { in: "body", key: "icon" },
+            { in: "body", key: "pinned" },
             { in: "body", key: "archived" },
           ],
         },
@@ -6850,6 +6856,83 @@ export class Experience extends HeyApiClient {
       url: "/library/experience",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Detect experience encoding issues
+   *
+   * Scan the experience database for encoding quality issues. Groups candidates by detection reason and returns up to 5 samples per group.
+   */
+  public detect<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      LibraryExperienceDetectResponses,
+      LibraryExperienceDetectErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/detect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Re-encode experience records
+   *
+   * Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.
+   */
+  public reencode<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      type?: "intent" | "script"
+      reason?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "type" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.post<
+      LibraryExperienceReencodeResponses,
+      LibraryExperienceReencodeErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/reencode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

@@ -2,13 +2,6 @@ import { createMemo, createSignal, onMount } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { formatCompact } from "./use-stats"
 
-const ANIMATION_STYLE = `
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-`
-
 function useCountUp(target: number, duration = 1600) {
   const [value, setValue] = createSignal(0)
   onMount(() => {
@@ -109,7 +102,6 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
 
   return (
     <>
-      <style>{ANIMATION_STYLE}</style>
       <div class="mb-3 px-1 text-12-medium text-text-weak">Code Changes</div>
       <section
         class="rounded-2xl bg-surface-raised-base px-4 py-4"

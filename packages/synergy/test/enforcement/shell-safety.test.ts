@@ -715,9 +715,9 @@ describe("ShellSafety git taxonomy — safe_write (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git restore -SW file.ts")).toBe("shell_destructive")
   })
 
-  test("git switch is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git switch main")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git switch -c new-branch")).toBe("shell")
+  test("git switch is shell_branch_mutation", () => {
+    expect(ShellSafety.classifyBashRisk("git switch main")).toBe("shell_branch_mutation")
+    expect(ShellSafety.classifyBashRisk("git switch -c new-branch")).toBe("shell_branch_mutation")
   })
 
   test("git stash (push/apply) is shell", () => {
@@ -818,8 +818,8 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git branch -d old-feature")).toBe("shell")
   })
 
-  test("git checkout (switch branch) is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git checkout main")).toBe("shell")
+  test("git checkout (switch branch) is shell_branch_mutation", () => {
+    expect(ShellSafety.classifyBashRisk("git checkout main")).toBe("shell_branch_mutation")
   })
 
   test("git checkout -b (create branch) is shell", () => {

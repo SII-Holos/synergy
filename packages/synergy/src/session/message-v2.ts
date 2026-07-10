@@ -419,7 +419,7 @@ export namespace MessageV2 {
 
   /**
    * Closed set of message origin types (issue #281 §4.2). Second-level
-   * variation (e.g. blueprint loop_start vs loop_restart) goes in `detail`,
+   * variation (e.g. blueprint loop_start vs loop_rejected) goes in `detail`,
    * never as a new top-level type. Unknown/legacy values decode to "system"
    * via `.catch` so stored data from older schemas still parses.
    */

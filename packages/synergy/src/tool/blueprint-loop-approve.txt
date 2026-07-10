@@ -1,0 +1,5 @@
+Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered.
+
+Parameters:
+- sessionID: The execution session ID provided in your launch context
+- summary: Concise approved completion verdict

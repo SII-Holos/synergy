@@ -58,7 +58,7 @@ type WorkbenchSurfacesLayoutState = {
   bottom?: WorkbenchSurfaceLayoutState
 }
 
-export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean }
+export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean; pinned?: number }
 
 export type ReviewDiffStyle = "unified" | "split"
 
@@ -289,7 +289,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       } catch (err) {
         console.warn("Failed to load scope index", err)
-        // fall through; scope ordering remains localStorage-based
+        // fall through; supplemental scope discovery will be unavailable until next reconnection
       } finally {
         setScopeIndexLoaded(true)
       }
@@ -588,7 +588,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             refreshGlobalRecent()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
-        scheduleScopeIndexRefresh()
         if (scope.id === "home") {
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
@@ -751,14 +750,21 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
       const raw = [...local, ...supplemented.flatMap(colorize)]
 
-      const order = new Map(index.map((e, i) => [e.scopeID, i]))
+      // Stable sort: pinned projects first (most-recently-pinned on top),
+      // then by creation time ascending (oldest first), with directory as
+      // tiebreaker. This keeps the project list predictably stable — session
+      // activity no longer reorders projects.
       return raw.toSorted((a, b) => {
-        const aIdx = order.get(a.id ?? "")
-        const bIdx = order.get(b.id ?? "")
-        if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx
-        if (aIdx !== undefined) return -1
-        if (bIdx !== undefined) return 1
-        return 0
+        const aPin = (a as { pinned?: number }).pinned ?? 0
+        const bPin = (b as { pinned?: number }).pinned ?? 0
+        if (aPin && !bPin) return -1
+        if (!aPin && bPin) return 1
+        if (aPin && bPin) return bPin - aPin
+        const aCreated = (a as { time?: { created?: number } }).time?.created ?? 0
+        const bCreated = (b as { time?: { created?: number } }).time?.created ?? 0
+        if (aCreated !== bCreated) return bCreated - aCreated
+        if (aCreated !== bCreated) return aCreated - bCreated
+        return a.worktree.localeCompare(b.worktree)
       })
     })
 
@@ -1091,6 +1097,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         move(directory: string, toIndex: number) {
           server.scopes.move(directory, toIndex)
+        },
+        async pinScope(scope: { worktree: string; pinned?: number; id?: string }) {
+          const isPinned = (scope.pinned ?? 0) > 0
+          const value = isPinned ? 0 : Date.now()
+          server.scopes.pin(scope.worktree, value)
+          if (scope.id) {
+            try {
+              await globalSdk.client.scope.update({ path_scopeID: scope.id, pinned: value })
+            } catch (err) {
+              console.warn("Failed to persist scope pin state", err)
+            }
+          }
         },
       },
       sidebar: {

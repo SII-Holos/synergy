@@ -690,6 +690,22 @@ export namespace EnforcementGate {
           }
         }
 
+        // ── Worktree-aware reclassifications ──────────────────
+        // git checkout / git switch on the main checkout corrupts every
+        // concurrent session. Downgrade to plain shell inside worktrees
+        // where each has its own index and working directory.
+        if (risk === "shell_branch_mutation" && workspaceType === "worktree") {
+          risk = "shell"
+        }
+
+        // git push from the main checkout is never safe to auto-allow — even
+        // a "publishable" feature-branch push can land in the wrong remote.
+        // Upgrade to shell_remote_write (already denied in autonomous) on
+        // main; worktrees keep shell_remote_publish for normal workflow.
+        if (risk === "shell_remote_publish" && workspaceType !== "worktree") {
+          risk = "shell_remote_write"
+        }
+
         if (risk === "shell_hardline") {
           caps.push({
             class: "shell_hardline",
@@ -1013,7 +1029,11 @@ export namespace EnforcementGate {
       }
 
       // Blueprint loop management tools — session state coordination
-      if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+      if (
+        toolName === "blueprint_loop_stop" ||
+        toolName === "blueprint_loop_approve" ||
+        toolName === "blueprint_loop_reject"
+      ) {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }

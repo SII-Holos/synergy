@@ -14,7 +14,7 @@ export function createSupervisorAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "supervisor",
     description:
-      "Internal BlueprintLoop audit agent. Verifies implementation completeness and either restarts the loop with concrete findings or marks it complete.",
+      "Internal BlueprintLoop audit agent. Verifies outcome completeness and either rejects the review with concrete findings or approves it.",
     prompt: buildSupervisorPrompt([]),
     model: "thinking",
     permission: "supervisor",

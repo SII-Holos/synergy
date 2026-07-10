@@ -857,17 +857,23 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Delete Note",
         subtitle: input.id,
       }
-    case "blueprint_loop_finish":
+    case "blueprint_loop_stop":
       return {
-        icon: BLUEPRINT_ICON,
-        title: "Finish BlueprintLoop",
-        subtitle: input.loopID,
+        icon: "circle-pause",
+        title: "Request Blueprint Review",
+        subtitle: input.summary,
       }
-    case "blueprint_loop_restart":
+    case "blueprint_loop_approve":
       return {
-        icon: BLUEPRINT_ICON,
-        title: "Restart BlueprintLoop",
-        subtitle: input.loopID,
+        icon: "file-check-2",
+        title: "Approve BlueprintLoop",
+        subtitle: (input.summary as string) || (input.sessionID as string) || "",
+      }
+    case "blueprint_loop_reject":
+      return {
+        icon: "clipboard-x",
+        title: "Reject BlueprintLoop",
+        subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "task_list":
       return {
@@ -1993,7 +1999,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       <div data-component="tool-card-area">
         <Switch>
           <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-            {(error) => <ErrorCard error={error()} />}
+            {(error) => (
+              <ErrorCard
+                error={error()}
+                input={(part().state as ToolStateError).input as Record<string, unknown> | undefined}
+              />
+            )}
           </Match>
           <Match when={true}>
             <Dynamic

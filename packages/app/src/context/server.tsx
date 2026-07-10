@@ -5,7 +5,7 @@ import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
 
-type StoredScope = { worktree: string; expanded: boolean }
+type StoredScope = { worktree: string; expanded: boolean; pinned?: number }
 
 const HEALTH_TIMEOUT = 8000
 
@@ -195,6 +195,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
           const [item] = result.splice(fromIndex, 1)
           result.splice(toIndex, 0, item)
           setStore("scopes", key, result)
+        },
+        pin(directory: string, value: number) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          const index = current.findIndex((x) => x.worktree === directory)
+          if (index !== -1) setStore("scopes", key, index, "pinned", value)
         },
       },
     }

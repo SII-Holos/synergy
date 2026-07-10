@@ -220,10 +220,10 @@ export function shouldShowTurnUserChrome(
   return hasVisibleUserMessageContent(parts)
 }
 
-export function timelineKindForPart(part: PartType, working: boolean): SessionTurnTimelineItem["kind"] | undefined {
+export function timelineKindForPart(part: PartType, _working: boolean): SessionTurnTimelineItem["kind"] | undefined {
   if (part.type === "text") return part.text.trim() ? "part" : undefined
   if (part.type === "attachment") return resolveAttachmentPresentation(part).hidden ? undefined : "part"
-  if (part.type === "reasoning") return working && part.text.trim() ? "reasoning" : undefined
+  if (part.type === "reasoning") return part.text.trim() ? "reasoning" : undefined
   if (part.type === "compaction_recovery") return "part"
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
@@ -263,6 +263,7 @@ export function collectSessionTurnTimelineItems(
       continue
     }
 
+    const msgStartIndex = items.length
     const hasCompactionRecovery = !!compactionRecovery
     for (const part of parts) {
       const kind = timelineKindForPart(part, working)
@@ -292,11 +293,36 @@ export function collectSessionTurnTimelineItems(
 
       items.push({ kind, message, part: part as TextPart | ToolPart | AttachmentPart })
     }
+
+    // When the turn is complete, hide reasoning items if there are visible
+    // text/tool/attachment items (standard behavior: final output supersedes
+    // thinking tokens). When there are no visible items — reasoning-only
+    // response — promote reasoning to "part" so content is not lost.
+    if (!working) {
+      const msgItems = items.slice(msgStartIndex)
+      const hasVisiblePart = msgItems.some((item) => item.kind !== "reasoning" && item.kind !== "compaction")
+      if (hasVisiblePart) {
+        // Remove reasoning items (thought tokens hidden by real output)
+        for (let i = items.length - 1; i >= msgStartIndex; i--) {
+          if (items[i]?.kind === "reasoning") items.splice(i, 1)
+        }
+      } else {
+        // Promote reasoning items to "part" so they display as text
+        for (let i = msgStartIndex; i < items.length; i++) {
+          if (items[i]?.kind === "reasoning") {
+            items[i] = {
+              kind: "part",
+              message: items[i].message,
+              part: items[i].part,
+            } as SessionTurnTimelineItem
+          }
+        }
+      }
+    }
   }
 
   return items
 }
-
 /** A non-root, visible user message rendered as an inline chip inside its turn. */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "isRoot" | "visible">): boolean {
   return message.isRoot === false && message.visible !== false
@@ -785,12 +811,24 @@ export function SessionTurn(
     const parts = data.store.part[last.id]
     if (!parts) return ""
     const texts: string[] = []
+    let hasTextPart = false
     for (const part of parts) {
       if (part.type !== "text") continue
+      hasTextPart = true
       const textPart = part as TextPart
       if (textPart.synthetic || textPart.origin === "system") continue
       const text = textPart.text?.trim()
       if (text) texts.push(text)
+    }
+    // Reasoning-only fallback: when the model produces no text parts,
+    // collect reasoning content so Copy Markdown is still available.
+    if (!hasTextPart && !working()) {
+      for (const part of parts) {
+        if (part.type === "reasoning") {
+          const text = (part as ReasoningPart).text?.trim()
+          if (text) texts.push(text)
+        }
+      }
     }
     return texts.join("\n\n")
   })
