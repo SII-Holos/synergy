@@ -1999,7 +1999,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       <div data-component="tool-card-area">
         <Switch>
           <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-            {(error) => <ErrorCard error={error()} />}
+            {(error) => (
+              <ErrorCard
+                error={error()}
+                input={(part().state as ToolStateError).input as Record<string, unknown> | undefined}
+              />
+            )}
           </Match>
           <Match when={true}>
             <Dynamic

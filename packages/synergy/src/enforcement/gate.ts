@@ -690,13 +690,20 @@ export namespace EnforcementGate {
           }
         }
 
-        // Worktree-aware reclassification: branch mutation (git checkout /
-        // git switch) is safe inside a worktree — each worktree has its own
-        // index and working directory. On the main checkout however, switching
-        // branches corrupts every concurrent session. Upgrade to a denied
-        // capability so autonomous/guarded profiles can gate it.
+        // ── Worktree-aware reclassifications ──────────────────
+        // git checkout / git switch on the main checkout corrupts every
+        // concurrent session. Downgrade to plain shell inside worktrees
+        // where each has its own index and working directory.
         if (risk === "shell_branch_mutation" && workspaceType === "worktree") {
           risk = "shell"
+        }
+
+        // git push from the main checkout is never safe to auto-allow — even
+        // a "publishable" feature-branch push can land in the wrong remote.
+        // Upgrade to shell_remote_write (already denied in autonomous) on
+        // main; worktrees keep shell_remote_publish for normal workflow.
+        if (risk === "shell_remote_publish" && workspaceType !== "worktree") {
+          risk = "shell_remote_write"
         }
 
         if (risk === "shell_hardline") {
