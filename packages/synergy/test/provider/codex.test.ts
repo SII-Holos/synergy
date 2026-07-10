@@ -256,6 +256,49 @@ test("codexFetch rewrites authorization, Codex headers, session headers, and req
   expect(body.max_output_tokens).toBeUndefined()
 })
 
+test("codexFetch rewrites Request input bodies", async () => {
+  const token = accessToken({ accountID: "acct_request" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-request",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  let captured: { input: RequestInfo | URL; init?: RequestInit } | undefined
+  globalThis.fetch = asFetch(async (input, init) => {
+    captured = { input, init }
+    return jsonResponse({ ok: true })
+  })
+
+  const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer stale",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-5.6-sol",
+      input: "hello",
+      prompt_cache_key: "session-request",
+      max_output_tokens: 123,
+    }),
+  })
+
+  await CodexProvider.codexFetch(request)
+
+  expect(captured?.input).toBe(request)
+  const headers = new Headers(captured?.init?.headers)
+  expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+  expect(headers.get("chatgpt-account-id")).toBe("acct_request")
+  expect(headers.get("session_id")).toBe("session-request")
+  expect(headers.get("x-client-request-id")).toBe("session-request")
+
+  const body = JSON.parse(String(captured?.init?.body))
+  expect(body.prompt_cache_key).toBe("session-request")
+  expect(body.max_output_tokens).toBeUndefined()
+})
+
 test("codexFetch refreshes an invalidated access token and retries once", async () => {
   const oldToken = accessToken({ accountID: "acct_old" })
   const newToken = accessToken({ accountID: "acct_new" })
