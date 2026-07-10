@@ -33,6 +33,10 @@ Usage notes:
   - When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote bash does not implicitly create sessions.
   - Remote linkIDs always start with `link_` (e.g. `"link_abc123"`). Any other value will be rejected.
 
+  - For outbound text that the user should review before it is published (for example a PR body, issue body, commit message, or channel message), draft it as a Note and let the user edit the Note first. Local bash commands can then pass `/synergy/note/<note-id>` as a file argument, for example `gh pr create --body-file /synergy/note/<note-id>` or `git commit -F /synergy/note/<note-id>`.
+  - Prefer a command's file-input option over command substitution. The virtual path keeps the Note content out of shell parsing, permission patterns, and the visible command while preserving the command's normal approval boundary.
+  - Note virtual paths are materialized only for local bash execution. A remote Synergy Link command receives the virtual path unchanged.
+
   - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
   - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
   - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).

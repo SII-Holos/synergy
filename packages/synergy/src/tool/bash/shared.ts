@@ -1,6 +1,7 @@
 import { SynergyLinkBash } from "@ericsanchezok/synergy-link-protocol"
 import type { Tool } from "../tool"
 import type { MessageV2 } from "@/session/message-v2"
+import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 
 export type BashParams = SynergyLinkBash.ExecutePayload & {
   linkID?: string
@@ -19,6 +20,13 @@ export interface BashResult {
 }
 
 export type BashContext = Tool.Context<BashMetadata>
+
+export interface BashSandboxPrepareInput {
+  command: string
+  extraReadRoots: string[]
+}
+
+export type BashSandboxPrepare = (input: BashSandboxPrepareInput) => Promise<SandboxExecutionWrapper>
 
 export const MAX_METADATA_LENGTH = 30_000
 
