@@ -221,5 +221,9 @@ describe("Blueprint types", () => {
     test("Auditing event is defined", () => {
       expect(LoopEvent.Auditing.type).toBe("blueprint_loop.auditing")
     })
+
+    test("Rejected event is defined", () => {
+      expect(LoopEvent.Rejected.type).toBe("blueprint_loop.rejected")
+    })
   })
 })

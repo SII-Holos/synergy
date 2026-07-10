@@ -34,7 +34,9 @@ export namespace LatticeRunService {
     const scopeID = ScopeContext.current.scope.id
     const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => undefined)
     if (loop && activeLoopStatus(loop.status) && loop.source !== "lattice") {
-      throw new Error(`Session ${session.id} has an active BlueprintLoop; finish or cancel it before enabling Lattice.`)
+      throw new Error(
+        `Session ${session.id} has an active BlueprintLoop; complete or cancel it before enabling Lattice.`,
+      )
     }
   }
 

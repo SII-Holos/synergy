@@ -25,7 +25,7 @@ export namespace LatticePrompt {
     step_blueprinting:
       "Binding a Blueprint moves you to blueprint_execution (auto) or blueprint_review (collaborative).",
     blueprint_review: "The user's Continue action moves you to blueprint_execution.",
-    blueprint_execution: "The BlueprintLoop finishing moves you to result_analysis.",
+    blueprint_execution: "BlueprintLoop approval moves you to result_analysis.",
     result_analysis: "Updating the Pathway selects the next step (step_blueprinting) or completes the run.",
   }
 

@@ -7,61 +7,147 @@ description: "Guide for adding a new built-in agent to Synergy. Use when creatin
 
 ## Location
 
-Agent definitions live in `packages/synergy/src/agent/`. Each agent has:
+Agent definitions live in `packages/synergy/src/agent/`. The key files:
 
-- A definition in `agents.ts` or a dedicated file
-- A prompt file in `packages/synergy/src/agent/prompt/` (`.txt` files)
+| File                          | Purpose                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `agent.ts`                    | `Agent` namespace, schema, model-role defs, `Agent.create()` assembler          |
+| `builtin-primary.ts`          | Primary orchestrator agents (`synergy`, `synergy-max`)                          |
+| `builtin-max-subagents.ts`    | Coding-harness subagents (`implementation-engineer`, `code-cartographer`, etc.) |
+| `builtin-legacy-subagents.ts` | Classic subagents (`developer`, `explore`, `scout`, etc.)                       |
+| `builtin-internal.ts`         | Hidden/internal agents (`supervisor`, `lightloop-reviewer`)                     |
+| `builtin-context.ts`          | `BuiltinAgentContext` interface and `createSubagent()` factory                  |
+| `delegation.ts`               | Delegation logic                                                                |
+
+There is **no `agents.ts`** and **no `agent/index.ts`**. The entry point is `agent.ts`.
+
+## Prompt Files
+
+Prompt files live in `packages/synergy/src/agent/prompt/`. There are **two patterns**:
+
+### Pattern A: Flat `.txt` — simple single-prompt agents
+
+```txt
+prompt/
+  explore.txt        # flat file, imported as string
+  scout.txt
+  advisor.txt
+```
+
+Used by simple agents like `explore`, `scout`, `advisor`, etc.
+
+### Pattern B: Subdirectory with `base.txt` + `builder.ts` — complex agents
+
+```
+prompt/
+  synergy/
+    base.txt          # prompt template with {PLACEHOLDER} markers
+    builder.ts        # dynamic composition: injects agent table, memory rules, etc.
+  synergy-max/
+    base.txt
+    builder.ts
+  developer/
+    base.txt
+    builder.ts
+```
+
+Used by complex agents whose prompts include dynamically generated sections (agent catalog tables, memory interaction rules, tool descriptions). The `builder.ts` exports a function that reads `base.txt` and replaces `{PLACEHOLDER}` tokens at runtime.
 
 ## Steps
 
-### 1. Create the prompt file
+### 1. Choose the right file
 
-Create `packages/synergy/src/agent/prompt/<name>.txt` (or `<name>/base.txt` for agents with variants).
+- **Primary orchestrator** → `builtin-primary.ts`
+- **Coding-harness subagent** (visible to `synergy-max`) → `builtin-max-subagents.ts`
+- **Classic subagent** (visible to `synergy`) → `builtin-legacy-subagents.ts`
+- **Hidden/internal** (reviewers, audit agents) → `builtin-internal.ts`
 
-The prompt defines the agent's identity, capabilities, and behavior. Study existing prompts:
+### 2. Create the prompt
 
-- `synergy.txt` — orchestrator agent (complex, multi-capability)
-- `master/base.txt` — implementation agent (focused on coding)
-- `explore.txt` — codebase search agent (narrow scope)
+- For simple agents: create a flat `prompt/<name>.txt`
+- For complex agents: create `prompt/<name>/base.txt` + `prompt/<name>/builder.ts`
 
-### 2. Define the agent
+Study existing prompts:
 
-In `packages/synergy/src/agent/agents.ts`, add the agent definition following the existing pattern. Key fields:
+| Agent         | Prompt                                       | Pattern      |
+| ------------- | -------------------------------------------- | ------------ |
+| `explore`     | `prompt/explore.txt`                         | Flat `.txt`  |
+| `scout`       | `prompt/scout.txt`                           | Flat `.txt`  |
+| `synergy`     | `prompt/synergy/base.txt` + `builder.ts`     | Subdirectory |
+| `synergy-max` | `prompt/synergy-max/base.txt` + `builder.ts` | Subdirectory |
+| `developer`   | `prompt/developer/base.txt` + `builder.ts`   | Subdirectory |
 
-- `name` — unique identifier
-- `description` — user-facing description
-- `model` — which model role to use (e.g., `model`, `mini_model`, `thinking_model`)
-- `prompt` — import from the prompt `.txt` file
-- `tools` — which tools this agent has access to
+### 3. Define the agent
 
-### 3. Register and export
+In the appropriate `builtin-*.ts` file, use `createSubagent()` from `builtin-context.ts`:
 
-Ensure the agent is registered in the agent index so it can be discovered by the system.
+```ts
+export function createBuiltinXxxSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
+  const sub = createSubagent(ctx)
+  return {
+    "my-agent": sub({
+      name: "my-agent",
+      description: "What this agent does",
+      prompt: myAgentPrompt, // imported from prompt file or builder
+      model: "mid", // Provider.ModelRole
+      permission: "codeWrite",
+      visibleTo: ["synergy-max"],
+      delegationGroups: ["coding"],
+    }),
+  }
+}
+```
 
-### 4. Update documentation
+Key `SubagentDefinition` fields:
 
-- Update `README.md` Current Agent Model section
-- Update `AGENTS.md` Current agent reality section
-- If the agent is user-facing, update CLI help text
+| Field              | Description                                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`             | Unique identifier                                                                                                                                                                                            |
+| `description`      | Shown in agent table and selection                                                                                                                                                                           |
+| `prompt`           | Prompt string (imported from `.txt` or builder)                                                                                                                                                              |
+| `model`            | Model role: `nano`, `mini`, `mid`, `model`, `thinking`, `long_context`, `creative`, `vision`                                                                                                                 |
+| `permission`       | Permission profile: `readOnly`, `codeWrite`, `anchoredCodeWrite`, `testWrite`, `docsWrite`, `quality`, `memory`, `note`, `research`, `externalResearch`, `sessionHistory`, `supervisor`, `lightLoopReviewer` |
+| `visibleTo`        | Which primary agents can see this subagent (e.g., `["synergy-max"]`)                                                                                                                                         |
+| `hidden`           | Hide from agent catalog (for internal reviewers)                                                                                                                                                             |
+| `delegationGroups` | Group for auto-delegation routing                                                                                                                                                                            |
+| `steps`            | Max tool call steps                                                                                                                                                                                          |
+| `temperature`      | Model temperature override                                                                                                                                                                                   |
+| `topP`             | Model top_p override                                                                                                                                                                                         |
 
-## Design principles
+### 4. Registration
+
+The agent is auto-registered by `Agent.create()` in `agent.ts`. It merges all four `createBuiltin*` functions:
+
+```ts
+const result: Record<string, Info> = {
+  ...createBuiltinPrimaryAgents(builtinContext),
+  ...createBuiltinLegacySubagents(builtinContext),
+  ...createBuiltinMaxSubagents(builtinContext),
+  ...createBuiltinInternalAgents(builtinContext),
+}
+```
+
+Your `createBuiltinXxxSubagents` function must be **imported and spread** here for the agent to be available.
+
+### 5. Update documentation
+
+- If the agent is user-facing, add it to the agent table in relevant prompt builders (`prompt/synergy/builder.ts`, `prompt/synergy-max/builder.ts`)
+- Update `AGENTS.md` agent reality section
+
+## Design Principles
 
 - **Single responsibility** — each agent should do one thing well
-- **Minimal tool set** — only give agents the tools they need
+- **Minimal tool set** — only give agents the tools they need (permission profile controls this)
 - **Clear identity** — the prompt should make the agent's role unambiguous
-- **Match existing patterns** — read 2-3 existing agents before creating a new one
+- **Match existing patterns** — read 2–3 existing agents in the target file before creating a new one
 
-## Key files
+## Quality Verification
 
-- `packages/synergy/src/agent/agents.ts` — agent definitions
-- `packages/synergy/src/agent/prompt/` — all prompt files
-- `packages/synergy/src/agent/index.ts` — agent system entry point
+Before committing a new agent:
 
-## Quality verification
+```bash
+bun run typecheck          # verify no type errors
+bun run quality:quick      # format:check + lint + typecheck + monorepo:check + package:check
+```
 
-Before committing a new agent definition or prompt change:
-
-- Run `bun run typecheck` from repo root
-- Run `bun run lint` from repo root
-- Run full quality preflight: `bun run quality:quick`
-- Add tests for the agent if it introduces new tool interactions or prompt variants
+Add tests if the agent introduces new tool interactions or prompt variants.

@@ -196,10 +196,17 @@ Description: ${task.description}
 Agent: ${task.agent}${params.category ? ` (category: ${params.category})` : ""}
 Status: running
 
-You will be notified when the task completes.
-Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
-Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
+If you have other independent work to do, continue with it now.
+
+Otherwise, you are done for this turn — deliver your final response and stop.
+The system will automatically wake you when the task completes.
+You do not need to poll or wait.
+
+To check progress before then:
+  task_output(task_id="${task.id}", mode="progress")
+  task_output(task_id="${task.id}", mode="tail")
+To list all background tasks:
+  task_list()`,
         }
       }
 
@@ -256,10 +263,17 @@ Description: ${task.description}
 Agent: ${task.agent}
 Status: still running
 
-You will be notified when the task completes.
-Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
-Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
+If you have other independent work to do, continue with it now.
+
+Otherwise, you are done for this turn — deliver your final response and stop.
+The system will automatically wake you when the task completes.
+You do not need to poll or wait.
+
+To check progress before then:
+  task_output(task_id="${task.id}", mode="progress")
+  task_output(task_id="${task.id}", mode="tail")
+To list all background tasks:
+  task_list()`,
         }
       }
 

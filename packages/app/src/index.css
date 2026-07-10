@@ -859,3 +859,14 @@ a:active,
 .sb-session-icon-pulse [data-slot="icon-svg"] {
   animation: spin 1.1s linear infinite;
 }
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -123,8 +123,8 @@ describe("BlueprintContinuation", () => {
         expect(part.text).toContain("current delivered state")
         expect(part.text).not.toContain("implementation state")
         expect(part.text).not.toContain("implementation work")
-        expect(part.text).toContain(`blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing"`)
-        expect(part.text).toContain(`blueprint_loop_finish({ loopID: "${loop.id}", status: "failed"`)
+        expect(part.text).toContain("blueprint_loop_stop")
+        expect(part.text).not.toContain('status: "failed"')
       },
     })
   })

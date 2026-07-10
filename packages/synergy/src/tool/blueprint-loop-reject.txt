@@ -1,0 +1,8 @@
+Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work.
+
+Parameters:
+- sessionID: The execution session ID provided in your launch context
+- reason: Clear explanation of why the Blueprint outcome is not complete
+- completed: Optional summary of work that is already correct
+- remaining: Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING
+- instructions: Concrete next actions the execution agent can follow without further clarification

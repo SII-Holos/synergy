@@ -236,8 +236,9 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   note_read: "note",
   note_archive: "note",
   note_delete: "note",
-  blueprint_loop_finish: "blueprint",
-  blueprint_loop_restart: "blueprint",
+  blueprint_loop_stop: "blueprint",
+  blueprint_loop_approve: "blueprint",
+  blueprint_loop_reject: "blueprint",
   skill: "skill",
 
   // orchestration

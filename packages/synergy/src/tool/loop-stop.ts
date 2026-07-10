@@ -29,7 +29,7 @@ export const LoopStopTool = Tool.define("loop_stop", {
     if (session.workflow.stopRequest?.reviewSessionID) {
       return {
         title: "Light Loop review already requested",
-        output: `A review was already requested for this Light Loop task. The reviewer is session \`${session.workflow.stopRequest.reviewSessionID}\`.`,
+        output: `A review was already requested for this Light Loop task. The reviewer is session \`${session.workflow.stopRequest.reviewSessionID}\`. Do not call any tools to check on it — the reviewer will deliver results directly to this session when the audit completes.`,
         metadata: {
           loopStopRequested: true,
           reviewTaskID: session.workflow.stopRequest.reviewTaskID,
@@ -110,7 +110,7 @@ export const LoopStopTool = Tool.define("loop_stop", {
       throw error
     }
 
-    const output = `Light Loop stop review requested. The reviewer is session \`${task.sessionID}\`.`
+    const output = `Light Loop stop review requested. The reviewer is session \`${task.sessionID}\`. Do not call any tools to check on it — the reviewer will deliver results directly to this session when the audit completes.`
     return {
       title: "Light Loop review requested",
       output,

@@ -42,6 +42,8 @@ import { PerformanceMetrics } from "@/performance/metrics"
 import { SkillPaths } from "@/skill/paths"
 import { PerformanceSpans } from "@/performance/spans"
 import { LightLoopReviewAccess } from "./light-loop-review-access"
+import { BlueprintLoopReviewAccess } from "./blueprint-loop-review-access"
+import { BlueprintLoopStore } from "@/blueprint"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -955,6 +957,24 @@ export namespace ToolResolver {
     )
   }
 
+  async function isRecordedBlueprintLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
+    if (!input.session?.id) return false
+    return (
+      (await BlueprintLoopReviewAccess.resolve({
+        agent: input.agent.name,
+        reviewSessionID: input.session.id,
+        reviewSession: input.session,
+      })) !== undefined
+    )
+  }
+
+  async function canStopBlueprintLoop(input: Omit<Input, "processor">): Promise<boolean> {
+    const session = input.session
+    if (!session?.id || session.blueprint?.loopRole !== "execution" || !session.blueprint.loopID) return false
+    const loop = await BlueprintLoopStore.get(session.scope.id, session.blueprint.loopID).catch(() => undefined)
+    return loop?.status === "running" && loop.sessionID === session.id
+  }
+
   async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
@@ -962,12 +982,12 @@ export namespace ToolResolver {
       defs.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
     )
-    const activeBlueprintLoopID = input.session?.blueprint?.loopID
-    const blueprintLoopRole = input.session?.blueprint?.loopRole
     const forcedGroups = forcedToolGroups(input.session)
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
     const canUseLightLoopReviewTools = await isRecordedLightLoopReviewSession(input)
+    const canUseBlueprintLoopReviewTools = await isRecordedBlueprintLoopReviewSession(input)
+    const canUseBlueprintLoopStop = await canStopBlueprintLoop(input)
 
     const supportsImageInput = input.model.capabilities.input.image
 
@@ -1007,19 +1027,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (def.id === "blueprint_loop_restart" && (!activeBlueprintLoopID || blueprintLoopRole !== "audit")) {
-        diagnostics.set(
-          def.id,
-          SessionModePolicy.unavailable({
-            toolName: def.id,
-            reason: "audit_only",
-            session: input.session,
-          }),
-        )
-        continue
-      }
-
-      if (def.id === "blueprint_loop_finish" && !activeBlueprintLoopID) {
+      if (def.id === "blueprint_loop_stop" && !canUseBlueprintLoopStop) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -1029,6 +1037,20 @@ export namespace ToolResolver {
           }),
         )
         continue
+      }
+
+      if (def.id === "blueprint_loop_approve" || def.id === "blueprint_loop_reject") {
+        if (!canUseBlueprintLoopReviewTools) {
+          diagnostics.set(
+            def.id,
+            SessionModePolicy.unavailable({
+              toolName: def.id,
+              reason: "permission",
+              session: input.session,
+            }),
+          )
+          continue
+        }
       }
 
       if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
