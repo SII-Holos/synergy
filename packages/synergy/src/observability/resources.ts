@@ -13,12 +13,17 @@ export namespace ObservabilityResources {
   let lastCpu = process.cpuUsage()
   let lastTime = performance.now()
   let eventLoopExpected = Date.now()
+  let sampleIntervalMs: number | undefined
   const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
   const rssWindow: Array<{ time: number; rss: number }> = []
 
   export function addRead(bytes: number) {
     io.appReadBytes += Math.max(0, bytes)
     io.appReadOps += 1
+  }
+
+  export function stats() {
+    return { running: !!timer, sampleIntervalMs }
   }
 
   export function addWrite(bytes: number) {
@@ -79,6 +84,7 @@ export namespace ObservabilityResources {
     if (timer) return
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
+    sampleIntervalMs = config.resourceSampleIntervalMs
     eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
     timer = setInterval(snapshot, config.resourceSampleIntervalMs)
     timer.unref()
@@ -87,6 +93,12 @@ export namespace ObservabilityResources {
   export function stop() {
     if (timer) clearInterval(timer)
     timer = undefined
+    sampleIntervalMs = undefined
+  }
+
+  export function reconfigure() {
+    stop()
+    start()
   }
 
   function recordChildProcesses(now: number, sampleWindowMs: number) {

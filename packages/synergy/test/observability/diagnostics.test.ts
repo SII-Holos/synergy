@@ -49,6 +49,8 @@ describe("Diagnostics", () => {
     expect(summary.issues.some((issue) => issue.code === "PERF_DIAGNOSTICS_TEST")).toBe(true)
     expect(summary.inflight.some((item) => item.spanId === span.spanId)).toBe(true)
     expect(summary.resources.latest?.process.role).toBe("server")
+    expect(summary.resources.pressure.observabilityStoreAvailable).toBe(true)
+    expect(summary.resources.pressure.observabilityDroppedWrites).toBeGreaterThanOrEqual(0)
   })
 
   test("package contains redacted indexed telemetry without JSONL-only events", async () => {

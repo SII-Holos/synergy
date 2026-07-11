@@ -69,7 +69,7 @@ export namespace PerformanceDashboard {
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>
-      last(metrics.filter((row) => row.name === "frontend.web_vital" && row.labels.name === name))?.value
+      metrics.find((row) => row.name === "frontend.web_vital" && row.labels.name === name)?.value
     const criticalIssueCount = issues.filter((issue) => issue.severity === "critical").length
     const score = Math.max(
       0,
@@ -255,9 +255,5 @@ export namespace PerformanceDashboard {
       active.add(row.session_id)
     }
     return active.size
-  }
-
-  function last<T>(items: T[]) {
-    return items[items.length - 1]
   }
 }

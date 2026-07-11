@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
 import { PermissionNext } from "../../src/permission/next"
 import { ObservabilityStore } from "../../src/observability/store"
+import { ObservabilityContext } from "../../src/observability/context"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { tmpdir } from "../fixture/fixture"
 import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
@@ -58,7 +59,93 @@ describe("ToolResolver observability", () => {
       },
     })
   })
+
+  test("keeps concurrent tool heartbeats scoped and linked to their parent traces", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+    const gateA = deferred<void>()
+    const gateB = deferred<void>()
+
+    const start = async (scope: typeof scopeA, id: string, traceId: string, gate: ReturnType<typeof deferred<void>>) =>
+      ScopeContext.provide({
+        scope,
+        fn: () =>
+          ObservabilityContext.withContextAsync({ traceId, spanId: `parent_${id}` }, async () => {
+            const executions = new Map<string, Promise<any>>()
+            const tools = await ToolResolver.resolveWithAvailability({
+              agent: allowAllAgent,
+              model,
+              sessionID: `ses_${id}`,
+              processor: minimalProcessor(executions),
+              ephemeralTools: [
+                {
+                  id,
+                  description: "Waits for the test gate",
+                  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+                  async execute() {
+                    await gate.promise
+                    return { title: id, output: "done" }
+                  },
+                },
+              ],
+              userTools: { [id]: true },
+              includeMCP: false,
+            })
+            const execution = (tools.tools[id] as any).execute({}, { toolCallId: `call_${id}` })
+            await Bun.sleep(10)
+            return { execution, scopeID: scope.id }
+          }),
+      })
+
+    const [runningA, runningB] = await Promise.all([
+      start(scopeA, "ephemeral_scope_a", "trace_shared_turn", gateA),
+      start(scopeB, "ephemeral_scope_b", "trace_shared_turn", gateB),
+    ])
+
+    try {
+      ToolResolver.sweepActiveTraces(Date.now() + 60_000)
+      ObservabilityStore.flush()
+
+      const heartbeats = ObservabilityStore.queryEvents({ type: "tool.heartbeat", limit: 10 })
+      const stalled = ObservabilityStore.queryEvents({ type: "tool.stalled", limit: 10 })
+      expect(new Set(heartbeats.map((event) => event.scope_id))).toEqual(new Set([runningA.scopeID, runningB.scopeID]))
+      expect(new Set(stalled.map((event) => event.scope_id))).toEqual(new Set([runningA.scopeID, runningB.scopeID]))
+      expect(new Set(heartbeats.map((event) => event.span_id)).size).toBe(2)
+      expect(heartbeats.every((event) => event.trace_id === "trace_shared_turn")).toBe(true)
+
+      const spans = ObservabilityStore.queryInflight({ limit: 10 })
+      expect(spans.find((span) => span.tool === "ephemeral_scope_a")).toMatchObject({
+        trace_id: "trace_shared_turn",
+        parent_span_id: "parent_ephemeral_scope_a",
+        scope_id: runningA.scopeID,
+        stalled: 1,
+      })
+      expect(spans.find((span) => span.tool === "ephemeral_scope_b")).toMatchObject({
+        trace_id: "trace_shared_turn",
+        parent_span_id: "parent_ephemeral_scope_b",
+        scope_id: runningB.scopeID,
+        stalled: 1,
+      })
+      expect(spans.every((span) => (span.heartbeat_count ?? 0) > 0)).toBe(true)
+    } finally {
+      gateA.resolve()
+      gateB.resolve()
+      await Promise.all([runningA.execution, runningB.execution])
+    }
+  })
 })
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
 
 const allowAllAgent = {
   name: "synergy",

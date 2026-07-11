@@ -12,8 +12,10 @@ import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityResources } from "../../src/observability/resources"
 import { ObservabilityStore } from "../../src/observability/store"
+import { ObservabilitySpans } from "../../src/observability/spans"
 import { ObservabilityWriter } from "../../src/observability/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
+import { PerformanceTimeline } from "../../src/performance/timeline"
 import { ProcessRegistry } from "../../src/process/registry"
 
 const homes: string[] = []
@@ -99,6 +101,30 @@ describe.serial("performance observability store", () => {
     expect(summary.frontend.inpMs).toBe(80)
   })
 
+  test("dashboard uses the newest frontend vital in the selected window", async () => {
+    ObservabilityMetrics.record({
+      name: "frontend.web_vital",
+      value: 100,
+      unit: "ms",
+      module: "frontend",
+      source: "browser",
+      labels: { name: "LCP" },
+    })
+    await Bun.sleep(2)
+    ObservabilityMetrics.record({
+      name: "frontend.web_vital",
+      value: 200,
+      unit: "ms",
+      module: "frontend",
+      source: "browser",
+      labels: { name: "LCP" },
+    })
+    ObservabilityStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+    expect(summary.frontend.lcpMs).toBe(200)
+  })
+
   test("dashboard summary ranks provider and library durations from recorded metrics", async () => {
     ObservabilityMetrics.record({
       name: "llm.stream.initialization.duration",
@@ -172,6 +198,43 @@ describe.serial("performance observability store", () => {
     expect(JSON.stringify(detail.events)).not.toContain("raw content")
   })
 
+  test("trace list returns distinct traces and applies kind filtering in sqlite", () => {
+    const first = ObservabilitySpans.start({
+      name: "tool.execution",
+      module: "tool",
+      traceId: "trace_distinct_tool",
+      tool: "bash",
+    })
+    const second = ObservabilitySpans.start({
+      name: "tool.phase",
+      module: "tool",
+      traceId: "trace_distinct_tool",
+      parentSpanId: first?.spanId,
+      tool: "bash",
+    })
+    ObservabilitySpans.end(second)
+    ObservabilitySpans.end(first)
+    const runtime = ObservabilitySpans.start({ name: "runtime.work", module: "observability", kind: "runtime" })
+    ObservabilitySpans.end(runtime)
+    ObservabilityStore.flush()
+
+    const traces = PerformanceTraceDetail.list({ kind: "tool", limit: 1 })
+    expect(traces.items).toHaveLength(1)
+    expect(traces.items[0].traceId).toBe("trace_distinct_tool")
+  })
+
+  test("timeline honors the current configured bucket limit", () => {
+    ObservabilityConfig.refresh({ observability: { performance: { maxTimelineBuckets: 50 } } })
+
+    expect(() =>
+      PerformanceTimeline.get({
+        metric: "http.request.duration",
+        windowMs: 100_000,
+        bucketMs: 1_000,
+      }),
+    ).toThrow("configured bucket limit")
+  })
+
   test("coalesces repeated issue events while preserving occurrence counts", () => {
     let published = 0
     const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
@@ -228,7 +291,8 @@ describe.serial("performance observability store", () => {
   })
 
   test("aggregates high-frequency count metrics before sqlite flush", () => {
-    for (let i = 0; i < 5; i++) {
+    const before = ObservabilityStore.stats()
+    for (let i = 0; i < 5_000; i++) {
       ObservabilityMetrics.record({
         name: "llm.stream.output_chars",
         value: 3,
@@ -243,8 +307,9 @@ describe.serial("performance observability store", () => {
 
     const rows = ObservabilityStore.queryMetrics({ since: 0, names: ["llm.stream.output_chars"] })
     const matching = rows.filter((row) => row.session_id === "session_perf_aggregate")
-    expect(matching).toHaveLength(5)
-    expect(matching.every((row) => row.value === 3)).toBe(true)
+    expect(matching).toHaveLength(1)
+    expect(matching[0].value).toBe(15_000)
+    expect(ObservabilityStore.stats().dropped).toBe(before.dropped)
   })
 
   test("resource sampler records finite process and app IO samples", () => {

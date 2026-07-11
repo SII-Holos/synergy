@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
 import { ObservabilityStore } from "../../src/observability/store"
+import { ObservabilityContext } from "../../src/observability/context"
 import { Plugin } from "../../src/plugin"
 import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
@@ -36,9 +37,36 @@ describe("SessionProcessor observability", () => {
     expect(gap.value).toBeGreaterThanOrEqual(0)
     expect(JSON.parse(gap.labels_json).kind).toBe("text")
   })
+
+  test("inherits the owning turn trace for LLM spans, events, and metrics", async () => {
+    await runStreamScenario(
+      async function* () {
+        yield { type: "start" }
+        yield { type: "text-start", id: "txt_trace" }
+        yield { type: "text-delta", id: "txt_trace", text: "linked" }
+        yield { type: "text-end", id: "txt_trace" }
+        yield { type: "finish" }
+      },
+      { traceId: "trace_parent_turn", spanId: "span_parent_turn" },
+    )
+    ObservabilityStore.flush()
+
+    const events = ObservabilityStore.queryEvents({ traceId: "trace_parent_turn", limit: 20 })
+    expect(events.some((event) => event.type === "session.turn.start")).toBe(true)
+    expect(events.some((event) => event.type === "session.turn.end")).toBe(true)
+    const llmSpan = ObservabilityStore.querySpans({ traceId: "trace_parent_turn" }).find(
+      (span) => span.name === "llm.request",
+    )
+    expect(llmSpan).toMatchObject({ parent_span_id: "span_parent_turn", status: "ok" })
+    const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_parent_turn" })
+    expect(metrics.some((metric) => metric.name === "llm.stream.output_chars")).toBe(true)
+  })
 })
 
-async function runStreamScenario(stream: () => AsyncGenerator<Record<string, unknown>>) {
+async function runStreamScenario(
+  stream: () => AsyncGenerator<Record<string, unknown>>,
+  context?: { traceId: string; spanId: string },
+) {
   const originalStream = LLM.stream
   const originalUpdatePart = Session.updatePart
   const originalUpdatePartDelta = Session.updatePartDelta
@@ -88,7 +116,9 @@ async function runStreamScenario(stream: () => AsyncGenerator<Record<string, unk
       model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
       abort: new AbortController().signal,
     })
-    await processor.process({} as any)
+    const process = () => processor.process({} as any)
+    if (context) await ObservabilityContext.withContextAsync(context, process)
+    else await process()
   } finally {
     TimeoutConfig.invalidate()
     ;(LLM.stream as any) = originalStream

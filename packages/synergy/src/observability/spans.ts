@@ -168,13 +168,14 @@ export namespace ObservabilitySpans {
     const time = ObservabilityClock.now()
     const status = opts.status ?? (opts.error ? "error" : "ok")
     const error = opts.error instanceof Error ? opts.error : undefined
+    const errorInfo = error ? ObservabilityRedaction.errorInfo(error) : undefined
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(opts.attributes ?? {}) })
     const span = toSpan(ctx, {
       endTime: time,
       durationMs,
       status,
-      errorCode: error?.name,
-      errorMessage: error ? ObservabilityRedaction.error(error) : undefined,
+      errorCode: errorInfo?.name,
+      errorMessage: errorInfo?.message,
       attributes: redacted.value,
       redaction: redacted.summary,
     })

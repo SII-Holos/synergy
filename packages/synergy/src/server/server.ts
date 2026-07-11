@@ -92,8 +92,16 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 RuntimeReload.startAutoReload()
 void Config.current()
-  .then((config) => ObservabilityConfig.refresh(config))
-  .catch(() => ObservabilityConfig.refresh())
+  .then((config) => {
+    ObservabilityConfig.refresh(config)
+    ObservabilityStore.reconfigure()
+    ObservabilityResources.reconfigure()
+  })
+  .catch(() => {
+    ObservabilityConfig.refresh()
+    ObservabilityStore.reconfigure()
+    ObservabilityResources.reconfigure()
+  })
 ObservabilityResources.start()
 ObservabilityStore.open()
 

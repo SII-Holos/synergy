@@ -268,6 +268,12 @@ export namespace Diagnostics {
   function resourcePressure(samples: ObservabilitySchema.ResourceSample[]) {
     const latest = samples[samples.length - 1]
     const pressure: ObservabilitySchema.Labels = {}
+    const store = ObservabilityStore.stats()
+    pressure.observabilityStoreAvailable = store.available
+    pressure.observabilityPendingWrites = store.pending
+    pressure.observabilityDroppedWrites = store.dropped
+    pressure.observabilityCapExceededBytes = store.capExceededBytes
+    if (store.lastOpenError) pressure.observabilityStoreError = ObservabilityRedaction.text(store.lastOpenError, 160)
     if (!latest) return pressure
     const heapUsed = latest.memory.heapUsedBytes ?? 0
     const heapTotal = latest.memory.heapTotalBytes ?? 0

@@ -41,6 +41,7 @@ type TokenReceipt = {
 }
 const MAX_BATCH = 100
 const MAX_PAYLOAD_BYTES = 256 * 1024
+const MAX_KEEPALIVE_PAYLOAD_BYTES = 60 * 1024
 const FLUSH_INTERVAL_MS = 10_000
 const MAX_LABEL_LENGTH = 160
 const RECENT_LONG_TASK_WINDOW_MS = 60_000
@@ -58,6 +59,7 @@ export function startBrowserPerformanceMetrics(input: { url: string; client: Syn
   started = true
 
   const flush = () => void flushBrowserMetrics(input)
+  const flushOnPageHide = () => void flushBrowserMetrics(input, { keepalive: true })
   observeWebVitals()
   observePerformanceEntries()
   timer = window.setInterval(flush, FLUSH_INTERVAL_MS)
@@ -66,13 +68,13 @@ export function startBrowserPerformanceMetrics(input: { url: string; client: Syn
   }
   const onLocationChange = () => flush()
   window.addEventListener("visibilitychange", onVisibilityChange)
-  window.addEventListener("pagehide", flush)
+  window.addEventListener("pagehide", flushOnPageHide)
   window.addEventListener("popstate", onLocationChange)
   window.addEventListener("hashchange", onLocationChange)
   wrapHistoryNavigation("pushState", onLocationChange)
   wrapHistoryNavigation("replaceState", onLocationChange)
   cleanup.push(() => window.removeEventListener("visibilitychange", onVisibilityChange))
-  cleanup.push(() => window.removeEventListener("pagehide", flush))
+  cleanup.push(() => window.removeEventListener("pagehide", flushOnPageHide))
   cleanup.push(() => window.removeEventListener("popstate", onLocationChange))
   cleanup.push(() => window.removeEventListener("hashchange", onLocationChange))
 }
@@ -222,33 +224,56 @@ export function buildTokenTimingMetric(input: {
   })
 }
 
-async function flushBrowserMetrics(input: { url: string; client: SynergyClient }) {
+async function flushBrowserMetrics(input: { url: string; client: SynergyClient }, options?: { keepalive?: boolean }) {
   if (queue.length === 0 && locallyRejected === 0) return
-  const entries = queue.splice(0, MAX_BATCH)
-  const metrics = entries.flatMap((entry) => (entry.kind === "metric" ? [entry.value] : []))
+  const candidates = queue.splice(0, MAX_BATCH)
   const rejected = locallyRejected
-  if (rejected > 0) {
-    metrics.push(metricValue("frontend.collector.rejected", rejected, "count", { reason: "local_limit" }))
-  }
-  const resourceEntries = entries.flatMap((entry) => (entry.kind === "resource" ? [entry.value] : []))
-  const longTasks = entries.flatMap((entry) => (entry.kind === "longTask" ? [entry.value] : []))
-  const body = {
-    sentAt: Date.now(),
+  locallyRejected = Math.max(0, locallyRejected - rejected)
+  const fitted = fitBrowserMetricBatch({
+    entries: candidates,
+    rejected,
     page: pageContext(),
-    metrics,
-    resourceEntries,
-    longTasks,
-  }
-  if (encodedSize(body) > MAX_PAYLOAD_BYTES) {
-    queue = [...entries, ...queue]
-    return
-  }
+    maxBytes: options?.keepalive ? MAX_KEEPALIVE_PAYLOAD_BYTES : MAX_PAYLOAD_BYTES,
+  })
+  queue = [...fitted.deferred, ...queue]
+  if (fitted.entries.length === 0 && rejected === 0) return
   try {
-    await input.client.performance.browserMetrics.ingest({ perfBrowserMetricBatch: body }, { throwOnError: true })
-    locallyRejected = Math.max(0, locallyRejected - rejected)
+    await input.client.performance.browserMetrics.ingest(
+      { perfBrowserMetricBatch: fitted.body },
+      { throwOnError: true, keepalive: options?.keepalive },
+    )
   } catch {
-    queue = [...entries, ...queue].slice(0, MAX_BATCH * 4)
+    queue = [...fitted.entries, ...queue].slice(0, MAX_BATCH * 4)
+    locallyRejected += rejected
   }
+}
+
+export function fitBrowserMetricBatch(input: {
+  entries: QueueEntry[]
+  rejected: number
+  page: PerfBrowserMetricBatch["page"]
+  maxBytes: number
+}) {
+  const entries = [...input.entries]
+  const build = () => {
+    const metrics = entries.flatMap((entry) => (entry.kind === "metric" ? [entry.value] : []))
+    if (input.rejected > 0) {
+      metrics.push(metricValue("frontend.collector.rejected", input.rejected, "count", { reason: "local_limit" }))
+    }
+    return {
+      sentAt: Date.now(),
+      page: input.page,
+      metrics,
+      resourceEntries: entries.flatMap((entry) => (entry.kind === "resource" ? [entry.value] : [])),
+      longTasks: entries.flatMap((entry) => (entry.kind === "longTask" ? [entry.value] : [])),
+    }
+  }
+  let body = build()
+  while (entries.length > 0 && encodedSize(body) > input.maxBytes) {
+    entries.pop()
+    body = build()
+  }
+  return { entries, deferred: input.entries.slice(entries.length), body }
 }
 
 function observeWebVitals() {

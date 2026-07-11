@@ -74,6 +74,7 @@ import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityContext } from "@/observability/context"
 import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
@@ -865,7 +866,24 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           model,
         }
         try {
-          result = await Promise.race([processor.process(streamInput), deadlinePromise])
+          const currentStreamInput = streamInput
+          const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
+          result = turnSpan
+            ? await ObservabilityContext.withContextAsync(
+                {
+                  correlationId: turnSpan.correlationId,
+                  traceId: turnSpan.traceId,
+                  spanId: turnSpan.spanId,
+                  parentSpanId: turnSpan.parentSpanId,
+                  scopeID: turnSpan.scopeID,
+                  sessionID: turnSpan.sessionID,
+                  messageID: turnSpan.messageID,
+                  module: turnSpan.module,
+                  source: turnSpan.source,
+                },
+                process,
+              )
+            : await process()
         } catch (error) {
           if (error !== deadlineError) {
             ObservabilitySpans.end(turnSpan, { status: "error", error })

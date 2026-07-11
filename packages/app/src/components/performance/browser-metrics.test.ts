@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { buildSessionSwitchMetrics, buildTokenTimingMetric, pageContextFromUrl } from "./browser-metrics"
+import {
+  buildSessionSwitchMetrics,
+  buildTokenTimingMetric,
+  fitBrowserMetricBatch,
+  pageContextFromUrl,
+} from "./browser-metrics"
 
 describe("browser performance metrics", () => {
   test("builds safe route and session context", () => {
@@ -114,6 +119,28 @@ describe("browser performance metrics", () => {
         deltaChars: 4,
         messageID: "msg_1",
       },
+    })
+  })
+
+  test("fits pagehide batches below the browser keepalive payload limit", () => {
+    const entries = Array.from({ length: 100 }, (_, index) => ({
+      kind: "metric" as const,
+      value: {
+        name: "frontend.test",
+        value: index,
+        unit: "count" as const,
+        labels: { payload: "x".repeat(1000) },
+      },
+    }))
+
+    const fitted = fitBrowserMetricBatch({ entries, rejected: 2, page: {}, maxBytes: 60 * 1024 })
+    expect(new TextEncoder().encode(JSON.stringify(fitted.body)).byteLength).toBeLessThanOrEqual(60 * 1024)
+    expect(fitted.entries.length).toBeGreaterThan(0)
+    expect(fitted.entries.length).toBeLessThan(entries.length)
+    expect(fitted.entries.length + fitted.deferred.length).toBe(entries.length)
+    expect(fitted.body.metrics.at(-1)).toMatchObject({
+      name: "frontend.collector.rejected",
+      value: 2,
     })
   })
 })

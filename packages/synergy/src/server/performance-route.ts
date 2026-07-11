@@ -8,6 +8,7 @@ import { ObservabilityLiveEvents } from "@/observability/live-events"
 import { PerformanceError } from "@/performance/error"
 import { ObservabilityBrowserMetrics } from "@/observability/browser-metrics"
 import { ObservabilityIssues } from "@/observability/issues"
+import { ObservabilityResources } from "@/observability/resources"
 import { ObservabilityStore } from "@/observability/store"
 import { PerformanceDashboard } from "@/performance/dashboard"
 import { PerformanceInflight } from "@/performance/inflight"
@@ -362,6 +363,8 @@ export const PerformanceRoute = new Hono()
           observability: { ...(current.observability ?? {}), performance: nextPerformance },
         })
         ObservabilityConfig.refresh(await Config.current())
+        ObservabilityStore.reconfigure()
+        ObservabilityResources.reconfigure()
         return c.json(ObservabilityConfig.current())
       } catch (error) {
         Log.create({ service: "performance-route" }).error("Failed to persist performance configuration", { error })
@@ -440,7 +443,7 @@ export const PerformanceRoute = new Hono()
         }
         const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
           if (event.type === "issue.raised") {
-            if (query.scopeID && event.issue.evidence.scopeID !== query.scopeID) return
+            if (query.scopeID && (event.issue.scopeID ?? event.issue.evidence.scopeID) !== query.scopeID) return
             if (query.sessionID && event.issue.sessionID !== query.sessionID) return
             write("performance.issue.raised", PerformanceProjection.issue(event.issue))
             return

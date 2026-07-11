@@ -162,9 +162,12 @@ export namespace ObservabilityConfig {
       storage: {
         ...defaults.storage,
         ...(raw?.storage ?? {}),
-        maxSqliteBytes: Math.min(
-          raw?.storage?.maxSqliteBytes ?? defaults.storage.maxSqliteBytes,
-          observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
+        maxSqliteBytes: Math.max(
+          1024 * 1024,
+          Math.min(
+            raw?.storage?.maxSqliteBytes ?? defaults.storage.maxSqliteBytes,
+            observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
+          ),
         ),
       },
       thresholds: { ...defaults.thresholds, ...(raw?.thresholds ?? {}) },

@@ -87,6 +87,21 @@ export namespace PerformanceCatalog {
       ["providerID", "modelID"],
       { aliases: ["llm.output.chars"] },
     ),
+    metric("llm.stream.chunk_gap", "Average LLM stream chunk gap", "ms", "duration", "p95", "llm", "backend", [
+      "provider",
+      "model",
+      "kind",
+    ]),
+    metric(
+      "llm.stream.output_chars_per_second",
+      "LLM stream character throughput",
+      "count",
+      "rate",
+      "avg",
+      "llm",
+      "backend",
+      ["provider", "model", "kind"],
+    ),
     metric("llm.tokens.input", "LLM input tokens", "tokens", "counter", "sum", "llm", "backend", [
       "providerID",
       "modelID",

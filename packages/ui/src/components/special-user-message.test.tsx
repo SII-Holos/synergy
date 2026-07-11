@@ -1,13 +1,7 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 
-mock.module("./message-part", () => ({
-  Message: () => undefined,
-}))
-
-mock.module("./special-user-message.css", () => ({}))
-
-const { getSpecialUserMessageBubbleView, getSpecialUserMessageRenderer } = await import("./special-user-message")
+import { getSpecialUserMessageBubbleView } from "./special-user-message-model"
 
 function userMessage(metadata: Record<string, unknown>): UserMessage {
   return {
@@ -42,7 +36,6 @@ describe("special user messages", () => {
     const originalParts = [textPart("Create a Blueprint")]
     const view = getSpecialUserMessageBubbleView(message, originalParts)
 
-    expect(getSpecialUserMessageRenderer(message)).toBeDefined()
     expect(view?.label).toBe("Plan")
     expect(view?.kind).toBe("plan-request")
     expect(view?.parts).toBe(originalParts)
@@ -61,7 +54,6 @@ describe("special user messages", () => {
       textPart("Execute the coding Blueprint with a long internal prompt."),
     ])
 
-    expect(getSpecialUserMessageRenderer(message)).toBeDefined()
     expect(view?.label).toBe("Blueprint")
     expect(view?.kind).toBe("blueprint-control")
     expect(projectedText(view)).toContain("Implement this directly in the worktree.")
@@ -89,7 +81,6 @@ describe("special user messages", () => {
       })
       const view = getSpecialUserMessageBubbleView(message, [textPart("Raw internal control prompt")])
 
-      expect(getSpecialUserMessageRenderer(message)).toBeDefined()
       expect(view?.label).toBe(label)
       expect(view?.kind).toBe("blueprint-control")
       expect(projectedText(view)).toContain(expected)
@@ -114,7 +105,6 @@ describe("special user messages", () => {
       })
       const view = getSpecialUserMessageBubbleView(message, [textPart("Raw workflow control prompt")])
 
-      expect(getSpecialUserMessageRenderer(message)).toBeDefined()
       expect(view?.label).toBe(label)
       expect(projectedText(view)).toContain(expected)
       expect(projectedText(view)).not.toContain("Raw workflow control prompt")

@@ -52,4 +52,25 @@ describe("ObservabilityResources", () => {
     expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_HEAP_RATIO")).toBe(true)
     expect(openIssues.some((row) => row.code === "PERF_EVENT_LOOP_LAG")).toBe(true)
   })
+
+  test("reconfigures resource and store maintenance timers without restart", () => {
+    ObservabilityStore.open()
+    ObservabilityResources.start()
+    ObservabilityConfig.refresh({
+      observability: {
+        performance: {
+          metricRetentionMs: 400_000,
+          resourceSampleIntervalMs: 777,
+          storage: { walCheckpointIntervalMs: 1_234 },
+        },
+      },
+    })
+
+    ObservabilityStore.reconfigure()
+    ObservabilityResources.reconfigure()
+
+    expect(ObservabilityStore.stats().checkpointIntervalMs).toBe(1_234)
+    expect(ObservabilityStore.stats().retentionIntervalMs).toBe(100_000)
+    expect(ObservabilityResources.stats()).toEqual({ running: true, sampleIntervalMs: 777 })
+  })
 })

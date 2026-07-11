@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdirSync, statSync } from "fs"
+import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityEvents } from "../../src/observability/events"
 import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
@@ -190,6 +192,50 @@ describe("ObservabilityStore", () => {
     const timestamp = Number(retentionEntry!.value)
     expect(timestamp).toBeGreaterThan(0)
     expect(timestamp).toBeGreaterThan(Date.now() - 10_000)
+  })
+
+  test("keeps the physical database footprint under the configured cap without deleting newest data", () => {
+    const maxSqliteBytes = 1024 * 1024
+    ObservabilityConfig.refresh({
+      observability: { performance: { storage: { maxSqliteBytes } } },
+    })
+    for (let index = 0; index < 6_000; index++) {
+      ObservabilityMetrics.record({
+        name: "test.capacity.metric",
+        value: index,
+        unit: "count",
+        module: "observability",
+        labels: { payload: `${index}:${"x".repeat(1000)}` },
+      })
+    }
+    ObservabilityStore.flush()
+
+    const filepath = ObservabilityStore.pathName()
+    const physicalBytes = [filepath, `${filepath}-wal`, `${filepath}-shm`].reduce((total, file) => {
+      try {
+        return total + statSync(file).size
+      } catch {
+        return total
+      }
+    }, 0)
+    const rows = ObservabilityStore.queryMetrics({
+      since: 0,
+      names: ["test.capacity.metric"],
+      newestFirst: true,
+      limit: 10_000,
+    })
+    expect(physicalBytes).toBeLessThanOrEqual(maxSqliteBytes)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows[0].value).toBe(5_999)
+  })
+
+  test("fails open when the observability database cannot be created", () => {
+    ObservabilityStore.close()
+    mkdirSync(ObservabilityStore.pathName(), { recursive: true })
+
+    expect(ObservabilityStore.open()).toBeUndefined()
+    expect(ObservabilityStore.stats().available).toBe(false)
+    expect(ObservabilityStore.stats().lastOpenError).toBeTruthy()
   })
 })
 

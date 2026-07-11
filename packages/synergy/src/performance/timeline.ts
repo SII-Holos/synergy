@@ -14,7 +14,7 @@ export namespace PerformanceTimeline {
     const from = parseTime(query.from, query.windowMs ? to - query.windowMs : to - 15 * 60 * 1000)
     if (from >= to) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline from must be before to.", 400)
 
-    const config = ObservabilityConfig.effective()
+    const config = ObservabilityConfig.current()
     const bucketMs = query.bucketMs ?? Math.max(1000, Math.ceil((to - from) / config.maxTimelineBuckets))
     const bucketCount = Math.floor((to - from) / bucketMs) + 1
     if (bucketCount > config.maxTimelineBuckets) {

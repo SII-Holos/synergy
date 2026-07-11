@@ -256,16 +256,14 @@ export namespace Log {
     if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
     mirroring = true
     try {
-      const record = ObservabilityRedaction.value({ ...tags, ...(extra ?? {}) }).value
-      const data =
-        record && typeof record === "object" && !Array.isArray(record) ? { ...(record as Record<string, unknown>) } : {}
+      const data: Record<string, unknown> = { ...tags, ...(extra ?? {}) }
       delete data["mirror"]
-      data.message = cleanMessage(message)
+      data.message = message instanceof Error ? ObservabilityRedaction.errorInfo(message) : message
       void ObservabilityEvents.emit("log.record", {
         level: level.toLowerCase() as "debug" | "info" | "warn" | "error",
         module: moduleForService(data.service),
         data,
-      })
+      }).catch(() => {})
     } catch {
     } finally {
       mirroring = false

@@ -113,4 +113,31 @@ export namespace PerformanceProjection {
         return "runtime"
     }
   }
+
+  export function spanKinds(
+    kind: NonNullable<PerformanceSchema.TraceListQuery["kind"]>,
+  ): ObservabilitySchema.SpanKind[] {
+    switch (kind) {
+      case "request":
+        return ["http"]
+      case "session":
+        return ["session", "session_step"]
+      case "tool":
+        return ["tool"]
+      case "provider":
+        return ["llm"]
+      case "storage":
+        return ["storage"]
+      case "frontend":
+        return ["frontend"]
+      case "mcp":
+        return ["mcp"]
+      case "plugin":
+        return ["plugin"]
+      case "channel":
+        return ["channel"]
+      case "runtime":
+        return ["permission", "library", "sse", "process", "diagnostic", "runtime"]
+    }
+  }
 }

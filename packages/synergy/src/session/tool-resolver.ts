@@ -65,6 +65,8 @@ export namespace ToolResolver {
     messageID: string
     callID: string | undefined
     toolName: string
+    cwd: string
+    scopeID: string
   }
 
   const activeTraces = new Map<string, ActiveTraceEntry>()
@@ -73,82 +75,91 @@ export namespace ToolResolver {
 
   function ensureSweepTimer() {
     if (sweepTimer) return
-    sweepTimer = setInterval(() => {
-      if (activeTraces.size === 0) {
-        stopSweepTimer()
-        return
-      }
-      const now = Date.now()
-      for (const [traceId, entry] of activeTraces) {
-        const idleMs = now - entry.lastActivity
-
-        if (now - entry.lastHeartbeat >= TOOL_HEARTBEAT_MS) {
-          entry.lastHeartbeat = now
-          void Observability.emit("tool.heartbeat", {
-            traceId,
-            sessionID: entry.sessionID,
-            messageID: entry.messageID,
-            callID: entry.callID,
-            tool: entry.toolName,
-            cwd: ScopeContext.current.directory,
-            scopeID: ScopeContext.current.scope.id,
-            data: {
-              phase: entry.phase,
-              elapsedMs: now - entry.startedAt,
-              idleMs,
-            },
-          })
-        }
-
-        if (!entry.stalled && idleMs >= entry.stalledMs) {
-          entry.stalled = true
-          void Observability.emit("tool.stalled", {
-            traceId,
-            sessionID: entry.sessionID,
-            messageID: entry.messageID,
-            callID: entry.callID,
-            tool: entry.toolName,
-            cwd: ScopeContext.current.directory,
-            scopeID: ScopeContext.current.scope.id,
-            level: "warn",
-            data: {
-              phase: entry.phase,
-              elapsedMs: now - entry.startedAt,
-              idleMs,
-              thresholdMs: entry.stalledMs,
-            },
-          })
-          ObservabilityMetrics.record({
-            name: "tool.execution.stalled",
-            value: 1,
-            unit: "count",
-            module: "tool",
-            traceId,
-            spanId: entry.span?.spanId,
-            sessionID: entry.sessionID,
-            messageID: entry.messageID,
-            callID: entry.callID,
-            tool: entry.toolName,
-            labels: { phase: entry.phase },
-          })
-          ObservabilityIssues.raise({
-            code: "PERF_TOOL_STALLED",
-            severity: "warning",
-            module: "tool",
-            title: "Tool execution stalled",
-            message: `${entry.toolName} has not reported activity for ${idleMs}ms`,
-            recommendation: "Inspect the tool trace and owning tool implementation.",
-            traceId,
-            spanId: entry.span?.spanId,
-            sessionID: entry.sessionID,
-            messageID: entry.messageID,
-            callID: entry.callID,
-            evidence: { idleMs, thresholdMs: entry.stalledMs, tool: entry.toolName },
-          })
-        }
-      }
-    }, SWEEP_INTERVAL_MS)
+    sweepTimer = setInterval(() => sweepActiveTraces(), SWEEP_INTERVAL_MS)
     if (typeof sweepTimer === "object" && "unref" in sweepTimer) sweepTimer.unref()
+  }
+
+  export function sweepActiveTraces(now = Date.now()) {
+    if (activeTraces.size === 0) {
+      stopSweepTimer()
+      return
+    }
+    for (const entry of activeTraces.values()) {
+      const traceId = entry.traceId
+      const idleMs = now - entry.lastActivity
+
+      if (now - entry.lastHeartbeat >= TOOL_HEARTBEAT_MS) {
+        entry.lastHeartbeat = now
+        ObservabilitySpans.heartbeat(entry.span, { phase: entry.phase })
+        void Observability.emit("tool.heartbeat", {
+          traceId,
+          spanId: entry.span?.spanId,
+          parentSpanId: entry.span?.parentSpanId,
+          sessionID: entry.sessionID,
+          messageID: entry.messageID,
+          callID: entry.callID,
+          tool: entry.toolName,
+          cwd: entry.cwd,
+          scopeID: entry.scopeID,
+          data: {
+            phase: entry.phase,
+            elapsedMs: now - entry.startedAt,
+            idleMs,
+          },
+        }).catch(() => {})
+      }
+
+      if (!entry.stalled && idleMs >= entry.stalledMs) {
+        entry.stalled = true
+        ObservabilitySpans.markStalled(entry.span, { phase: entry.phase, idleMs })
+        void Observability.emit("tool.stalled", {
+          traceId,
+          spanId: entry.span?.spanId,
+          parentSpanId: entry.span?.parentSpanId,
+          sessionID: entry.sessionID,
+          messageID: entry.messageID,
+          callID: entry.callID,
+          tool: entry.toolName,
+          cwd: entry.cwd,
+          scopeID: entry.scopeID,
+          level: "warn",
+          data: {
+            phase: entry.phase,
+            elapsedMs: now - entry.startedAt,
+            idleMs,
+            thresholdMs: entry.stalledMs,
+          },
+        }).catch(() => {})
+        ObservabilityMetrics.record({
+          name: "tool.execution.stalled",
+          value: 1,
+          unit: "count",
+          module: "tool",
+          traceId,
+          spanId: entry.span?.spanId,
+          sessionID: entry.sessionID,
+          messageID: entry.messageID,
+          callID: entry.callID,
+          tool: entry.toolName,
+          labels: { phase: entry.phase },
+        })
+        ObservabilityIssues.raise({
+          code: "PERF_TOOL_STALLED",
+          severity: "warning",
+          module: "tool",
+          title: "Tool execution stalled",
+          message: `${entry.toolName} has not reported activity for ${idleMs}ms`,
+          recommendation: "Inspect the tool trace and owning tool implementation.",
+          traceId,
+          spanId: entry.span?.spanId,
+          sessionID: entry.sessionID,
+          messageID: entry.messageID,
+          callID: entry.callID,
+          scopeID: entry.scopeID,
+          evidence: { idleMs, thresholdMs: entry.stalledMs, tool: entry.toolName },
+        })
+      }
+    }
   }
 
   function stopSweepTimer() {
@@ -344,22 +355,25 @@ export namespace ToolResolver {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<ToolTrace> {
-    const traceId = Observability.traceId("tool")
-    ;(ctx.extra as any).traceId = traceId
     const startedAt = Date.now()
     let phase = "start"
     let lastActivity = startedAt
     const stalledMs = await stalledToolMs()
+    const scopeID = ScopeContext.current.scope.id
+    const cwd = ObservabilityRedaction.cwdScope(ScopeContext.current.directory)
     const span = ObservabilitySpans.start({
       name: "tool.execution",
       module: "tool",
-      traceId,
+      scopeID,
       sessionID: input.sessionID,
       messageID: input.processor.message.id,
       callID: ctx.callID,
       tool: toolName,
       attributes: { tool: toolName },
     })
+    const traceId = span?.traceId ?? Observability.traceId("tool")
+    const activeTraceKey = span?.spanId ?? Observability.traceId("active_tool")
+    ;(ctx.extra as any).traceId = traceId
     ObservabilityMetrics.record({
       name: "tool.execution.count",
       value: 1,
@@ -367,6 +381,7 @@ export namespace ToolResolver {
       module: "tool",
       traceId,
       spanId: span?.spanId,
+      parentSpanId: span?.parentSpanId,
       sessionID: input.sessionID,
       messageID: input.processor.message.id,
       callID: ctx.callID,
@@ -378,8 +393,8 @@ export namespace ToolResolver {
       messageID: input.processor.message.id,
       callID: ctx.callID,
       tool: toolName,
-      cwd: ScopeContext.current.directory,
-      scopeID: ScopeContext.current.scope.id,
+      cwd,
+      scopeID,
     })
     const emit = (type: string, data?: Record<string, unknown>, level?: Observability.Event["level"]) =>
       Observability.emit(type, {
@@ -407,8 +422,10 @@ export namespace ToolResolver {
       messageID: input.processor.message.id,
       callID: ctx.callID,
       toolName,
+      cwd,
+      scopeID,
     }
-    activeTraces.set(traceId, entry)
+    activeTraces.set(activeTraceKey, entry)
     ensureSweepTimer()
 
     return {
@@ -420,6 +437,7 @@ export namespace ToolResolver {
         const now = Date.now()
         entry.phase = nextPhase
         entry.lastActivity = now
+        ObservabilitySpans.activity(span, { phase: nextPhase })
         ObservabilityMetrics.record({
           name: "tool.phase.duration",
           value: now - lastActivity,
@@ -471,7 +489,7 @@ export namespace ToolResolver {
         ObservabilitySpans.end(span, { status: "error", error, attributes: data })
       },
       dispose() {
-        activeTraces.delete(traceId)
+        activeTraces.delete(activeTraceKey)
       },
     }
   }
@@ -795,12 +813,13 @@ export namespace ToolResolver {
     callID: string
     traceId?: string
     spanId?: string
+    scopeID?: string
     phase: string
     error: unknown
     owner: "builtin" | "mcp" | "ephemeral"
   }) {
     const errorClass = input.error instanceof Error ? input.error.name : "UnknownError"
-    const signature = [input.tool, errorClass, input.phase, input.owner].join(":")
+    const signature = [input.scopeID ?? input.sessionID, input.tool, errorClass, input.phase, input.owner].join(":")
     ObservabilityIssues.raise({
       code: "PERF_TOOL_EXECUTION_FAILED",
       severity: "error",
@@ -810,6 +829,7 @@ export namespace ToolResolver {
       recommendation: "Inspect the tool trace, failure signature, and permission/sandbox metadata before retrying.",
       traceId: input.traceId,
       spanId: input.spanId,
+      scopeID: input.scopeID,
       sessionID: input.sessionID,
       messageID: input.messageID,
       callID: input.callID,
@@ -1323,6 +1343,7 @@ export namespace ToolResolver {
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
+          const context = contextFactory(runtimeInput)
           return tool({
             id: item.id as any,
             description: item.description,
@@ -1336,6 +1357,8 @@ export namespace ToolResolver {
                 kind: "ephemeral",
               })
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              const ctx = context(args, options)
+              let toolTrace: ToolTrace | undefined
               log.info("tool.execute.callback.slot", {
                 tool: item.id,
                 sessionID: runtimeInput.sessionID,
@@ -1345,30 +1368,39 @@ export namespace ToolResolver {
                 slotStatus: slot.status,
               })
               try {
+                toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
+                await toolTrace.phase("tool.execute.start", "tool.execute")
                 const result = await item.execute(args as Record<string, unknown>)
                 slot.complete(args, {
                   title: result.title,
                   output: result.output,
                   metadata: result.metadata ?? {},
                 })
+                await toolTrace.end({ status: "completed" })
                 return {
                   title: result.title,
                   output: result.output,
                   metadata: result.metadata ?? {},
                 }
               } catch (error) {
+                await toolTrace?.error(error, { phase: "tool.execute" })
                 const message = error instanceof Error ? error.message : String(error)
                 recordToolFailureIssue({
                   tool: item.id,
                   sessionID: runtimeInput.sessionID,
                   messageID: runtimeInput.processor.message.id,
                   callID: options.toolCallId,
+                  traceId: toolTrace?.traceId,
+                  spanId: toolTrace?.span?.spanId,
+                  scopeID: toolTrace?.span?.scopeID,
                   phase: "tool.execute",
                   error,
                   owner: "ephemeral",
                 })
                 slot.fail(args, message)
                 throw error
+              } finally {
+                toolTrace?.dispose()
               }
             },
             toModelOutput(result) {
@@ -1625,6 +1657,7 @@ export namespace ToolResolver {
                   callID: options.toolCallId,
                   traceId: toolTrace?.traceId,
                   spanId: toolTrace?.span?.spanId,
+                  scopeID: toolTrace?.span?.scopeID,
                   phase: "tool.execute",
                   error,
                   owner: "builtin",
@@ -1871,6 +1904,7 @@ export namespace ToolResolver {
                     callID: opts.toolCallId,
                     traceId: toolTrace?.traceId,
                     spanId: toolTrace?.span?.spanId,
+                    scopeID: toolTrace?.span?.scopeID,
                     phase: "tool.execute",
                     error,
                     owner: "mcp",

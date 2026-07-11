@@ -30,7 +30,7 @@ export namespace ObservabilityEvents {
     })
     const redacted = ObservabilityRedaction.redactRecord(input.data)
     const time = ObservabilityClock.now()
-    const event = ObservabilitySchema.Event.parse({
+    const event: ObservabilitySchema.Event = {
       eventId: ObservabilityClock.id("evt"),
       time,
       iso: ObservabilityClock.iso(time),
@@ -53,7 +53,7 @@ export namespace ObservabilityEvents {
       rid: context.rid,
       data: redacted.value,
       redaction: redacted.summary,
-    })
+    }
     ObservabilityStore.insertEvent(event)
     return event
   }

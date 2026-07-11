@@ -23,6 +23,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
 
 export namespace SessionProcessor {
@@ -674,7 +675,7 @@ export namespace SessionProcessor {
       dispose,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
-        const turnTraceId = Observability.traceId("turn")
+        const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const turnStartedAt = Date.now()
         await Observability.emit("session.turn.start", {
           traceId: turnTraceId,
@@ -712,33 +713,53 @@ export namespace SessionProcessor {
               })
               const llmStartedAt = Date.now()
               let firstTokenSeen = false
-              let lastChunkAt: number | undefined
-              let outputChars = 0
+              const streamStats = {
+                text: { lastChunkAt: undefined as number | undefined, outputChars: 0, gapTotalMs: 0, gapCount: 0 },
+                reasoning: {
+                  lastChunkAt: undefined as number | undefined,
+                  outputChars: 0,
+                  gapTotalMs: 0,
+                  gapCount: 0,
+                },
+              }
 
               function recordChunkMetrics(kind: "text" | "reasoning", chars: number) {
                 const now = Date.now()
-                if (lastChunkAt !== undefined) {
+                const stats = streamStats[kind]
+                if (stats.lastChunkAt !== undefined) {
+                  stats.gapTotalMs += now - stats.lastChunkAt
+                  stats.gapCount++
+                }
+                stats.lastChunkAt = now
+                stats.outputChars += chars
+              }
+
+              function flushChunkMetrics() {
+                const elapsedSeconds = Math.max(0.001, (Date.now() - llmStartedAt) / 1000)
+                for (const kind of ["text", "reasoning"] as const) {
+                  const stats = streamStats[kind]
+                  if (stats.gapCount > 0) {
+                    ObservabilityMetrics.record({
+                      name: "llm.stream.chunk_gap",
+                      value: stats.gapTotalMs / stats.gapCount,
+                      unit: "ms",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: { provider: input.model.providerID, model: input.model.id, kind },
+                    })
+                  }
+                  if (stats.outputChars === 0) continue
                   ObservabilityMetrics.record({
-                    name: "llm.stream.chunk_gap",
-                    value: now - lastChunkAt,
-                    unit: "ms",
+                    name: "llm.stream.output_chars_per_second",
+                    value: stats.outputChars / elapsedSeconds,
+                    unit: "count",
                     module: "llm",
                     sessionID: input.sessionID,
                     messageID: input.assistantMessage.id,
                     labels: { provider: input.model.providerID, model: input.model.id, kind },
                   })
                 }
-                lastChunkAt = now
-                outputChars += chars
-                ObservabilityMetrics.record({
-                  name: "llm.stream.output_chars_per_second",
-                  value: outputChars / Math.max(0.001, (now - llmStartedAt) / 1000),
-                  unit: "count",
-                  module: "llm",
-                  sessionID: input.sessionID,
-                  messageID: input.assistantMessage.id,
-                  labels: { provider: input.model.providerID, model: input.model.id, kind },
-                })
               }
 
               try {
@@ -1169,6 +1190,7 @@ export namespace SessionProcessor {
                 ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
+                flushChunkMetrics()
                 currentText = undefined
                 reasoningMap = {}
                 SessionMemoryPressure.probe("processor.after_full_stream", {

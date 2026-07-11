@@ -13,14 +13,14 @@ export namespace PerformanceTraceDetail {
     const rows = ObservabilityStore.querySpans({
       since: Number.isFinite(since) ? since : undefined,
       until: until !== undefined && Number.isFinite(until) ? until : undefined,
-      limit: query.kind ? Math.min(baseLimit * 4, 500) : baseLimit,
+      limit: baseLimit,
       minDurationMs: query.minDurationMs,
       status: query.status,
       scopeID: query.scopeID,
       sessionID: query.sessionID,
+      kinds: query.kind ? PerformanceProjection.spanKinds(query.kind) : undefined,
+      distinctTrace: true,
     })
-      .filter((row) => !query.kind || PerformanceProjection.traceKind(row.kind) === query.kind)
-      .slice(0, baseLimit)
     return PerformanceSchema.TraceList.parse({
       generatedAt: new Date().toISOString(),
       items: rows.map(PerformanceProjection.traceRow),

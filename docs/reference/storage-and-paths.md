@@ -115,6 +115,8 @@ Platform service definitions live in platform-owned locations:
 
 Structured observability traces live under `state/observability/traces/`. Performance and diagnostics state may add adjacent state/data records. `synergy status --verbose`, `synergy logs`, and `synergy diagnostics` are the supported inspection entry points.
 
+Indexed observability telemetry lives in `state/observability/observability.sqlite`. The database uses WAL plus incremental auto-vacuum. Retention and size maintenance evict the globally oldest eligible historical telemetry in bounded batches while preserving running spans and open issues. Existing observability databases are upgraded through the central observability migrations; runtime request paths do not perform schema upgrades or full-database vacuum operations.
+
 Plugin installation stages artifacts and holds its transaction lock under `state/plugin-install/`. Cached plugin packages, extracted archives, marketplace records, models, provider catalogs, and downloaded runtime dependencies live under `cache/`; they may be recreated and must not be treated as approval or credential records. LSP process bookkeeping is kept in `state/lsp-pids.json`.
 
 ## Project-Local `.synergy`

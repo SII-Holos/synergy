@@ -4,13 +4,12 @@ import path from "path"
 import { Global } from "@/global"
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilitySchema } from "./schema"
+import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
 
 export namespace ObservabilityStore {
-  const SCHEMA_VERSION = "2"
+  const SCHEMA_VERSION = "4"
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
-  const SIZE_CAP_DELETE_CHUNK = 5_000
-  const SIZE_CAP_MAX_PASSES = 100
   const SIZE_CAP_TABLES = [
     { table: "obs_metrics", orderBy: "time" },
     { table: "obs_events", orderBy: "time" },
@@ -19,10 +18,6 @@ export namespace ObservabilityStore {
     { table: "obs_spans", orderBy: "start_time", where: "status != 'running'" },
     { table: "obs_issues", orderBy: "last_seen_time", where: "status != 'open'" },
   ] as const
-  const SIZE_CAP_FALLBACK_TABLES = [
-    { table: "obs_spans", orderBy: "start_time" },
-    { table: "obs_issues", orderBy: "last_seen_time" },
-  ] as const
   let db: Database | undefined
   let checkpointTimer: ReturnType<typeof setInterval> | undefined
   let compactTimer: ReturnType<typeof setInterval> | undefined
@@ -30,10 +25,29 @@ export namespace ObservabilityStore {
   let flushTimer: ReturnType<typeof setTimeout> | undefined
   let retentionQueued = false
   let droppedJobs = 0
+  let lastOpenError: string | undefined
+  let openFailed = false
+  let capExceededBytes = 0
+  let checkpointIntervalMs: number | undefined
+  let retentionIntervalMs: number | undefined
   const pending: Array<() => void> = []
+  const beforeFlushHooks = new Set<() => void>()
 
   export function stats() {
-    return { pending: pending.length, dropped: droppedJobs }
+    return {
+      pending: pending.length,
+      dropped: droppedJobs,
+      available: !!db,
+      lastOpenError,
+      capExceededBytes,
+      checkpointIntervalMs,
+      retentionIntervalMs,
+    }
+  }
+
+  export function beforeFlush(hook: () => void) {
+    beforeFlushHooks.add(hook)
+    return () => beforeFlushHooks.delete(hook)
   }
 
   export function dir() {
@@ -49,29 +63,60 @@ export namespace ObservabilityStore {
   }
 
   export function open(): Database | undefined {
+    if (db) return db
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) return undefined
-    if (db) return db
-    const conn = createConnection()
-    db = conn
+    if (openFailed) return undefined
+    try {
+      db = createConnection()
+      lastOpenError = undefined
+    } catch (error) {
+      openFailed = true
+      lastOpenError = error instanceof Error ? error.message : String(error)
+      return undefined
+    }
+    scheduleTimers(config)
+    queueRetention()
+    return db
+  }
+
+  export function reconfigure() {
+    const config = ObservabilityConfig.current()
+    if (!config.enabled || !config.storage.sqliteEnabled) {
+      close()
+      return
+    }
+    clearTimers()
+    if (!db) {
+      openFailed = false
+      open()
+      return
+    }
+    scheduleTimers(config)
+    enforceMaxSize(db, config.storage.maxSqliteBytes)
+  }
+
+  function scheduleTimers(config: ReturnType<typeof ObservabilityConfig.current>) {
+    checkpointIntervalMs = config.storage.walCheckpointIntervalMs
+    retentionIntervalMs = Math.max(config.metricRetentionMs / 4, 60_000)
     checkpointTimer = setInterval(checkpointSafely, config.storage.walCheckpointIntervalMs)
     checkpointTimer.unref()
-    compactTimer = setInterval(
-      () => {
-        if (db && sqliteLogicalFootprint(db) > sqliteFootprint() * 1.3) compactSqlite(db)
-      },
-      Math.min(config.storage.walCheckpointIntervalMs * 10, 600_000),
-    )
+    compactTimer = setInterval(maintainSizeSafely, Math.min(config.storage.walCheckpointIntervalMs * 10, 600_000))
     compactTimer.unref()
-    retentionTimer = setInterval(() => retain(), Math.max(config.metricRetentionMs / 4, 60_000))
+    retentionTimer = setInterval(() => retain(), retentionIntervalMs)
     retentionTimer.unref()
-    queueRetention()
-    return conn
   }
 
   export function close() {
     flush()
     if (db) checkpointConnectionSafely(db)
+    clearTimers()
+    db?.close(false)
+    db = undefined
+    openFailed = false
+  }
+
+  function clearTimers() {
     if (checkpointTimer) clearInterval(checkpointTimer)
     if (retentionTimer) clearInterval(retentionTimer)
     if (flushTimer) clearTimeout(flushTimer)
@@ -82,8 +127,8 @@ export namespace ObservabilityStore {
     }
     retentionTimer = undefined
     flushTimer = undefined
-    db?.close(false)
-    db = undefined
+    checkpointIntervalMs = undefined
+    retentionIntervalMs = undefined
   }
 
   export function checkpoint() {
@@ -256,6 +301,8 @@ export namespace ObservabilityStore {
     sessionID?: string
     module?: string
     kind?: string
+    kinds?: string[]
+    distinctTrace?: boolean
   }) {
     flush()
     const conn = open()
@@ -302,7 +349,21 @@ export namespace ObservabilityStore {
       filters.push("kind = ?")
       params.push(opts.kind)
     }
+    if (opts.kinds?.length) {
+      filters.push(`kind IN (${opts.kinds.map(() => "?").join(",")})`)
+      params.push(...opts.kinds)
+    }
     params.push(opts.limit ?? 1000)
+    if (opts.distinctTrace) {
+      return conn
+        .prepare(
+          `SELECT * FROM (
+             SELECT *, ROW_NUMBER() OVER (PARTITION BY trace_id ORDER BY start_time ASC,span_id ASC) AS trace_rank
+             FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+           ) WHERE trace_rank = 1 ORDER BY start_time DESC LIMIT ?`,
+        )
+        .all(...params) as StoredSpan[]
+    }
     return conn
       .prepare(
         `SELECT * FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY start_time DESC LIMIT ?`,
@@ -400,11 +461,12 @@ export namespace ObservabilityStore {
     conn.prepare("DELETE FROM obs_spans WHERE start_time < ? AND status != 'running'").run(traceCutoff)
     conn.prepare("DELETE FROM obs_browser_batches WHERE received_time < ?").run(metricCutoff)
     conn.prepare("DELETE FROM obs_issues WHERE status != 'open' AND time < ?").run(traceCutoff)
-    enforceMaxSize(conn, config.storage.maxSqliteBytes)
     conn.prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
+    enforceMaxSize(conn, config.storage.maxSqliteBytes)
   }
 
   export function flush() {
+    for (const hook of beforeFlushHooks) hook()
     if (flushTimer) clearTimeout(flushTimer)
     flushTimer = undefined
     if (!pending.length) return
@@ -446,9 +508,16 @@ export namespace ObservabilityStore {
     return conn
   }
 
+  export function enableIncrementalVacuumForMigration() {
+    const conn = initializeForMigration()
+    ObservabilitySqliteMaintenance.enableIncrementalVacuum(conn)
+  }
+
   function createConnection() {
     fsSync.mkdirSync(dir(), { recursive: true })
+    const fresh = !fsSync.existsSync(pathName())
     const conn = new Database(pathName(), { create: true })
+    if (fresh) conn.exec("PRAGMA auto_vacuum=INCREMENTAL")
     conn.exec("PRAGMA journal_mode=WAL")
     conn.exec("PRAGMA busy_timeout=5000")
     conn.exec("PRAGMA foreign_keys=ON")
@@ -460,6 +529,14 @@ export namespace ObservabilityStore {
     const conn = open()
     if (!conn) return
     checkpointConnectionSafely(conn)
+  }
+
+  function maintainSizeSafely() {
+    try {
+      const conn = open()
+      if (!conn) return
+      enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+    } catch {}
   }
 
   function checkpointConnectionSafely(conn: Database) {
@@ -693,62 +770,13 @@ export namespace ObservabilityStore {
 
   function enforceMaxSize(conn: Database, maxBytes: number) {
     try {
-      if (maxBytes <= 0) return
-      const logical = sqliteLogicalFootprint(conn)
-      if (logical <= maxBytes) return
-      deleteUntilUnderCap(conn, maxBytes, SIZE_CAP_TABLES)
-      if (sqliteLogicalFootprint(conn) > maxBytes) deleteUntilUnderCap(conn, maxBytes, SIZE_CAP_FALLBACK_TABLES)
+      capExceededBytes = ObservabilitySqliteMaintenance.enforce({
+        db: conn,
+        path: pathName(),
+        maxBytes,
+        tables: SIZE_CAP_TABLES,
+      }).capExceededBytes
     } catch {}
-  }
-
-  function deleteUntilUnderCap(
-    conn: Database,
-    maxBytes: number,
-    tables: ReadonlyArray<{ table: string; orderBy: string; where?: string }>,
-  ) {
-    for (let pass = 0; pass < SIZE_CAP_MAX_PASSES && sqliteLogicalFootprint(conn) > maxBytes; pass++) {
-      let deleted = 0
-      for (const table of tables) deleted += deleteOldestRows(conn, table)
-      if (deleted === 0) break
-    }
-  }
-
-  function deleteOldestRows(conn: Database, table: { table: string; orderBy: string; where?: string }) {
-    const where = table.where ? `WHERE ${table.where}` : ""
-    return conn
-      .prepare(
-        `DELETE FROM ${table.table} WHERE rowid IN (SELECT rowid FROM ${table.table} ${where} ORDER BY ${table.orderBy} ASC LIMIT ?)`,
-      )
-      .run(SIZE_CAP_DELETE_CHUNK).changes
-  }
-
-  function compactSqlite(conn: Database) {
-    conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-    conn.exec("VACUUM")
-    conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-  }
-
-  function sqliteLogicalFootprint(conn: Database) {
-    const pageSize = pragmaNumber(conn, "page_size")
-    const pageCount = pragmaNumber(conn, "page_count")
-    const freelistCount = pragmaNumber(conn, "freelist_count")
-    return Math.max(0, pageCount - freelistCount) * pageSize
-  }
-
-  function pragmaNumber(conn: Database, key: string) {
-    const row = conn.prepare(`PRAGMA ${key}`).get() as Record<string, number> | undefined
-    return Number(Object.values(row ?? {})[0] ?? 0)
-  }
-
-  function sqliteFootprint() {
-    const filepath = pathName()
-    return [filepath, `${filepath}-wal`, `${filepath}-shm`].reduce((total, file) => {
-      try {
-        return total + fsSync.statSync(file).size
-      } catch {
-        return total
-      }
-    }, 0)
   }
 
   function initialize(conn: Database) {
