@@ -10,6 +10,7 @@ describe("CortexTypes", () => {
       expect(CortexTypes.TaskStatus.parse("completed")).toBe("completed")
       expect(CortexTypes.TaskStatus.parse("error")).toBe("error")
       expect(CortexTypes.TaskStatus.parse("cancelled")).toBe("cancelled")
+      expect(CortexTypes.TaskStatus.parse("interrupted")).toBe("interrupted")
     })
 
     test("rejects invalid status values", () => {
@@ -96,6 +97,13 @@ describe("CortexTypes", () => {
         outputConfig: { mode: "summary" },
         output: { mode: "summary", value: "Task completed successfully" },
         notifyParentOnComplete: false,
+        owner: {
+          pluginId: "truthward",
+          pluginGeneration: "generation-one",
+          scopeId: "scope-one",
+          correlationId: "stage-one",
+        },
+        timeoutMs: 1_800_000,
         progress: {
           toolCalls: 3,
           lastUpdate: Date.now(),
@@ -105,6 +113,8 @@ describe("CortexTypes", () => {
       expect(result.category).toBe("visual-engineering")
       expect(result.output).toEqual({ mode: "summary", value: "Task completed successfully" })
       expect(result.notifyParentOnComplete).toBe(false)
+      expect(result.owner?.correlationId).toBe("stage-one")
+      expect(result.timeoutMs).toBe(1_800_000)
     })
 
     test("rejects task with invalid id prefix", () => {

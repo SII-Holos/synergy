@@ -12,7 +12,7 @@ const labels: Record<string, { title: string; description: string; category: Per
     description: "Abort or control sessions in the active Scope.",
     category: "session",
   },
-  "task.run": {
+  "task.delegate": {
     title: "Run delegated tasks",
     description: "Start Synergy tasks from plugin tools invoked by an agent.",
     category: "tools",

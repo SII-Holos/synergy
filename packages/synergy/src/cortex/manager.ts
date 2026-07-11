@@ -19,6 +19,7 @@ import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
 import { CortexOutput } from "./output"
+import { ScopeContext } from "../scope/context"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -28,6 +29,7 @@ export namespace Cortex {
   const deferredParentNotifications = new Map<string, Set<string>>()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
+  const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
   let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
@@ -134,6 +136,7 @@ export namespace Cortex {
             : []),
         ],
         cortex: {
+          taskID,
           parentSessionID: input.parentSessionID,
           parentMessageID: input.parentMessageID,
           description: input.description,
@@ -144,6 +147,8 @@ export namespace Cortex {
           visibility: input.visibility,
           tools: input.tools,
           outputConfig: input.output,
+          owner: input.owner,
+          timeoutMs: input.timeoutMs,
         },
         workspace: (parent as import("../session/types").Info).workspace,
         completionNotice: { silent: input.visibility === "hidden" },
@@ -194,7 +199,26 @@ export namespace Cortex {
       visibility: input.visibility,
       tools: input.tools,
       outputConfig: input.output,
+      owner: input.owner,
+      timeoutMs: input.timeoutMs,
     }
+
+    await Session.update(session.id, (draft) => {
+      if (!draft.cortex) return
+      draft.cortex.taskID = taskID
+      draft.cortex.parentSessionID = input.parentSessionID
+      draft.cortex.parentMessageID = input.parentMessageID
+      draft.cortex.description = input.description
+      draft.cortex.agent = input.agent
+      draft.cortex.executionRole = input.executionRole
+      draft.cortex.status = "queued"
+      draft.cortex.startedAt = task.startedAt
+      draft.cortex.completedAt = undefined
+      draft.cortex.error = undefined
+      draft.cortex.output = undefined
+      draft.cortex.owner = input.owner
+      draft.cortex.timeoutMs = input.timeoutMs
+    })
 
     tasks.set(taskID, task)
     SessionManager.registerChildRuntime(session.id)
@@ -225,6 +249,16 @@ export namespace Cortex {
       })
     taskRuns.set(taskID, run)
 
+    if (input.timeoutMs) {
+      const timeout = setTimeout(() => {
+        const active = tasks.get(taskID)
+        if (!active || isTerminal(active.status)) return
+        SessionInvoke.cancel(active.sessionID)
+        updateTaskStatus(taskID, "error", `Task exceeded its ${input.timeoutMs}ms runtime limit.`)
+      }, input.timeoutMs)
+      taskTimeouts.set(taskID, timeout)
+    }
+
     return current
   })
 
@@ -238,7 +272,7 @@ export namespace Cortex {
 
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
-        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
+        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
       }
     }).catch((error) => {
       log.error("failed to persist task status", { taskID, status, error })
@@ -447,6 +481,11 @@ export namespace Cortex {
     tasks.set(taskID, task)
 
     setTaskStatus(taskID, status)
+    const timeout = taskTimeouts.get(taskID)
+    if (timeout) {
+      clearTimeout(timeout)
+      taskTimeouts.delete(taskID)
+    }
 
     // Terminal-specific: extra session fields (status already synced by setTaskStatus)
     void Session.update(task.sessionID, (draft) => {
@@ -466,15 +505,16 @@ export namespace Cortex {
     if (task.visibility !== "hidden") {
       Bus.publish(Event.TaskCompleted, { task })
     }
-    void Plugin.trigger(
-      "cortex.task.after",
-      {
-        task,
-      },
-      {},
-    ).catch((error) => {
-      log.error("cortex task hook failed", { taskID, error })
-    })
+    void Session.get(task.sessionID)
+      .then((session) =>
+        ScopeContext.provide({
+          scope: session.scope,
+          fn: () => Plugin.trigger("cortex.task.after", { task }, {}),
+        }),
+      )
+      .catch((error) => {
+        log.error("cortex task hook failed", { taskID, error })
+      })
 
     updateDagNode(task)
 
@@ -582,7 +622,14 @@ export namespace Cortex {
   }
 
   async function notifyParentSession(task: CortexTypes.Task): Promise<void> {
-    const statusText = task.status === "error" ? "FAILED" : task.status === "cancelled" ? "CANCELLED" : "COMPLETED"
+    const statusText =
+      task.status === "error"
+        ? "FAILED"
+        : task.status === "cancelled"
+          ? "CANCELLED"
+          : task.status === "interrupted"
+            ? "INTERRUPTED"
+            : "COMPLETED"
     const notification = [
       `[BACKGROUND TASK ${statusText}]`,
       `**ID:** \`${task.id}\``,
@@ -619,7 +666,7 @@ export namespace Cortex {
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
-    return status === "completed" || status === "error" || status === "cancelled"
+    return status === "completed" || status === "error" || status === "cancelled" || status === "interrupted"
   }
 
   export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"
@@ -685,7 +732,9 @@ export namespace Cortex {
   }
 
   export function getCompletedTasks(): CortexTypes.Task[] {
-    return listVisible().filter((t) => t.status === "completed" || t.status === "error")
+    return listVisible().filter(
+      (t) => t.status === "completed" || t.status === "error" || t.status === "cancelled" || t.status === "interrupted",
+    )
   }
 
   export function getTasksForSession(sessionID: string): CortexTypes.Task[] {

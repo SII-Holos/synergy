@@ -684,6 +684,47 @@ describe("session migrations", () => {
     })
   })
 
+  test("backfills a durable Cortex task identity with a valid idempotent ID", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent" })
+        const child = await Session.create({
+          title: "Delegated child",
+          parentID: parent.id,
+          cortex: {
+            taskID: "ctx_original",
+            parentSessionID: parent.id,
+            parentMessageID: Identifier.ascending("message"),
+            description: "Legacy delegated task",
+            agent: "developer",
+            startedAt: 1,
+            status: "completed",
+          },
+        })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const key = StoragePath.sessionInfo(scope, Identifier.asSessionID(child.id))
+        const legacy = await Storage.read<any>(key)
+        delete legacy.cortex.taskID
+        await Storage.write(key, legacy)
+
+        const migration = migrations.find((entry) => entry.id === "20260711-cortex-task-identity")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const first = await Storage.read<any>(key)
+        expect(first.cortex.taskID).toBe(`ctx_migrated_${child.id}`)
+        expect((await Session.get(child.id))?.cortex?.taskID).toBe(first.cortex.taskID)
+
+        await migration!.up(() => {})
+        expect(await Storage.read<any>(key)).toEqual(first)
+      },
+    })
+  })
+
   test("migrates legacy workflow session fields and message metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

@@ -12,12 +12,14 @@ import { isPathContained } from "../util/path-contain"
 import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
-import { invokePluginTool, runPluginTask } from "./host-services"
+import { cancelPluginTask, getPluginTask, invokePluginTool, startPluginTask } from "./host-services"
 
 const capabilityByMethod = {
   "session.get": "session.read",
   "session.abort": "session.control",
-  "task.run": "task.run",
+  "task.start": "task.delegate",
+  "task.get": "task.delegate",
+  "task.cancel": "task.delegate",
   "workspace.read": "workspace.read",
   "workspace.write": "workspace.write",
   "workspace.metadata": "workspace.read",
@@ -141,7 +143,57 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       if (typeof value.value !== "string") throw new Error("secrets.set requires string value")
       return store.set(key, value.value)
     }
+    if (input.method === "task.get") {
+      return getPluginTask({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        handle: value as never,
+      })
+    }
+    if (input.method === "task.cancel") {
+      return cancelPluginTask({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        handle: value as never,
+      })
+    }
     const actor = input.invocation.actor
+    if (input.method === "task.start") {
+      const parent =
+        value.parent && typeof value.parent === "object" ? (value.parent as Record<string, unknown>) : undefined
+      const sessionID =
+        typeof parent?.sessionId === "string"
+          ? parent.sessionId
+          : actor.type === "agent"
+            ? input.invocation.sessionId
+            : undefined
+      const messageID =
+        typeof parent?.messageId === "string" ? parent.messageId : actor.type === "agent" ? actor.messageId : undefined
+      if (!sessionID || !messageID) throw new Error("task.start requires a parent Session and message")
+      const parentSession = await Session.get(sessionID)
+      if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
+        throw new Error("task.start parent Session does not belong to the active Scope")
+      }
+      return startPluginTask({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        pluginDir: input.pluginDir,
+        context: {
+          pluginId: input.pluginId,
+          pluginDir: input.pluginDir,
+          sessionID,
+          messageID,
+          agent: actor.type === "agent" ? actor.agent : "synergy",
+          callID: actor.type === "agent" ? actor.callId : undefined,
+          directory: input.invocation.directory,
+          abort: input.signal,
+        },
+        request: value as never,
+      })
+    }
     if (actor.type !== "agent" || !input.invocation.sessionId) {
       throw new Error(`${input.method} requires an agent invocation context`)
     }
@@ -154,14 +206,6 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       callID: actor.callId,
       directory: input.invocation.directory,
       abort: input.signal,
-    }
-    if (input.method === "task.run") {
-      return runPluginTask({
-        pluginId: input.pluginId,
-        pluginDir: input.pluginDir,
-        context: runtimeContext,
-        request: value as never,
-      })
     }
     if (input.method === "tool.invoke") {
       const toolId = value.toolId

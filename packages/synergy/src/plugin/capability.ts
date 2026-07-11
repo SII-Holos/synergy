@@ -21,7 +21,7 @@ export function baseCapabilities(manifest: PluginManifestType): string[] {
 export function riskForCapabilities(capabilities: string[]): "low" | "medium" | "high" {
   if (
     capabilities.some((capability) =>
-      ["session.control", "workspace.write", "task.run", "secrets", "tool.invoke"].includes(capability),
+      ["session.control", "workspace.write", "task.delegate", "secrets", "tool.invoke"].includes(capability),
     )
   ) {
     return "high"

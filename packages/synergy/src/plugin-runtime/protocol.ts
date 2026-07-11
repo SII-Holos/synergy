@@ -20,7 +20,9 @@ export type PluginHostServiceMethod =
   | "event.publish"
   | "session.get"
   | "session.abort"
-  | "task.run"
+  | "task.start"
+  | "task.get"
+  | "task.cancel"
   | "workspace.read"
   | "workspace.write"
   | "workspace.metadata"
@@ -74,5 +76,5 @@ export interface SerializedPluginRuntimeError {
   code?: string
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 2
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 3
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

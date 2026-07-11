@@ -442,6 +442,7 @@ describe("tool exposure", () => {
         const child = await Session.create({
           parentID: parent.id,
           cortex: {
+            taskID: "cortex-lightloop-review",
             parentSessionID: parent.id,
             parentMessageID: "msg_parent",
             description: "Review LightLoop",
@@ -528,6 +529,7 @@ describe("tool exposure", () => {
         const reviewer = await Session.create({
           parentID: execution.id,
           cortex: {
+            taskID: "cortex-blueprint-review",
             parentSessionID: execution.id,
             parentMessageID: "msg_parent",
             description: "Audit BlueprintLoop",
@@ -562,6 +564,7 @@ describe("tool exposure", () => {
         const unrelatedReviewer = await Session.create({
           parentID: execution.id,
           cortex: {
+            taskID: "cortex-unrelated-blueprint-review",
             parentSessionID: execution.id,
             parentMessageID: "msg_parent",
             description: "Unrecorded Blueprint audit",
@@ -610,6 +613,7 @@ describe("tool exposure", () => {
         const child = await Session.create({
           parentID: parent.id,
           cortex: {
+            taskID: "cortex-unrecorded-lightloop-review",
             parentSessionID: parent.id,
             parentMessageID: "msg_parent",
             description: "Review LightLoop",

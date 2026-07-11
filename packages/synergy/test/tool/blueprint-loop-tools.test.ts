@@ -67,6 +67,7 @@ function installReviewerLaunch(launches: Parameters<typeof Cortex.launch>[0][] =
     const reviewSession = await Session.create({
       parentID: input.parentSessionID,
       cortex: {
+        taskID: `cortex-${input.parentMessageID}`,
         parentSessionID: input.parentSessionID,
         parentMessageID: input.parentMessageID,
         description: input.description,

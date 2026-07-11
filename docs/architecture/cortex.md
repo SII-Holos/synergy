@@ -16,9 +16,11 @@ A Cortex task records:
 - visibility and notification behavior
 - output mode and resolved output
 
-Task status moves through `pending`, `queued`, `running`, and one terminal state: `completed`, `error`, or `cancelled`.
+Task status moves through `pending`, `queued`, `running`, and one terminal state: `completed`, `error`, `cancelled`, or `interrupted`. `interrupted` means durable metadata says work was active, but no live runtime survived restart; it is distinct from an execution error.
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, and output.
+
+Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
 ## Launch and Concurrency
 
@@ -80,6 +82,8 @@ Parent delivery and child persistence are separate:
 5. temporary child-worktree resources are cleaned up when appropriate
 
 A running parent is not interrupted with a normal completion notice in the middle of its turn. Callers that need a direct result should await the task; orchestration features can bind the task to a DAG node or use their own continuation trigger.
+
+Plugin Host delegation is always handle-based: `start()` returns immediately, while `get()` and the `cortex.task.after` observer expose completion. At Synergy startup, durable child Sessions left in queued/running state are changed to `interrupted` and emit the same observer so plugin control planes can make an explicit recovery decision.
 
 ## Cancellation and Retention
 

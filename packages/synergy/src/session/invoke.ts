@@ -1825,13 +1825,46 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       log.warn("reconciling interrupted Cortex delegation", { sessionID, status: session.cortex.status })
       await repairAfterAbort(sessionID)
       const completedAt = Date.now()
+      const interruption = "Server restarted before this delegated task completed."
       await Session.update(sessionID, (draft) => {
         if (!draft.cortex) return
         if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
-        draft.cortex.status = "cancelled"
+        draft.cortex.status = "interrupted"
         draft.cortex.completedAt ??= completedAt
-        draft.cortex.error ??= "Server restarted before this delegated task completed."
+        draft.cortex.error ??= interruption
         draft.pendingReply = undefined
+      })
+      const updated = await Session.get(sessionID)
+      if (!updated?.cortex) continue
+      await ScopeContext.provide({
+        scope: updated.scope,
+        fn: () =>
+          Plugin.trigger(
+            "cortex.task.after",
+            {
+              task: {
+                id: updated.cortex!.taskID,
+                sessionID: updated.id,
+                parentSessionID: updated.cortex!.parentSessionID,
+                parentMessageID: updated.cortex!.parentMessageID,
+                description: updated.cortex!.description,
+                prompt: "",
+                agent: updated.cortex!.agent,
+                executionRole: updated.cortex!.executionRole,
+                status: "interrupted",
+                startedAt: updated.cortex!.startedAt,
+                completedAt: updated.cortex!.completedAt,
+                error: updated.cortex!.error,
+                visibility: updated.cortex!.visibility,
+                tools: updated.cortex!.tools,
+                outputConfig: updated.cortex!.outputConfig,
+                output: updated.cortex!.output,
+                owner: updated.cortex!.owner,
+                timeoutMs: updated.cortex!.timeoutMs,
+              },
+            },
+            {},
+          ),
       })
     }
   }

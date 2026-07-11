@@ -1,17 +1,11 @@
-import type {
-  ToolContext as PluginToolContext,
-  ToolInvokeInput,
-  ToolResult,
-  ToolTaskRunInput,
-  ToolTaskRunResult,
-} from "@ericsanchezok/synergy-plugin/tool"
+import type { PluginTaskHandle, PluginTaskSnapshot, PluginTaskStartInput } from "@ericsanchezok/synergy-plugin"
+import type { ToolInvokeInput, ToolResult } from "@ericsanchezok/synergy-plugin/tool"
 import { Agent } from "@/agent/agent"
 import { AgentDelegation } from "@/agent/delegation"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy } from "@/control-profile/approval"
 import { Cortex } from "@/cortex"
-import type { CortexTypes } from "@/cortex/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { PermissionNext } from "@/permission/next"
 import { Provider } from "@/provider/provider"
@@ -19,14 +13,11 @@ import { ScopeContext } from "@/scope/context"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionProcessor } from "@/session/processor"
-import type { Tool } from "@/tool/tool"
 import { permissionCapability } from "@ericsanchezok/synergy-util/capability"
 import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
-
-const PLUGIN_TASK_TIMEOUT_HEADROOM_MS = 5_000
 
 type RuntimeContext = {
   pluginId?: string
@@ -42,59 +33,15 @@ type RuntimeContext = {
 
 export type PluginHostRuntimeContext = RuntimeContext
 
-export function createPluginToolContext(input: {
+export async function startPluginTask(input: {
   pluginId: string
-  pluginDir: string
-  toolId: string
-  context: Tool.Context
-  directory: string
-}): PluginToolContext {
-  const runtimeContext: RuntimeContext = {
-    pluginId: input.pluginId,
-    pluginDir: input.pluginDir,
-    toolId: input.toolId,
-    sessionID: input.context.sessionID,
-    messageID: input.context.messageID,
-    agent: input.context.agent,
-    callID: input.context.callID,
-    directory: input.directory,
-    abort: input.context.abort,
-  }
-
-  return {
-    sessionID: input.context.sessionID,
-    messageID: input.context.messageID,
-    agent: input.context.agent,
-    abort: input.context.abort,
-    directory: input.directory,
-    ask: (request) => requestPluginPermission(runtimeContext, request),
-    task: {
-      run: (request) =>
-        runPluginTask({
-          pluginId: input.pluginId,
-          pluginDir: input.pluginDir,
-          context: runtimeContext,
-          request,
-        }),
-    },
-    tools: {
-      invoke: (request) =>
-        invokePluginTool({
-          context: runtimeContext,
-          pluginDir: input.pluginDir,
-          request,
-        }),
-    },
-  }
-}
-
-export async function runPluginTask(input: {
-  pluginId: string
+  pluginGeneration: string
+  scopeId: string
   pluginDir: string
   context: RuntimeContext
-  request: ToolTaskRunInput
-}): Promise<ToolTaskRunResult> {
-  const request = normalizeTaskRunInput(input.request)
+  request: PluginTaskStartInput
+}): Promise<PluginTaskHandle> {
+  const request = normalizeTaskStartInput(input.request)
   const taskPermission = await assertTaskPermission(input.pluginDir, request)
   const agent = await Agent.get(request.subagent)
   if (!agent) throw new Error(`Unknown delegated subagent: ${request.subagent}`)
@@ -106,6 +53,8 @@ export async function runPluginTask(input: {
   await askForTask(input.context, request)
 
   const model = request.model ?? (await Agent.getAvailableModel(agent)) ?? (await parentModel(input.context))
+  const limits = await defaultPluginRuntimeLimits(input.pluginDir)
+  const timeoutMs = request.timeoutMs ?? taskPermission.maxRuntimeMs ?? limits.taskRunTimeoutMs
   const task = await Cortex.launch({
     description: request.description,
     prompt: request.prompt,
@@ -119,35 +68,82 @@ export async function runPluginTask(input: {
     visibility: request.visibility,
     output: request.output,
     notifyParentOnComplete: request.visibility === "hidden" ? false : undefined,
+    timeoutMs,
+    owner: {
+      pluginId: input.pluginId,
+      pluginGeneration: input.pluginGeneration,
+      scopeId: input.scopeId,
+      correlationId: request.correlationId,
+    },
   })
+  return { taskId: task.id, sessionId: task.sessionID }
+}
 
-  const abort = input.context.abort
-  const cancel = () => {
-    void Cortex.cancel(task.id)
+function taskSnapshot(
+  handle: PluginTaskHandle,
+  input: {
+    status: PluginTaskSnapshot["status"]
+    output?: PluginTaskSnapshot["output"]
+    error?: string
+  },
+): PluginTaskSnapshot {
+  return {
+    ...handle,
+    status: input.status,
+    ...(input.output ? { output: input.output } : {}),
+    ...(input.error ? { error: input.error } : {}),
   }
-  abort?.addEventListener("abort", cancel, { once: true })
-  try {
-    const limits = await defaultPluginRuntimeLimits(input.pluginDir)
-    const timeoutMs = resolvePluginTaskWaitTimeoutMs({
-      requestedTimeoutMs:
-        request.timeoutMs ??
-        (typeof taskPermission === "object" ? taskPermission.maxRuntimeMs : undefined) ??
-        limits.taskRunTimeoutMs,
-      toolInvocationTimeoutMs: limits.toolInvocationTimeoutMs,
-    })
-    const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil(timeoutMs / 1_000)))
-    if (
-      !completed ||
-      completed.status === "queued" ||
-      completed.status === "running" ||
-      completed.status === "pending"
-    ) {
-      await Cortex.cancel(task.id)
-      return taskResult(task, "timeout", "Delegated task timed out")
-    }
-    return taskResult(completed, completed.status)
-  } finally {
-    abort?.removeEventListener("abort", cancel)
+}
+
+export async function getPluginTask(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  handle: PluginTaskHandle
+}): Promise<PluginTaskSnapshot> {
+  const active = Cortex.get(input.handle.taskId)
+  if (active) {
+    assertPluginTaskOwner(active.owner, input.pluginId, input.pluginGeneration, input.scopeId)
+    if (active.sessionID !== input.handle.sessionId)
+      throw new Error("Plugin task handle session does not match Cortex task")
+    return taskSnapshot(input.handle, { status: active.status, output: active.output, error: active.error })
+  }
+
+  const session = await Session.get(input.handle.sessionId)
+  const delegated = session?.cortex
+  if (!delegated || delegated.taskID !== input.handle.taskId) throw new Error("Plugin task not found")
+  assertPluginTaskOwner(delegated.owner, input.pluginId, input.pluginGeneration, input.scopeId)
+  return taskSnapshot(input.handle, {
+    status: delegated.status,
+    output: delegated.output,
+    error: delegated.error,
+  })
+}
+
+export async function cancelPluginTask(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  handle: PluginTaskHandle
+}): Promise<void> {
+  const snapshot = await getPluginTask(input)
+  if (snapshot.status !== "pending" && snapshot.status !== "queued" && snapshot.status !== "running") return
+  await Cortex.cancel(input.handle.taskId)
+}
+
+function assertPluginTaskOwner(
+  owner: { pluginId: string; pluginGeneration: string; scopeId: string } | undefined,
+  pluginId: string,
+  pluginGeneration: string,
+  scopeId: string,
+): void {
+  if (
+    !owner ||
+    owner.pluginId !== pluginId ||
+    owner.pluginGeneration !== pluginGeneration ||
+    owner.scopeId !== scopeId
+  ) {
+    throw new Error("Plugin task does not belong to the invoking plugin generation and Scope")
   }
 }
 
@@ -217,10 +213,10 @@ export async function assertPluginManifestCapability(input: {
   throw new Error(`Plugin manifest does not allow capability "${capability}" for ${scope}`)
 }
 
-async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput) {
+async function assertTaskPermission(pluginDir: string, request: PluginTaskStartInput) {
   const manifest = await readPluginManifest(pluginDir)
-  const task = manifest.capabilities.find((item) => item.id === "task.run")
-  if (!task) throw new Error("Plugin manifest does not declare capability task.run")
+  const task = manifest.capabilities.find((item) => item.id === "task.delegate")
+  if (!task) throw new Error("Plugin manifest does not declare capability task.delegate")
   const agents = Array.isArray(task.constraints?.agents) ? task.constraints.agents : undefined
   const maxRuntimeMs = typeof task.constraints?.maxRuntimeMs === "number" ? task.constraints.maxRuntimeMs : undefined
   if (agents && !agents.includes(request.subagent)) {
@@ -232,7 +228,7 @@ async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput
   return { maxRuntimeMs }
 }
 
-async function askForTask(context: RuntimeContext, request: ToolTaskRunInput) {
+async function askForTask(context: RuntimeContext, request: PluginTaskStartInput) {
   const metadata = {
     description: request.description,
     subagent_type: request.subagent,
@@ -298,15 +294,17 @@ async function parentModel(context: RuntimeContext) {
   return Provider.defaultModel()
 }
 
-function normalizeTaskRunInput(input: ToolTaskRunInput): ToolTaskRunInput {
-  if (!input.subagent?.trim()) throw new Error("task.run requires subagent")
-  if (!input.description?.trim()) throw new Error("task.run requires description")
-  if (!input.prompt?.trim()) throw new Error("task.run requires prompt")
+function normalizeTaskStartInput(input: PluginTaskStartInput): PluginTaskStartInput {
+  if (!input.subagent?.trim()) throw new Error("task.start requires subagent")
+  if (!input.description?.trim()) throw new Error("task.start requires description")
+  if (!input.prompt?.trim()) throw new Error("task.start requires prompt")
+  if (!input.correlationId?.trim()) throw new Error("task.start requires correlationId")
   return {
     ...input,
     subagent: input.subagent.trim(),
     description: input.description.trim(),
     prompt: input.prompt.trim(),
+    correlationId: input.correlationId.trim(),
     visibility: input.visibility ?? "visible",
   }
 }
@@ -318,25 +316,4 @@ async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise
 async function defaultPluginRuntimeLimits(pluginDir?: string) {
   const config = await Config.current().catch(() => undefined)
   return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits)
-}
-
-export function resolvePluginTaskWaitTimeoutMs(input: { requestedTimeoutMs: number; toolInvocationTimeoutMs: number }) {
-  const requested = Math.max(1, Math.round(input.requestedTimeoutMs))
-  const outer = Math.max(1, Math.round(input.toolInvocationTimeoutMs))
-  const headroom = Math.min(PLUGIN_TASK_TIMEOUT_HEADROOM_MS, Math.max(250, Math.ceil(outer * 0.05)))
-  return Math.max(1, Math.min(requested, outer - headroom))
-}
-
-function taskResult(
-  task: CortexTypes.Task,
-  status: ToolTaskRunResult["status"],
-  error = task.error,
-): ToolTaskRunResult {
-  return {
-    taskId: task.id,
-    sessionId: task.sessionID,
-    status,
-    output: task.output as ToolTaskRunResult["output"],
-    error,
-  }
 }

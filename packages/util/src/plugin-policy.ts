@@ -112,7 +112,7 @@ export function resolvePluginPolicyDecision(input: {
   const capabilities = input.manifest.capabilities?.map((item) => item.id) ?? []
   const risk =
     input.risk ??
-    (capabilities.some((item) => item.endsWith(".write") || item === "secrets" || item === "task.run")
+    (capabilities.some((item) => item.endsWith(".write") || item === "secrets" || item === "task.delegate")
       ? "high"
       : capabilities.length
         ? "medium"

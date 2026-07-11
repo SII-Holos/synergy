@@ -51,7 +51,13 @@ export function createPluginInvocationContext(input: {
     },
     session,
     workspace,
-    task: capabilities.has("task.run") ? { run: (value) => input.invokeHost("task.run", value) } : undefined,
+    task: capabilities.has("task.delegate")
+      ? {
+          start: (value) => input.invokeHost("task.start", value) as never,
+          get: (value) => input.invokeHost("task.get", value) as never,
+          cancel: (value) => input.invokeHost("task.cancel", value) as Promise<void>,
+        }
+      : undefined,
     settings:
       capabilities.has("settings.read") || capabilities.has("settings.write")
         ? {

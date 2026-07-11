@@ -22,8 +22,49 @@ export interface SessionHostService {
   abort?(sessionId: string): Promise<void>
 }
 
+export type PluginTaskHandle = {
+  taskId: string
+  sessionId: string
+}
+
+export type PluginTaskParent = {
+  sessionId: string
+  messageId: string
+}
+
+export type PluginTaskStartInput = {
+  subagent: string
+  description: string
+  prompt: string
+  correlationId: string
+  parent?: PluginTaskParent
+  tools?: Record<string, boolean>
+  visibility?: "visible" | "hidden"
+  timeoutMs?: number
+  output?:
+    | { mode?: "summary" }
+    | { mode: "final_response" }
+    | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
+  category?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+}
+
+export type PluginTaskSnapshot = PluginTaskHandle & {
+  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  output?:
+    | { mode: "summary"; value: string }
+    | { mode: "final_response"; value: string }
+    | { mode: "structured"; value: unknown }
+  error?: string
+}
+
 export interface TaskHostService {
-  run(input: Record<string, unknown>): Promise<unknown>
+  start(input: PluginTaskStartInput): Promise<PluginTaskHandle>
+  get(handle: PluginTaskHandle): Promise<PluginTaskSnapshot>
+  cancel(handle: PluginTaskHandle): Promise<void>
 }
 
 export interface WorkspaceHostService {

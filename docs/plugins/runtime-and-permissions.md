@@ -38,14 +38,14 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 | `session.control` | `context.session.abort()`                                                           |
 | `workspace.read`  | `context.workspace.read()` and `metadata()`                                         |
 | `workspace.write` | `context.workspace.write()`                                                         |
-| `task.run`        | `context.task.run()`                                                                |
+| `task.delegate`   | `context.task.start()`, `get()`, and `cancel()`                                     |
 | `settings.read`   | `context.settings.get()`                                                            |
 | `settings.write`  | `context.settings.replace()`                                                        |
 | `secrets`         | plugin-scoped credential get/set/delete                                             |
 | `tool.invoke`     | `context.tools.invoke()`                                                            |
 | `ui.hostActions`  | trusted UI host navigation, panel, resource, notification, and confirmation actions |
 
-`task.run` may include `agents` and `maxRuntimeMs` constraints. Host methods validate capability, active Scope, workspace containment, actor requirements, and cancellation at the owning boundary. `task.run` and `tool.invoke` require an agent invocation context.
+`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` returns a handle immediately and persists plugin/generation/Scope/correlation ownership on the Cortex child Session. `get()` and `cancel()` enforce that ownership. Non-agent invocations must provide an explicit parent Session/message in the current Scope; `tool.invoke` remains agent-only.
 
 Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
 

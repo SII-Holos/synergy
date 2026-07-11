@@ -3504,6 +3504,7 @@ export type SessionHistoryInfo = {
 }
 
 export type SessionCortexDelegation = {
+  taskID: string
   parentSessionID: string
   parentMessageID: string
   description: string
@@ -3511,7 +3512,7 @@ export type SessionCortexDelegation = {
   executionRole?: "primary" | "delegated_subagent"
   startedAt: number
   completedAt?: number
-  status: "queued" | "running" | "completed" | "error" | "cancelled"
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   model?: {
     providerID: string
     modelID: string
@@ -3548,6 +3549,13 @@ export type SessionCortexDelegation = {
         mode: "structured"
         value: unknown
       }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
 }
 
 export type SessionSuperPlanInfo = {
@@ -4561,7 +4569,7 @@ export type CortexTask = {
   executionRole?: "primary" | "delegated_subagent"
   category?: string
   dagNodeId?: string
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
+  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   startedAt: number
   completedAt?: number
   error?: string
@@ -4613,6 +4621,13 @@ export type CortexTask = {
         mode: "structured"
         value: unknown
       }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
 }
 
 export type Command = {
@@ -10343,7 +10358,7 @@ export type CortexOutputResponses = {
    */
   200: {
     taskID: string
-    status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
+    status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
     rendered: string
     output?:
       | {
