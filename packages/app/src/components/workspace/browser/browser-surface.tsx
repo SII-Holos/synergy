@@ -126,7 +126,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   }
 
   function hasInteractiveSurface() {
-    return nativePresentation() || webrtcPresentation()
+    return browser.hostStatus() === "ready" && (nativePresentation() || webrtcPresentation())
   }
 
   return (

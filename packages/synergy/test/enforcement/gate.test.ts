@@ -238,7 +238,7 @@ describe("EnforcementGate path classification", () => {
       guarded
         .classify("browser_navigation", { action: "goto", url: "http://192.168.1.10" })
         .capabilities.map((cap: any) => cap.class),
-    ).toEqual(["browser_interact", "network_request", "browser_private_network"])
+    ).toEqual(["browser_interact", "network_request"])
   })
   test("revise_file target path is classified from hashline patch header", async () => {
     const gate = await EnforcementGate.create({

@@ -1080,6 +1080,13 @@ export class CdpPageController {
         }
         return result;
       };
+      const captureStorageSafely = (name) => {
+        try {
+          return captureStorage(globalThis[name]);
+        } catch {
+          return {};
+        }
+      };
       const formState = [];
       let formChars = 0;
       for (const element of Array.from(document.querySelectorAll('input:not([type=password]):not([type=file]),textarea,select,[contenteditable=true]')).slice(0, 500)) {
@@ -1108,8 +1115,8 @@ export class CdpPageController {
       return {
         url: location.href,
         origin: location.origin,
-        localStorage: captureStorage(localStorage),
-        sessionStorage: captureStorage(sessionStorage),
+        localStorage: captureStorageSafely('localStorage'),
+        sessionStorage: captureStorageSafely('sessionStorage'),
         viewport: { width: innerWidth, height: innerHeight },
         scroll: { x: scrollX, y: scrollY },
         formState,

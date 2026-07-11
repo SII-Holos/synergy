@@ -65,11 +65,13 @@ export class BrowserWebRTCClient {
   private pc: RTCPeerConnection | null = null
   private input: RTCDataChannel | null = null
   private closed = false
+  private retryStopped = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempt = 0
   private negotiating: Promise<void> | null = null
   private readonly connectionId = crypto.randomUUID()
   private generation = 0
+  private signalingAttempt = 0
   private iceSequence = 0
   private rtcConfiguration: RTCConfiguration | undefined
 
@@ -77,6 +79,7 @@ export class BrowserWebRTCClient {
 
   async connect(): Promise<void> {
     if (this.closed) throw new Error("Browser WebRTC client is closed")
+    this.retryStopped = false
     this.options.onStatus?.("signaling")
 
     this.connectSignaling()
@@ -94,7 +97,8 @@ export class BrowserWebRTCClient {
 
   close(): void {
     this.closed = true
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.signalingAttempt++
+    this.clearReconnectTimer()
     this.sendSignal({
       type: "webrtc.close",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -103,8 +107,9 @@ export class BrowserWebRTCClient {
       pageId: this.options.pageId,
     })
     this.closePeer()
-    this.ws?.close()
+    const ws = this.ws
     this.ws = null
+    ws?.close()
   }
 
   private createPeer(): RTCPeerConnection {
@@ -137,8 +142,19 @@ export class BrowserWebRTCClient {
       })
     }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") this.options.onStatus?.("stream_ready")
-      if (pc.connectionState === "failed") this.options.onStatus?.("error", { connectionState: pc.connectionState })
+      if (pc.connectionState === "connected") {
+        this.markStable()
+        this.options.onStatus?.("stream_ready")
+      }
+      if (pc.connectionState === "failed") {
+        this.options.onStatus?.("error", { connectionState: pc.connectionState })
+        if (this.pc !== pc) return
+        const ws = this.ws
+        this.ws = null
+        ws?.close()
+        this.closePeer()
+        this.scheduleReconnect()
+      }
       if (pc.connectionState === "closed") this.options.onStatus?.("closed")
     }
     return pc
@@ -146,55 +162,87 @@ export class BrowserWebRTCClient {
 
   private connectSignaling(): void {
     if (this.closed) return
+    this.clearReconnectTimer()
+    const attempt = ++this.signalingAttempt
     this.options.onStatus?.("signaling")
     if (typeof this.options.signalingUrl === "string") {
-      this.openSignaling(this.options.signalingUrl)
+      this.openSignaling(this.options.signalingUrl, attempt)
       return
     }
     void this.options
       .signalingUrl()
       .then((resolved) => {
-        if (this.closed) return
-        this.reconnectAttempt = 0
+        if (this.closed || attempt !== this.signalingAttempt) return
         this.rtcConfiguration = resolved.rtcConfiguration
-        this.openSignaling(resolved.url)
+        this.openSignaling(resolved.url, attempt)
       })
       .catch((error) => {
-        if (this.closed) return
-        const retryable = (error as Record<string, unknown>).retryable === true
-        this.reconnectAttempt++
-        const delay = retryable ? backoffDelay(this.reconnectAttempt) : backoffDelay(this.reconnectAttempt)
-        this.options.onStatus?.(retryable ? "host_pending" : "error", error)
-        this.reconnectTimer = setTimeout(() => this.connectSignaling(), delay)
+        if (this.closed || attempt !== this.signalingAttempt) return
+        if (!isRetryable(error)) {
+          this.retryStopped = true
+          this.options.onStatus?.("error", error)
+          return
+        }
+        this.options.onStatus?.("host_pending", error)
+        this.scheduleReconnect()
       })
   }
 
-  private openSignaling(url: string): void {
-    if (this.closed) return
+  private openSignaling(url: string, attempt: number): void {
+    if (this.closed || attempt !== this.signalingAttempt) return
+    const previous = this.ws
+    this.ws = null
+    previous?.close()
+    this.closePeer()
     this.createPeer()
     const ws = new WebSocket(url)
     this.ws = ws
 
     ws.addEventListener("open", () => {
+      if (this.closed || this.ws !== ws || attempt !== this.signalingAttempt) {
+        ws.close()
+        return
+      }
       this.createPeer()
     })
 
     ws.addEventListener("message", (event) => {
+      if (this.closed || this.ws !== ws || attempt !== this.signalingAttempt) return
       void this.handleSignal(event.data)
     })
 
     ws.addEventListener("close", () => {
-      if (this.ws === ws) this.ws = null
+      if (this.ws !== ws || attempt !== this.signalingAttempt) return
+      this.ws = null
+      this.closePeer()
       this.options.onStatus?.("closed")
-      if (!this.closed) {
-        this.reconnectAttempt++
-        this.reconnectTimer = setTimeout(() => this.connectSignaling(), backoffDelay(this.reconnectAttempt))
-      }
+      this.scheduleReconnect()
     })
 
     ws.addEventListener("error", (event) => {
+      if (this.ws !== ws || attempt !== this.signalingAttempt) return
       this.options.onStatus?.("error", event)
     })
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closed || this.retryStopped || this.reconnectTimer) return
+    this.reconnectAttempt++
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.connectSignaling()
+    }, backoffDelay(this.reconnectAttempt))
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return
+    clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+  }
+
+  private markStable(): void {
+    this.reconnectAttempt = 0
+    this.clearReconnectTimer()
   }
 
   private closePeer(): void {
@@ -248,22 +296,35 @@ export class BrowserWebRTCClient {
     try {
       msg = JSON.parse(String(raw))
     } catch {
+      this.retryStopped = true
       this.options.onStatus?.("error", { message: "Invalid WebRTC signaling payload" })
       return
     }
 
     const parsedMessage = BrowserWebRTCMessageSchema.safeParse(msg)
     if (!parsedMessage.success) {
+      this.retryStopped = true
       this.options.onStatus?.("error", { message: "Invalid Browser WebRTC protocol message." })
       return
     }
     const message = parsedMessage.data
     this.options.onMessage?.(message)
     if (message.type === "error") {
-      this.options.onStatus?.("error", message)
+      if (message.retryable) {
+        this.options.onStatus?.("host_pending", message)
+        const ws = this.ws
+        this.ws = null
+        ws?.close()
+        this.closePeer()
+        this.scheduleReconnect()
+      } else {
+        this.retryStopped = true
+        this.options.onStatus?.("error", message)
+      }
       return
     }
     if (message.type === "webrtc.host.ready") {
+      this.markStable()
       this.options.onStatus?.("host_ready", message)
       await this.negotiate()
       return
@@ -289,6 +350,7 @@ export class BrowserWebRTCClient {
       return
     }
     if (parsedSignal.success && parsedSignal.data.type === "webrtc.error") {
+      this.retryStopped = true
       this.options.onStatus?.("error", parsedSignal.data)
     }
   }
@@ -301,4 +363,8 @@ export class BrowserWebRTCClient {
 
 function backoffDelay(attempt: number): number {
   return Math.min(1000 * Math.pow(2, Math.min(attempt - 1, 5)), 30_000)
+}
+
+function isRetryable(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "retryable" in error && error.retryable === true)
 }

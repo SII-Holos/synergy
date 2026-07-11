@@ -230,6 +230,7 @@ export class BrowserSessionImpl implements BrowserSession {
     const targetURL = url ?? (shouldRestore ? undefined : options.resume === false ? undefined : this.resumableURL())
     if (shouldRestore) {
       try {
+        this.assertCheckpointAllowed(this._checkpoint!)
         await browserPage.execute({ type: "checkpoint", action: "restore", checkpoint: this._checkpoint! })
       } catch (error) {
         await this.closeFailedPage(browserPage, error)
@@ -535,6 +536,7 @@ export class BrowserSessionImpl implements BrowserSession {
       const captured = await source.execute({ type: "checkpoint", action: "capture" })
       if (captured.type !== "data") throw new Error("Browser backend returned an invalid checkpoint result.")
       checkpoint = BrowserCheckpointSchema.parse(captured.data)
+      this.assertCheckpointAllowed(checkpoint)
       this._checkpoint = checkpoint
     } catch (error) {
       this._status = "active"
@@ -565,6 +567,7 @@ export class BrowserSessionImpl implements BrowserSession {
     let target: BrowserPageBackend | null = null
     try {
       target = await this.createPage(targetBackend, pageID)
+      this.assertCheckpointAllowed(checkpoint)
       await target.execute({ type: "checkpoint", action: "restore", checkpoint })
       this._page = target
       this._status = "active"
@@ -599,6 +602,7 @@ export class BrowserSessionImpl implements BrowserSession {
       let restored: BrowserPageBackend | null = null
       try {
         restored = await this.createPage(sourceBackend, pageID)
+        this.assertCheckpointAllowed(checkpoint)
         await restored.execute({ type: "checkpoint", action: "restore", checkpoint })
         this._page = restored
         this._status = "active"
@@ -715,6 +719,19 @@ export class BrowserSessionImpl implements BrowserSession {
     const result = await page.execute({ type: "checkpoint", action: "capture" })
     if (result.type !== "data") throw new Error("Browser backend returned an invalid checkpoint result.")
     this._checkpoint = BrowserCheckpointSchema.parse(result.data)
+  }
+
+  private assertCheckpointAllowed(checkpoint: BrowserCheckpoint): void {
+    const policy = BrowserPolicy.hardCheckNavigation(checkpoint.url, this.owner.directory)
+    if (policy.decision === "allow") return
+    throw new BrowserProtocolError({
+      code: "browser_checkpoint_navigation_denied",
+      message: policy.reason,
+      retryable: false,
+      pageId: this._page?.id ?? this._descriptor?.id,
+      url: checkpoint.url,
+      suggestedAction: "Navigate to an allowed workspace file or HTTP(S) URL before retrying.",
+    })
   }
 
   private resumableURL(): string | undefined {

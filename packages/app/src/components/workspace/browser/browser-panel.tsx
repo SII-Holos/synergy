@@ -1,8 +1,8 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { BROWSER_PROTOCOL_VERSION, browserOwnerKey } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, lazy, Show } from "solid-js"
+import { createMemo, createResource, lazy, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
@@ -12,7 +12,8 @@ import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
-import { createBrowserCommandId } from "./browser-command"
+import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-command"
+import { normalizeBrowserError } from "./browser-error"
 
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
@@ -22,18 +23,58 @@ const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ defa
 
 export function BrowserPanel() {
   const params = useParams()
-  const ownerKey = createMemo(() =>
-    params.dir && params.id ? browserOwnerKey({ mode: "session", scopeID: params.dir, sessionID: params.id }) : null,
-  )
-  createEffect(() => {
-    browserDebug("panel.route", { dir: params.dir, sessionID: params.id, ownerKey: ownerKey() })
+  const sdk = useSDK()
+  const route = createMemo(() => {
+    const sessionID = params.id
+    const pathDirectory = params.dir ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
+    return sessionID && pathDirectory ? { sessionID, pathDirectory, routeDirectory: params.dir } : null
+  })
+  const [initial, { refetch }] = createResource(route, async (input) => {
+    const response = await sdk.client.browser.session({
+      path_directory: input.pathDirectory,
+      query_directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      mode: "session",
+      sessionID: input.sessionID,
+      presentation: "auto",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+    })
+    if (!response.data) throw response.error ?? new Error("Browser session bootstrap failed")
+    return response.data
   })
 
   return (
-    <Show keyed when={ownerKey()}>
-      {(key) => {
+    <Show
+      keyed
+      when={initial()}
+      fallback={
+        <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
+          <div class="browser-empty-mark">
+            <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+          </div>
+          <span class="text-14-medium text-text-strong">
+            {initial.error
+              ? normalizeBrowserError(initial.error, "Browser session could not be loaded").message
+              : "Connecting to Browser"}
+          </span>
+          <Show when={initial.error}>
+            <Button size="small" variant="primary" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </Show>
+        </div>
+      }
+    >
+      {(state) => {
         const browser = createBrowserStore()
-        return <BrowserPanelInner browser={browser} ownerKey={key} routeDirectory={params.dir} sessionID={params.id!} />
+        return (
+          <BrowserPanelInner
+            browser={browser}
+            initial={state}
+            routeDirectory={route()?.routeDirectory}
+            sessionID={route()!.sessionID}
+          />
+        )
       }}
     </Show>
   )
@@ -41,19 +82,35 @@ export function BrowserPanel() {
 
 function BrowserPanelInner(props: {
   browser: ReturnType<typeof createBrowserStore>
-  ownerKey: string
+  initial: BrowserAPISessionState
   routeDirectory?: string
   sessionID: string
 }) {
   const browser = props.browser
   const sdk = useSDK()
-  browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory })
+  const ownerKey = props.initial.ownerKey
+  browser.setSession("page", props.initial.page)
+  browser.setSession("seq", props.initial.seq)
+  browser.setSession("epoch", props.initial.epoch)
+  browser.setPresentation(props.initial.presentation)
+  if (props.initial.page) browser.setHostStatus(props.initial.page.id, props.initial.hostStatus)
+  if (props.initial.error) {
+    browser.setBrowserError({
+      severity: "error",
+      code: props.initial.error.code,
+      message: props.initial.error.message,
+    })
+  }
+  browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory, ownerKey })
 
   const ws = createBrowserWebSocket(browser, {
     sessionID: props.sessionID,
-    ownerKey: props.ownerKey,
+    ownerKey,
     routeDirectory: props.routeDirectory,
   })
+  if (shouldResumeBrowserSession(props.initial)) {
+    queueMicrotask(() => browser.send({ type: "resume" }))
+  }
 
   const page = createMemo(() => browser.page())
 
@@ -79,7 +136,7 @@ function BrowserPanelInner(props: {
           limit: action === "console" ? 100 : 200,
         },
       })
-      if (!response.data) throw new Error(response.error?.message ?? "Browser diagnostics failed")
+      if (!response.data) throw response.error ?? new Error("Browser diagnostics failed")
       const data = Array.isArray(response.data.data) ? response.data.data : []
       if (action === "console") browser.setConsoleEntries(pageId, data)
       if (action === "network") browser.setNetworkRequests(pageId, data)
@@ -91,7 +148,8 @@ function BrowserPanelInner(props: {
         browser.setNetworkRequests(pageId, [])
       }
     } catch (error) {
-      browser.setBrowserError({ severity: "error", message: error instanceof Error ? error.message : String(error) })
+      const normalized = normalizeBrowserError(error, "Browser diagnostics failed")
+      browser.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
     }
   }
 
@@ -129,12 +187,14 @@ function BrowserPanelInner(props: {
           },
         })
         .then((response) => {
-          if (!response.data) throw new Error(response.error?.message ?? "Browser annotation failed")
+          if (!response.data) throw response.error ?? new Error("Browser annotation failed")
         })
         .catch((error) => {
+          const normalized = normalizeBrowserError(error, "Browser annotation failed")
           browser.setBrowserError({
             severity: "error",
-            message: error instanceof Error ? error.message : String(error),
+            message: normalized.message,
+            code: normalized.code,
           })
         })
     }
@@ -192,7 +252,7 @@ function BrowserPanelInner(props: {
                   <BrowserSurface
                     sessionID={props.sessionID}
                     routeDirectory={props.routeDirectory}
-                    ownerKey={props.ownerKey}
+                    ownerKey={ownerKey}
                   />
                 </Show>
               }

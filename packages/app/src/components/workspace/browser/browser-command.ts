@@ -1,10 +1,14 @@
 import type { BrowserStoreAPI } from "./browser-store"
-import type { BrowserBackendResult } from "@ericsanchezok/synergy-browser"
+import type { BrowserAPISessionState, BrowserBackendResult } from "@ericsanchezok/synergy-browser"
 
 export function createBrowserCommandId() {
   const random = globalThis.crypto?.randomUUID?.()
   if (random) return `browser_cmd_${random}`
   return `browser_cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
+export function shouldResumeBrowserSession(state: BrowserAPISessionState): boolean {
+  return state.status === "active" && state.page !== null && state.hostStatus !== "ready"
 }
 
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {

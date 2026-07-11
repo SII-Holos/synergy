@@ -86,6 +86,7 @@ describe("BrowserRoute protocol v2", () => {
       expect(await response.json()).toMatchObject({
         type: "session.state",
         protocolVersion: 2,
+        ownerKey: expect.any(String),
         status: "suspended",
         page: { id: "page-1", url: "https://example.com/" },
       })

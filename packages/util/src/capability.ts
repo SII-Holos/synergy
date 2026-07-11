@@ -345,14 +345,6 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Use browser coordinates",
     description: "Can interact with a browser page using visual coordinates instead of semantic locators.",
   },
-  browser_private_network: {
-    category: "browser",
-    severity: "high",
-    title: "Access private networks from browser",
-    description:
-      "Can connect the browser to approved private-network addresses outside controlled localhost development ports.",
-    nonBypassable: true,
-  },
   browser_download: {
     category: "browser",
     severity: "medium",
@@ -444,7 +436,6 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "browser_clipboard",
   "browser_upload",
   "browser_coordinate",
-  "browser_private_network",
   "browser_download",
   "browser_emulation",
 ] as const

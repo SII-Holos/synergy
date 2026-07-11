@@ -1,8 +1,11 @@
+import { realpathSync } from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { normalizeBrowserURL as normalizeBrowserURLInput } from "@ericsanchezok/synergy-browser"
+import { isPathContained } from "../util/path-contain.js"
 
 export namespace BrowserPolicy {
-  export type Decision = "allow" | "blocked" | "deny"
+  export type Decision = "allow" | "deny"
 
   export interface PolicyResult {
     decision: Decision
@@ -10,22 +13,7 @@ export namespace BrowserPolicy {
     permanent: boolean
   }
 
-  export const LOCALHOST_ALLOW_PORTS: readonly number[] = [
-    ...range(3000, 3010),
-    ...range(4000, 4005),
-    ...range(5000, 5005),
-    ...range(5173, 5183),
-    ...range(8000, 8010),
-    ...range(8080, 8085),
-    ...range(9000, 9005),
-    8888,
-    80,
-    443,
-  ]
-  export const SENSITIVE_PORTS: readonly number[] = [22, 3306, 5432, 6379, 27017, 9200, 9090, 11434]
-
-  const localhostAllowPorts = new Set(LOCALHOST_ALLOW_PORTS)
-  const sensitivePorts = new Set(SENSITIVE_PORTS)
+  const blockedWorkspaceSegments = new Set(["node_modules", ".git", ".synergy"])
   const blockedDownloadMimes = new Set(["application/x-msdownload", "application/x-sh", "application/x-mach-binary"])
   const blockedDownloadExtensions = new Set([
     ".app",
@@ -44,42 +32,17 @@ export namespace BrowserPolicy {
 
   export const normalizeBrowserURL = normalizeBrowserURLInput
 
-  export function hardCheckNavigation(url: string, _workspace: string): PolicyResult {
+  export function hardCheckNavigation(url: string, workspace: string): PolicyResult {
     const parsed = parseURL(url)
     if (!parsed) return deny(`Invalid URL: ${url}`)
-    const protocol = parsed.protocol.slice(0, -1)
-    if (protocol === "file") return deny("Browser navigation does not support file:// URLs", true)
-    if (protocol === "about") {
+    if (parsed.protocol === "file:") return evaluateFileURL(parsed, workspace)
+    if (parsed.protocol === "about:") {
       return parsed.href === "about:blank" ? allow("Blank page", true) : deny("Only about:blank is allowed")
     }
-    if (protocol !== "http" && protocol !== "https") return deny(`Protocol not allowed: ${protocol}`)
-    const port = effectivePort(parsed)
-    if (isLocalhost(parsed.hostname) && isSensitivePort(parsed.hostname, port)) {
-      return deny(`Port ${port} on ${parsed.hostname} is blocked for security`)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return deny(`Protocol not allowed: ${parsed.protocol.slice(0, -1)}`)
     }
-    return allow("User browser navigation")
-  }
-
-  export function evaluateURL(url: string, _workspace: string): PolicyResult {
-    const parsed = parseURL(url)
-    if (!parsed) return deny(`Invalid URL: ${url}`)
-    const protocol = parsed.protocol.slice(0, -1)
-    if (protocol === "file") return deny("Browser navigation does not support file:// URLs", true)
-    if (protocol !== "http" && protocol !== "https") return deny(`Protocol not allowed: ${protocol}`)
-    const port = effectivePort(parsed)
-    if (isLocalhost(parsed.hostname)) {
-      if (isSensitivePort(parsed.hostname, port)) {
-        return deny(`Port ${port} on ${parsed.hostname} is blocked for security`)
-      }
-      if (localhostAllowPorts.has(port)) return allow(`Localhost dev server port ${port}`, true)
-      return blocked(`Localhost port ${port} requires user approval`)
-    }
-    return blocked(`External URL requires user approval: ${parsed.hostname}`)
-  }
-
-  export function isSensitivePort(hostname: string, port: number): boolean {
-    if (!isLocalhost(hostname)) return false
-    return (port < 1024 && port !== 80 && port !== 443) || sensitivePorts.has(port)
+    return allow("Browser navigation")
   }
 
   export function isDangerousDownload(input: { mimeType?: string | null; filename?: string | null }): boolean {
@@ -88,10 +51,45 @@ export namespace BrowserPolicy {
     const filename = input.filename?.trim().toLowerCase()
     return Boolean(filename && blockedDownloadExtensions.has(path.extname(filename)))
   }
-}
 
-function range(start: number, end: number): number[] {
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index)
+  function evaluateFileURL(url: URL, workspace: string): PolicyResult {
+    let requestedPath: string
+    try {
+      requestedPath = path.resolve(fileURLToPath(url))
+    } catch {
+      return deny(`Invalid file URL: ${url.href}`)
+    }
+
+    let root: string
+    try {
+      root = realpathSync(workspace)
+    } catch {
+      return deny(`Workspace path does not exist or cannot be resolved: ${workspace}`)
+    }
+    const requestedBlocked = blockedSegment(root, requestedPath)
+    if (requestedBlocked) return deny(`Path contains a blocked segment: ${requestedBlocked}`)
+
+    let filePath: string
+    try {
+      filePath = realpathSync(requestedPath)
+    } catch {
+      return deny(`File path does not exist or cannot be resolved: ${requestedPath}`)
+    }
+    if (!isPathContained(root, filePath)) return deny(`File path is outside the workspace: ${filePath}`)
+
+    const resolvedBlocked = blockedSegment(root, filePath)
+    if (resolvedBlocked) return deny(`Path contains a blocked segment: ${resolvedBlocked}`)
+    return allow("File path is within workspace", true)
+  }
+
+  function blockedSegment(root: string, target: string): string | undefined {
+    if (!isPathContained(root, target)) return
+    return path
+      .relative(root, target)
+      .split(path.sep)
+      .filter(Boolean)
+      .find((segment) => segment.startsWith(".") || blockedWorkspaceSegments.has(segment))
+  }
 }
 
 function parseURL(value: string): URL | null {
@@ -102,22 +100,10 @@ function parseURL(value: string): URL | null {
   }
 }
 
-function effectivePort(url: URL): number {
-  return url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80
-}
-
-function isLocalhost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]"
-}
-
 function allow(reason: string, permanent = false): BrowserPolicy.PolicyResult {
   return { decision: "allow", reason, permanent }
 }
 
-function blocked(reason: string): BrowserPolicy.PolicyResult {
-  return { decision: "blocked", reason, permanent: false }
-}
-
-function deny(reason: string, permanent = false): BrowserPolicy.PolicyResult {
-  return { decision: "deny", reason, permanent }
+function deny(reason: string): BrowserPolicy.PolicyResult {
+  return { decision: "deny", reason, permanent: false }
 }

@@ -57,8 +57,6 @@ export class BrowserNativePagePool {
         },
       })
       const contents = view.webContents
-      contents.session.setPermissionCheckHandler(() => false)
-      contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
       await contents.session.setProxy({ proxyRules: input.networkProxy.server })
     } catch (error) {
       this.creating.delete(input.ownerKey)

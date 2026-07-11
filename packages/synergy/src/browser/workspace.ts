@@ -50,14 +50,24 @@ export namespace BrowserWorkspace {
     return {
       type: "session.state",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: BrowserOwner.key(owner),
       status: session.status,
       page: session.page,
       presentation,
-      hostStatus: presentation && BrowserBroker.ready(presentation.kind) ? "ready" : BrowserHostBrokerProcess.status(),
+      hostStatus: pageHostStatus(owner, session),
       seq: watermark.seq,
       epoch: watermark.epoch,
       ...(session.error ? { error: session.error } : {}),
     }
+  }
+
+  function pageHostStatus(owner: BrowserOwner.Info, session: BrowserControl.SessionState) {
+    if (!session.page) return "detached" as const
+    if (BrowserBroker.hasPage(owner, session.page.id)) return "ready" as const
+    const status = BrowserHostBrokerProcess.status()
+    return status === "installing" || status === "starting" || status === "restarting" || status === "failed"
+      ? status
+      : ("detached" as const)
   }
 
   export async function executeControl(

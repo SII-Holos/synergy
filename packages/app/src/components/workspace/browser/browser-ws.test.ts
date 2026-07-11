@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser"
 import { createBrowserWebRTCSignalingUrl } from "./browser-webrtc"
-import { browserControlCommandFromMessage } from "./browser-command"
+import { browserControlCommandFromMessage, shouldResumeBrowserSession } from "./browser-command"
 import { createBrowserEventsWebSocketUrl } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
@@ -152,5 +152,26 @@ describe("browserControlCommandFromMessage", () => {
     expect(browserControlCommandFromMessage({ type: "input.text", pageId: "page_1", text: "中文搜索" })).toBeNull()
     expect(browserControlCommandFromMessage({ type: "input.key", pageId: "page_1", action: "down" })).toBeNull()
     expect(browserControlCommandFromMessage({ type: "input.mouse", pageId: "page_1", action: "wheel" })).toBeNull()
+  })
+})
+
+describe("Browser session bootstrap", () => {
+  const state = {
+    type: "session.state" as const,
+    protocolVersion: 2 as const,
+    ownerKey: "owner-1",
+    status: "active" as const,
+    page: { id: "page-1", url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },
+    presentation: null,
+    hostStatus: "detached" as const,
+    seq: 0,
+    epoch: "epoch-1",
+  }
+
+  test("resumes only active pages that are not attached to a Host", () => {
+    expect(shouldResumeBrowserSession(state)).toBe(true)
+    expect(shouldResumeBrowserSession({ ...state, hostStatus: "ready" })).toBe(false)
+    expect(shouldResumeBrowserSession({ ...state, status: "suspended" })).toBe(false)
+    expect(shouldResumeBrowserSession({ ...state, status: "empty", page: null })).toBe(false)
   })
 })

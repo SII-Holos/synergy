@@ -39,11 +39,11 @@ Both represent the same session-owned page and command model. Remote presentatio
 
 Interactive Browser presentation is not an iframe, pseudo-tab, or screenshot-stream fallback. Screenshots remain deliberate artifacts for inspection and agent tools, not the transport for interactive browsing.
 
-## Navigation Safety
+## Navigation and Network
 
-User address-bar navigation and agent navigation share hard safety checks but have different approval semantics.
+User address-bar navigation and agent navigation use the same Chromium-backed page. HTTP and HTTPS targets follow the machine's normal network routing, including localhost, private development services, direct IP addresses, and TUN/Fake-IP environments. Agent calls remain governed by the ordinary Browser interaction and network-request capabilities; Browser does not add a second private-network permission.
 
-User navigation can open public HTTP and HTTPS URLs without an agent approval prompt. Sensitive localhost ports remain denied. Agent navigation treats public URLs and uncommon localhost ports as operations that require authorization through the active control profile. Common local development-server ports are allowed; sensitive service ports are denied.
+Chromium owns webpage-origin security, CORS, TLS, mixed content, and Local Network Access. The Synergy gateway is owner-authenticated transport plumbing and must not reinterpret routable IP ranges. Browser content grants Chromium local-network and loopback-network access without granting unrelated device, location, media, or filesystem permissions.
 
 `file:` navigation is limited to an existing path inside the active workspace. Dotfiles and paths containing `node_modules`, `.git`, or `.synergy` are denied, including after symlink resolution. Other protocols are denied except the internal blank page used for an empty Browser.
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { runInNewContext } from "node:vm"
 import {
   BrowserProtocolError,
   CdpPageController,
@@ -10,6 +11,8 @@ import {
 class FakeTransport implements CdpTransport {
   readonly calls: { method: string; params?: Record<string, unknown> }[] = []
   private listeners = new Map<string, Set<(params: unknown) => void>>()
+
+  constructor(private evaluate?: (expression: string) => unknown) {}
 
   async send<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
     this.calls.push({ method, params })
@@ -24,6 +27,7 @@ class FakeTransport implements CdpTransport {
       if (expression.includes("document.title")) {
         return { result: { value: { url: "https://example.com/", title: "Example" } } } as T
       }
+      if (this.evaluate) return { result: { value: this.evaluate(expression) } } as T
       return { result: { value: null } } as T
     }
     if (method === "Runtime.callFunctionOn") {
@@ -128,6 +132,40 @@ describe("CdpPageController", () => {
     })
   })
 
+  test("captures a checkpoint when document storage access is denied", async () => {
+    const sandbox = {
+      location: { href: "https://example.com/", origin: "https://example.com" },
+      document: { querySelectorAll: () => [] },
+      innerWidth: 1024,
+      innerHeight: 768,
+      scrollX: 0,
+      scrollY: 0,
+    }
+    Object.defineProperties(sandbox, {
+      localStorage: { get: () => assertStorageDenied() },
+      sessionStorage: { get: () => assertStorageDenied() },
+    })
+    const transport = new FakeTransport((expression) => runInNewContext(expression, sandbox))
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+
+    const result = await controller.execute({ type: "checkpoint", action: "capture" })
+
+    expect(result).toMatchObject({
+      type: "data",
+      data: {
+        url: "https://example.com/",
+        origins: [
+          {
+            origin: "https://example.com",
+            localStorage: {},
+            sessionStorage: {},
+          },
+        ],
+        viewport: { width: 1024, height: 768 },
+      },
+    })
+  })
+
   test("rejects Playwright-only CSS before attempting input", async () => {
     const transport = new FakeTransport()
     const controller = new CdpPageController({ pageId: "page-1", transport })
@@ -185,3 +223,7 @@ describe("CdpPageController", () => {
     })
   })
 })
+
+function assertStorageDenied(): never {
+  throw new DOMException("Storage access is denied", "SecurityError")
+}

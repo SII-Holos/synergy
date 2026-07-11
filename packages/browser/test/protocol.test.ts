@@ -3,6 +3,7 @@ import {
   BROWSER_PROTOCOL_VERSION,
   BrowserActionSchema,
   BrowserBackendCommandSchema,
+  BrowserCheckpointSchema,
   BrowserEventSchema,
   BrowserDownloadEntrySchema,
   BrowserHostMessageSchema,
@@ -21,12 +22,25 @@ import {
 } from "../src/protocol"
 
 describe("browser protocol v2", () => {
+  test("accepts workspace file checkpoints without granting path access", () => {
+    expect(
+      BrowserCheckpointSchema.parse({
+        url: "file:///workspace/index.html",
+        cookies: [],
+        origins: [],
+        viewport: { width: 1280, height: 720 },
+        scroll: { x: 0, y: 0 },
+        formState: [],
+      }).url,
+    ).toBe("file:///workspace/index.html")
+  })
   test("uses a versioned strict protocol", () => {
     expect(BROWSER_PROTOCOL_VERSION).toBe(2)
     expect(
       BrowserSessionStateSchema.parse({
         type: "session.state",
         protocolVersion: 2,
+        ownerKey: "owner-1",
         status: "empty",
         page: null,
         presentation: null,
@@ -39,6 +53,7 @@ describe("browser protocol v2", () => {
       BrowserSessionStateSchema.parse({
         type: "session.state",
         protocolVersion: 2,
+        ownerKey: "owner-1",
         status: "empty",
         page: null,
         presentation: null,

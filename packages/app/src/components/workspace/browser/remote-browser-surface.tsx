@@ -5,6 +5,7 @@ import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { useBrowser } from "./browser-store"
 import { BrowserWebRTCClient, createBrowserWebRTCSignalingUrl, type BrowserWebRTCStatus } from "./browser-webrtc"
+import { normalizeBrowserError, toBrowserError } from "./browser-error"
 
 function mouseButton(button: number): "left" | "middle" | "right" {
   if (button === 1) return "middle"
@@ -79,38 +80,36 @@ export function RemoteBrowserSurface(props: {
 
     const client = new BrowserWebRTCClient({
       signalingUrl: async () => {
-        const response = await sdk.client.browser.createViewerTicket({
-          path_directory: routeDirectory,
-          query_directory: sdk.directory,
-          scopeID: sdk.scopeID,
-          mode: "session",
-          sessionID: props.sessionID,
-          presentation: "webrtc",
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          browserViewerTicketRequest: { protocolVersion: BROWSER_PROTOCOL_VERSION, pageId },
-        })
-        if (!response.data) {
-          const retryable = response.error?.retryable === true
-          const message = response.error?.message ?? "Could not create a Browser viewer ticket"
-          const err = new Error(message) as Error & { retryable?: boolean }
-          err.retryable = retryable
-          throw err
-        }
-        const url = createBrowserWebRTCSignalingUrl({
-          serverUrl: sdk.url,
-          sessionID: props.sessionID,
-          pageId,
-          routeDirectory,
-          directory: sdk.directory,
-          scopeID: sdk.scopeID,
-          scopeKey: sdk.scopeKey,
-          ticket: response.data.ticket,
-          traceId,
-        })
-        if (!url) throw new Error("Missing browser signaling route")
-        return {
-          url,
-          rtcConfiguration: { iceServers: response.data.iceServers as RTCIceServer[] },
+        try {
+          const response = await sdk.client.browser.createViewerTicket({
+            path_directory: routeDirectory,
+            query_directory: sdk.directory,
+            scopeID: sdk.scopeID,
+            mode: "session",
+            sessionID: props.sessionID,
+            presentation: "webrtc",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            browserViewerTicketRequest: { protocolVersion: BROWSER_PROTOCOL_VERSION, pageId },
+          })
+          if (!response.data) throw response.error ?? new Error("Could not create a Browser viewer ticket")
+          const url = createBrowserWebRTCSignalingUrl({
+            serverUrl: sdk.url,
+            sessionID: props.sessionID,
+            pageId,
+            routeDirectory,
+            directory: sdk.directory,
+            scopeID: sdk.scopeID,
+            scopeKey: sdk.scopeKey,
+            ticket: response.data.ticket,
+            traceId,
+          })
+          if (!url) throw new Error("Missing browser signaling route")
+          return {
+            url,
+            rtcConfiguration: { iceServers: response.data.iceServers as RTCIceServer[] },
+          }
+        } catch (error) {
+          throw toBrowserError(error, "Could not create a Browser viewer ticket")
         }
       },
       pageId,
@@ -152,9 +151,9 @@ export function RemoteBrowserSurface(props: {
     activeWebRTCKey = clientKey
     void client.connect().catch((error) => {
       if (webrtcClient !== client) return
-      const message = error instanceof Error ? error.message : String(error)
+      const normalized = normalizeBrowserError(error, "Browser WebRTC connection failed")
       setWebrtcStatus("error")
-      setWebrtcDetail({ message })
+      setWebrtcDetail({ message: normalized.message, code: normalized.code })
     })
   })
 

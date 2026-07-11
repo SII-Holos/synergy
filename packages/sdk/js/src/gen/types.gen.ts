@@ -5773,6 +5773,7 @@ export type BrowserDiagnosticsRequest = {
 export type BrowserApiSessionState = {
   type: "session.state"
   protocolVersion: 2
+  ownerKey: string
   status: "empty" | "suspended" | "active" | "migrating" | "failed"
   page: {
     id: string

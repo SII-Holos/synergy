@@ -99,7 +99,10 @@ export const BrowserCheckpointSchema = z
     url: z
       .string()
       .max(20_000)
-      .refine((value) => value === "about:blank" || /^https?:\/\//i.test(value), "Checkpoint URL must use HTTP(S)."),
+      .refine(
+        (value) => value === "about:blank" || /^(https?|file):/i.test(value),
+        "Checkpoint URL must use HTTP(S), file:, or about:blank.",
+      ),
     cookies: z
       .array(z.record(z.string().max(2_048), z.unknown()))
       .max(10_000)
@@ -1009,6 +1012,7 @@ export const BrowserSessionStateSchema = z
   .object({
     type: z.literal("session.state"),
     protocolVersion,
+    ownerKey: nonEmpty,
     status: BrowserSessionStatusSchema,
     page: BrowserPageSchema.nullable(),
     presentation: BrowserPresentationSchema.nullable(),
@@ -1028,6 +1032,7 @@ export const BrowserAPIErrorSchema = BrowserProtocolErrorSchema.omit({ locator: 
 export const BrowserAPISessionStateSchema = BrowserSessionStateSchema.omit({ error: true })
   .extend({ error: BrowserAPIErrorSchema.optional() })
   .meta({ ref: "BrowserAPISessionState" })
+export type BrowserAPISessionState = z.infer<typeof BrowserAPISessionStateSchema>
 
 export const BrowserEventSchema = z.discriminatedUnion("type", [
   BrowserSessionStateSchema,

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
+import { browserOwnerKey } from "@ericsanchezok/synergy-browser"
 import { BrowserBroker } from "../../src/browser/broker"
 import { BrowserEvent } from "../../src/browser/event"
 import { BrowserNativePresentation } from "../../src/browser/native-presentation"
@@ -50,5 +51,11 @@ describe("native Browser presentation tickets", () => {
       serverOrigin: "http://127.0.0.1:4096",
     })
     expect(() => BrowserNativePresentation.consume(owner, "http://127.0.0.1:5000", wrongServer)).toThrow(/server/i)
+
+    const routeDerived = BrowserNativeLease.issue(BrowserBroker.secret(), {
+      ownerKey: browserOwnerKey({ mode: "session", scopeID: "home", sessionID: owner.sessionID }),
+      serverOrigin: "http://127.0.0.1:4096",
+    })
+    expect(() => BrowserNativePresentation.consume(owner, "http://127.0.0.1:4096", routeDerived)).toThrow(/owner/i)
   })
 })

@@ -8,17 +8,12 @@ import {
 import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserRuntime } from "./runtime.js"
-import { BlockedURLNavigationError } from "./page.js"
 import type { BrowserSession } from "./types.js"
-import { BrowserNetworkGateway } from "./network-gateway.js"
-import type { BrowserPrivateNetworkGrant } from "./network-gateway.js"
 
 interface ExecuteRequest {
   commandId: string
   command: BrowserBackendCommand
   signal?: AbortSignal
-  navigationGrant?: string
-  privateNetworkGrant?: BrowserPrivateNetworkGrant
 }
 
 interface OwnerQueue {
@@ -171,7 +166,6 @@ function encodedBytes(value: unknown): number {
 }
 
 function normalizeCommandError(error: unknown, commandId: string): unknown {
-  if (error instanceof BlockedURLNavigationError) return error
   if (error instanceof BrowserProtocolError) {
     if (error.commandId) return error
     const { type: _type, ...data } = error.toJSON()
@@ -203,8 +197,7 @@ async function executeOnce(
 
   if (command.type === "navigate") {
     const url = normalizeBrowserURL(command.url)
-    authorizeNavigation(owner, url, command.source, request.navigationGrant)
-    if (request.privateNetworkGrant) BrowserNetworkGateway.allowPrivateNetwork(owner, request.privateNetworkGrant)
+    authorizeNavigation(owner, url)
     const page = session.page ?? (await session.ensurePage(undefined, { resume: false }))
     const result = await executePage(page, { ...command, url }, request)
     await session.save({ captureCheckpoint: true })
@@ -270,19 +263,9 @@ function shouldCheckpoint(command: BrowserBackendCommand): boolean {
   return command.type === "history" || command.type === "reload" || command.type === "setViewport"
 }
 
-function authorizeNavigation(
-  owner: BrowserOwner.Info,
-  url: string,
-  source: "agent" | "user",
-  navigationGrant?: string,
-): void {
-  const decision =
-    source === "user"
-      ? BrowserPolicy.hardCheckNavigation(url, owner.directory)
-      : BrowserPolicy.evaluateURL(url, owner.directory)
+function authorizeNavigation(owner: BrowserOwner.Info, url: string): void {
+  const decision = BrowserPolicy.hardCheckNavigation(url, owner.directory)
   if (decision.decision === "allow") return
-  if (decision.decision === "blocked" && source === "agent" && navigationGrant === url) return
-  if (decision.decision === "blocked") throw new BlockedURLNavigationError(decision.reason, url)
   throw new BrowserProtocolError({
     code: "browser_navigation_denied",
     message: `Navigation denied: ${decision.reason}`,

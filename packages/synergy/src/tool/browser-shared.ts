@@ -1,6 +1,5 @@
 import {
   BrowserProtocolError,
-  normalizeBrowserURL,
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserSnapshotElement,
@@ -8,9 +7,8 @@ import {
 import type { Tool } from "./tool"
 import { BrowserCommandService } from "../browser/command-service.js"
 import { BrowserOwner } from "../browser/owner.js"
-import { BlockedURLNavigationError, type BrowserPageBackend } from "../browser/page.js"
+import type { BrowserPageBackend } from "../browser/page.js"
 import type { BrowserSession } from "../browser/types.js"
-import { BrowserNetworkGateway } from "../browser/network-gateway.js"
 
 export class BrowserPageNotFoundError extends BrowserProtocolError {
   constructor(pageId?: string) {
@@ -50,50 +48,6 @@ export namespace BrowserToolHelper {
     signal?: AbortSignal,
   ): Promise<BrowserBackendResult> {
     return BrowserCommandService.execute(owner, { command, commandId, signal })
-  }
-
-  export async function navigateWithPolicyApproval(ctx: Tool.Context, url: string): Promise<BrowserBackendResult> {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const normalized = normalizeBrowserURL(url)
-    const command = { type: "navigate", url: normalized, source: "agent" } as const
-    const privateNetworkGrant = await BrowserNetworkGateway.privateNetworkGrant(normalized)
-    if (privateNetworkGrant) {
-      await ctx.ask({
-        permission: "browser_private_network",
-        patterns: [new URL(normalized).hostname],
-        metadata: {
-          nonBypassable: true,
-          capability: "browser_private_network",
-          reason: "The browser destination resolves to a private-network address.",
-        },
-      })
-    }
-    try {
-      return await BrowserCommandService.execute(owner, {
-        command,
-        commandId: commandId(ctx, "navigate"),
-        signal: ctx.abort,
-        privateNetworkGrant: privateNetworkGrant ?? undefined,
-      })
-    } catch (error) {
-      if (!(error instanceof BlockedURLNavigationError)) throw error
-      await ctx.ask({
-        permission: "network_request",
-        patterns: [error.url],
-        metadata: {
-          nonBypassable: false,
-          capability: "network_request",
-          reason: error.message,
-        },
-      })
-      return BrowserCommandService.execute(owner, {
-        command,
-        commandId: commandId(ctx, "navigate-approved"),
-        signal: ctx.abort,
-        navigationGrant: normalized,
-        privateNetworkGrant: privateNetworkGrant ?? undefined,
-      })
-    }
   }
 
   export async function getPage(owner: BrowserOwner.Info, pageId?: string): Promise<BrowserPageBackend> {

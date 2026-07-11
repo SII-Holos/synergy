@@ -10,7 +10,7 @@ export interface BrowserNavigationPolicyOptions {
 }
 
 export class BrowserNavigationPolicy {
-  private pending: { url: string; origin: string; source: "agent" | "user" } | null = null
+  private pending: { url: string; origin: string } | null = null
   private currentOrigin: string | null = null
   private userGestureExpiresAt = 0
   private now: () => number
@@ -21,10 +21,10 @@ export class BrowserNavigationPolicy {
     this.userGestureWindowMs = options.userGestureWindowMs ?? 2_000
   }
 
-  begin(url: string, source: "agent" | "user"): void {
+  begin(url: string, _source: "agent" | "user"): void {
     const parsed = parse(url)
     if (!parsed) return
-    this.pending = { url: parsed.href, origin: parsed.origin, source }
+    this.pending = { url: parsed.href, origin: parsed.origin }
   }
 
   noteUserGesture(): void {
@@ -41,13 +41,16 @@ export class BrowserNavigationPolicy {
     const parsed = parse(url)
     if (!parsed) return { allowed: false, reason: "Navigation URL is invalid." }
     if (parsed.href === "about:blank") return { allowed: true }
+    if (parsed.protocol === "file:") {
+      return parsed.href === this.pending?.url
+        ? { allowed: true }
+        : { allowed: false, reason: "File navigation requires an explicit Browser command." }
+    }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return { allowed: false, reason: `Navigation protocol is not allowed: ${parsed.protocol}` }
     }
     if (this.pending) {
-      if (this.pending.source === "user" && this.options.allowUserNavigation(parsed.href)) {
-        return { allowed: true }
-      }
+      if (this.options.allowUserNavigation(parsed.href)) return { allowed: true }
       if (parsed.href === this.pending.url || parsed.origin === this.pending.origin) return { allowed: true }
     }
     if (this.currentOrigin === parsed.origin) return { allowed: true }

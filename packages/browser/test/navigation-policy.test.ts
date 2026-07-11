@@ -25,4 +25,14 @@ describe("Browser navigation policy", () => {
     now += 2_001
     expect(policy.decide("https://third.example/").allowed).toBe(false)
   })
+
+  test("allows redirects for explicit agent navigation and only exact pending file URLs", () => {
+    const policy = new BrowserNavigationPolicy({ allowUserNavigation: () => true })
+    policy.begin("https://first.example/", "agent")
+    expect(policy.decide("https://login.example/callback").allowed).toBe(true)
+
+    policy.begin("file:///workspace/index.html", "agent")
+    expect(policy.decide("file:///workspace/index.html").allowed).toBe(true)
+    expect(policy.decide("file:///etc/passwd").allowed).toBe(false)
+  })
 })

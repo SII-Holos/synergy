@@ -11,6 +11,7 @@ import {
   type BrowserHostDownloadEntry,
   type BrowserHostPageEvent,
 } from "@ericsanchezok/synergy-browser"
+import { clearBrowserContentPermissions, installBrowserContentPermissions } from "./browser-permissions.js"
 
 const BLOCKED_DOWNLOAD_MIMES = new Set(["application/x-msdownload", "application/x-sh", "application/x-mach-binary"])
 const BLOCKED_DOWNLOAD_EXTENSIONS = new Set([
@@ -27,7 +28,6 @@ const BLOCKED_DOWNLOAD_EXTENSIONS = new Set([
   ".sh",
   ".vbs",
 ])
-const permissionSessions = new WeakMap<Electron.Session, Set<number>>()
 
 export interface BrowserHostUploadFile {
   name: string
@@ -49,7 +49,6 @@ interface PendingFileChooser {
 
 export class BrowserHostDiagnostics {
   private readonly session: Electron.Session
-  private readonly contentsID: number
   private staging = new BrowserStagingLeasePool()
   private pendingDialogs = new Map<string, ReturnType<typeof setTimeout>>()
   private pendingFileChoosers = new Map<string, PendingFileChooser>()
@@ -63,7 +62,6 @@ export class BrowserHostDiagnostics {
 
   constructor(private options: BrowserHostDiagnosticsOptions) {
     this.session = options.contents.session
-    this.contentsID = options.contents.id
     this.onDebuggerMessage = (_event, method, params) => this.handleDebuggerMessage(method, params)
     this.onDownload = (_event, item, webContents) => {
       if (webContents.id !== this.options.contents.id) return
@@ -74,7 +72,7 @@ export class BrowserHostDiagnostics {
 
   async start(): Promise<void> {
     const { contents } = this.options
-    registerPermissionTarget(contents)
+    installBrowserContentPermissions(contents.session)
     contents.session.on("will-download", this.onDownload)
     await this.attachDebugger()
   }
@@ -82,7 +80,7 @@ export class BrowserHostDiagnostics {
   async dispose(): Promise<void> {
     const { contents } = this.options
     this.session.off("will-download", this.onDownload)
-    unregisterPermissionTarget(this.session, this.contentsID)
+    clearBrowserContentPermissions(this.session)
     for (const timer of this.pendingDialogs.values()) clearTimeout(timer)
     this.pendingDialogs.clear()
     for (const request of this.pendingFileChoosers.values()) clearTimeout(request.timer)
@@ -328,20 +326,6 @@ export class BrowserHostDiagnostics {
 
 function browserByteCount(value: number): number {
   return Number.isSafeInteger(value) && value > 0 ? value : 0
-}
-
-function registerPermissionTarget(contents: Electron.WebContents): void {
-  const targets = permissionSessions.get(contents.session) ?? new Set<number>()
-  targets.add(contents.id)
-  permissionSessions.set(contents.session, targets)
-  contents.session.setPermissionCheckHandler(() => false)
-  contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
-}
-
-function unregisterPermissionTarget(session: Electron.Session, contentsID: number): void {
-  const targets = permissionSessions.get(session)
-  targets?.delete(contentsID)
-  if (targets?.size === 0) permissionSessions.delete(session)
 }
 
 function safeBasename(value: string, fallback: string): string {

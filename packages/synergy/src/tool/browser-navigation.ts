@@ -47,8 +47,9 @@ export const BrowserNavigationTool = Tool.define<typeof parameters, BrowserNavig
     }
 
     let result
-    if (params.action === "goto") result = await BrowserToolHelper.navigateWithPolicyApproval(ctx, params.url!)
-    else if (params.action === "back")
+    if (params.action === "goto") {
+      result = await BrowserToolHelper.execute(ctx, { type: "navigate", url: params.url!, source: "agent" })
+    } else if (params.action === "back")
       result = await BrowserToolHelper.execute(ctx, { type: "history", direction: "back" })
     else if (params.action === "forward")
       result = await BrowserToolHelper.execute(ctx, { type: "history", direction: "forward" })

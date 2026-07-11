@@ -56,16 +56,6 @@ export interface BrowserPageBackend {
   close(): Promise<void>
 }
 
-export class BlockedURLNavigationError extends Error {
-  readonly url: string
-
-  constructor(reason: string, url: string) {
-    super(`Navigation blocked by policy: ${reason}`)
-    this.name = "BlockedURLNavigationError"
-    this.url = url
-  }
-}
-
 export class PlaywrightBrowserPage implements BrowserPageBackend {
   readonly id: string
   readonly backend = "headless" as const
@@ -150,11 +140,6 @@ export class PlaywrightBrowserPage implements BrowserPageBackend {
   }
 
   async close(): Promise<void> {
-    try {
-      await this.page.close()
-    } catch (error) {
-      if (!this.page.isClosed()) throw error
-    }
     const results = await Promise.allSettled([
       this.controller.dispose(),
       this.transport.dispose(),
@@ -174,6 +159,11 @@ export class PlaywrightBrowserPage implements BrowserPageBackend {
     for (const timer of this.fileChooserTimers.values()) clearTimeout(timer)
     this.fileChooserTimers.clear()
     this.responseMimeTypes.clear()
+    try {
+      await this.page.close()
+    } catch (error) {
+      if (!this.page.isClosed()) failures.push(error)
+    }
     try {
       await this.releaseOwner?.()
     } catch (error) {

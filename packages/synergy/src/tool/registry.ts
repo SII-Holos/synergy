@@ -97,28 +97,25 @@ import { WorktreeEnterTool } from "./worktree-enter"
 import { WorktreeLeaveTool } from "./worktree-leave"
 import { WorktreeListTool } from "./worktree-list"
 import { BrowserAnnotateTool } from "./browser-annotate"
-import { BrowserNavigateTool } from "./browser-navigate"
 import { BrowserSnapshotTool } from "./browser-snapshot"
 import { BrowserScreenshotTool } from "./browser-screenshot"
 import { BrowserInspectTool } from "./browser-inspect"
 import { BrowserWaitTool } from "./browser-wait"
-import { BrowserClickTool } from "./browser-click"
-import { BrowserTypeTool } from "./browser-type"
-import { BrowserScrollTool } from "./browser-scroll"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
-import { BrowserDownloadTool } from "./browser-download"
 import { BrowserDownloadsTool } from "./browser-downloads"
-import { BrowserViewportTool } from "./browser-viewport"
 import { BrowserReadTool } from "./browser-read"
 import { BrowserClipboardTool } from "./browser-clipboard"
-import { BrowserListTool } from "./browser-list"
 import { BrowserNavigationTool } from "./browser-navigation"
 import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
 import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
-import { BrowserHealthTool } from "./browser-health"
+import { BrowserPerformanceTool } from "./browser-performance"
+import { BrowserAuditTool } from "./browser-audit"
+import { BrowserEmulateTool } from "./browser-emulate"
+import { BrowserDialogTool } from "./browser-dialog"
+import { BrowserUploadTool } from "./browser-upload"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -435,28 +432,25 @@ export namespace ToolRegistry {
       WorktreeLeaveTool,
       WorktreeListTool,
       BrowserAnnotateTool,
-      BrowserNavigateTool,
       BrowserSnapshotTool,
       BrowserScreenshotTool,
       BrowserInspectTool,
       BrowserWaitTool,
-      BrowserClickTool,
-      BrowserTypeTool,
-      BrowserScrollTool,
       BrowserConsoleTool,
       BrowserNetworkTool,
-      BrowserDownloadTool,
       BrowserDownloadsTool,
-      BrowserViewportTool,
       BrowserReadTool,
       BrowserClipboardTool,
-      BrowserListTool,
       BrowserNavigationTool,
       BrowserAssetsTool,
       BrowserActionTool,
       BrowserEvalTool,
       BrowserViewTool,
-      BrowserHealthTool,
+      BrowserPerformanceTool,
+      BrowserAuditTool,
+      BrowserEmulateTool,
+      BrowserDialogTool,
+      BrowserUploadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
     ]
 

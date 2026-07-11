@@ -19,8 +19,9 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 3. Keep `POST /browser/control` command/response behavior separate from the read-only `/browser/events` stream. Return explicit page-missing, host-pending, retryable, and terminal errors.
 4. Preserve Desktop-native `WebContentsView` and remote WebRTC/data-channel presentation as peer modes over the same owner/page/control contract. Do not add iframe, screenshot-stream, pseudo-tab, or hidden fallback pages.
 5. Keep pointer, keyboard, text, IME/paste, and viewport coordinates normalized across native and remote presentation. Preserve CSS width/height semantics and coalesced pending viewport behavior.
-6. Keep hard navigation/file policy separate from agent authorization. Preserve sensitive localhost ports, protocol checks, real-path containment, hidden/project metadata exclusions, download filtering, and sensitive-header redaction.
-7. Dispose live Browser state on session archive/delete and global shutdown; preserve profile, storage-state, download, annotation, and restored page-ID ownership.
+6. Keep Chromium responsible for webpage network security. The gateway owns loopback binding, owner authentication, connection limits, forwarding, and revoke cleanup; do not add IP-range classification, Fake-IP exceptions, localhost port lists, or DNS policy. Preserve protocol checks, workspace file containment, hidden/project metadata exclusions, download filtering, and sensitive-header redaction.
+7. Treat the server-provided session-state `ownerKey` as canonical. Route directories select a route; they never derive native tickets, profiles, broker pages, or view attachment identity.
+8. Dispose live Browser state on session archive/delete and global shutdown; preserve profile, storage-state, download, annotation, and restored page-ID ownership.
 
 ## Verify
 

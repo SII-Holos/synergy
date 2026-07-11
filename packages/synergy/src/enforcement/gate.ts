@@ -7,23 +7,6 @@ export interface ApprovalCacheEntry {
   timestamp: number
 }
 
-function browserPrivateLiteral(input: string): boolean {
-  try {
-    const value = /^[a-z][a-z\d+.-]*:/i.test(input) ? input : `http://${input}`
-    const host = new URL(value).hostname.replace(/^\[|\]$/g, "").toLowerCase()
-    const parts = host.split(".").map(Number)
-    if (parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
-      const [a, b] = parts
-      return (
-        a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
-      )
-    }
-    return host.startsWith("fc") || host.startsWith("fd")
-  } catch {
-    return false
-  }
-}
-
 export class ApprovalCache {
   private cache = new Map<string, ApprovalCacheEntry>()
 
@@ -1007,9 +990,6 @@ export namespace EnforcementGate {
         caps.push({ class: args.action === "current" ? "browser_inspect" : "browser_interact", nonBypassable: false })
         if (args.action === "goto") {
           caps.push({ class: "network_request", nonBypassable: false })
-          if (typeof args.url === "string" && browserPrivateLiteral(args.url)) {
-            caps.push({ class: "browser_private_network", nonBypassable: true })
-          }
         }
         return { capabilities: caps }
       }

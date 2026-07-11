@@ -97,7 +97,6 @@ function routeState(c: {
     owner,
     new URL(c.req.url).origin,
     c.req.query("nativeTicket"),
-    directory,
   )
   const requestedPresentation = parseBrowserPresentationPreference(c.req.query("presentation"))
   const presentation = BrowserHost.presentation({

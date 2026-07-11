@@ -11,6 +11,7 @@ import { usePlatform } from "@/context/platform"
 import type { BrowserStoreAPI } from "./browser-store"
 import { applyBrowserControlResult, browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
+import { normalizeBrowserError } from "./browser-error"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
@@ -110,13 +111,13 @@ function createBrowserHttpControlSender(
           traceId,
         } as BrowserControlRequest,
       })
-      if (!payload.data) throw new Error(payload.error?.message ?? "Browser control failed")
+      if (!payload.data) throw payload.error ?? new Error("Browser control failed")
       store.clearTransientHostError()
       applyBrowserControlResult(store, payload.data.result)
     })().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
-      browserDebug("control.error", { type: msg.type, message })
-      store.setBrowserError({ severity: "error", message })
+      const normalized = normalizeBrowserError(error, "Browser control failed")
+      browserDebug("control.error", { type: msg.type, message: normalized.message, code: normalized.code })
+      store.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
     })
   }
 
@@ -233,6 +234,15 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       if (!acceptSequencedMessage(msg, socket, store)) return
       switch (msg.type) {
         case "session.state": {
+          if (msg.ownerKey !== options.ownerKey) {
+            store.setBrowserError({
+              severity: "critical",
+              code: "browser_owner_mismatch",
+              message: "Browser session owner does not match the active workspace.",
+            })
+            socket.close(1008, "Browser session owner mismatch")
+            return
+          }
           store.setPresentation(msg.presentation)
           store.setSession("page", msg.page)
           if (msg.page) store.setHostStatus(msg.page.id, msg.hostStatus)
