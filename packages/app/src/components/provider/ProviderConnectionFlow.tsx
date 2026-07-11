@@ -114,7 +114,7 @@ export function ProviderConnectionFlow(props: {
     await props.onComplete?.()
     showToast({
       type: "success",
-      icon: "circle-check",
+      icon: getSemanticIcon("state.complete"),
       title: `${providerName()} ${props.intent === "recover" ? "reconnected" : "connected"}`,
       description: props.completeDescription ?? `${providerName()} models are now available to use.`,
     })

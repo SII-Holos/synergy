@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Persistence"
+  short_description: "Modify Synergy durable state and migrations safely"
+  default_prompt: "Use $change-persistence to implement this Synergy storage or migration change with correct ownership, recovery, and tests."

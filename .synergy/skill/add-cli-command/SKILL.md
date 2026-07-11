@@ -1,100 +1,45 @@
 ---
 name: add-cli-command
-description: "Guide for adding a new CLI command to Synergy. Use when implementing a new CLI subcommand, modifying command options, or extending the CLI. Triggers: 'add command', 'new command', 'CLI command', 'add subcommand', 'cli/cmd'."
+description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, or root command registration under packages/synergy/src/cli. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
 ---
 
-# Adding a New CLI Command
+# Add a CLI Command
 
-## Location
+## Discover the Contract
 
-CLI commands live in `packages/synergy/src/cli/cmd/`. Each command is a separate file exporting a named constant.
+1. Read [CLI reference](../../../docs/reference/cli.md) and inspect `packages/synergy/src/index.ts`.
+2. Locate the nearest command with the same shape: local operation, server-attached operation, nested command group, streaming output, or destructive confirmation.
+3. Decide whether the behavior belongs in the installed `synergy` CLI or the source-only `bun dev` orchestrator. Edit `script/dev.ts` only for the latter.
 
-## Pattern
+## Implement
 
-Commands use the `cmd()` wrapper function from `packages/synergy/src/cli/cmd/cmd.ts`. Always study an existing command before creating a new one.
+1. Write a failing behavior test first when adding behavior or fixing a bug.
+2. Add or update a named command in `packages/synergy/src/cli/cmd/` with `cmd()`. Match neighboring yargs builder, positional, alias, and output patterns rather than imposing a parallel style.
+3. Keep domain logic in its owning module. Let the command parse input, establish Scope or server attachment, call the domain API, format output, and set an appropriate exit status.
+4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
+5. Register a root command in `packages/synergy/src/index.ts`; register a nested command in its owning command-group builder.
+6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
+7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
-```ts
-import { cmd } from "./cmd"
-import type { Argv } from "yargs"
-
-export const MyCommand = cmd({
-  command: "my-command [args..]",
-  describe: "what this command does",
-  builder: (yargs: Argv) =>
-    yargs
-      .option("flag", {
-        type: "string",
-        describe: "flag description",
-      })
-      .option("verbose", {
-        alias: ["v"],
-        type: "boolean",
-        describe: "verbose output",
-      }),
-  handler: async (args) => {
-    // Implementation
-  },
-})
-```
-
-Key points:
-
-- Use `cmd()` wrapper, **not** raw `satisfies CommandModule`.
-- Export a **named constant** (`export const MyCommand = ...`), not `export default`.
-- Use `import type { Argv } from "yargs"` for the builder's type annotation.
-- Aliases use `.alias(["a"])` chained on the option inside `builder`, not a top-level `alias` field.
-
-## Steps
-
-1. **Study existing commands** — look at `server.ts`, `status.ts`, `run.ts` for patterns
-2. **Create the command file** in `packages/synergy/src/cli/cmd/<name>.ts`
-3. **Register the command** — in `packages/synergy/src/index.ts`, import and add `.command(MyCommand)` to the yargs chain (around line 91–178)
-4. **Handle errors gracefully** — use try/catch, provide helpful error messages
-5. **Add describe text** — every command, option, and positional gets `describe` for `--help` output
-6. **Test manually** — run via `bun run packages/synergy/src/index.ts <command>`
-7. **Update docs** — add to README.md Common Commands section if user-facing
-
-## CLI Entry Point
-
-The CLI entry point is **`packages/synergy/src/index.ts`** (not `cli/index.ts`). This file:
-
-- Constructs the root `yargs()` instance
-- Registers all commands via `.command(SendCommand)`, `.command(ServerCommand)`, etc.
-- Dynamically registers plugin commands via `registerPluginCommands(cli)`
-- Calls `await cli.parse()` to execute
-
-## Conventions
-
-- Use kebab-case for command names: `my-command` not `myCommand`
-- Provide short aliases when practical via `.alias()` in builder
-- Print minimal output by default, verbose with `--verbose` flag
-- Use `process.exit(1)` for error exits
-- Import UI helpers from `packages/synergy/src/cli/ui.ts` for consistent formatting
-
-## Reference Commands
-
-| File                                     | Command  | What it demonstrates                                                   |
-| ---------------------------------------- | -------- | ---------------------------------------------------------------------- |
-| `packages/synergy/src/cli/cmd/server.ts` | `server` | Default command with network options, error formatting, daemon locking |
-| `packages/synergy/src/cli/cmd/run.ts`    | `send`   | Positional args, file attachments, piped stdin, model/agent options    |
-| `packages/synergy/src/cli/cmd/status.ts` | `status` | Server health check, formatted output                                  |
-
-## Key Files
-
-| File                                  | Purpose                                  |
-| ------------------------------------- | ---------------------------------------- |
-| `packages/synergy/src/index.ts`       | CLI entry point and command registration |
-| `packages/synergy/src/cli/cmd/cmd.ts` | `cmd()` wrapper function                 |
-| `packages/synergy/src/cli/cmd/`       | All command implementations              |
-| `packages/synergy/src/cli/ui.ts`      | Shared UI helpers (colors, formatting)   |
-
-## Quality Verification
-
-Before committing a new CLI command:
+## Verify
 
 ```bash
-bun run typecheck          # verify no type errors
-bun run quality:quick      # format:check + lint + typecheck + monorepo:check + package:check
-# Manual test:
-bun run packages/synergy/src/index.ts my-command --help
+bun run packages/synergy/src/index.ts <command> --help
 ```
+
+Then run the narrow CLI/domain test from `packages/synergy`, followed by:
+
+```bash
+bun run typecheck
+bun run quality:quick
+```
+
+For startup, daemon, port, Web, Desktop, auth, or data movement changes, test through an isolated `SYNERGY_HOME`; use the `develop-synergy` skill and never disrupt the active instance.
+
+## Synchronize Documentation
+
+Update [CLI reference](../../../docs/reference/cli.md) for user-visible syntax or behavior. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
+
+## Handoff
+
+Report the registered command path, domain API called, failure/exit behavior, manual invocation, tests, SDK generation status, and documentation updated.

@@ -12,6 +12,7 @@ const rawIconPatterns = [
   /<IconButton\b[^>]*\bicon=(?:\{)?["']([^"']+)["']/g,
   /<Button\b[^>]*\bicon=(?:\{)?["']([^"']+)["']/g,
   /<(?:Panel\.Action|AppPanel\.Action)\b[^>]*\bicon=(?:\{)?["']([^"']+)["']/g,
+  /\bicon:\s*["']([a-z0-9-]+)["']/g,
 ]
 
 const rawIconExceptionReasons: Record<string, string> = {
@@ -39,6 +40,7 @@ const rawIconExceptionReasons: Record<string, string> = {
 }
 
 const excludedRawIconPaths = new Set([
+  "packages/ui/src/components/anchored-tool-card.tsx",
   "packages/ui/src/components/message-part.tsx",
   "packages/ui/src/components/tool/classifier.ts",
 ])
@@ -46,7 +48,7 @@ const excludedRawIconPaths = new Set([
 const excludedRawIconPathFragments = [
   "/packages/ui/src/components/tool/renders/",
   "/packages/ui/src/components/file-icon",
-  "/packages/app/src/plugin/",
+  "/packages/app/src/plugin/registries/",
 ]
 
 function collectFiles(dir: string, result: string[] = []): string[] {
@@ -63,7 +65,7 @@ function collectFiles(dir: string, result: string[] = []): string[] {
       collectFiles(full, result)
       continue
     }
-    if (full.endsWith(".tsx")) result.push(full)
+    if (full.endsWith(".tsx") && !full.endsWith(".test.tsx")) result.push(full)
   }
   return result
 }

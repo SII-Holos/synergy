@@ -1,139 +1,54 @@
 ---
 name: add-tool
-description: "Guide for adding a new tool to Synergy. Use when implementing a new tool definition, extending an existing tool, or modifying tool schemas. Triggers: 'add tool', 'new tool', 'create tool', 'implement tool', 'Tool.define'."
+description: Add or modify a first-party Synergy tool, its Zod parameters, execution behavior, capability taxonomy, exposure, permission boundary, attachments, or Web tool-card registration. Use for packages/synergy/src/tool and the corresponding packages/ui registrations; use plugin docs for plugin-owned tools.
 ---
 
-# Adding a New Tool to Synergy
+# Add a First-party Tool
 
-## Location
+## Define the Behavioral Contract
 
-All tools live in `packages/synergy/src/tool/`. Each tool is typically one file (e.g., `read.ts`, `edit.ts`, `bash/local.ts`).
+1. Confirm the capability belongs in a first-party tool rather than an existing tool action, MCP server, plugin, or domain API.
+2. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and inspect the nearest tool, its taxonomy entry, resolver path, renderer, and tests.
+3. Write the failing invariant test first. Cover the public result, permission/capability behavior, cancellation, and state change that matter to callers.
 
-## Pattern
+## Implement the Backend
 
-Tools are defined using `Tool.define()`. Always read an existing tool in the same directory before creating a new one — match the local pattern exactly.
+1. Define the tool with the current `Tool.define(id, init, options?)` pattern in `packages/synergy/src/tool/`.
+2. Use precise Zod parameters and descriptions. Return the established `{ title, metadata, output, attachments? }` shape.
+3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
+4. Register the tool in `tool/registry.ts` using the local ordering and conditional-exposure pattern.
+5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.
+6. Add persisted-state migrations in the owning domain when the tool changes stored data shape.
 
-```ts
-import { Tool } from "./tool"
+## Register the Web Presentation
 
-export const MyTool = Tool.define("my_tool", {
-  description: "What this tool does",
-  parameters: z.object({
-    param1: z.string().describe("Parameter description"),
-    param2: z.number().optional().describe("Optional param"),
-  }),
-  async execute(params, ctx) {
-    // Implementation
-    return {
-      title: "My Tool Result",
-      metadata: {},
-      output: "result text or JSON",
-    }
-  },
-})
-```
+Complete all five first-party registrations:
 
-Key differences from the `Tool.Info` init shape:
+1. `packages/ui/src/components/icon.tsx` — tool icon registry
+2. `packages/ui/src/components/message-part.tsx` — title, subtitle, arguments, and tool-card metadata
+3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
+4. `packages/synergy/src/tool/taxonomy.ts` — runtime semantic classification
+5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category
 
-- `id` is a **separate first argument** (not `name` inside an object).
-- The second argument is the init object with `description`, `parameters`, and `execute`.
-- `execute` receives `(args, ctx)` where `ctx` has `sessionID`, `messageID`, `agent`, `abort`, `callID`, `metadata()`, and `ask()`.
-- The return value is `{ title, metadata, output, attachments? }`.
+The tool icon registry is separate from the product semantic-token registry. Load `develop-frontend` and use semantic product icons for non-tool UI added around the feature. Preserve accessible pending, success, error, and attachment presentation.
 
-For tools that need dynamic descriptions, pass a factory function instead of a plain object:
+## Verify
 
-```ts
-Tool.define("my_tool", async (initCtx) => ({
-  description: buildDescription(),
-  parameters: z.object({...}),
-  execute(params, ctx) { ... },
-}))
-```
-
-## Registration
-
-### Backend: `packages/synergy/src/tool/registry.ts`
-
-1. **Import your tool constant** at the top of `registry.ts`.
-2. **Add it to the `builtin` array** inside the `all()` function (around line 343):
-
-```ts
-const builtin: Tool.Info[] = [
-  BashTool,
-  ReadTool,
-  EditTool,
-  MyTool, // ← add here, in alphabetical position
-  // ...
-]
-```
-
-Tools are typically ordered alphabetically within the array. For conditional tools (e.g., CLI-only or feature-flagged), wrap in a ternary:
-
-```ts
-...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
-```
-
-### Frontend Registration (5 files)
-
-A new tool must be registered in **five** frontend files for full UI support:
-
-| #   | File                                            | What to do                                                                                                             |
-| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 1   | `packages/ui/src/components/icon.tsx`           | Import a Lucide icon and add to the `icons` map. Pick an icon not used by any existing tool.                           |
-| 2   | `packages/ui/src/components/message-part.tsx`   | Add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives tool card display.            |
-| 3   | `packages/ui/src/components/tool-renders.tsx`   | Append the tool name to its group array (e.g., `inspireToolNames`, `researchToolNames`) so `ToolRegistry` picks it up. |
-| 4   | `packages/synergy/src/tool/taxonomy.ts`         | Add an entry with the correct domain kind and traits (`stateful`, `externalIO`).                                       |
-| 5   | `packages/ui/src/components/tool/classifier.ts` | Add to `TOOL_CATEGORIES` with the appropriate semantic category (fallback if steps 2–3 are missed).                    |
-
-Skipping any of these causes the tool to fall back to a generic icon and label, or to miss permission tracking.
-
-## SDK Regeneration
-
-If the tool is API-visible (has `.meta({ ref: "TypeName" })` on its parameters), regenerate the SDK:
+From `packages/synergy`, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
 
 ```bash
-./script/generate.ts
+bun run typecheck
+bun run quality:quick
 ```
 
-## Error Handling
+Run `./script/generate.ts` when a server route or OpenAPI-visible schema changed, not merely because a model-callable tool schema changed.
 
-Tool files use **plain `throw new Error(...)`**, not `NamedError.create()`. The `NamedError` pattern is used in other domains (provider, session, config, etc.) but not in tool implementations.
+Use an isolated development instance for an end-to-end model/tool call. Check the transcript, tool card, attachments, denial path, cancellation, and persisted state.
 
-```ts
-if (!valid) throw new Error("Validation failed: reason")
-```
+## Synchronize Documentation
 
-## Testing
+Update product or architecture docs when the tool introduces a user-visible concept or durable boundary. Update `AGENTS.md` only for a reusable repository rule. Do not copy the tool registry into documentation.
 
-Put tests in `packages/synergy/test/tool/<name>.test.ts`.
+## Handoff
 
-Use `tmpdir()` from `@/test/fixture/fixture` for isolated test directories. Study existing tool tests:
-
-- `test/tool/read.test.ts` — tool test with tmpdir + context override
-- `test/tool/taxonomy.test.ts` — simple classification test
-- `test/tool/bash.test.ts` — process management test
-
-## Quality Verification
-
-Before committing a new tool:
-
-```bash
-bun run typecheck          # verify no type errors
-bun run quality:quick      # format:check + lint + typecheck + monorepo:check + package:check
-cd packages/synergy && bun test test/tool/<name>.test.ts  # narrow test
-```
-
-## Key Files
-
-| File                                            | Purpose                                                                 |
-| ----------------------------------------------- | ----------------------------------------------------------------------- |
-| `packages/synergy/src/tool/tool.ts`             | `Tool.define()` API — signature is `define(id: string, init, options?)` |
-| `packages/synergy/src/tool/registry.ts`         | Tool registry — `builtin` array + `ToolRegistry.register()`             |
-| `packages/synergy/src/tool/read.ts`             | Simple tool example                                                     |
-| `packages/synergy/src/tool/edit.ts`             | Complex tool example                                                    |
-| `packages/synergy/src/tool/taxonomy.ts`         | Tool taxonomy (domain + traits)                                         |
-| `packages/ui/src/components/icon.tsx`           | Frontend icon map                                                       |
-| `packages/ui/src/components/message-part.tsx`   | Tool card info                                                          |
-| `packages/ui/src/components/tool-renders.tsx`   | Tool group registration                                                 |
-| `packages/ui/src/components/tool/classifier.ts` | Fallback classifier                                                     |
-| `packages/synergy/test/tool/`                   | All tool tests                                                          |
+Report the tool ID, registry/exposure, taxonomy and capabilities, UI registrations, denial/cancellation behavior, migrations, tests, and end-to-end result.

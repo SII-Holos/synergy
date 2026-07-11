@@ -18,7 +18,7 @@ describe("optional performance tooling integration", () => {
   })
 
   test("documents k6 as optional and not a runtime dependency", async () => {
-    const docs = await Bun.file("docs/performance-observability.md").text()
+    const docs = await Bun.file("docs/operations/performance-observability.md").text()
     const rootPackage = await Bun.file("package.json").json()
     expect(docs).toContain("k6")
     expect(docs).toContain("not a runtime dependency")

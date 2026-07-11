@@ -17,7 +17,7 @@ import { PaginationBar } from "@/components/scopes/pagination-bar"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -108,18 +108,18 @@ export function MobileDrawer() {
 interface DrawerTool {
   id: string
   label: string
-  icon: string
+  icon: SemanticIconTokenName
   href?: string
   panelId?: string
 }
 
 const DRAWER_TOOLS: DrawerTool[] = [
-  { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
-  { id: "library", label: "Library", icon: "book-open", href: "/library" },
-  { id: "performance", label: "Performance", icon: "radar", href: "/performance" },
-  { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
-  { id: "notes", label: "Notes", icon: "notebook-pen", panelId: "notes" },
-  { id: "browser", label: "Browser", icon: "globe", panelId: "browser" },
+  { id: "agenda", label: "Agenda", icon: "agenda.main", href: "/agenda" },
+  { id: "library", label: "Library", icon: "library.main", href: "/library" },
+  { id: "performance", label: "Performance", icon: "performance.main", href: "/performance" },
+  { id: "plugins", label: "Plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+  { id: "notes", label: "Notes", icon: "notes.main", panelId: "notes" },
+  { id: "browser", label: "Browser", icon: "browser.main", panelId: "browser" },
 ]
 
 function ScopeListView(props: {
@@ -249,7 +249,7 @@ function ScopeListView(props: {
                   props.onClose()
                 }}
               >
-                <Icon name={tool.icon} size="normal" />
+                <Icon name={getSemanticIcon(tool.icon)} size="normal" />
                 <span class="text-[10px] font-medium leading-none">{tool.label}</span>
               </button>
             )

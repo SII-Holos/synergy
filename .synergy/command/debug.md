@@ -1,16 +1,13 @@
-Debug a problem by analyzing the symptoms, finding the root cause, and suggesting a fix.
+Diagnose the reported Synergy problem and identify its root cause. Do not implement a fix unless the user also asks for one.
 
-The user will describe a bug or unexpected behavior. Follow this process:
+1. Restate the observable symptom, expected behavior, target runtime, and reproduction boundary.
+2. Search the exact error, route, event, tool, or state field with `rg`.
+3. Load `architecture` to trace entry point, owner, persistence, enforcement, events, and consumers.
+4. Load `find-logs` or `inspect-sessions` when runtime evidence or persisted state is involved.
+5. Reproduce with the narrowest safe test. Use `develop-synergy` for an isolated second runtime; never restart the active instance.
+6. Use `git log -S`, `git log -G`, `git blame`, or `git show` only when history can distinguish intent from regression.
+7. Prove the causal chain and identify the smallest coherent fix plus its regression test and documentation impact.
 
-1. **Understand the symptom** — ask clarifying questions if the report is vague
-2. **Locate the relevant code** — use the architecture skill to understand module layout: `skill(name: "architecture")`
-3. **Read the actual code** — don't guess, read the implementation
-4. **Trace the execution path** — follow the call chain from entry point to the symptom
-5. **Identify the root cause** — not just the symptom, the underlying reason
-6. **Check git blame/log** — when was the bug introduced? was it intentional?
-7. **Propose a minimal fix** — prefer the smallest change that fixes the root cause
-8. **Verify the fix** — run `bun run quality:quick` and narrow tests for the affected area (e.g. `cd packages/synergy && bun test test/<domain>/<file>.test.ts`)
-
-If given an error message or stack trace, start by searching for the error string in the codebase.
+Report evidence, root cause, affected scope, confidence, recommended fix, and verification plan. Separate confirmed facts from hypotheses and redact secrets, absolute paths, and session content.
 
 $ARGUMENTS

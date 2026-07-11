@@ -1,15 +1,15 @@
 import { Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLayout } from "@/context/layout"
 
-const DRAWER_TOOLS = [
-  { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
-  { id: "library", label: "Library", icon: "book-open", href: "/library" },
-  { id: "performance", label: "Performance", icon: "radar", href: "/performance" },
-  { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
-] as const
+const DRAWER_TOOLS: Array<{ id: string; label: string; icon: SemanticIconTokenName; href: string }> = [
+  { id: "agenda", label: "Agenda", icon: "agenda.main", href: "/agenda" },
+  { id: "library", label: "Library", icon: "library.main", href: "/library" },
+  { id: "performance", label: "Performance", icon: "performance.main", href: "/performance" },
+  { id: "plugins", label: "Plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+]
 
 export function MobileToolsDrawer() {
   const layout = useLayout()
@@ -72,7 +72,7 @@ export function MobileToolsDrawer() {
                     }}
                     onClick={() => navigateAndClose(tool.href)}
                   >
-                    <Icon name={tool.icon} size="normal" class="shrink-0" />
+                    <Icon name={getSemanticIcon(tool.icon)} size="normal" class="shrink-0" />
                     <span class="text-14-medium">{tool.label}</span>
                   </button>
                 )
