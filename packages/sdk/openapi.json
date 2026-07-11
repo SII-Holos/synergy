@@ -14257,702 +14257,6 @@
         ]
       }
     },
-    "/{directory}/browser/webrtc/ticket": {
-      "post": {
-        "operationId": "browser.createViewerTicket",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string",
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "mode",
-            "schema": {
-              "default": "session",
-              "type": "string",
-              "enum": ["session", "scope"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "presentation",
-            "schema": {
-              "default": "auto",
-              "type": "string",
-              "enum": ["auto", "native", "webrtc"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "protocolVersion",
-            "schema": {
-              "default": 2,
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sinceSeq",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "in": "query",
-            "name": "epoch",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "nativeTicket",
-            "schema": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "directory",
-            "required": true
-          }
-        ],
-        "summary": "Create a Browser viewer ticket",
-        "description": "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
-        "responses": {
-          "200": {
-            "description": "Browser viewer ticket",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserViewerTicketResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Ticket request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BrowserViewerTicketRequest"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createViewerTicket({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/{directory}/browser/annotations": {
-      "post": {
-        "operationId": "browser.createAnnotation",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string",
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "mode",
-            "schema": {
-              "default": "session",
-              "type": "string",
-              "enum": ["session", "scope"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "presentation",
-            "schema": {
-              "default": "auto",
-              "type": "string",
-              "enum": ["auto", "native", "webrtc"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "protocolVersion",
-            "schema": {
-              "default": 2,
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sinceSeq",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "in": "query",
-            "name": "epoch",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "nativeTicket",
-            "schema": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "directory",
-            "required": true
-          }
-        ],
-        "summary": "Create a Browser annotation",
-        "description": "Attach user feedback to a coordinate on the active Browser page.",
-        "responses": {
-          "200": {
-            "description": "Created Browser annotation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAnnotationResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Annotation request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BrowserAnnotationRequest"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createAnnotation({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/{directory}/browser/diagnostics": {
-      "post": {
-        "operationId": "browser.diagnostics",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string",
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "mode",
-            "schema": {
-              "default": "session",
-              "type": "string",
-              "enum": ["session", "scope"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "presentation",
-            "schema": {
-              "default": "auto",
-              "type": "string",
-              "enum": ["auto", "native", "webrtc"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "protocolVersion",
-            "schema": {
-              "default": 2,
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sinceSeq",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "in": "query",
-            "name": "epoch",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "nativeTicket",
-            "schema": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "directory",
-            "required": true
-          }
-        ],
-        "summary": "Read Browser diagnostics",
-        "description": "Read bounded console, network, element, asset, or download diagnostics for the active page.",
-        "responses": {
-          "200": {
-            "description": "Browser diagnostics result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserDiagnosticsResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Diagnostics request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BrowserDiagnosticsRequest"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.diagnostics({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/{directory}/browser/session": {
-      "get": {
-        "operationId": "browser.session",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string",
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "mode",
-            "schema": {
-              "default": "session",
-              "type": "string",
-              "enum": ["session", "scope"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "presentation",
-            "schema": {
-              "default": "auto",
-              "type": "string",
-              "enum": ["auto", "native", "webrtc"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "protocolVersion",
-            "schema": {
-              "default": 2,
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sinceSeq",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "in": "query",
-            "name": "epoch",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "nativeTicket",
-            "schema": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "directory",
-            "required": true
-          }
-        ],
-        "summary": "Get Browser session state",
-        "description": "Read the browser session descriptor without creating, resuming, or navigating a page.",
-        "responses": {
-          "200": {
-            "description": "Browser session state",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPISessionState"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Browser session error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.session({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/{directory}/browser/control": {
-      "post": {
-        "operationId": "browser.control",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string",
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "mode",
-            "schema": {
-              "default": "session",
-              "type": "string",
-              "enum": ["session", "scope"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          {
-            "in": "query",
-            "name": "presentation",
-            "schema": {
-              "default": "auto",
-              "type": "string",
-              "enum": ["auto", "native", "webrtc"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "protocolVersion",
-            "schema": {
-              "default": 2,
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sinceSeq",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "in": "query",
-            "name": "epoch",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 20000
-            }
-          },
-          {
-            "in": "query",
-            "name": "nativeTicket",
-            "schema": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "directory",
-            "required": true
-          }
-        ],
-        "summary": "Control the Browser workspace",
-        "description": "Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.",
-        "responses": {
-          "200": {
-            "description": "Browser control result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserControlResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid browser command",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Retryable browser error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BrowserControlRequest"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.control({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/plugin/ui/contributions": {
       "get": {
         "operationId": "plugin.listUIContributions",
@@ -14972,28 +14276,71 @@
             }
           }
         ],
-        "summary": "List plugin UI contributions",
-        "description": "Return aggregated UI manifests for all loaded plugins.",
+        "summary": "List enabled plugin UI contributions",
         "responses": {
           "200": {
-            "description": "List of plugin UI contributions",
+            "description": "Contributions",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PluginUIContribution"
+                    "type": "object",
+                    "properties": {
+                      "pluginId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "generation": {
+                        "type": "string"
+                      },
+                      "scopeId": {
+                        "type": "string"
+                      },
+                      "capabilities": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "contributions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "uiArtifact": {
+                        "type": "object",
+                        "properties": {
+                          "entry": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["entry", "sha256"]
+                      }
+                    },
+                    "required": [
+                      "pluginId",
+                      "name",
+                      "version",
+                      "generation",
+                      "scopeId",
+                      "capabilities",
+                      "contributions"
+                    ]
                   }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15007,7 +14354,7 @@
         ]
       }
     },
-    "/plugin/assets/{pluginId}/{versionHash}/*": {
+    "/plugin/assets/{pluginId}/{generation}/*": {
       "get": {
         "operationId": "plugin.serveAsset",
         "parameters": [
@@ -15038,25 +14385,14 @@
               "type": "string"
             },
             "in": "path",
-            "name": "versionHash",
+            "name": "generation",
             "required": true
           }
         ],
-        "summary": "Serve plugin static asset",
-        "description": "Serve a static file from a plugin's directory with immutable cache headers.",
+        "summary": "Serve a generated plugin artifact",
         "responses": {
           "200": {
-            "description": "Plugin static asset"
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
+            "description": "Asset"
           },
           "404": {
             "description": "Not found",
@@ -15077,9 +14413,9 @@
         ]
       }
     },
-    "/plugin/{pluginId}/interact": {
+    "/plugin/{pluginId}/operations/{operationId}/invoke": {
       "post": {
-        "operationId": "plugin.interact",
+        "operationId": "plugin.invokeOperation",
         "parameters": [
           {
             "in": "query",
@@ -15102,17 +14438,27 @@
             "in": "path",
             "name": "pluginId",
             "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "operationId",
+            "required": true
           }
         ],
-        "summary": "Relay plugin interaction",
-        "description": "Relay a postMessage interaction for a plugin.",
+        "summary": "Invoke a declared plugin operation",
         "responses": {
           "200": {
-            "description": "Interaction relayed",
+            "description": "Operation result"
+          },
+          "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PluginInteractResult"
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15123,6 +14469,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
                 }
               }
             }
@@ -15134,74 +14490,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "type": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "payload": {},
-                  "source": {
+                  "input": {},
+                  "sessionId": {
                     "type": "string"
                   }
-                },
-                "required": ["type"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.interact({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/plugin/{pluginId}/config-schema": {
-      "get": {
-        "operationId": "plugin.configSchema",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get plugin config schema",
-        "description": "Return the plugin's contributed config schema from its manifest.",
-        "responses": {
-          "200": {
-            "description": "Plugin config schema",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfigSchema"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -15210,7 +14502,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.configSchema({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.invokeOperation({\n  ...\n})"
           }
         ]
       }
@@ -15242,18 +14534,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin config",
-        "description": "Return the current config values for a plugin.",
         "responses": {
           "200": {
-            "description": "Plugin config",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfig"
-                }
-              }
-            }
+            "description": "Plugin settings"
           },
           "404": {
             "description": "Not found",
@@ -15299,28 +14582,9 @@
             "required": true
           }
         ],
-        "summary": "Update plugin config",
-        "description": "Replace the plugin's configuration namespace.",
         "responses": {
           "200": {
-            "description": "Updated plugin config",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfig"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
+            "description": "Plugin settings"
           },
           "404": {
             "description": "Not found",
@@ -15381,8 +14645,6 @@
             "required": true
           }
         ],
-        "summary": "Get plugin status",
-        "description": "Report the current status of a loaded plugin.",
         "responses": {
           "200": {
             "description": "Plugin status",
@@ -15413,6 +14675,57 @@
         ]
       }
     },
+    "/plugin/dev/reload": {
+      "post": {
+        "operationId": "postPluginDevReload",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "generation": {
+                    "type": "string"
+                  },
+                  "artifactDir": {
+                    "type": "string"
+                  }
+                },
+                "required": ["pluginId", "generation", "artifactDir"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {}
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.postPluginDevReload({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/plugins": {
       "get": {
         "operationId": "api.plugins.list",
@@ -15432,17 +14745,15 @@
             }
           }
         ],
-        "summary": "List all loaded plugins",
-        "description": "Return metadata for all currently loaded plugins.",
         "responses": {
           "200": {
-            "description": "List of loaded plugins",
+            "description": "Installed plugins",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ApiPluginInfo"
+                    "$ref": "#/components/schemas/PluginStatus"
                   }
                 }
               }
@@ -15484,18 +14795,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin detail",
-        "description": "Return detailed metadata for a single loaded plugin.",
         "responses": {
           "200": {
-            "description": "Plugin detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiPluginDetail"
-                }
-              }
-            }
+            "description": "Plugin detail"
           },
           "404": {
             "description": "Not found",
@@ -15541,28 +14843,9 @@
             "required": true
           }
         ],
-        "summary": "Remove plugin",
-        "description": "Uninstall and deactivate a plugin, then reload the plugin runtime.",
         "responses": {
           "200": {
-            "description": "Plugin removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "pluginId": {
-                      "type": "string"
-                    },
-                    "removed": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["pluginId", "removed"]
-                }
-              }
-            }
+            "description": "Removed"
           },
           "404": {
             "description": "Not found",
@@ -15583,140 +14866,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/status": {
-      "get": {
-        "operationId": "api.plugins.status",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get plugin status",
-        "description": "Report the current status of a loaded plugin.",
-        "responses": {
-          "200": {
-            "description": "Plugin status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginStatus"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.status({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/preview-install": {
-      "post": {
-        "operationId": "api.plugins.previewInstall",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Preview permissions for new plugin install",
-        "description": "Compute the permission diff for a new plugin manifest before installation.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  }
-                },
-                "required": ["manifest"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewInstall({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/approve-install": {
+    "/api/plugins/approve-install": {
       "post": {
         "operationId": "api.plugins.approveInstall",
         "parameters": [
@@ -15733,52 +14883,11 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
           }
         ],
-        "summary": "Approve new plugin install",
-        "description": "Record approval for a new plugin installation after reviewing its permissions.",
         "responses": {
           "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+            "description": "Approved"
           }
         },
         "requestBody": {
@@ -15787,13 +14896,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
+                  "pluginId": {
+                    "type": "string"
                   },
+                  "manifest": {},
                   "capabilities": {
                     "type": "array",
                     "items": {
@@ -15805,7 +14911,7 @@
                     "enum": ["local", "official", "npm", "git", "url", "builtin"]
                   }
                 },
-                "required": ["manifest", "capabilities"]
+                "required": ["pluginId", "manifest", "capabilities", "source"]
               }
             }
           }
@@ -15814,190 +14920,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveInstall({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/preview-update": {
-      "post": {
-        "operationId": "api.plugins.previewUpdate",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Preview permissions for plugin update",
-        "description": "Compute the permission diff between the currently installed plugin and a new manifest version.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  }
-                },
-                "required": ["manifest"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewUpdate({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/approve-update": {
-      "post": {
-        "operationId": "api.plugins.approveUpdate",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Approve plugin update",
-        "description": "Record approval for a plugin update after reviewing its permission changes.",
-        "responses": {
-          "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "capabilities": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "source": {
-                    "type": "string",
-                    "enum": ["local", "official", "npm", "git", "url", "builtin"]
-                  }
-                },
-                "required": ["manifest", "capabilities"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveUpdate({\n  ...\n})"
           }
         ]
       }
@@ -16029,22 +14951,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin approval status",
-        "description": "Return the current approval record for a plugin, or 404 if not approved.",
         "responses": {
           "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
+            "description": "Approval"
           },
           "404": {
             "description": "Not found",
@@ -16065,70 +14974,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/permission-diff": {
-      "get": {
-        "operationId": "api.plugins.permissionDiff",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get permission diff for plugin version",
-        "description": "Return the permission diff between the approved capabilities and the current plugin manifest.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.permissionDiff({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/install-from-registry": {
+    "/api/plugins/registry/install": {
       "post": {
         "operationId": "api.plugins.installFromRegistry",
         "parameters": [
@@ -16147,48 +14993,12 @@
             }
           }
         ],
-        "summary": "Install plugin from registry",
-        "description": "Install a plugin from the official or local registry. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.",
         "responses": {
           "200": {
-            "description": "Install result with plugin status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiPluginDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+            "description": "Installed"
           },
           "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NoteConflictError"
-                }
-              }
-            }
+            "description": "Approval required"
           }
         },
         "requestBody": {
@@ -16198,19 +15008,17 @@
                 "type": "object",
                 "properties": {
                   "id": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "version": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "source": {
                     "type": "string",
                     "enum": ["official", "local"]
                   }
                 },
-                "required": ["id", "version"]
+                "required": ["id", "version", "source"]
               }
             }
           }
@@ -16223,7 +15031,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/update-from-registry": {
+    "/api/plugins/registry/update": {
       "post": {
         "operationId": "api.plugins.updateFromRegistry",
         "parameters": [
@@ -16240,52 +15048,14 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
           }
         ],
-        "summary": "Check for plugin update from registry",
-        "description": "Check if an update is available for a plugin from the official or local registry. Optionally target a specific version. Returns version comparison and permission diff.",
         "responses": {
           "200": {
-            "description": "Update check result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
+            "description": "Updated"
           },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+          "409": {
+            "description": "Approval required"
           }
         },
         "requestBody": {
@@ -16294,15 +15064,18 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "targetVersion": {
-                    "type": "string",
-                    "minLength": 1
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
                   },
                   "source": {
                     "type": "string",
                     "enum": ["official", "local"]
                   }
-                }
+                },
+                "required": ["pluginId", "version", "source"]
               }
             }
           }
@@ -16343,21 +15116,13 @@
           }
         ],
         "summary": "Reload plugin runtime",
-        "description": "Stop and restart the plugin runtime process.",
         "responses": {
           "200": {
-            "description": "Runtime state after reload",
+            "description": "Runtime",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/PluginRuntimeInfo"
                 }
               }
             }
@@ -16377,72 +15142,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.reload({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/runtime/stop": {
-      "post": {
-        "operationId": "plugin.runtime.stop",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Stop plugin runtime",
-        "description": "Gracefully stop the plugin runtime process.",
-        "responses": {
-          "200": {
-            "description": "Runtime state after stop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.stop({\n  ...\n})"
           }
         ]
       }
@@ -16475,21 +15174,13 @@
           }
         ],
         "summary": "Start plugin runtime",
-        "description": "Start the plugin runtime process.",
         "responses": {
           "200": {
-            "description": "Runtime state after start",
+            "description": "Runtime",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/PluginRuntimeInfo"
                 }
               }
             }
@@ -16509,6 +15200,57 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/stop": {
+      "post": {
+        "operationId": "plugin.runtime.stop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Stop plugin runtime",
+        "responses": {
+          "200": {
+            "description": "Stopped"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.stop({\n  ...\n})"
           }
         ]
       }
@@ -16541,20 +15283,9 @@
           }
         ],
         "summary": "Get plugin runtime logs",
-        "description": "Return recent log entries for the plugin runtime.",
         "responses": {
           "200": {
-            "description": "Recent runtime log entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PluginRuntimeLogEntry"
-                  }
-                }
-              }
-            }
+            "description": "Logs"
           },
           "404": {
             "description": "Not found",
@@ -22801,32 +21532,6 @@
         "description": "Plugin runtime isolation policy configuration",
         "type": "object",
         "properties": {
-          "thirdPartyDefaultMode": {
-            "description": "Default isolation mode for third-party plugins (npm, git, url)",
-            "default": "process",
-            "type": "string",
-            "enum": ["process", "worker"]
-          },
-          "highRiskRequiresProcess": {
-            "description": "Require process isolation for high-risk plugins regardless of source",
-            "default": true,
-            "type": "boolean"
-          },
-          "allowThirdPartyInProcess": {
-            "description": "Allow third-party plugins to request in-process mode (not recommended)",
-            "default": false,
-            "type": "boolean"
-          },
-          "allowWorkerMode": {
-            "description": "Allow plugins to request worker thread isolation",
-            "default": true,
-            "type": "boolean"
-          },
-          "allowLocalInProcess": {
-            "description": "Allow local plugins to run in-process",
-            "default": true,
-            "type": "boolean"
-          },
           "limits": {
             "$ref": "#/components/schemas/PluginRuntimeLimitsConfig"
           }
@@ -32646,1064 +31351,6 @@
         "type": "array",
         "items": {}
       },
-      "BrowserViewerTicketResponse": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "ticket": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "expiresAt": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "iceServers": {
-            "maxItems": 100,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "urls": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 20000
-                    },
-                    {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 20000
-                      }
-                    }
-                  ]
-                },
-                "username": {
-                  "type": "string",
-                  "maxLength": 20000
-                },
-                "credential": {
-                  "type": "string",
-                  "maxLength": 20000
-                }
-              },
-              "required": ["urls"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["protocolVersion", "ticket", "expiresAt", "iceServers"],
-        "additionalProperties": false
-      },
-      "BrowserAPIError": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "error"
-          },
-          "code": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
-          },
-          "message": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100000
-          },
-          "retryable": {
-            "type": "boolean"
-          },
-          "pageId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          },
-          "commandId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "url": {
-            "type": "string",
-            "maxLength": 20000
-          },
-          "snapshotId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "obstruction": {
-            "type": "object",
-            "properties": {
-              "tag": {
-                "type": "string",
-                "maxLength": 1000
-              },
-              "role": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "maxLength": 1000
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "name": {
-                "type": "string",
-                "maxLength": 1000
-              },
-              "id": {
-                "type": "string",
-                "maxLength": 1000
-              },
-              "class": {
-                "type": "string",
-                "maxLength": 1000
-              },
-              "candidates": {
-                "maxItems": 5,
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "tag": {
-                      "type": "string",
-                      "maxLength": 1000
-                    },
-                    "role": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "maxLength": 1000
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "name": {
-                      "type": "string",
-                      "maxLength": 1000
-                    },
-                    "id": {
-                      "type": "string",
-                      "maxLength": 1000
-                    },
-                    "class": {
-                      "type": "string",
-                      "maxLength": 1000
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              }
-            },
-            "additionalProperties": false
-          },
-          "suggestedAction": {
-            "type": "string",
-            "maxLength": 100000
-          },
-          "locator": {}
-        },
-        "required": ["type", "code", "message", "retryable"],
-        "additionalProperties": false
-      },
-      "BrowserViewerTicketRequest": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "pageId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          }
-        },
-        "required": ["protocolVersion", "pageId"],
-        "additionalProperties": false
-      },
-      "BrowserAnnotationResponse": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "annotation": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 20000
-              },
-              "pageURL": {
-                "type": "string",
-                "maxLength": 20000
-              },
-              "pageID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 20000
-              },
-              "element": {
-                "type": "string",
-                "maxLength": 100000
-              },
-              "comment": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 20000
-              },
-              "styleFeedback": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "maxLength": 1000
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "maxLength": 10000
-                }
-              },
-              "resolved": {
-                "type": "boolean"
-              },
-              "createdAt": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": ["id", "pageURL", "pageID", "comment", "resolved", "createdAt"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["protocolVersion", "annotation"],
-        "additionalProperties": false
-      },
-      "BrowserAnnotationRequest": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "pageId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          },
-          "x": {
-            "type": "number"
-          },
-          "y": {
-            "type": "number"
-          },
-          "comment": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "styleFeedback": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string",
-              "maxLength": 1000
-            },
-            "additionalProperties": {
-              "type": "string",
-              "maxLength": 10000
-            }
-          }
-        },
-        "required": ["protocolVersion", "pageId", "x", "y", "comment"],
-        "additionalProperties": false
-      },
-      "BrowserDiagnosticsResponse": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "pageId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          },
-          "action": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "data": {}
-        },
-        "required": ["protocolVersion", "pageId", "action", "data"],
-        "additionalProperties": false
-      },
-      "BrowserDiagnosticsRequest": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "pageId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          },
-          "commandId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "action": {
-            "type": "string",
-            "enum": ["console", "network", "elements", "assets", "downloads", "clear"]
-          },
-          "limit": {
-            "default": 200,
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 500
-          }
-        },
-        "required": ["protocolVersion", "pageId", "commandId", "action"],
-        "additionalProperties": false
-      },
-      "BrowserAPISessionState": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.state"
-          },
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "ownerKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "status": {
-            "type": "string",
-            "enum": ["empty", "suspended", "active", "migrating", "failed"]
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "url": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "title": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "isLoading": {
-                    "type": "boolean"
-                  },
-                  "lastActiveAt": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "presentation": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "protocolVersion": {
-                    "type": "number",
-                    "const": 2
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": ["native", "webrtc"]
-                  },
-                  "capabilities": {
-                    "type": "object",
-                    "properties": {
-                      "native": {
-                        "type": "boolean"
-                      },
-                      "webrtc": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": ["native", "webrtc"],
-                    "additionalProperties": false
-                  },
-                  "reason": {
-                    "type": "string",
-                    "enum": ["desktop-local", "remote-client", "requested"]
-                  }
-                },
-                "required": ["protocolVersion", "kind", "capabilities", "reason"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "hostStatus": {
-            "type": "string",
-            "enum": [
-              "unavailable",
-              "installing",
-              "starting",
-              "pending",
-              "ready",
-              "detached",
-              "restarting",
-              "idle",
-              "failed"
-            ]
-          },
-          "seq": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "epoch": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "error": {
-            "$ref": "#/components/schemas/BrowserAPIError"
-          }
-        },
-        "required": [
-          "type",
-          "protocolVersion",
-          "ownerKey",
-          "status",
-          "page",
-          "presentation",
-          "hostStatus",
-          "seq",
-          "epoch"
-        ],
-        "additionalProperties": false
-      },
-      "BrowserControlResponse": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "control.result"
-          },
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "result": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "void"
-                  }
-                },
-                "required": ["type"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "page"
-                  },
-                  "page": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 200,
-                        "pattern": "^[a-zA-Z0-9._-]+$"
-                      },
-                      "url": {
-                        "type": "string",
-                        "maxLength": 20000
-                      },
-                      "title": {
-                        "type": "string",
-                        "maxLength": 20000
-                      },
-                      "isLoading": {
-                        "type": "boolean"
-                      },
-                      "lastActiveAt": {
-                        "anyOf": [
-                          {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["type", "page"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "navigation"
-                  },
-                  "page": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 200,
-                        "pattern": "^[a-zA-Z0-9._-]+$"
-                      },
-                      "url": {
-                        "type": "string",
-                        "maxLength": 20000
-                      },
-                      "title": {
-                        "type": "string",
-                        "maxLength": 20000
-                      },
-                      "isLoading": {
-                        "type": "boolean"
-                      },
-                      "lastActiveAt": {
-                        "anyOf": [
-                          {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["type", "page"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "snapshot"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "snapshotId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "elements": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "ref": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 20000
-                        },
-                        "role": {
-                          "type": "string",
-                          "maxLength": 1000
-                        },
-                        "name": {
-                          "type": "string",
-                          "maxLength": 100000
-                        },
-                        "value": {
-                          "type": "string",
-                          "maxLength": 100000
-                        },
-                        "description": {
-                          "type": "string",
-                          "maxLength": 100000
-                        },
-                        "depth": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 10000
-                        }
-                      },
-                      "required": ["ref", "role", "name", "depth"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "truncated": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["type", "pageId", "snapshotId", "elements", "truncated"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "action"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "action": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "snapshot": {}
-                },
-                "required": ["type", "pageId", "action"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "wait"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "matched": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["type", "pageId", "matched"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "evaluation"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "value": {}
-                },
-                "required": ["type", "pageId", "value"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "screenshot"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "dataUrl": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 36700160
-                  },
-                  "width": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "height": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": ["type", "pageId", "dataUrl", "width", "height"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "data"
-                  },
-                  "pageId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "data": {}
-                },
-                "required": ["type", "pageId", "data"],
-                "additionalProperties": false
-              }
-            ]
-          }
-        },
-        "required": ["type", "protocolVersion", "result"],
-        "additionalProperties": false
-      },
-      "BrowserControlRequest": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 2
-          },
-          "command": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "navigate"
-                  },
-                  "url": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "source": {
-                    "default": "user",
-                    "type": "string",
-                    "const": "user"
-                  }
-                },
-                "required": ["type", "url"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "history"
-                  },
-                  "direction": {
-                    "type": "string",
-                    "enum": ["back", "forward"]
-                  }
-                },
-                "required": ["type", "direction"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "reload"
-                  },
-                  "ignoreCache": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["type"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "stop"
-                  }
-                },
-                "required": ["type"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "resume"
-                  }
-                },
-                "required": ["type"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "close"
-                  }
-                },
-                "required": ["type"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "setViewport"
-                  },
-                  "width": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 16384
-                  },
-                  "height": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 16384
-                  }
-                },
-                "required": ["type", "width", "height"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "dialog.respond"
-                  },
-                  "requestId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "accept": {
-                    "type": "boolean"
-                  },
-                  "promptText": {
-                    "type": "string",
-                    "maxLength": 1000000
-                  }
-                },
-                "required": ["type", "requestId", "accept"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "filechooser.select"
-                  },
-                  "requestId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "files": {
-                    "maxItems": 20,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 1024
-                        },
-                        "mimeType": {
-                          "type": "string",
-                          "maxLength": 256
-                        },
-                        "dataBase64": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 36700160
-                        }
-                      },
-                      "required": ["name", "mimeType", "dataBase64"],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": ["type", "requestId", "files"],
-                "additionalProperties": false
-              }
-            ]
-          },
-          "commandId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "traceId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          }
-        },
-        "required": ["protocolVersion", "command", "commandId"],
-        "additionalProperties": false
-      },
-      "PluginUIContribution": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          },
-          "ui": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "permissions": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["pluginId", "version"]
-      },
-      "PluginInteractResult": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": ["status", "type"]
-      },
-      "PluginConfigSchema": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      },
-      "PluginConfig": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      },
       "PluginStatus": {
         "type": "object",
         "properties": {
@@ -33716,32 +31363,19 @@
           "version": {
             "type": "string"
           },
+          "apiVersion": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
           "source": {
             "type": "string",
             "enum": ["local", "npm", "git", "url", "builtin", "official"]
           },
           "trust": {
-            "type": "object",
-            "properties": {
-              "tier": {
-                "type": "string",
-                "enum": ["declarative", "trusted-import", "sandbox"]
-              },
-              "source": {
-                "type": "string",
-                "enum": ["local", "npm", "git", "url", "builtin", "official"]
-              },
-              "userTrusted": {
-                "type": "boolean"
-              },
-              "verifiedIntegrity": {
-                "type": "boolean"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+            "type": "string",
+            "enum": ["declarative", "trusted-import"]
           },
           "health": {
             "type": "string",
@@ -33751,72 +31385,41 @@
             "type": "string"
           },
           "disabledPhase": {
-            "type": "string",
-            "enum": ["resolve", "load", "manifest", "hook", "runtime", "doctor"]
+            "type": "string"
           },
           "loaded": {
             "type": "boolean"
           },
-          "loadError": {
-            "type": "string"
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
-          "manifestValid": {
-            "type": "boolean"
-          },
-          "integrity": {
+          "risk": {
             "type": "string",
-            "enum": ["verified", "unverified", "failed"]
+            "enum": ["low", "medium", "high"]
           },
-          "permissions": {
-            "type": "object",
-            "properties": {
-              "base": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "tools": {
-                "type": "object",
-                "propertyNames": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
                   "type": "string"
                 },
-                "additionalProperties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["query", "command"]
+                },
+                "expose": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
                 }
               },
-              "overallRisk": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "warnings": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "toolId": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["type", "message"]
-                }
-              }
-            },
-            "required": ["base", "tools", "overallRisk", "warnings"]
-          },
-          "navigation": {
-            "type": "array",
-            "items": {
-              "type": "string"
+              "required": ["id", "type", "expose"]
             }
           },
           "tools": {
@@ -33835,411 +31438,115 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "warnings": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
                 }
               },
-              "required": ["id", "fullId", "capabilities", "warnings"]
+              "required": ["id", "fullId", "capabilities"]
             }
           },
-          "ui": {
-            "type": "object",
-            "properties": {
-              "contributions": {
-                "type": "number"
-              },
-              "errors": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["contributions", "errors"]
+          "uiContributions": {
+            "type": "number"
           },
-          "stores": {
+          "contributionHealth": {
             "type": "object",
-            "properties": {
-              "config": {
-                "type": "boolean"
-              },
-              "secrets": {
-                "type": "string",
-                "enum": ["none", "plaintext", "keychain"]
-              },
-              "cacheBytes": {
-                "type": "number"
-              }
+            "propertyNames": {
+              "type": "string"
             },
-            "required": ["config", "secrets"]
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": ["healthy", "degraded"]
+                },
+                "lastError": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "number"
+                }
+              },
+              "required": ["state", "updatedAt"]
+            }
           },
           "runtime": {
             "type": "object",
             "properties": {
               "mode": {
-                "type": "string"
+                "type": "string",
+                "enum": ["process", "inProcess"]
+              },
+              "state": {
+                "type": "string",
+                "enum": ["starting", "ready", "draining", "crashed", "stopped"]
               },
               "pid": {
                 "type": "number"
               },
-              "state": {
-                "type": "string"
-              },
-              "restarts": {
+              "inFlight": {
                 "type": "number"
               },
               "lastHeartbeatAt": {
                 "type": "number"
               },
-              "memoryMb": {
-                "type": "number"
-              },
-              "limits": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
               "lastError": {
-                "type": "string"
-              },
-              "runtimeDecision": {
                 "type": "string"
               }
             },
-            "required": ["mode", "state", "restarts", "limits"]
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                },
-                "toolId": {
-                  "type": "string"
-                }
-              },
-              "required": ["type", "message"]
-            }
+            "required": ["mode", "state", "inFlight"]
           }
         },
         "required": [
           "id",
+          "name",
           "source",
           "trust",
           "health",
           "loaded",
-          "manifestValid",
-          "integrity",
-          "permissions",
-          "navigation",
+          "capabilities",
+          "risk",
+          "operations",
           "tools",
-          "ui",
-          "stores",
-          "warnings"
-        ]
-      },
-      "ApiPluginPermissionItem": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "granted": {
-            "type": "boolean"
-          }
-        },
-        "required": ["key", "description", "risk"]
-      },
-      "ApiPluginInfo": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "trustTier": {
-            "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
-          },
-          "hasManifest": {
-            "type": "boolean"
-          },
-          "pluginDir": {
-            "type": "string"
-          },
-          "cliCommands": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "skillCount": {
-            "type": "number"
-          },
-          "agentCount": {
-            "type": "number"
-          },
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "permissionsSummary": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ApiPluginPermissionItem"
-            }
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "loaded": {
-            "type": "boolean"
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pluginId",
-          "trustTier",
-          "hasManifest",
-          "pluginDir",
-          "cliCommands",
-          "skillCount",
-          "agentCount",
-          "capabilities",
-          "risk",
-          "permissionsSummary"
-        ]
-      },
-      "ApiPluginDetail": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "trustTier": {
-            "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
-          },
-          "hasManifest": {
-            "type": "boolean"
-          },
-          "pluginDir": {
-            "type": "string"
-          },
-          "manifest": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "cliCommands": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "skills": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "permissionsSummary": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ApiPluginPermissionItem"
-            }
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "loaded": {
-            "type": "boolean"
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pluginId",
-          "trustTier",
-          "hasManifest",
-          "pluginDir",
-          "cliCommands",
-          "skills",
-          "agents",
-          "capabilities",
-          "risk",
-          "permissionsSummary"
+          "uiContributions",
+          "contributionHealth"
         ]
       },
       "PluginRuntimeInfo": {
         "type": "object",
         "properties": {
+          "key": {
+            "type": "string"
+          },
           "mode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "enum": ["process", "inProcess"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["starting", "ready", "draining", "crashed", "stopped"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
           },
           "pid": {
             "type": "number"
           },
-          "state": {
-            "type": "string",
-            "enum": ["starting", "ready", "unhealthy", "stopped", "crashed"]
+          "inFlight": {
+            "type": "number"
           },
-          "restarts": {
+          "startedAt": {
             "type": "number"
           },
           "lastHeartbeatAt": {
             "type": "number"
           },
-          "memoryMb": {
-            "type": "number"
-          },
-          "limits": {
-            "type": "object",
-            "properties": {
-              "startupTimeoutMs": {
-                "type": "number"
-              },
-              "toolInvocationTimeoutMs": {
-                "type": "number"
-              },
-              "hookInvocationTimeoutMs": {
-                "type": "number"
-              },
-              "bridgeRequestTimeoutMs": {
-                "type": "number"
-              },
-              "taskRunTimeoutMs": {
-                "type": "number"
-              },
-              "shutdownGraceMs": {
-                "type": "number"
-              },
-              "maxConcurrentRequests": {
-                "type": "number"
-              },
-              "maxLogBytesPerMinute": {
-                "type": "number"
-              },
-              "memoryMb": {
-                "type": "number"
-              },
-              "memoryPollIntervalMs": {
-                "type": "number"
-              },
-              "heartbeatIntervalMs": {
-                "type": "number"
-              },
-              "heartbeatMissesBeforeKill": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "startupTimeoutMs",
-              "toolInvocationTimeoutMs",
-              "hookInvocationTimeoutMs",
-              "bridgeRequestTimeoutMs",
-              "taskRunTimeoutMs",
-              "shutdownGraceMs",
-              "maxConcurrentRequests",
-              "maxLogBytesPerMinute",
-              "memoryMb",
-              "memoryPollIntervalMs",
-              "heartbeatIntervalMs",
-              "heartbeatMissesBeforeKill"
-            ]
-          },
           "lastError": {
             "type": "string"
           }
         },
-        "required": ["mode", "state", "restarts", "limits"]
-      },
-      "PluginRuntimeLogEntry": {
-        "type": "object",
-        "properties": {
-          "timestamp": {
-            "type": "number"
-          },
-          "level": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["timestamp", "level", "message"]
+        "required": ["key", "mode", "state", "version", "generation", "inFlight", "startedAt"]
       },
       "RegistryPluginIcon": {
         "anyOf": [
@@ -34333,11 +31640,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "uiSurfaces": {
             "type": "array",
@@ -34457,7 +31764,7 @@
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -34581,11 +31888,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -34715,11 +32022,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -36605,6 +33912,60 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.plugin.event": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.event"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginVersion": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payload": {}
+            },
+            "required": [
+              "pluginId",
+              "pluginVersion",
+              "generation",
+              "eventId",
+              "scopeId",
+              "sequence",
+              "timestamp",
+              "payload"
+            ]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -37248,6 +34609,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.event"
           },
           {
             "$ref": "#/components/schemas/Event.cortex.task.created"

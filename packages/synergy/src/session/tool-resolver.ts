@@ -220,9 +220,9 @@ export namespace ToolResolver {
 
   async function currentPluginToolIds(): Promise<Set<string>> {
     const ids = new Set<string>()
-    for (const plugin of await Plugin.perPluginHooks()) {
-      for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-        ids.add(PluginToolId.format(plugin.id, toolId))
+    for (const plugin of await Plugin.getLoaded()) {
+      for (const contribution of plugin.manifest.contributions) {
+        if (contribution.kind === "tool") ids.add(PluginToolId.format(plugin.id, contribution.id))
       }
     }
     return ids
@@ -234,14 +234,15 @@ export namespace ToolResolver {
     for (const plugin of await Plugin.getLoaded()) {
       try {
         const manifest = plugin.manifest
-        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-          const capabilities = toolCapabilities(manifest, toolId)
-          caps[PluginToolId.format(plugin.id, toolId)] = {
+        for (const contribution of manifest.contributions) {
+          if (contribution.kind !== "tool") continue
+          const capabilities = toolCapabilities(manifest, contribution.id)
+          caps[PluginToolId.format(plugin.id, contribution.id)] = {
             capabilities,
-            risk: toolRisk(manifest, toolId),
+            risk: toolRisk(manifest, contribution.id),
           }
         }
-        const approval = await getApproval(plugin.id)
+        const approval = await getApproval(plugin.id, manifest)
         if (approval) approvals[plugin.id] = approval
       } catch (err) {
         log.warn("plugin gate data skipped", {

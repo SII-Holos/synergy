@@ -1,367 +1,201 @@
-import { parentPort, workerData } from "node:worker_threads"
-import { Buffer } from "buffer"
-import z from "zod"
-import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import type {
-  PluginAuthStore,
-  PluginCacheStore,
-  PluginConfigAccessor,
-  PluginDescriptor,
-  PluginHooks,
-  PluginInput,
+  PluginDefinition,
+  PluginInvocationContext,
+  PluginLogger,
+  PluginContribution,
 } from "@ericsanchezok/synergy-plugin"
-import type { BunShell, BunShellOutput, BunShellPromise, ShellExpression } from "@ericsanchezok/synergy-plugin/shell"
-import { MESSAGE_DELIMITER } from "./protocol.js"
-import type {
-  HostBridgeMethod,
-  HostToPlugin,
-  IsolatedPluginInputData,
-  PluginToHost,
-  RuntimeToolContextData,
-  SerializedError,
+import {
+  PLUGIN_RUNTIME_PROTOCOL_VERSION,
+  type HostToPlugin,
+  type PluginHostServiceMethod,
+  type PluginToHost,
+  type RuntimeActivationData,
+  type RuntimeInvocationContextData,
+  type SerializedPluginRuntimeError,
 } from "./protocol.js"
+import { createPluginInvocationContext } from "./context-factory.js"
 
-type RunnerWorkerData = { entryPath: string; input: IsolatedPluginInputData }
-
-let entryPath = process.argv[2] ?? (workerData as RunnerWorkerData | undefined)?.entryPath
-let inputData = (workerData as RunnerWorkerData | undefined)?.input
-let hooks: PluginHooks | undefined
-let pluginId = inputData?.pluginId ?? ""
-const pendingBridge = new Map<
+const entryPath = process.argv[2]
+let definition: PluginDefinition | undefined
+let activation: RuntimeActivationData | undefined
+let heartbeat: ReturnType<typeof setInterval> | undefined
+const aborts = new Map<string, AbortController>()
+const hostRequests = new Map<
   string,
   { resolve(value: unknown): void; reject(error: Error): void; timeout: ReturnType<typeof setTimeout> }
 >()
-const activeToolAbort = new Map<string, AbortController>()
-let heartbeatTimer: ReturnType<typeof setInterval> | undefined
 
-function serializeError(error: unknown): SerializedError {
+function post(message: PluginToHost) {
+  process.send?.(message)
+}
+
+function serialize(error: unknown): SerializedPluginRuntimeError {
   if (error instanceof Error) {
     return {
       name: error.name,
       message: error.message,
       stack: error.stack,
-      cause: error.cause ? serializeError(error.cause) : undefined,
+      code: "code" in error ? String(error.code) : undefined,
     }
   }
   return { name: "Error", message: String(error) }
 }
 
-function deserializeError(error: SerializedError): Error {
-  const err = new Error(error.message)
-  err.name = error.name
-  err.stack = error.stack
-  return err
+function findDefinition(module: Record<string, unknown>, pluginId: string): PluginDefinition {
+  const candidate = [module.default, ...Object.values(module)].find((value): value is PluginDefinition => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+    const record = value as Record<string, unknown>
+    return record.id === pluginId && Array.isArray(record.contributions) && Array.isArray(record.handlerIds)
+  })
+  if (!candidate) throw new Error(`Runtime entry does not export definePlugin() definition for "${pluginId}"`)
+  return candidate
 }
 
-function post(message: PluginToHost) {
-  if (parentPort) {
-    parentPort.postMessage(message)
-    return
+async function activate(input: RuntimeActivationData) {
+  if (activation) throw new Error(`Plugin runtime generation ${activation.generation} is already active`)
+  if (!entryPath) throw new Error("Plugin runtime entry path is missing")
+  const module = (await import(entryPath)) as Record<string, unknown>
+  definition = findDefinition(module, input.pluginId)
+  if (definition.version !== input.version) {
+    throw new Error(`Plugin runtime version mismatch: expected ${input.version}, received ${definition.version}`)
   }
-  if (typeof process.send === "function") {
-    process.send(JSON.stringify(message) + MESSAGE_DELIMITER)
+  activation = input
+  await definition.activate?.({
+    pluginId: input.pluginId,
+    version: input.version,
+    generation: input.generation,
+    log: logger(),
+  })
+  heartbeat = setInterval(() => post({ type: "heartbeat" }), input.runtimeLimits.heartbeatIntervalMs)
+  heartbeat.unref?.()
+  post({
+    type: "ready",
+    protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
+    generation: input.generation,
+    handlerIds: [...definition.handlerIds].sort(),
+  })
+}
+
+function logger(): PluginLogger {
+  return {
+    debug: (message, details) => post({ type: "log", level: "debug", message, details }),
+    info: (message, details) => post({ type: "log", level: "info", message, details }),
+    warn: (message, details) => post({ type: "log", level: "warn", message, details }),
+    error: (message, details) => post({ type: "log", level: "error", message, details }),
   }
 }
 
-function postResponse(requestId: string, run: () => Promise<unknown>) {
-  run().then(
-    (value) => post({ type: "response", requestId, ok: true, value }),
-    (error) => post({ type: "response", requestId, ok: false, error: serializeError(error) }),
-  )
-}
-
-function bridge(method: HostBridgeMethod, params: unknown): Promise<unknown> {
-  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+function hostRequest(invocationId: string, method: PluginHostServiceMethod, params: unknown): Promise<unknown> {
+  const requestId = crypto.randomUUID()
+  const timeoutMs = activation?.runtimeLimits.bridgeRequestTimeoutMs
+  if (!timeoutMs) return Promise.reject(new Error("Plugin runtime is not active"))
   return new Promise((resolve, reject) => {
-    const timeoutMs = inputData?.runtimeLimits.bridgeRequestTimeoutMs
-    if (!timeoutMs) {
-      reject(new Error(`Host bridge request attempted before plugin runtime initialization: ${method}`))
-      return
-    }
     const timeout = setTimeout(() => {
-      pendingBridge.delete(requestId)
-      reject(new Error(`Host bridge request timed out: ${method}`))
+      hostRequests.delete(requestId)
+      reject(new Error(`Host service timed out: ${method}`))
     }, timeoutMs)
-    pendingBridge.set(requestId, { resolve, reject, timeout })
-    post({ type: "hostRequest", requestId, method, params })
+    hostRequests.set(requestId, { resolve, reject, timeout })
+    post({ type: "hostRequest", requestId, invocationId, method, params })
   })
 }
 
-function shellCommand(strings: TemplateStringsArray, expressions: ShellExpression[]): string {
-  let command = ""
-  for (let i = 0; i < strings.length; i++) {
-    command += strings[i]
-    const expression = expressions[i]
-    if (expression === undefined) continue
-    if (Array.isArray(expression)) command += expression.map((item) => String(item)).join(" ")
-    else command += String(expression)
-  }
-  return command
-}
-
-function createShell(
-  options: {
-    cwd?: string
-    env?: Record<string, string | undefined>
-    throws?: boolean
-    context?: RuntimeToolContextData
-  } = {},
-): BunShell {
-  const shell = ((strings: TemplateStringsArray, ...expressions: ShellExpression[]) => {
-    const command = shellCommand(strings, expressions)
-    const promise = bridge("shell.run", {
-      cmd: command,
-      cwd: options.cwd,
-      env: options.env,
-      throws: options.throws,
-      ...(options.context ? { context: options.context } : {}),
-    }).then((result: any): BunShellOutput => {
-      const stdout = Buffer.from(String(result?.stdout ?? ""))
-      const stderr = Buffer.from(String(result?.stderr ?? ""))
-      const output: BunShellOutput = {
-        stdout,
-        stderr,
-        exitCode: Number(result?.exitCode ?? 0),
-        text: () => stdout.toString(),
-        json: () => JSON.parse(stdout.toString()),
-        arrayBuffer: () => stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength),
-        bytes: () => new Uint8Array(stdout),
-        blob: () => new Blob([stdout]),
-      }
-      return output
-    }) as BunShellPromise
-
-    ;(promise as any).stdin = new WritableStream()
-    ;(promise as any).cwd = (cwd: string) => {
-      options.cwd = cwd
-      return promise
-    }
-    ;(promise as any).env = (env: Record<string, string> | undefined) => {
-      options.env = env
-      return promise
-    }
-    ;(promise as any).quiet = () => promise
-    ;(promise as any).lines = async function* () {
-      const text = await promise.text()
-      for (const line of text.split("\n")) yield line
-    }
-    ;(promise as any).text = async () => (await promise).text()
-    ;(promise as any).json = async () => (await promise).json()
-    ;(promise as any).arrayBuffer = async () => (await promise).arrayBuffer()
-    ;(promise as any).blob = async () => (await promise).blob()
-    ;(promise as any).nothrow = () => promise
-    ;(promise as any).throws = () => promise
-    return promise
-  }) as BunShell
-
-  shell.braces = (pattern: string) => [pattern]
-  shell.escape = (input: string) => JSON.stringify(input)
-  shell.env = (env?: Record<string, string | undefined>) => createShell({ ...options, env })
-  shell.cwd = (cwd?: string) => createShell({ ...options, cwd })
-  shell.nothrow = () => createShell({ ...options, throws: false })
-  shell.throws = (throws: boolean) => createShell({ ...options, throws })
-  return shell
-}
-
-function createConfigStore(): PluginConfigAccessor {
-  return {
-    get: async () => (await bridge("config.get", {})) as Record<string, any>,
-    set: async (values) => {
-      await bridge("config.replace", { values })
-    },
-  }
-}
-
-function createAuthStore(): PluginAuthStore {
-  return {
-    get: async (key) => (await bridge("secret.get", { key })) as string | undefined,
-    set: async (key, value) => {
-      await bridge("secret.set", { key, value })
-    },
-    delete: async (key) => {
-      await bridge("secret.delete", { key })
-    },
-    has: async (key) => (await bridge("secret.get", { key })) !== undefined,
-  }
-}
-
-function createCacheStore(input: IsolatedPluginInputData): PluginCacheStore {
-  return {
-    directory: input.cacheDir,
-    get: async (key) => (await bridge("cache.get", { key })) as any,
-    set: async (key, value, ttl) => {
-      await bridge("cache.set", { key, value, ttl })
-    },
-    delete: async (key) => {
-      await bridge("cache.delete", { key })
-    },
-  }
-}
-
-function createInput(input: IsolatedPluginInputData): PluginInput {
-  const serverUrl = new URL(input.serverUrl)
-  return {
-    client: createSynergyClient({ baseUrl: serverUrl.toString() }),
-    scope: input.scope as PluginInput["scope"],
-    directory: input.directory,
-    worktree: input.scope.worktree,
-    serverUrl,
-    $: createShell({ cwd: input.pluginDir }),
-    pluginDir: input.pluginDir,
-    config: createConfigStore(),
-    auth: createAuthStore(),
-    cache: createCacheStore(input),
-  }
-}
-
-function findDescriptor(mod: Record<string, unknown>, expectedPluginId: string): PluginDescriptor {
-  const descriptors = Object.values(mod).filter(
-    (value): value is PluginDescriptor =>
-      !!value && typeof value === "object" && !Array.isArray(value) && "id" in value && "init" in value,
-  )
-  const descriptor = descriptors.find((item) => item.id === expectedPluginId)
-  if (!descriptor) throw new Error(`No PluginDescriptor with id "${expectedPluginId}" found in ${entryPath}`)
-  if (typeof descriptor.init !== "function") throw new Error(`PluginDescriptor "${expectedPluginId}" has no init()`)
-  return descriptor
-}
-
-async function init(input: IsolatedPluginInputData) {
-  if (!entryPath) throw new Error("Missing plugin entryPath")
-  pluginId = input.pluginId
-  inputData = input
-  startHeartbeat(input.runtimeLimits.heartbeatIntervalMs)
-  const mod = await import(entryPath)
-  const descriptor = findDescriptor(mod, input.pluginId)
-  hooks = await descriptor.init(createInput(input))
-  const tools = Object.entries(hooks.tool ?? {}).map(([id, def]) => {
-    let schema: unknown
-    try {
-      schema = z.toJSONSchema(z.object(def.args))
-    } catch {}
-    return {
-      id,
-      description: def.description,
-      display: def.display,
-      schema,
-    }
+function contextFor(
+  requestId: string,
+  data: RuntimeInvocationContextData,
+  abort: AbortSignal,
+): PluginInvocationContext {
+  return createPluginInvocationContext({
+    requestId,
+    data,
+    signal: abort,
+    capabilities: new Set(activation?.capabilities ?? []),
+    log: logger(),
+    invokeHost: (method, params) => hostRequest(requestId, method, params),
   })
-  const hookNames = Object.entries(hooks)
-    .filter(([name, value]) => name !== "dispose" && name !== "tool" && typeof value === "function")
-    .map(([name]) => name)
-  post({ type: "ready", tools, hooks: hookNames })
 }
 
-async function invokeTool(requestId: string, toolId: string, args: unknown, context?: RuntimeToolContextData) {
-  const def = hooks?.tool?.[toolId]
-  if (!def) throw new Error(`Unknown plugin tool: ${toolId}`)
-  if (!inputData) throw new Error("Plugin runtime is not initialized")
-  const abortController = new AbortController()
-  activeToolAbort.set(requestId, abortController)
-  const contextData: RuntimeToolContextData = {
-    sessionID: context?.sessionID ?? "",
-    messageID: context?.messageID ?? "",
-    agent: context?.agent ?? "",
-    directory: context?.directory ?? inputData.directory,
-    callID: context?.callID ?? requestId,
-    toolId,
+function handler(handlerId: string): PluginContribution & { handler: (...args: never[]) => unknown } {
+  const contribution = definition?.contributions.find((item) => `${item.kind}:${item.id}` === handlerId)
+  if (!contribution || !("handler" in contribution) || typeof contribution.handler !== "function") {
+    throw new Error(`Unknown plugin runtime handler: ${handlerId}`)
   }
+  return contribution as PluginContribution & { handler: (...args: never[]) => unknown }
+}
+
+async function invoke(message: Extract<HostToPlugin, { type: "invoke" }>) {
+  if (!activation || !definition) throw new Error("Plugin runtime is not active")
+  if (message.generation !== activation.generation) {
+    throw new Error(`Stale plugin generation: ${message.generation}`)
+  }
+  const controller = new AbortController()
+  aborts.set(message.requestId, controller)
   try {
-    return def.execute(args as any, {
-      sessionID: contextData.sessionID,
-      messageID: contextData.messageID,
-      agent: contextData.agent,
-      abort: abortController.signal,
-      directory: contextData.directory ?? inputData.directory,
-      ask: async (request) => {
-        await bridge("permission.request", { ...request, context: contextData })
-      },
-      $: createShell({ cwd: contextData.directory ?? inputData.directory, context: contextData }),
-      task: {
-        run: (request) => bridge("task.run", { ...request, context: contextData }) as any,
-      },
-      tools: {
-        invoke: (request) => bridge("tool.invoke", { ...request, context: contextData }) as any,
-      },
-    })
+    const contribution = handler(message.handlerId)
+    if (contribution.kind === "lifecycle.uninstall") {
+      return await contribution.handler(contextFor(message.requestId, message.context, controller.signal))
+    }
+    return await contribution.handler(
+      message.input as never,
+      contextFor(message.requestId, message.context, controller.signal) as never,
+    )
   } finally {
-    activeToolAbort.delete(requestId)
+    aborts.delete(message.requestId)
   }
-}
-
-async function triggerHook(hook: string, input: unknown, output: unknown) {
-  const fn = (hooks as any)?.[hook]
-  if (typeof fn !== "function") return output
-  const next = await fn(input, output)
-  return next === undefined ? output : next
 }
 
 async function shutdown() {
-  await hooks?.dispose?.()
+  if (heartbeat) clearInterval(heartbeat)
+  await definition?.deactivate?.()
   process.exit(0)
 }
 
 function handle(message: HostToPlugin) {
-  switch (message.type) {
-    case "init":
-      entryPath = entryPath ?? process.argv[2]
-      postResponse("init", () => init(message.input))
-      break
-    case "invokeTool":
-      postResponse(message.requestId, () =>
-        invokeTool(message.requestId, message.toolId, message.args, message.context),
-      )
-      break
-    case "abortTool": {
-      const controller = activeToolAbort.get(message.requestId)
-      controller?.abort(new DOMException(message.reason ?? "Plugin tool aborted by host", "AbortError"))
-      break
-    }
-    case "triggerHook":
-      postResponse(message.requestId, () => triggerHook(message.hook, message.input, message.output))
-      break
-    case "bridgeResponse": {
-      const pending = pendingBridge.get(message.requestId)
-      if (!pending) return
-      pendingBridge.delete(message.requestId)
-      clearTimeout(pending.timeout)
-      if (message.ok) pending.resolve(message.value)
-      else pending.reject(deserializeError(message.error))
-      break
-    }
-    case "reload":
-      if (inputData) postResponse("reload", () => init(inputData!))
-      break
-    case "shutdown":
-      void shutdown()
-      break
-    case "ping":
-      post({ type: "heartbeat" })
-      break
+  if (message.type === "activate") {
+    void activate(message.input).catch((error) => {
+      post({ type: "log", level: "error", message: serialize(error).message })
+      process.exit(1)
+    })
+    return
   }
+  if (message.type === "invoke") {
+    void invoke(message).then(
+      (value) =>
+        post({ type: "response", requestId: message.requestId, generation: message.generation, ok: true, value }),
+      (error) => {
+        const serialized = serialize(error)
+        post({ type: "log", level: "error", message: serialized.message })
+        post({
+          type: "response",
+          requestId: message.requestId,
+          generation: message.generation,
+          ok: false,
+          error: serialized,
+        })
+      },
+    )
+    return
+  }
+  if (message.type === "abort") {
+    aborts.get(message.requestId)?.abort(new DOMException(message.reason ?? "Plugin invocation aborted", "AbortError"))
+    return
+  }
+  if (message.type === "hostResponse") {
+    const pending = hostRequests.get(message.requestId)
+    if (!pending) return
+    hostRequests.delete(message.requestId)
+    clearTimeout(pending.timeout)
+    if (message.ok) pending.resolve(message.value)
+    else pending.reject(Object.assign(new Error(message.error.message), { name: message.error.name }))
+    return
+  }
+  if (message.type === "shutdown") {
+    void shutdown()
+    return
+  }
+  if (message.type === "ping") post({ type: "heartbeat" })
 }
 
-function startHeartbeat(intervalMs: number) {
-  if (heartbeatTimer) return
-  heartbeatTimer = setInterval(() => post({ type: "heartbeat" }), intervalMs)
-  heartbeatTimer.unref?.()
-}
-
-parentPort?.on("message", (message) => handle(message as HostToPlugin))
-process.on("message", (raw) => {
-  try {
-    const text = typeof raw === "string" ? raw.trim() : String(raw)
-    if (!text) return
-    handle(JSON.parse(text) as HostToPlugin)
-  } catch (error) {
-    post({ type: "log", level: "error", message: `Malformed host message: ${String(error)}` })
-  }
+process.on("message", (message) => {
+  const parsed = typeof message === "string" ? JSON.parse(message) : message
+  handle(parsed as HostToPlugin)
 })
-
-if (inputData) startHeartbeat(inputData.runtimeLimits.heartbeatIntervalMs)
-
-if (inputData) {
-  init(inputData).catch((error) => {
-    post({ type: "log", level: "error", message: serializeError(error).message })
-    throw error
-  })
-}

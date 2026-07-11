@@ -29,7 +29,7 @@ function namedBindings(specifier: string) {
     .map((part) => {
       const match = /^(.*?)\s+as\s+(.*?)$/.exec(part)
       if (!match) return part
-      return `${match[1].trim()}: ${match[2].trim()}`
+      return `${match[1]!.trim()}: ${match[2]!.trim()}`
     })
     .join(", ")
 }

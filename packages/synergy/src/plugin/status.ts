@@ -1,423 +1,110 @@
 import z from "zod"
-import path from "path"
-import fs from "fs/promises"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import {
-  getPlugin,
-  getLoadedPlugins,
-  getDisabledPlugin,
-  getDisabledPlugins,
-  type LoadedPlugin,
-  type DisabledPlugin,
-} from "./loader"
-import * as Capability from "./capability"
-import {
-  defaultPluginTrustDecision,
-  derivePluginSource,
-  findPluginLockEntry,
-  resolveInstalledPluginPolicy,
-  type PluginTrustDecision,
-  type PluginSource,
-} from "./trust"
 import { PluginToolId } from "./ids"
-import { Installation } from "../global/installation"
-import { getRuntime } from "../plugin-runtime/supervisor"
-import type { RuntimeLimits } from "../plugin-runtime/health"
-import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
-import { baseCapabilities } from "./capability"
-import { getEvents } from "./audit.js"
-import { PluginPaths } from "./paths"
+import { riskForCapabilities } from "./capability"
+import { getDisabledPlugin, getDisabledPlugins, getLoadedPlugins, getPlugin, type LoadedPlugin } from "./loader"
+import { pluginRuntimeManager } from "./runtime"
 
-// ---------------------------------------------------------------------------
-// Comprehensive status — returned by GET /plugin/:id/status
-// ---------------------------------------------------------------------------
-
-export interface PluginStatus {
-  id: string
-  name?: string
-  version?: string
-  source: PluginSource
-  trust: PluginTrustDecision
-  health: "loaded" | "disabled"
-  disabledReason?: string
-  disabledPhase?: string
-  loaded: boolean
-  loadError?: string
-  manifestValid: boolean
-  integrity: "verified" | "unverified" | "failed"
-  permissions: {
-    base: string[]
-    tools: Record<string, string[]>
-    overallRisk: "low" | "medium" | "high"
-    warnings: Capability.CapabilityWarning[]
-  }
-  navigation: string[]
-  tools: Array<{
-    id: string
-    fullId: string
-    capabilities: string[]
-    warnings: string[]
-  }>
-  ui: {
-    contributions: number
-    errors: string[]
-  }
-  stores: {
-    config: boolean
-    secrets: "none" | "plaintext" | "keychain"
-    cacheBytes?: number
-  }
-  runtime?: {
-    mode: string
-    pid?: number
-    state: string
-    restarts: number
-    lastHeartbeatAt?: number
-    memoryMb?: number
-    limits: RuntimeLimits
-    lastError?: string
-    runtimeDecision?: string
-  }
-  warnings: Array<{ type: string; message: string; toolId?: string }>
-}
+const Source = z.enum(["local", "npm", "git", "url", "builtin", "official"])
 
 export const PluginStatusSchema = z
   .object({
     id: z.string(),
-    name: z.string().optional(),
+    name: z.string(),
     version: z.string().optional(),
-    source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-    trust: z.object({
-      tier: z.enum(["declarative", "trusted-import", "sandbox"]),
-      source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-      userTrusted: z.boolean(),
-      verifiedIntegrity: z.boolean(),
-      reason: z.string(),
-    }),
+    apiVersion: z.string().optional(),
+    generation: z.string().optional(),
+    source: Source,
+    trust: z.enum(["declarative", "trusted-import"]),
     health: z.enum(["loaded", "disabled"]),
     disabledReason: z.string().optional(),
-    disabledPhase: z.enum(["resolve", "load", "manifest", "hook", "runtime", "doctor"]).optional(),
+    disabledPhase: z.string().optional(),
     loaded: z.boolean(),
-    loadError: z.string().optional(),
-    manifestValid: z.boolean(),
-    integrity: z.enum(["verified", "unverified", "failed"]),
-    permissions: z.object({
-      base: z.array(z.string()),
-      tools: z.record(z.string(), z.array(z.string())),
-      overallRisk: z.enum(["low", "medium", "high"]),
-      warnings: z.array(
-        z.object({
-          type: z.string(),
-          message: z.string(),
-          toolId: z.string().optional(),
-        }),
-      ),
-    }),
-    navigation: z.array(z.string()),
-    tools: z.array(
-      z.object({
-        id: z.string(),
-        fullId: z.string(),
-        capabilities: z.array(z.string()),
-        warnings: z.array(z.string()),
-      }),
+    capabilities: z.array(z.string()),
+    risk: z.enum(["low", "medium", "high"]),
+    operations: z.array(z.object({ id: z.string(), type: z.enum(["query", "command"]), expose: z.array(z.string()) })),
+    tools: z.array(z.object({ id: z.string(), fullId: z.string(), capabilities: z.array(z.string()) })),
+    uiContributions: z.number(),
+    contributionHealth: z.record(
+      z.string(),
+      z.object({ state: z.enum(["healthy", "degraded"]), lastError: z.string().optional(), updatedAt: z.number() }),
     ),
-    ui: z.object({
-      contributions: z.number(),
-      errors: z.array(z.string()),
-    }),
-    stores: z.object({
-      config: z.boolean(),
-      secrets: z.enum(["none", "plaintext", "keychain"]),
-      cacheBytes: z.number().optional(),
-    }),
     runtime: z
       .object({
-        mode: z.string(),
+        mode: z.enum(["process", "inProcess"]),
+        state: z.enum(["starting", "ready", "draining", "crashed", "stopped"]),
         pid: z.number().optional(),
-        state: z.string(),
-        restarts: z.number(),
+        inFlight: z.number(),
         lastHeartbeatAt: z.number().optional(),
-        memoryMb: z.number().optional(),
-        limits: z.record(z.string(), z.any()),
         lastError: z.string().optional(),
-        runtimeDecision: z.string().optional(),
       })
       .optional(),
-    warnings: z.array(
-      z.object({
-        type: z.string(),
-        message: z.string(),
-        toolId: z.string().optional(),
-      }),
-    ),
   })
   .meta({ ref: "PluginStatus" })
 
-/** Check whether we're running in dev mode (source checkout). */
-function isDevMode(): boolean {
-  return Installation.CHANNEL === "local"
-}
-/** Derive secrets store type from presence of auth.json. */
-async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintext" | "keychain"> {
-  try {
-    await fs.access(PluginPaths.authFile(pluginId))
-    return "plaintext"
-  } catch {
-    return "none"
-  }
+export type PluginStatus = z.infer<typeof PluginStatusSchema>
+
+function trustedImport(plugin: LoadedPlugin) {
+  return plugin.manifest.contributions.some(
+    (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
+  )
 }
 
-/** Compute cache directory size in bytes. */
-async function resolveCacheBytes(pluginId: string): Promise<number | undefined> {
-  const cacheDir = PluginPaths.cacheDir(pluginId)
-  try {
-    let total = 0
-    const entries = await fs.readdir(cacheDir, { withFileTypes: true }).catch(() => [])
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith(".json")) {
-        try {
-          const stat = await fs.stat(path.join(cacheDir, entry.name))
-          total += stat.size
-        } catch {
-          // ignore
-        }
-      }
-    }
-    return total > 0 ? total : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/** Count UI contributions from the manifest. */
-function countUIContributions(manifest: PluginManifest): number {
-  if (!manifest.contributes?.ui) return 0
-  const ui = manifest.contributes.ui
-  let count = 0
-  if (ui.toolRenderers?.length) count += ui.toolRenderers.length
-  if (ui.partRenderers?.length) count += ui.partRenderers.length
-  if (ui.workbenchPanels?.length) count += ui.workbenchPanels.length
-  if (ui.navigation?.length) count += ui.navigation.length
-  if (ui.settings?.length) count += ui.settings.length
-  if (ui.messageSlots?.length) count += ui.messageSlots.length
-  if (ui.themes?.length) count += ui.themes.length
-  if (ui.icons?.length) count += ui.icons.length
-  if (ui.composerSlots?.length) count += ui.composerSlots.length
-  if (ui.commands?.length) count += ui.commands.length
-  return count
-}
-
-export async function getStatusForLoadedPlugin(
-  plugin: LoadedPlugin,
-  manifestOverride?: PluginManifest,
-): Promise<PluginStatus> {
-  const pluginId = plugin.id
-  const warnings: PluginStatus["warnings"] = []
-  const manifest = manifestOverride ?? plugin.manifest
-  const manifestValid = true
-
-  // ── Capabilities ──
-  const manifestTools = manifest.contributes?.tools?.map((tool: { name: string }) => tool.name) ?? []
-  const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
-  const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
-
-  const capabilityResult = Capability.resolve({
-    pluginId,
-    manifest,
-    declaredTools: allDeclared,
-  })
-
-  // ── Trust ──
-  const policy = await resolveInstalledPluginPolicy({
-    pluginId,
-    pluginDir: plugin.pluginDir,
-    manifest,
-    devMode: isDevMode(),
-  })
-  const { source, trust, integrity } = policy
-
-  // ── Routes ──
-  const navigation = manifest.contributes?.ui?.navigation?.map((item: { id: string }) => item.id) ?? []
-
-  // ── Tools ──
-  const tools = runtimeToolNames.map((id) => ({
-    id,
-    fullId: PluginToolId.format(pluginId, id),
-    capabilities: capabilityResult.tools[id] ?? capabilityResult.base,
-    warnings: capabilityResult.warnings.filter((w) => w.toolId === id || !w.toolId).map((w) => w.message),
-  }))
-
-  // ── UI ──
-  const ui = {
-    contributions: countUIContributions(manifest),
-    errors: [] as string[],
-  }
-
-  // ── Stores ──
-  const hasConfigStore = capabilityResult.base.includes("config:read") || capabilityResult.base.includes("config:write")
-  const stores = {
-    config: hasConfigStore,
-    secrets: await resolveSecretsStore(pluginId),
-    cacheBytes: await resolveCacheBytes(pluginId),
-  }
-
-  // ── Runtime ──
-  const runtimeEntry = getRuntime(pluginId)
-  const runtime = runtimeEntry
-    ? {
-        mode: runtimeEntry.mode,
-        pid: runtimeEntry.pid,
-        state: runtimeEntry.state,
-        restarts: runtimeEntry.restarts,
-        lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
-        memoryMb: runtimeEntry.memoryMb,
-        limits: runtimeEntry.limits,
-        lastError: runtimeEntry.lastError,
-        runtimeDecision: runtimeEntry.runtimeDecision,
-      }
-    : undefined
-
-  // ── Hash consistency warnings ──
-  const lockfileEntry = await findPluginLockEntry(plugin.pluginDir)
-  if (lockfileEntry) {
-    const capabilities = baseCapabilities(manifest)
-    const currentPermissionsHash = computePermissionsHash(manifest, capabilities)
-    const currentManifestHash = computeManifestHash(manifest)
-    if (lockfileEntry.permissionsHash && lockfileEntry.permissionsHash !== currentPermissionsHash) {
-      warnings.push({
-        type: "hash_mismatch",
-        message: "Permissions have changed since install — re-approval may be required.",
-      })
-    }
-    if (lockfileEntry.manifestHash && lockfileEntry.manifestHash !== currentManifestHash) {
-      warnings.push({
-        type: "hash_mismatch",
-        message: "Manifest has changed since install.",
-      })
-    }
-  }
-
-  // ── Assemble warnings ──
-  for (const w of capabilityResult.warnings) {
-    warnings.push({ type: w.type, message: w.message, toolId: w.toolId })
-  }
-  if (integrity === "unverified") {
-    warnings.push({
-      type: "integrity",
-      message: "Plugin integrity has not been verified against a lockfile hash.",
-    })
-  }
-
-  // ── Rollback audit warnings ──
-  try {
-    const auditEvents = await getEvents(pluginId)
-    for (const event of auditEvents) {
-      if (event.type === "update_failed_rolled_back") {
-        const details = event.details as {
-          oldVersion?: string
-          newVersion?: string
-          error?: string
-          rolledBack?: boolean
-        }
-        const msg =
-          `Update from ${details.oldVersion ?? "?"} to ${details.newVersion ?? "?"} failed` +
-          (details.rolledBack ? " and was rolled back" : "") +
-          (details.error ? `: ${details.error}` : "")
-        warnings.push({
-          type: "update_failed_rolled_back",
-          message: msg,
-        })
-      }
-    }
-  } catch {
-    // Audit read failure is non-blocking for status
-  }
-
+export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<PluginStatus> {
+  const capabilities = plugin.manifest.capabilities.map((item) => item.id)
+  const runtime = pluginRuntimeManager.registry.active(plugin.id)
   return {
-    id: pluginId,
-    name: plugin.name ?? manifest.name,
-    version: manifest.version,
-    source,
-    trust,
+    id: plugin.id,
+    name: plugin.name,
+    version: plugin.manifest.version,
+    apiVersion: plugin.manifest.apiVersion,
+    generation: plugin.manifest.artifacts.generation,
+    source: plugin.source,
+    trust: trustedImport(plugin) ? "trusted-import" : "declarative",
     health: "loaded",
     loaded: true,
-    manifestValid,
-    integrity,
-    permissions: {
-      base: capabilityResult.base,
-      tools: capabilityResult.tools,
-      overallRisk: capabilityResult.overallRisk,
-      warnings: capabilityResult.warnings,
-    },
-    navigation,
-    tools,
-    ui,
-    stores,
-    runtime,
-    warnings,
+    capabilities,
+    risk: riskForCapabilities(capabilities),
+    operations: plugin.manifest.contributions
+      .filter((item) => item.kind === "operation")
+      .map((item) => ({ id: item.id, type: item.type, expose: item.expose })),
+    tools: plugin.manifest.contributions
+      .filter((item) => item.kind === "tool")
+      .map((item) => ({
+        id: item.id,
+        fullId: PluginToolId.format(plugin.id, item.id),
+        capabilities: item.requires ?? [],
+      })),
+    uiContributions: plugin.manifest.contributions.filter((item) => item.kind.startsWith("ui.")).length,
+    contributionHealth: Object.fromEntries(plugin.contributionHealth),
+    runtime: runtime
+      ? {
+          mode: runtime.mode,
+          state: runtime.state,
+          pid: runtime.process?.process.pid,
+          inFlight: runtime.inFlight,
+          lastHeartbeatAt: runtime.lastHeartbeatAt,
+          lastError: runtime.lastError,
+        }
+      : undefined,
   }
 }
 
-export async function getStatusForDisabledPlugin(plugin: DisabledPlugin): Promise<PluginStatus> {
-  const source = plugin.source ?? (plugin.pluginDir ? derivePluginSource(plugin.pluginDir) : "local")
-  const trust = defaultPluginTrustDecision({
-    source,
-    userTrusted: false,
-    verifiedIntegrity: false,
-    devMode: isDevMode(),
-  })
-  const runtimeEntry = getRuntime(plugin.pluginId)
-  const runtime = runtimeEntry
-    ? {
-        mode: runtimeEntry.mode,
-        pid: runtimeEntry.pid,
-        state: runtimeEntry.state,
-        restarts: runtimeEntry.restarts,
-        lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
-        memoryMb: runtimeEntry.memoryMb,
-        limits: runtimeEntry.limits,
-        lastError: runtimeEntry.lastError,
-        runtimeDecision: runtimeEntry.runtimeDecision,
-      }
-    : undefined
-
+function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & {}): PluginStatus {
   return {
     id: plugin.pluginId,
     name: plugin.name ?? plugin.pluginId,
-    source,
-    trust,
+    source: plugin.source ?? "local",
+    trust: "declarative",
     health: "disabled",
     disabledReason: plugin.reason,
     disabledPhase: plugin.phase,
     loaded: false,
-    loadError: plugin.reason,
-    manifestValid: false,
-    integrity: "failed",
-    permissions: {
-      base: [],
-      tools: {},
-      overallRisk: "low",
-      warnings: [],
-    },
-    navigation: [],
+    capabilities: [],
+    risk: "low",
+    operations: [],
     tools: [],
-    ui: {
-      contributions: 0,
-      errors: [plugin.reason],
-    },
-    stores: {
-      config: false,
-      secrets: await resolveSecretsStore(plugin.pluginId),
-      cacheBytes: await resolveCacheBytes(plugin.pluginId),
-    },
-    runtime,
-    warnings: [
-      {
-        type: "plugin_disabled",
-        message: plugin.reason,
-      },
-    ],
+    uiContributions: 0,
+    contributionHealth: {},
   }
 }
 
@@ -425,21 +112,10 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   const plugin = await getPlugin(pluginId)
   if (plugin) return getStatusForLoadedPlugin(plugin)
   const disabled = await getDisabledPlugin(pluginId)
-  if (disabled) return getStatusForDisabledPlugin(disabled)
-  return null
+  return disabled ? disabledStatus(disabled) : null
 }
 
 export async function getAllStatus(): Promise<PluginStatus[]> {
-  const loaded = await getLoadedPlugins()
-  const disabled = await getDisabledPlugins()
-  const results: PluginStatus[] = []
-  for (const p of loaded) {
-    const s = await getStatus(p.id)
-    if (s) results.push(s)
-  }
-  for (const p of disabled) {
-    const s = await getStatus(p.pluginId)
-    if (s) results.push(s)
-  }
-  return results
+  const loaded = await Promise.all((await getLoadedPlugins()).map(getStatusForLoadedPlugin))
+  return [...loaded, ...(await getDisabledPlugins()).map(disabledStatus)]
 }

@@ -1,10 +1,9 @@
 import type {
-  ApiPluginDetail,
-  ApiPluginInfo,
   RegistryPermissionItem,
   RegistryPluginSummary,
   RegistryPluginVersion,
 } from "@ericsanchezok/synergy-sdk/client"
+import type { InstalledPlugin, PluginDetail } from "./types"
 
 type RuntimeMode = RegistryPluginSummary["runtimeMode"]
 
@@ -29,43 +28,35 @@ function arrayField(record: Record<string, unknown> | null | undefined, key: str
 }
 
 function runtimeModeFromManifest(manifest: Record<string, unknown> | null | undefined): RuntimeMode {
-  const mode = stringField(asRecord(manifest?.runtime), "mode")
-  return mode === "in-process" || mode === "worker" || mode === "process" ? mode : "process"
+  return "process"
 }
 
 function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const contributes = asRecord(manifest?.contributes)
-  return arrayField(contributes, "tools")
-    .map((tool) => stringField(asRecord(tool), "name"))
+  return arrayField(manifest, "contributions")
+    .filter((item) => stringField(asRecord(item), "kind") === "tool")
+    .map((tool) => stringField(asRecord(tool), "id"))
     .filter((name): name is string => Boolean(name))
 }
 
 function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const ui = asRecord(asRecord(manifest?.contributes)?.ui)
-  if (!ui) return []
   return [
-    "toolRenderers",
-    "partRenderers",
-    "workbenchPanels",
-    "navigation",
-    "settings",
-    "messageSlots",
-    "composerSlots",
-    "themes",
-    "icons",
-    "commands",
-  ].filter((key) => arrayField(ui, key).length > 0)
+    ...new Set(
+      arrayField(manifest, "contributions")
+        .map((item) => stringField(asRecord(item), "kind"))
+        .filter((kind): kind is string => Boolean(kind?.startsWith("ui."))),
+    ),
+  ]
 }
 
 export function fallbackPluginSummary(input: {
-  installed?: ApiPluginInfo | null
-  detail?: ApiPluginDetail | null
+  installed?: InstalledPlugin | null
+  detail?: PluginDetail | null
 }): MarketplaceSummary | null {
   if (!input.installed) return null
   const manifest = asRecord(input.detail?.manifest)
-  const name = input.detail?.name ?? input.installed.name ?? stringField(manifest, "name") ?? input.installed.pluginId
+  const name = input.detail?.name ?? input.installed.name ?? stringField(manifest, "name") ?? input.installed.id
   return {
-    id: input.installed.pluginId,
+    id: input.installed.id,
     name,
     description: stringField(manifest, "description") ?? "Installed plugin",
     repo: stringField(manifest, "repository"),
@@ -77,7 +68,7 @@ export function fallbackPluginSummary(input: {
     latestVersion: input.installed.version,
     updatedAt: Date.now(),
     risk: input.detail?.risk ?? input.installed.risk,
-    trustTier: input.detail?.trustTier ?? input.installed.trustTier,
+    trustTier: input.detail?.trust ?? input.installed.trust,
     runtimeMode: runtimeModeFromManifest(manifest),
     uiSurfaces: uiSurfacesFromManifest(manifest),
     tools: toolsFromManifest(manifest),

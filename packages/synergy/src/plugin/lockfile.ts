@@ -6,7 +6,7 @@ import { PluginLockfile } from "./lockfile-schema"
 import type { PluginLockEntry } from "./lockfile-schema"
 
 const EMPTY_LOCKFILE: PluginLockfile = {
-  version: 1 as const,
+  version: 2 as const,
   plugins: {},
 }
 

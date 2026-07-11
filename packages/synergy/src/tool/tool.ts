@@ -21,7 +21,7 @@ export namespace Tool {
         pluginId: string
         toolId: string
         pluginDir?: string
-        runtimeMode: "in-process" | "worker" | "process"
+        runtimeMode: "inProcess" | "process"
       }
     | {
         type: "local"

@@ -13,7 +13,6 @@ import { UI } from "../ui.js"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths.js"
 import { sha256File } from "../lib/crypto.js"
 import type { SignatureMetadata } from "../lib/signature.js"
-import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "../lib/hash.js"
 
 interface KeyFile {
@@ -91,13 +90,13 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   const payload = {
     tarballHash,
     manifestHash: computeManifestHash(manifest),
-    permissionsHash: computePermissionsHash(manifest, baseCapabilities(manifest)),
+    permissionsHash: computePermissionsHash(manifest),
   }
   const privateKey = await importPrivateKey(keyFile.privateKey)
   const sigRaw = await subtle.sign("Ed25519" as any, privateKey, new TextEncoder().encode(JSON.stringify(payload)))
   const signature: SignatureMetadata = {
     signatureVersion: 1,
-    pluginId: manifest.name,
+    pluginId: manifest.id,
     version: manifest.version,
     algorithm: "ed25519",
     signer: keyFile.publicKey,

@@ -1,138 +1,108 @@
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { manifestHashPayload, permissionsHashPayload, stablePluginJson } from "@ericsanchezok/synergy-util/capability"
-import type { PluginSource, TrustTier } from "../trust.js"
 import path from "path"
 import fs from "fs/promises"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { Global } from "../../global/index.js"
-
-// ---------------------------------------------------------------------------
-// Approval record data model
-// ---------------------------------------------------------------------------
+import type { PluginSource, TrustTier } from "../trust.js"
 
 export interface PluginApprovalRecord {
   pluginId: string
   source: PluginSource
   version: string
   manifestHash: string
-  permissionsHash: string
+  capabilitiesHash: string
   approvedAt: number
   approvedBy: "user" | "policy" | "builtin"
   trustTier: TrustTier
   approvedCapabilities: string[]
-  approvedNetworkDomains: string[]
-  approvedUISurfaces: string[]
   risk: "low" | "medium" | "high"
+  status: "approved" | "needsApproval"
 }
 
-// ---------------------------------------------------------------------------
-// Storage path
-// ---------------------------------------------------------------------------
-
-function approvalPath(): string {
+function approvalPath() {
   return path.join(Global.Path.data, "plugin-approvals.json")
 }
 
-// ---------------------------------------------------------------------------
-// JSON read / write helpers
-// ---------------------------------------------------------------------------
-
 async function readAll(): Promise<PluginApprovalRecord[]> {
   try {
-    const text = await Bun.file(approvalPath()).text()
-    return JSON.parse(text)
+    const value = JSON.parse(await Bun.file(approvalPath()).text())
+    return Array.isArray(value) ? value : []
   } catch {
     return []
   }
 }
 
-async function writeAll(records: PluginApprovalRecord[]): Promise<void> {
-  const p = approvalPath()
-  await fs.mkdir(path.dirname(p), { recursive: true })
-  await Bun.write(p, JSON.stringify(records, null, 2))
+async function writeAll(records: PluginApprovalRecord[]) {
+  const file = approvalPath()
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  const temporary = `${file}.tmp`
+  await Bun.write(temporary, `${JSON.stringify(records, null, 2)}\n`)
+  await fs.rename(temporary, file)
 }
 
-// ---------------------------------------------------------------------------
-// Public CRUD
-//
-// Concurrency note: reads + writes are not locked. Given the expected
-// moderate number of plugins (tens, not thousands) and the infrequency of
-// approval mutations, last-write-wins is acceptable for now. A file-level
-// lock (or sqlite-backed store) should replace this if contention ever
-// becomes a real concern.
-// ---------------------------------------------------------------------------
+export const readApprovals = readAll
+export const writeApprovals = writeAll
 
-export async function readApprovals(): Promise<PluginApprovalRecord[]> {
-  return readAll()
+export async function getApproval(pluginId: string, manifest?: PluginManifestType) {
+  const records = (await readAll())
+    .filter((record) => record.pluginId === pluginId)
+    .sort((left, right) => right.approvedAt - left.approvedAt)
+  return manifest ? records.find((record) => verifyApproval(record, manifest)) : records[0]
 }
 
-export async function writeApprovals(records: PluginApprovalRecord[]): Promise<void> {
+export async function saveApproval(record: PluginApprovalRecord) {
+  const records = await readAll()
+  const index = records.findIndex(
+    (item) => item.pluginId === record.pluginId && item.manifestHash === record.manifestHash,
+  )
+  if (index >= 0) records[index] = record
+  else records.push(record)
   await writeAll(records)
 }
 
-export async function getApproval(pluginId: string): Promise<PluginApprovalRecord | undefined> {
-  const records = await readAll()
-  return records.find((r) => r.pluginId === pluginId)
+export async function removeApproval(pluginId: string) {
+  await writeAll((await readAll()).filter((record) => record.pluginId !== pluginId))
 }
 
-export async function saveApproval(record: PluginApprovalRecord): Promise<void> {
-  const records = await readAll()
-  const idx = records.findIndex((r) => r.pluginId === record.pluginId)
-  if (idx >= 0) {
-    records[idx] = record
-  } else {
-    records.push(record)
-  }
-  await writeAll(records)
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable)
+  if (!value || typeof value !== "object") return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stable(entry)]),
+  )
 }
 
-export async function removeApproval(pluginId: string): Promise<void> {
-  const records = await readAll()
-  await writeAll(records.filter((r) => r.pluginId !== pluginId))
+function hash(value: unknown) {
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify(stable(value))).digest("hex")
 }
 
-function sha256(input: string): string {
-  return new Bun.CryptoHasher("sha256").update(input).digest("hex")
+export function computePermissionsHash(manifest: PluginManifestType, capabilities?: string[]) {
+  const approved = capabilities ?? manifest.capabilities.map((item) => item.id)
+  return hash({
+    capabilities: manifest.capabilities.filter((item) => approved.includes(item.id)),
+    contributionRequirements: manifest.contributions.map((item) => ({
+      kind: item.kind,
+      id: item.id,
+      requires: item.requires ?? [],
+      ...(item.kind === "operation" ? { expose: item.expose } : {}),
+      ...(item.kind.startsWith("ui.") && "component" in item && item.component ? { trustedComponent: true } : {}),
+    })),
+  })
 }
 
-// ---------------------------------------------------------------------------
-// Hash computation
-// ---------------------------------------------------------------------------
-
-/**
- * Compute a stable hash of the manifest's permission-relevant fields plus
- * the active capability list. Used to detect when re-approval is needed.
- */
-export function computePermissionsHash(manifest: PluginManifest, capabilities: string[]): string {
-  return sha256(stablePluginJson(permissionsHashPayload(manifest, capabilities)))
+export function computeManifestHash(manifest: PluginManifestType) {
+  return hash(manifest)
 }
 
-/**
- * Compute a stable hash of the full manifest for integrity verification.
- * The manifest is deep-key-sorted before hashing so that formatting changes
- * (e.g. key reordering) do not invalidate approvals.
- */
-export function computeManifestHash(manifest: PluginManifest): string {
-  return sha256(stablePluginJson(manifestHashPayload(manifest)))
-}
-
-// ---------------------------------------------------------------------------
-// Verification
-// ---------------------------------------------------------------------------
-
-/**
- * Verify that a stored approval record is still valid for the given
- * manifest and capability set.
- *
- * Returns true if both the manifest and permissions hashes match the current
- * values; false if either has diverged (re-approval required).
- */
 export function verifyApproval(
   record: PluginApprovalRecord,
-  currentManifest: PluginManifest,
-  currentCapabilities: string[],
-): boolean {
+  manifest: PluginManifestType,
+  capabilities = manifest.capabilities.map((item) => item.id),
+) {
   return (
-    record.manifestHash === computeManifestHash(currentManifest) &&
-    record.permissionsHash === computePermissionsHash(currentManifest, currentCapabilities)
+    record.status === "approved" &&
+    record.manifestHash === computeManifestHash(manifest) &&
+    record.capabilitiesHash === computePermissionsHash(manifest, capabilities)
   )
 }

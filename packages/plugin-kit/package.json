@@ -17,6 +17,7 @@
     "synergy-plugin-kit": "./dist/cli.js"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsgo --noEmit",
     "build": "bun run --cwd ../plugin build && rm -rf dist && tsc -p tsconfig.build.json"
   },

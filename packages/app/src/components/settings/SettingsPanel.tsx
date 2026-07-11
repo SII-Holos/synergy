@@ -690,7 +690,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
                   <SettingsSection>
                     <DeclarativeSettingsForm
                       schema={schema()}
-                      values={values() ?? {}}
+                      values={(values() ?? {}) as Record<string, unknown>}
                       onChange={(next) => updateValues(next)}
                     />
                   </SettingsSection>
@@ -710,7 +710,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
               <Dynamic
                 component={c()}
                 pluginId={section().pluginId}
-                values={values() ?? {}}
+                values={(values() ?? {}) as Record<string, unknown>}
                 onChange={(next: Record<string, unknown>) => updateValues(next)}
               />
             </ErrorBoundary>

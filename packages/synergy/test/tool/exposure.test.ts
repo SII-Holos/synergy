@@ -14,7 +14,6 @@ import { SearchToolsTool } from "../../src/tool/search-tools"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Log } from "../../src/util/log"
-import { PluginManifest } from "../../../plugin/src/manifest"
 import { tool as pluginTool } from "../../../plugin/src/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -266,7 +265,7 @@ describe("tool exposure", () => {
             pluginId: "focus",
             toolId: "bad_schema",
             pluginDir: "/tmp/focus",
-            runtimeMode: "in-process",
+            runtimeMode: "inProcess",
           },
           init: async () => ({
             description: "An invalid plugin tool.",
@@ -294,7 +293,7 @@ describe("tool exposure", () => {
         expect(diagnostic?.metadata).toMatchObject({
           pluginId: "focus",
           pluginToolId: "bad_schema",
-          runtimeMode: "in-process",
+          runtimeMode: "inProcess",
         })
       },
     })
@@ -805,41 +804,8 @@ describe("tool exposure", () => {
         return "ok"
       },
     })
-    const manifest = PluginManifest.parse({
-      name: "demo-plugin",
-      version: "1.0.0",
-      description: "Demo plugin",
-      contributes: {
-        tools: [
-          {
-            name: "plugin_search",
-            description: "Search-only plugin tool",
-            exposure: { mode: "search", title: "Plugin Search", keywords: ["plugin"] },
-          },
-          {
-            id: "plugin_grouped",
-            name: "grouped",
-            description: "Grouped plugin tool",
-            exposure: {
-              mode: "group",
-              group: "plugin:demo",
-              title: "Demo Plugin",
-              description: "Demo plugin tools",
-              whenToExpand: "Expand when using the demo plugin.",
-            },
-          },
-        ],
-      },
-    })
-
     expect(deferred.exposure).toEqual({ mode: "search", title: "Deferred Plugin", keywords: ["plugin"] })
     expect(compatible.exposure).toBeUndefined()
-    expect(manifest.contributes?.tools?.[0]?.exposure).toEqual({
-      mode: "search",
-      title: "Plugin Search",
-      keywords: ["plugin"],
-    })
-    expect(manifest.contributes?.tools?.[1]?.exposure).toMatchObject({ mode: "group", group: "plugin:demo" })
   })
 
   test("ToolDiscovery marks grouped tool results with expandable groups", async () => {

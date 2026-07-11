@@ -1,5 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeRisk } from "@ericsanchezok/synergy-util/capability"
+import { riskForCapabilities } from "../capability"
 import { generatePermissionItems } from "./summary"
 import type { PermissionChange, PermissionItem, PluginPermissionDiff } from "./schema"
 
@@ -29,7 +29,7 @@ export function diffPermissions(
       fromVersion: undefined,
       toVersion,
       riskBefore: undefined,
-      riskAfter: computeRisk(newCapabilities, newManifest),
+      riskAfter: riskForCapabilities(newCapabilities),
       added: items,
       removed: [],
       unchanged: [],
@@ -95,8 +95,8 @@ export function diffPermissions(
     }
   }
 
-  const riskBefore = computeRisk(oldCapabilities, oldManifest)
-  const riskAfter = computeRisk(newCapabilities, newManifest)
+  const riskBefore = riskForCapabilities(oldCapabilities)
+  const riskAfter = riskForCapabilities(newCapabilities)
   const requiresApproval = added.length > 0 || removed.length > 0 || changed.length > 0 || riskBefore !== riskAfter
 
   return {

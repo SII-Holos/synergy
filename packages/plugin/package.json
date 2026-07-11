@@ -13,6 +13,7 @@
     "access": "public"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsgo --noEmit",
     "build": "bun run --cwd ../util build && rm -rf dist && tsc -p tsconfig.build.json"
   },
@@ -32,25 +33,10 @@
       "types": "./src/display.ts",
       "import": "./dist/display.js"
     },
-    "./hooks": {
-      "bun": "./src/hooks.ts",
-      "types": "./src/hooks.ts",
-      "import": "./dist/hooks.js"
-    },
-    "./permissions": {
-      "bun": "./src/permissions.ts",
-      "types": "./src/permissions.ts",
-      "import": "./dist/permissions.js"
-    },
     "./ids": {
       "bun": "./src/ids.ts",
       "types": "./src/ids.ts",
       "import": "./dist/ids.js"
-    },
-    "./policy": {
-      "bun": "./src/policy.ts",
-      "types": "./src/policy.ts",
-      "import": "./dist/policy.js"
     },
     "./paths": {
       "bun": "./src/paths.ts",
@@ -66,11 +52,6 @@
       "bun": "./src/market.ts",
       "types": "./src/market.ts",
       "import": "./dist/market.js"
-    },
-    "./spec": {
-      "bun": "./src/spec.ts",
-      "types": "./src/spec.ts",
-      "import": "./dist/spec.js"
     },
     "./version": {
       "bun": "./src/version.ts",
@@ -91,14 +72,18 @@
       "bun": "./src/ui.ts",
       "types": "./src/ui.ts",
       "import": "./dist/ui.js"
+    },
+    "./auth": {
+      "bun": "./src/auth-types.ts",
+      "types": "./src/auth-types.ts",
+      "import": "./dist/auth-types.js"
     }
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
-    "@ericsanchezok/synergy-util": "workspace:*"
+    "@ericsanchezok/synergy-sdk": "workspace:*"
   },
   "peerDependencies": {
     "zod": ">=4.0.0"

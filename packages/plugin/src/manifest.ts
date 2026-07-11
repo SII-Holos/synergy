@@ -1,293 +1,182 @@
 import z from "zod"
+import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 
-const UiSurfaceId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
-const JsAssetPath = z
-  .string()
-  .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
-  .max(256)
-
-const ToolRendererDef = z
+const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
+const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
+const CapabilityId = z.string().regex(/^[a-z][A-Za-z0-9.-]*$/)
+const JsonSchema = z.record(z.string(), z.unknown())
+const Capability = z
   .object({
-    tool: z.string().min(1),
-    exportName: z.string().optional().default("default"),
-    priority: z.number().int().min(0).max(100).optional().default(0),
-    fallback: z
-      .object({
-        icon: z.string().optional(),
-        title: z.string().optional(),
-        subtitleTemplate: z.string().optional(),
-      })
+    id: CapabilityId,
+    constraints: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+
+const ContributionBase = z.object({
+  kind: z.string(),
+  id: ContributionId,
+  requires: z.array(CapabilityId).optional(),
+})
+
+const Component = z
+  .object({
+    entry: z.string().min(1),
+    exportName: z.string().min(1),
+  })
+  .strict()
+
+const OperationContribution = ContributionBase.extend({
+  kind: z.literal("operation"),
+  type: z.enum(["query", "command"]),
+  expose: z.array(z.enum(["ui", "sdk"])).min(1),
+  input: JsonSchema,
+  output: JsonSchema,
+  timeoutMs: z.number().int().positive().optional(),
+}).strict()
+
+const EventContribution = ContributionBase.extend({
+  kind: z.literal("event"),
+  payload: JsonSchema,
+}).strict()
+
+const ToolContribution = ContributionBase.extend({
+  kind: z.literal("tool"),
+  description: z.string().min(1),
+  input: JsonSchema,
+  exposure: z.record(z.string(), z.unknown()).optional(),
+  display: z.record(z.string(), z.unknown()).optional(),
+}).strict()
+
+const HookContribution = ContributionBase.extend({
+  kind: z.literal("hook"),
+  point: z.string().min(1),
+  priority: z.number().int(),
+}).strict()
+
+const AgentContribution = ContributionBase.extend({
+  kind: z.literal("agent"),
+  agent: z.record(z.string(), z.unknown()),
+}).strict()
+const SkillContribution = ContributionBase.extend({
+  kind: z.literal("skill"),
+  skill: z.record(z.string(), z.unknown()),
+}).strict()
+const McpContribution = ContributionBase.extend({
+  kind: z.literal("mcp"),
+  server: z.record(z.string(), z.unknown()),
+}).strict()
+const AuthProviderProfile = z
+  .object({
+    name: z.string().min(1),
+    aliases: z.array(z.string()).optional(),
+    description: z.string().optional(),
+    signupUrl: z.string().optional(),
+    env: z.array(z.string()).optional(),
+    baseURL: z.string().optional(),
+    modelsURL: z.string().optional(),
+    authKind: z.enum(["api_key", "oauth", "oauth_external", "none"]).optional(),
+    fallbackModels: z.array(z.string()).optional(),
+    recommendation: z.record(z.string(), z.unknown()).optional(),
+    methods: z
+      .array(
+        z
+          .object({
+            type: z.enum(["oauth", "api", "import"]),
+            label: z.string(),
+            prompts: z.array(z.record(z.string(), z.unknown())).optional(),
+          })
+          .strict(),
+      )
       .optional(),
+    hasLoader: z.boolean().optional(),
   })
   .strict()
+const AuthProviderContribution = ContributionBase.extend({
+  kind: z.literal("authProvider"),
+  provider: AuthProviderProfile,
+}).strict()
 
-const PartRendererDef = z
-  .object({
-    type: z.string().min(1),
-    exportName: z.string().optional().default("default"),
-    priority: z.number().int().min(0).max(100).optional().default(0),
-  })
-  .strict()
+const UIBase = ContributionBase.extend({
+  label: z.string().min(1),
+  icon: z.string().optional(),
+  order: z.number().int(),
+  component: Component.optional(),
+})
 
-const NavigationDef = z
-  .object({
-    id: UiSurfaceId,
-    label: z.string().min(1).max(64),
-    icon: z.string().optional(),
-    placement: z.enum(["sidebar", "page"]),
-    exportName: z.string().optional().default("default"),
-    order: z.number().int().optional().default(1000),
-  })
-  .strict()
+const WorkbenchPanelContribution = UIBase.extend({
+  kind: z.literal("ui.workbenchPanel"),
+  surface: z.enum(["side", "bottom"]),
+  cardinality: z.enum(["exclusive", "singleton", "multi"]),
+  requiresSession: z.boolean().optional(),
+}).strict()
 
-const WorkbenchPanelDef = z
-  .object({
-    id: UiSurfaceId,
-    label: z.string().min(1).max(64),
-    icon: z.string().min(1),
-    surface: z.enum(["side", "bottom"]),
-    cardinality: z.enum(["exclusive", "singleton", "multi"]),
-    requiresSession: z.boolean().optional(),
-    exportName: z.string().optional().default("default"),
-    order: z.number().int().optional().default(1000),
-  })
-  .strict()
+const NavigationItemContribution = UIBase.extend({
+  kind: z.literal("ui.navigationItem"),
+  placement: z.enum(["sidebar", "page"]),
+}).strict()
 
-const SettingsDef = z
-  .object({
-    id: UiSurfaceId,
-    label: z.string().min(1).max(64),
-    icon: z.string().optional(),
-    group: z.string(),
-    formSchema: z.record(z.string(), z.unknown()).optional(),
-    exportName: z.string().optional().default("default"),
-    order: z.number().int().optional().default(1000),
-    visibility: z.enum(["standard", "developer"]).optional(),
-  })
-  .strict()
+const MessageRendererContribution = UIBase.extend({
+  kind: z.literal("ui.messageRenderer"),
+  messageType: z.string().min(1),
+}).strict()
 
-const MessageSlotName = z.string().regex(/^[a-z][a-z0-9.-]*(?:\.[a-z][a-z0-9.-]*)*$/)
+const ComposerActionContribution = UIBase.extend({
+  kind: z.literal("ui.composerAction"),
+  slot: z.string().min(1),
+}).strict()
 
-const MessageSlotDef = z
-  .object({
-    id: UiSurfaceId,
-    slot: MessageSlotName,
-    exportName: z.string().optional().default("default"),
-    order: z.number().int().optional().default(1000),
-  })
-  .strict()
+const SettingsContribution = UIBase.extend({
+  kind: z.literal("ui.settings"),
+  group: z.string().min(1),
+  formSchema: JsonSchema.optional(),
+  visibility: z.enum(["standard", "developer"]).optional(),
+}).strict()
 
-const ComposerSlotDef = z
-  .object({
-    id: UiSurfaceId,
-    slot: z.enum([
-      "composer.above",
-      "composer.below",
-      "composer.toolbar.left",
-      "composer.toolbar.right",
-      "composer.add-menu",
-      "composer.start-option",
-    ]),
-    exportName: z.string().optional().default("default"),
-    order: z.number().int().optional().default(1000),
-  })
-  .strict()
+const ThemeContribution = ContributionBase.extend({
+  kind: z.literal("ui.theme"),
+  label: z.string().min(1),
+  path: z.string().min(1),
+}).strict()
 
-const ThemeDef = z
-  .object({
-    id: z.string().min(1).max(64),
-    label: z.string().min(1).max(64),
-    path: z
-      .string()
-      .min(1)
-      .regex(/\.json$/),
-  })
-  .strict()
+const IconContribution = ContributionBase.extend({
+  kind: z.literal("ui.icon"),
+  path: z.string().min(1),
+}).strict()
 
-const IconDef = z
-  .object({
-    name: z.string().min(1).max(128),
-    path: z.string().min(1),
-  })
-  .strict()
+const LifecycleUpgradeContribution = ContributionBase.extend({ kind: z.literal("lifecycle.upgrade") }).strict()
+const LifecycleUninstallContribution = ContributionBase.extend({ kind: z.literal("lifecycle.uninstall") }).strict()
 
-const UICommandDef = z
-  .object({
-    id: UiSurfaceId,
-    label: z.string().min(1).max(64),
-    exportName: z.string().optional().default("default"),
-    description: z.string().max(256).optional(),
-    icon: z.string().optional(),
-  })
-  .strict()
-
-const ToolExposureDef = z.discriminatedUnion("mode", [
-  z
-    .object({
-      mode: z.literal("resident"),
-    })
-    .strict(),
-  z
-    .object({
-      mode: z.literal("group"),
-      group: z.string().min(1),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      whenToExpand: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      mode: z.literal("search"),
-      title: z.string().optional(),
-      keywords: z.array(z.string()).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      mode: z.literal("internal"),
-    })
-    .strict(),
+export const PluginManifestContribution = z.discriminatedUnion("kind", [
+  OperationContribution,
+  EventContribution,
+  ToolContribution,
+  HookContribution,
+  AgentContribution,
+  SkillContribution,
+  McpContribution,
+  AuthProviderContribution,
+  WorkbenchPanelContribution,
+  NavigationItemContribution,
+  MessageRendererContribution,
+  ComposerActionContribution,
+  SettingsContribution,
+  ThemeContribution,
+  IconContribution,
+  LifecycleUpgradeContribution,
+  LifecycleUninstallContribution,
 ])
 
-const TaskPermissionDef = z.union([
-  z.boolean(),
-  z
-    .object({
-      agents: z.array(z.string().min(1)).optional(),
-      maxRuntimeMs: z.number().int().positive().optional(),
-    })
-    .strict(),
-])
+export type PluginManifestContribution = z.infer<typeof PluginManifestContribution>
 
-const ToolDisplayDef = z
-  .object({
-    kind: z.enum(["default", "media-generation"]).optional(),
-    toolCard: z.enum(["visible", "hidden"]).optional(),
-    media: z
-      .object({
-        type: z.enum(["image", "video", "audio"]),
-        actionLabel: z.string().min(1).max(80).optional(),
-        pendingTitle: z.string().min(1).max(120).optional(),
-        pendingDescription: z.string().min(1).max(200).optional(),
-        aspectRatio: z.enum(["1:1", "4:3", "16:9", "auto"]).optional(),
-        size: z.enum(["small", "medium", "large"]).optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict()
+const Artifact = z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).strict()
 
-const UIContribution = z
-  .object({
-    entry: JsAssetPath.optional(),
-    minUIApiVersion: z
-      .string()
-      .regex(/^\d+\.\d+$/)
-      .optional(),
-    toolRenderers: z.array(ToolRendererDef).optional(),
-    partRenderers: z.array(PartRendererDef).optional(),
-    workbenchPanels: z.array(WorkbenchPanelDef).optional(),
-    navigation: z.array(NavigationDef).optional(),
-    settings: z.array(SettingsDef).optional(),
-    messageSlots: z.array(MessageSlotDef).optional(),
-    composerSlots: z.array(ComposerSlotDef).optional(),
-    commands: z.array(UICommandDef).optional(),
-    themes: z.array(ThemeDef).optional(),
-    icons: z.array(IconDef).optional(),
-  })
-  .strict()
-  .superRefine((ui, ctx) => {
-    const requiresEntry =
-      Boolean(ui.toolRenderers?.some((renderer) => !renderer.fallback)) ||
-      Boolean(ui.partRenderers?.length) ||
-      Boolean(ui.workbenchPanels?.length) ||
-      Boolean(ui.navigation?.length) ||
-      Boolean(ui.settings?.some((section) => !section.formSchema)) ||
-      Boolean(ui.messageSlots?.length) ||
-      Boolean(ui.composerSlots?.length) ||
-      Boolean(ui.commands?.length)
-
-    if (requiresEntry && !ui.entry) {
-      ctx.addIssue({ code: "custom", path: ["entry"], message: "Solid UI surfaces require contributes.ui.entry" })
-    }
-    if (ui.entry && !ui.minUIApiVersion) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["minUIApiVersion"],
-        message: "contributes.ui.minUIApiVersion is required when contributes.ui.entry is set",
-      })
-    }
-  })
-  .optional()
-
-const PluginPermissionsSchema = z
-  .object({
-    /** Tool execution permissions */
-    tools: z
-      .object({
-        shell: z.boolean().default(false),
-        filesystem: z.preprocess(
-          (val) => {
-            if (val === true) return "write"
-            if (val === false) return "none"
-            return val
-          },
-          z.enum(["none", "read", "write"]).default("none"),
-        ),
-        network: z.boolean().default(false),
-        mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
-        task: TaskPermissionDef.optional(),
-      })
-      .strict()
-      .optional(),
-
-    /** Data access */
-    data: z
-      .object({
-        session: z.enum(["none", "metadata", "read"]).default("none"),
-        workspace: z.enum(["none", "metadata", "read"]).default("none"),
-        config: z.enum(["none", "plugin", "global"]).default("none"),
-        secrets: z.enum(["none", "own"]).default("none"),
-      })
-      .strict()
-      .optional(),
-
-    /** Network access */
-    network: z
-      .object({
-        connectDomains: z.array(z.string()).default([]),
-        resourceDomains: z.array(z.string()).default([]),
-        frameDomains: z.array(z.string()).default([]),
-      })
-      .strict()
-      .optional(),
-
-    /** UI surface permissions */
-    ui: z.boolean().default(false).optional(),
-
-    /** Hook permission declarations */
-    hooks: z
-      .object({
-        events: z.enum(["none", "selected", "all"]).default("selected"),
-        eventNames: z.array(z.string()).default([]),
-        config: z.boolean().default(false),
-        toolExecute: z.enum(["none", "own", "declared", "all"]).default("own"),
-        permissionAsk: z.enum(["none", "own", "all"]).default("none"),
-        promptTransform: z.boolean().default(false),
-        compactionTransform: z.boolean().default(false),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict()
-  .optional()
-// PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
   .object({
-    // Identity
+    manifestVersion: z.literal(PLUGIN_MANIFEST_VERSION),
+    apiVersion: z.literal(PLUGIN_API_VERSION),
+    id: Id,
     name: z.string().min(1).max(128),
-    version: z.string().regex(/^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$/),
+    version: z.string().regex(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?(?:\+[a-zA-Z0-9.]+)?$/),
     description: z.string().min(1).max(1024),
     author: z.string().optional(),
     homepage: z.string().url().optional(),
@@ -295,269 +184,59 @@ export const PluginManifest = z
     license: z.string().optional(),
     icon: z.string().optional(),
     keywords: z.array(z.string()).optional(),
-
-    engines: z
+    capabilities: z.array(Capability),
+    contributions: z.array(PluginManifestContribution),
+    artifacts: z
       .object({
-        synergy: z.string().optional(),
-        bun: z.string().optional(),
+        generation: z.string().min(1),
+        runtime: Artifact.optional(),
+        ui: Artifact.optional(),
       })
-      .strict()
-      .optional(),
-
-    // Dependencies on other plugins
-    dependencies: z.record(z.string(), z.string()).optional(),
-
-    // Permission / trust declaration
-    permissions: PluginPermissionsSchema,
-    // Declarative contributions
-    contributes: z
-      .object({
-        tools: z
-          .array(
-            z.object({
-              id: z.string().optional(),
-              name: z.string(),
-              title: z.string().optional(),
-              description: z.string(),
-              icon: z.string().optional(),
-              category: z.string().optional(),
-              kind: z.string().optional(),
-              exposure: ToolExposureDef.optional(),
-              display: ToolDisplayDef.optional(),
-              capabilities: z
-                .object({
-                  filesystem: z.enum(["none", "read", "write"]).optional(),
-                  network: z.boolean().optional(),
-                  shell: z.boolean().optional(),
-                  session: z.enum(["none", "metadata", "read"]).optional(),
-                  workspace: z.enum(["none", "metadata", "read"]).optional(),
-                  config: z.enum(["none", "plugin", "global"]).optional(),
-                })
-                .strict()
-                .optional(),
-            }),
-          )
-          .optional(),
-
-        skills: z
-          .array(
-            z.object({
-              name: z.string(),
-              description: z.string(),
-              dir: z.string(),
-            }),
-          )
-          .optional(),
-
-        agents: z
-          .array(
-            z.object({
-              name: z.string(),
-              description: z.string(),
-              mode: z.enum(["subagent", "primary", "all"]).default("subagent"),
-              model: z.string().optional(),
-              modelRole: z.enum(["vision", "nano", "mini", "mid", "thinking", "long", "creative"]).optional(),
-              hidden: z.boolean().optional(),
-              permission: z.record(z.string(), z.any()).optional(),
-            }),
-          )
-          .optional(),
-
-        mcp: z
-          .object({
-            defaults: z
-              .object({
-                startup: z.enum(["eager", "lazy", "manual"]).optional(),
-                required: z.boolean().optional(),
-                connectTimeout: z.number().optional(),
-                listTimeout: z.number().optional(),
-                callTimeout: z.number().optional(),
-                retry: z
-                  .object({
-                    maxAttempts: z.number().int().positive().optional(),
-                    backoffMs: z.number().int().positive().optional(),
-                    backoffMultiplier: z.number().positive().optional(),
-                    cooldownMs: z.number().int().nonnegative().optional(),
-                  })
-                  .optional(),
-                idleShutdownMs: z.number().int().positive().optional(),
-                toolFilter: z
-                  .object({
-                    include: z.array(z.string()).optional(),
-                    exclude: z.array(z.string()).optional(),
-                  })
-                  .optional(),
-                tools: z
-                  .object({
-                    approval: z.enum(["auto", "always", "per_session"]).optional(),
-                    maxOutputBytes: z.number().int().positive().optional(),
-                  })
-                  .optional(),
-                toolCache: z
-                  .object({
-                    mode: z.enum(["disabled", "session", "persistent"]).optional(),
-                    ttlMs: z.number().int().positive().optional(),
-                  })
-                  .optional(),
-              })
-              .optional()
-              .describe("Default lifecycle settings applied to all MCP servers contributed by this plugin"),
-            locked: z
-              .boolean()
-              .optional()
-              .describe("If true, the user cannot override this plugin's MCP server declarations"),
-          })
-          .catchall(
-            z
-              .object({
-                type: z.literal("local"),
-                command: z.array(z.string()),
-                environment: z.record(z.string(), z.string()).optional(),
-                description: z.string().optional(),
-                timeout: z.number().optional(),
-                startup: z.enum(["eager", "lazy", "manual"]).optional(),
-                required: z.boolean().optional(),
-                connectTimeout: z.number().optional(),
-                listTimeout: z.number().optional(),
-                callTimeout: z.number().optional(),
-                retry: z
-                  .object({
-                    maxAttempts: z.number().int().positive().optional(),
-                    backoffMs: z.number().int().positive().optional(),
-                    backoffMultiplier: z.number().positive().optional(),
-                    cooldownMs: z.number().int().nonnegative().optional(),
-                  })
-                  .optional(),
-                idleShutdownMs: z.number().int().positive().optional(),
-                toolFilter: z
-                  .object({
-                    include: z.array(z.string()).optional(),
-                    exclude: z.array(z.string()).optional(),
-                  })
-                  .optional(),
-                tools: z
-                  .object({
-                    approval: z.enum(["auto", "always", "per_session"]).optional(),
-                    maxOutputBytes: z.number().int().positive().optional(),
-                  })
-                  .optional(),
-                toolCache: z
-                  .object({
-                    mode: z.enum(["disabled", "session", "persistent"]).optional(),
-                    ttlMs: z.number().int().positive().optional(),
-                  })
-                  .optional(),
-              })
-              .strict()
-              .or(
-                z
-                  .object({
-                    type: z.literal("remote"),
-                    url: z.string(),
-                    headers: z.record(z.string(), z.string()).optional(),
-                    description: z.string().optional(),
-                    timeout: z.number().optional(),
-                    startup: z.enum(["eager", "lazy", "manual"]).optional(),
-                    required: z.boolean().optional(),
-                    connectTimeout: z.number().optional(),
-                    listTimeout: z.number().optional(),
-                    callTimeout: z.number().optional(),
-                    retry: z
-                      .object({
-                        maxAttempts: z.number().int().positive().optional(),
-                        backoffMs: z.number().int().positive().optional(),
-                        backoffMultiplier: z.number().positive().optional(),
-                        cooldownMs: z.number().int().nonnegative().optional(),
-                      })
-                      .optional(),
-                    idleShutdownMs: z.number().int().positive().optional(),
-                    toolFilter: z
-                      .object({
-                        include: z.array(z.string()).optional(),
-                        exclude: z.array(z.string()).optional(),
-                      })
-                      .optional(),
-                    tools: z
-                      .object({
-                        approval: z.enum(["auto", "always", "per_session"]).optional(),
-                        maxOutputBytes: z.number().int().positive().optional(),
-                      })
-                      .optional(),
-                    toolCache: z
-                      .object({
-                        mode: z.enum(["disabled", "session", "persistent"]).optional(),
-                        ttlMs: z.number().int().positive().optional(),
-                      })
-                      .optional(),
-                  })
-                  .strict(),
-              ),
-          )
-          .optional(),
-
-        commands: z
-          .array(
-            z.object({
-              name: z.string(),
-              description: z.string(),
-            }),
-          )
-          .optional(),
-
-        config: z
-          .object({
-            schema: z.record(z.string(), z.any()).optional(),
-            defaults: z.record(z.string(), z.any()).optional(),
-          })
-          .optional(),
-
-        permissions: PluginPermissionsSchema,
-        ui: UIContribution,
-      })
-      .partial()
-      .optional(),
-
-    // Lifecycle
-    main: z.string().optional().default("./src/index.ts"),
-    lifecycle: z
-      .object({
-        install: z.string().optional(),
-        uninstall: z.string().optional(),
-        update: z.string().optional(),
-      })
-      .optional(),
-
-    // Runtime preferences
-    runtime: z
-      .object({
-        mode: z.enum(["in-process", "worker", "process"]).optional(),
-        minRuntimeApiVersion: z.string().optional(),
-        resources: z
-          .object({
-            memoryMb: z.number().positive().optional(),
-            startupTimeoutMs: z.number().positive().optional(),
-            toolInvocationTimeoutMs: z.number().positive().optional(),
-            hookInvocationTimeoutMs: z.number().positive().optional(),
-            bridgeRequestTimeoutMs: z.number().positive().optional(),
-            taskRunTimeoutMs: z.number().positive().optional(),
-            shutdownGraceMs: z.number().positive().optional(),
-            maxConcurrentRequests: z.number().positive().optional(),
-            maxLogBytesPerMinute: z.number().positive().optional(),
-            memoryPollIntervalMs: z.number().positive().optional(),
-            heartbeatIntervalMs: z.number().positive().optional(),
-            heartbeatMissesBeforeKill: z.number().positive().optional(),
-          })
-          .optional(),
-      })
-      .optional(),
+      .strict(),
   })
   .strict()
-  .superRefine((manifest, ctx) => {
-    if (manifest.contributes?.ui && manifest.permissions?.ui !== true) {
-      ctx.addIssue({
+  .superRefine((manifest, context) => {
+    const ids = new Set<string>()
+    const capabilities = new Set(manifest.capabilities.map((item) => item.id))
+    for (const contribution of manifest.contributions) {
+      if (ids.has(contribution.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions"],
+          message: `Duplicate contribution id ${contribution.id}`,
+        })
+      }
+      ids.add(contribution.id)
+      for (const required of contribution.requires ?? []) {
+        if (!capabilities.has(required)) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "requires"],
+            message: `Undeclared capability ${required}`,
+          })
+        }
+      }
+      if (
+        contribution.kind.startsWith("ui.") &&
+        "component" in contribution &&
+        contribution.component &&
+        !manifest.artifacts.ui
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["artifacts", "ui"],
+          message: "Trusted UI contribution requires a UI artifact",
+        })
+      }
+    }
+    const needsRuntime = manifest.contributions.some((item) =>
+      ["operation", "tool", "hook", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(item.kind),
+    )
+    if (needsRuntime && !manifest.artifacts.runtime) {
+      context.addIssue({
         code: "custom",
-        path: ["permissions", "ui"],
-        message: "contributes.ui requires permissions.ui: true",
+        path: ["artifacts", "runtime"],
+        message: "Executable contributions require a runtime artifact",
       })
     }
   })

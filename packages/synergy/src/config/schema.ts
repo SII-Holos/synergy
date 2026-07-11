@@ -1,7 +1,7 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
-import { DEFAULT_PLUGIN_RUNTIME_LIMITS, DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-util/plugin-policy"
+import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1182,31 +1182,6 @@ export type PluginRuntimeLimits = z.infer<typeof PluginRuntimeLimits>
 
 export const PluginRuntimePolicy = z
   .object({
-    thirdPartyDefaultMode: z
-      .enum(["process", "worker"])
-      .optional()
-      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.thirdPartyDefaultMode)
-      .describe("Default isolation mode for third-party plugins (npm, git, url)"),
-    highRiskRequiresProcess: z
-      .boolean()
-      .optional()
-      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.highRiskRequiresProcess)
-      .describe("Require process isolation for high-risk plugins regardless of source"),
-    allowThirdPartyInProcess: z
-      .boolean()
-      .optional()
-      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowThirdPartyInProcess)
-      .describe("Allow third-party plugins to request in-process mode (not recommended)"),
-    allowWorkerMode: z
-      .boolean()
-      .optional()
-      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowWorkerMode)
-      .describe("Allow plugins to request worker thread isolation"),
-    allowLocalInProcess: z
-      .boolean()
-      .optional()
-      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowLocalInProcess)
-      .describe("Allow local plugins to run in-process"),
     limits: PluginRuntimeLimits.optional()
       .default(DEFAULT_PLUGIN_RUNTIME_LIMITS)
       .describe("Default plugin runtime resource and request limits"),
@@ -1216,7 +1191,6 @@ export const PluginRuntimePolicy = z
 export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
 
 export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
-  ...DEFAULT_PLUGIN_RUNTIME_POLICY,
   limits: DEFAULT_PLUGIN_RUNTIME_LIMITS,
 } as const satisfies Required<PluginRuntimePolicy>
 

@@ -12,12 +12,8 @@ import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { InstallConsentDialog } from "../consent/InstallConsentDialog"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import type {
-  ApiPluginDetail,
-  ApiPluginInfo,
-  RegistryPluginSummary,
-  RegistryPluginVersion,
-} from "@ericsanchezok/synergy-sdk/client"
+import type { RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
+import type { InstalledPlugin, PluginDetail } from "./types"
 import {
   collectAllPermissions,
   fallbackPluginSummary,
@@ -97,7 +93,7 @@ function repositoryHost(url: string | undefined): string {
 export function PluginDetailDialog(props: {
   pluginId: string
   source: RegistrySource
-  installedPlugin?: ApiPluginInfo
+  installedPlugin?: InstalledPlugin
   onChanged?: () => void | Promise<void>
 }) {
   const globalSDK = useGlobalSDK()
@@ -133,20 +129,20 @@ export function PluginDetailDialog(props: {
     () => true,
     async () => {
       const res = await globalSDK.client.api.plugins.list()
-      return (res.data as ApiPluginInfo[]) ?? []
+      return (res.data as InstalledPlugin[]) ?? []
     },
   )
 
   const installedInfo = createMemo(
-    () => props.installedPlugin ?? (installedPlugins() ?? []).find((plugin) => plugin.pluginId === props.pluginId),
+    () => props.installedPlugin ?? (installedPlugins() ?? []).find((plugin) => plugin.id === props.pluginId),
   )
 
   const [installedDetail] = createResource(
-    () => installedInfo()?.pluginId,
+    () => installedInfo()?.id,
     async (pluginId) => {
       try {
         const res = await globalSDK.client.api.plugins.get({ pluginId })
-        return (res.data as ApiPluginDetail) ?? null
+        return (res.data as PluginDetail) ?? null
       } catch {
         return null
       }
@@ -171,7 +167,11 @@ export function PluginDetailDialog(props: {
   const permissions = createMemo(() => {
     const registryPermissions = collectAllPermissions(versions() ?? [])
     if (registryPermissions.length > 0) return registryPermissions
-    return installedDetail()?.permissionsSummary ?? installedInfo()?.permissionsSummary ?? []
+    return (installedDetail()?.capabilities ?? installedInfo()?.capabilities ?? []).map((key) => ({
+      key,
+      description: `Synergy host capability ${key}`,
+      risk: installedDetail()?.risk ?? installedInfo()?.risk ?? "low",
+    }))
   })
   const busy = createMemo(() => action() !== null)
   const repoUrl = createMemo(() => plugin()?.repo ?? plugin()?.homepage)

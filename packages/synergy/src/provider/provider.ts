@@ -43,6 +43,7 @@ import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
+import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -540,9 +541,9 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.allHooks()) {
-      if (!plugin.auth) continue
-      const providerID = plugin.auth.provider
+    for (const entry of await Plugin.authProviderEntries()) {
+      const plugin = pluginAuthHook(entry.plugin, entry.contribution)
+      const providerID = plugin.provider
       if (disabled.has(providerID)) continue
 
       // For github-copilot plugin, check if auth exists for either github-copilot or github-copilot-enterprise
@@ -557,12 +558,12 @@ export namespace Provider {
       }
 
       if (!hasAuth) continue
-      if (!plugin.auth.loader) continue
+      if (!plugin.loader) continue
 
       // Load for the main provider if auth exists
       if (auth) {
-        const options = await plugin.auth.loader(() => Auth.get(providerID) as any, database[plugin.auth.provider])
-        mergeProvider(plugin.auth.provider, {
+        const options = await plugin.loader(() => Auth.get(providerID) as any, database[providerID])
+        mergeProvider(providerID, {
           source: "custom",
           options: options,
         })
@@ -574,7 +575,7 @@ export namespace Provider {
         if (!disabled.has(enterpriseProviderID)) {
           const enterpriseAuth = await Auth.get(enterpriseProviderID)
           if (enterpriseAuth) {
-            const enterpriseOptions = await plugin.auth.loader(
+            const enterpriseOptions = await plugin.loader(
               () => Auth.get(enterpriseProviderID) as any,
               database[enterpriseProviderID],
             )

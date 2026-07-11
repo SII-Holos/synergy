@@ -1,7 +1,7 @@
 import { Auth } from "./api-key"
 import { AccountUsage } from "./usage"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import type { ProviderProfile } from "./profile"

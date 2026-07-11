@@ -37,10 +37,7 @@ import type {
   AgendaUpdateResponses,
   AgendaWebhookErrors,
   AgendaWebhookResponses,
-  ApiPluginsApproveInstallErrors,
   ApiPluginsApproveInstallResponses,
-  ApiPluginsApproveUpdateErrors,
-  ApiPluginsApproveUpdateResponses,
   ApiPluginsGetApprovalErrors,
   ApiPluginsGetApprovalResponses,
   ApiPluginsGetErrors,
@@ -48,16 +45,8 @@ import type {
   ApiPluginsInstallFromRegistryErrors,
   ApiPluginsInstallFromRegistryResponses,
   ApiPluginsListResponses,
-  ApiPluginsPermissionDiffErrors,
-  ApiPluginsPermissionDiffResponses,
-  ApiPluginsPreviewInstallErrors,
-  ApiPluginsPreviewInstallResponses,
-  ApiPluginsPreviewUpdateErrors,
-  ApiPluginsPreviewUpdateResponses,
   ApiPluginsRemoveErrors,
   ApiPluginsRemoveResponses,
-  ApiPluginsStatusErrors,
-  ApiPluginsStatusResponses,
   ApiPluginsUpdateFromRegistryErrors,
   ApiPluginsUpdateFromRegistryResponses,
   AppAgentModelRolesResponses,
@@ -328,13 +317,10 @@ import type {
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
-  PluginConfigSchemaErrors,
-  PluginConfigSchemaResponses,
   PluginGetConfigErrors,
   PluginGetConfigResponses,
-  PluginInteractErrors,
-  PluginInteractResponses,
-  PluginListUiContributionsErrors,
+  PluginInvokeOperationErrors,
+  PluginInvokeOperationResponses,
   PluginListUiContributionsResponses,
   PluginRuntimeLogsErrors,
   PluginRuntimeLogsResponses,
@@ -348,6 +334,7 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
+  PostPluginDevReloadResponses,
   ProviderAuthGithubLogoutErrors,
   ProviderAuthGithubLogoutResponses,
   ProviderAuthGithubStatusResponses,
@@ -4266,41 +4253,7 @@ export class Runtime extends HeyApiClient {
   }
 
   /**
-   * Stop plugin runtime
-   *
-   * Gracefully stop the plugin runtime process.
-   */
-  public stop<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PluginRuntimeStopResponses, PluginRuntimeStopErrors, ThrowOnError>({
-      url: "/api/plugins/{pluginId}/runtime/stop",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Start plugin runtime
-   *
-   * Start the plugin runtime process.
    */
   public start<ThrowOnError extends boolean = false>(
     parameters: {
@@ -4330,9 +4283,37 @@ export class Runtime extends HeyApiClient {
   }
 
   /**
+   * Stop plugin runtime
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginRuntimeStopResponses, PluginRuntimeStopErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get plugin runtime logs
-   *
-   * Return recent log entries for the plugin runtime.
    */
   public logs<ThrowOnError extends boolean = false>(
     parameters: {
@@ -8445,9 +8426,7 @@ export class Browser extends HeyApiClient {
 
 export class Plugin extends HeyApiClient {
   /**
-   * List plugin UI contributions
-   *
-   * Return aggregated UI manifests for all loaded plugins.
+   * List enabled plugin UI contributions
    */
   public listUiContributions<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -8467,11 +8446,7 @@ export class Plugin extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<
-      PluginListUiContributionsResponses,
-      PluginListUiContributionsErrors,
-      ThrowOnError
-    >({
+    return (options?.client ?? this.client).get<PluginListUiContributionsResponses, unknown, ThrowOnError>({
       url: "/plugin/ui/contributions",
       ...options,
       ...params,
@@ -8479,14 +8454,12 @@ export class Plugin extends HeyApiClient {
   }
 
   /**
-   * Serve plugin static asset
-   *
-   * Serve a static file from a plugin's directory with immutable cache headers.
+   * Serve a generated plugin artifact
    */
   public serveAsset<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
-      versionHash: string
+      generation: string
       directory?: string
       scopeID?: string
     },
@@ -8498,7 +8471,7 @@ export class Plugin extends HeyApiClient {
         {
           args: [
             { in: "path", key: "pluginId" },
-            { in: "path", key: "versionHash" },
+            { in: "path", key: "generation" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
           ],
@@ -8506,25 +8479,23 @@ export class Plugin extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
-      url: "/plugin/assets/{pluginId}/{versionHash}/*",
+      url: "/plugin/assets/{pluginId}/{generation}/*",
       ...options,
       ...params,
     })
   }
 
   /**
-   * Relay plugin interaction
-   *
-   * Relay a postMessage interaction for a plugin.
+   * Invoke a declared plugin operation
    */
-  public interact<ThrowOnError extends boolean = false>(
+  public invokeOperation<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
+      operationId: string
       directory?: string
       scopeID?: string
-      type?: string
-      payload?: unknown
-      source?: string
+      input?: unknown
+      sessionId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8534,17 +8505,21 @@ export class Plugin extends HeyApiClient {
         {
           args: [
             { in: "path", key: "pluginId" },
+            { in: "path", key: "operationId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "type" },
-            { in: "body", key: "payload" },
-            { in: "body", key: "source" },
+            { in: "body", key: "input" },
+            { in: "body", key: "sessionId" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<PluginInteractResponses, PluginInteractErrors, ThrowOnError>({
-      url: "/plugin/{pluginId}/interact",
+    return (options?.client ?? this.client).post<
+      PluginInvokeOperationResponses,
+      PluginInvokeOperationErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/{pluginId}/operations/{operationId}/invoke",
       ...options,
       ...params,
       headers: {
@@ -8555,43 +8530,6 @@ export class Plugin extends HeyApiClient {
     })
   }
 
-  /**
-   * Get plugin config schema
-   *
-   * Return the plugin's contributed config schema from its manifest.
-   */
-  public configSchema<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<PluginConfigSchemaResponses, PluginConfigSchemaErrors, ThrowOnError>({
-      url: "/plugin/{pluginId}/config-schema",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get plugin config
-   *
-   * Return the current config values for a plugin.
-   */
   public getConfig<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -8619,11 +8557,6 @@ export class Plugin extends HeyApiClient {
     })
   }
 
-  /**
-   * Update plugin config
-   *
-   * Replace the plugin's configuration namespace.
-   */
   public updateConfig<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -8660,11 +8593,6 @@ export class Plugin extends HeyApiClient {
     })
   }
 
-  /**
-   * Get plugin status
-   *
-   * Report the current status of a loaded plugin.
-   */
   public status<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -8696,11 +8624,6 @@ export class Plugin extends HeyApiClient {
 }
 
 export class Plugins extends HeyApiClient {
-  /**
-   * List all loaded plugins
-   *
-   * Return metadata for all currently loaded plugins.
-   */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
@@ -8726,11 +8649,6 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Remove plugin
-   *
-   * Uninstall and deactivate a plugin, then reload the plugin runtime.
-   */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -8758,11 +8676,6 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Get plugin detail
-   *
-   * Return detailed metadata for a single loaded plugin.
-   */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -8790,94 +8703,12 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Get plugin status
-   *
-   * Report the current status of a loaded plugin.
-   */
-  public status<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ApiPluginsStatusResponses, ApiPluginsStatusErrors, ThrowOnError>({
-      url: "/api/plugins/{pluginId}/status",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Preview permissions for new plugin install
-   *
-   * Compute the permission diff for a new plugin manifest before installation.
-   */
-  public previewInstall<ThrowOnError extends boolean = false>(
+  public approveInstall<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
-      manifest?: {
-        [key: string]: unknown
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "manifest" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ApiPluginsPreviewInstallResponses,
-      ApiPluginsPreviewInstallErrors,
-      ThrowOnError
-    >({
-      url: "/api/plugins/preview-install",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Approve new plugin install
-   *
-   * Record approval for a new plugin installation after reviewing its permissions.
-   */
-  public approveInstall<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-      manifest?: {
-        [key: string]: unknown
-      }
+      pluginId?: string
+      manifest?: unknown
       capabilities?: Array<string>
       source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
     },
@@ -8888,9 +8719,9 @@ export class Plugins extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "pluginId" },
             { in: "body", key: "manifest" },
             { in: "body", key: "capabilities" },
             { in: "body", key: "source" },
@@ -8898,12 +8729,8 @@ export class Plugins extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<
-      ApiPluginsApproveInstallResponses,
-      ApiPluginsApproveInstallErrors,
-      ThrowOnError
-    >({
-      url: "/api/plugins/{pluginId}/approve-install",
+    return (options?.client ?? this.client).post<ApiPluginsApproveInstallResponses, unknown, ThrowOnError>({
+      url: "/api/plugins/approve-install",
       ...options,
       ...params,
       headers: {
@@ -8914,105 +8741,6 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Preview permissions for plugin update
-   *
-   * Compute the permission diff between the currently installed plugin and a new manifest version.
-   */
-  public previewUpdate<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-      manifest?: {
-        [key: string]: unknown
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "manifest" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ApiPluginsPreviewUpdateResponses,
-      ApiPluginsPreviewUpdateErrors,
-      ThrowOnError
-    >({
-      url: "/api/plugins/{pluginId}/preview-update",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Approve plugin update
-   *
-   * Record approval for a plugin update after reviewing its permission changes.
-   */
-  public approveUpdate<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-      manifest?: {
-        [key: string]: unknown
-      }
-      capabilities?: Array<string>
-      source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "manifest" },
-            { in: "body", key: "capabilities" },
-            { in: "body", key: "source" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ApiPluginsApproveUpdateResponses,
-      ApiPluginsApproveUpdateErrors,
-      ThrowOnError
-    >({
-      url: "/api/plugins/{pluginId}/approve-update",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get plugin approval status
-   *
-   * Return the current approval record for a plugin, or 404 if not approved.
-   */
   public getApproval<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
@@ -9044,47 +8772,6 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Get permission diff for plugin version
-   *
-   * Return the permission diff between the approved capabilities and the current plugin manifest.
-   */
-  public permissionDiff<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      ApiPluginsPermissionDiffResponses,
-      ApiPluginsPermissionDiffErrors,
-      ThrowOnError
-    >({
-      url: "/api/plugins/{pluginId}/permission-diff",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Install plugin from registry
-   *
-   * Install a plugin from the official or local registry. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.
-   */
   public installFromRegistry<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
@@ -9114,7 +8801,7 @@ export class Plugins extends HeyApiClient {
       ApiPluginsInstallFromRegistryErrors,
       ThrowOnError
     >({
-      url: "/api/plugins/install-from-registry",
+      url: "/api/plugins/registry/install",
       ...options,
       ...params,
       headers: {
@@ -9125,17 +8812,12 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  /**
-   * Check for plugin update from registry
-   *
-   * Check if an update is available for a plugin from the official or local registry. Optionally target a specific version. Returns version comparison and permission diff.
-   */
   public updateFromRegistry<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
+    parameters?: {
       directory?: string
       scopeID?: string
-      targetVersion?: string
+      pluginId?: string
+      version?: string
       source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
@@ -9145,10 +8827,10 @@ export class Plugins extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "targetVersion" },
+            { in: "body", key: "pluginId" },
+            { in: "body", key: "version" },
             { in: "body", key: "source" },
           ],
         },
@@ -9159,7 +8841,7 @@ export class Plugins extends HeyApiClient {
       ApiPluginsUpdateFromRegistryErrors,
       ThrowOnError
     >({
-      url: "/api/plugins/{pluginId}/update-from-registry",
+      url: "/api/plugins/registry/update",
       ...options,
       ...params,
       headers: {
@@ -10174,6 +9856,42 @@ export class SynergyClient extends HeyApiClient {
   constructor(args?: { client?: Client; key?: string }) {
     super(args)
     SynergyClient.__registry.set(this, args?.key)
+  }
+
+  public postPluginDevReload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      pluginId?: string
+      generation?: string
+      artifactDir?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "pluginId" },
+            { in: "body", key: "generation" },
+            { in: "body", key: "artifactDir" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostPluginDevReloadResponses, unknown, ThrowOnError>({
+      url: "/plugin/dev/reload",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 
   global = new Global({ client: this.client })

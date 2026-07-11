@@ -8,7 +8,7 @@ import { Global } from "../global"
 import { Config } from "../config/config"
 import * as Lockfile from "./lockfile"
 import { addEntry, removeEntry } from "./lockfile"
-import { readApprovals, saveApproval, writeApprovals } from "./consent/approval-store"
+import { readApprovals, removeApproval, saveApproval, writeApprovals } from "./consent/approval-store"
 import type { ResolvedPluginSpec } from "./spec-resolver"
 import { Log } from "../util/log"
 import { recordEvent } from "./audit"
@@ -188,8 +188,9 @@ export async function canonicalizePluginSpecs(
 }
 
 function resolvedPathAfterPromotion(resolved: ResolvedPluginSpec): string {
-  if (!resolved.stagingDir || !resolved.finalPluginDir) return resolved.entryPath
-  return path.join(resolved.finalPluginDir, path.relative(resolved.stagingDir, resolved.entryPath))
+  const resolvedFile = resolved.entryPath ?? path.join(resolved.pluginDir, "plugin.json")
+  if (!resolved.stagingDir || !resolved.finalPluginDir) return resolvedFile
+  return path.join(resolved.finalPluginDir, path.relative(resolved.stagingDir, resolvedFile))
 }
 
 async function promoteStagingDir(resolved: ResolvedPluginSpec): Promise<{
@@ -325,6 +326,7 @@ export namespace PluginInstallationTransaction {
     await withPluginInstallationLock(async () => {
       const previousDomain = await Config.domainGet("plugins")
       const previousLockfile = await Lockfile.read()
+      const previousApprovals = await readApprovals()
       const currentPlugins = previousDomain.plugin ?? []
       const kept = currentPlugins.filter((spec) => input.resolveSpecPluginDir(spec) !== input.pluginDir)
       const nextDomain = { ...previousDomain, plugin: kept } as any
@@ -336,10 +338,12 @@ export namespace PluginInstallationTransaction {
       try {
         await Config.domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
         await Lockfile.write(removeEntry(previousLockfile, input.pluginId))
+        await removeApproval(input.pluginId)
         if (input.autoReload !== false) await input.reload()
       } catch (err) {
         await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
         await Lockfile.write(previousLockfile).catch(() => {})
+        await writeApprovals(previousApprovals).catch(() => {})
         if (input.autoReload !== false) await input.reload().catch(() => {})
         throw err
       }

@@ -161,6 +161,17 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       return getWorkbenchPanel(tab.panelId)
     }
 
+    const openFromPlugin = (event: Event) => {
+      const detail = (event as CustomEvent<{ panelId?: string; resource?: { id?: string; title?: string } }>).detail
+      if (!detail?.panelId) return
+      void openPanel(detail.panelId, {
+        reuseExisting: true,
+        init: { resourceId: detail.resource?.id, title: detail.resource?.title, source: "plugin" },
+      })
+    }
+    window.addEventListener("synergy:plugin-open-workbench", openFromPlugin)
+    onCleanup(() => window.removeEventListener("synergy:plugin-open-workbench", openFromPlugin))
+
     return {
       surface,
       panels(surfaceName: WorkbenchPanelSurface) {

@@ -9,7 +9,8 @@ import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-hea
 import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
-import type { ApiPluginInfo, RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
+import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
+import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
@@ -77,7 +78,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
     () => true,
     async () => {
       const res = await globalSDK.client.api.plugins.list()
-      return (res.data as ApiPluginInfo[]) ?? []
+      return (res.data as InstalledPlugin[]) ?? []
     },
   )
 
@@ -85,7 +86,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
     const map = new Map<string, string>()
     for (const plugin of installedPlugins() ?? []) {
       if (plugin.version && plugin.version !== "0.0.0") {
-        map.set(plugin.pluginId, plugin.version)
+        map.set(plugin.id, plugin.version)
       }
     }
     return map
@@ -96,7 +97,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
     const list = installedPlugins() ?? []
     if (!q) return list
     return list.filter((plugin) =>
-      [plugin.pluginId, plugin.name, plugin.version].some((value) => normalize(value).includes(q)),
+      [plugin.id, plugin.name, plugin.version].some((value) => normalize(value).includes(q)),
     )
   })
 
@@ -112,7 +113,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
   function openPlugin(
     pluginId: string,
     source: RegistrySource,
-    options: { closeToMarketplace?: boolean; installedPlugin?: ApiPluginInfo } = {},
+    options: { closeToMarketplace?: boolean; installedPlugin?: InstalledPlugin } = {},
   ) {
     dialog.show(
       () => (
@@ -252,7 +253,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                     {(plugin) => (
                       <InstalledPluginRow
                         plugin={plugin}
-                        onClick={() => openPlugin(plugin.pluginId, "local", { installedPlugin: plugin })}
+                        onClick={() => openPlugin(plugin.id, "local", { installedPlugin: plugin })}
                       />
                     )}
                   </For>
@@ -318,10 +319,10 @@ function PluginRow(props: {
   )
 }
 
-function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void }) {
+function InstalledPluginRow(props: { plugin: InstalledPlugin; onClick: () => void }) {
   const disabled = () => props.plugin.health === "disabled"
   const iconSource = () => ({
-    name: props.plugin.name ?? props.plugin.pluginId,
+    name: props.plugin.name ?? props.plugin.id,
     keywords: ["plugin"],
   })
 
@@ -330,7 +331,7 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
       <MarketplacePluginIcon plugin={iconSource()} class="plugin-marketplace-plugin-icon" />
       <span class="plugin-marketplace-row-main">
         <span class="plugin-marketplace-row-title">
-          <span>{props.plugin.name ?? props.plugin.pluginId}</span>
+          <span>{props.plugin.name ?? props.plugin.id}</span>
           <span class="plugin-marketplace-version">v{props.plugin.version ?? "0.0.0"}</span>
         </span>
         <span class="plugin-marketplace-row-description">
@@ -338,8 +339,8 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
             when={disabled()}
             fallback={
               <>
-                {props.plugin.skillCount} skills · {props.plugin.agentCount} agents · {props.plugin.cliCommands.length}{" "}
-                commands
+                {props.plugin.tools.length} tools · {props.plugin.operations.length} operations ·{" "}
+                {props.plugin.uiContributions} UI surfaces commands
               </>
             }
           >
@@ -347,7 +348,7 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
           </Show>
         </span>
         <span class="plugin-marketplace-row-meta">
-          <span>{props.plugin.pluginId}</span>
+          <span>{props.plugin.id}</span>
         </span>
       </span>
       <span class="plugin-marketplace-row-status">

@@ -76,7 +76,6 @@ export interface SynergyCapabilityManifest {
     network?: { connectDomains?: string[] }
   }
   contributes?: {
-    permissions?: unknown
     tools?: SynergyCapabilityManifestTool[]
     agents?: Array<{
       name?: string
@@ -930,7 +929,6 @@ function permissionsRelevantContributes(manifest: SynergyCapabilityManifest) {
   if (!contributes) return undefined
 
   return {
-    ...(contributes.permissions ? { permissions: contributes.permissions } : {}),
     ...(contributes.tools
       ? {
           tools: contributes.tools.map((tool) => ({

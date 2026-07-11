@@ -1,6 +1,6 @@
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
 

@@ -21,7 +21,7 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionProcessor } from "@/session/processor"
 import type { Tool } from "@/tool/tool"
 import { permissionCapability } from "@ericsanchezok/synergy-util/capability"
-import * as ManifestReader from "./manifest-reader"
+import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
@@ -206,7 +206,7 @@ export async function assertPluginManifestCapability(input: {
   permission: string
 }) {
   if (!input.pluginDir) return
-  const manifest = await ManifestReader.read(input.pluginDir)
+  const manifest = await readPluginManifest(input.pluginDir)
   const capability = permissionCapability(input.permission)
   const shortToolId = normalizePluginToolId(input.toolId)
   const declaredCapabilities = shortToolId ? toolCapabilities(manifest, shortToolId) : baseCapabilities(manifest)
@@ -218,18 +218,18 @@ export async function assertPluginManifestCapability(input: {
 }
 
 async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput) {
-  const manifest = await ManifestReader.read(pluginDir)
-  const task = manifest.permissions?.tools?.task
-  if (task === undefined) throw new Error("Plugin manifest does not declare permissions.tools.task")
-  if (task === true) return
-  if (task === false) throw new Error("Plugin manifest denies permissions.tools.task")
-  if (task.agents && !task.agents.includes(request.subagent)) {
+  const manifest = await readPluginManifest(pluginDir)
+  const task = manifest.capabilities.find((item) => item.id === "task.run")
+  if (!task) throw new Error("Plugin manifest does not declare capability task.run")
+  const agents = Array.isArray(task.constraints?.agents) ? task.constraints.agents : undefined
+  const maxRuntimeMs = typeof task.constraints?.maxRuntimeMs === "number" ? task.constraints.maxRuntimeMs : undefined
+  if (agents && !agents.includes(request.subagent)) {
     throw new Error(`Plugin manifest does not allow task delegation to "${request.subagent}"`)
   }
-  if (task.maxRuntimeMs && request.timeoutMs && request.timeoutMs > task.maxRuntimeMs) {
-    throw new Error(`Delegated task timeout exceeds manifest maxRuntimeMs (${task.maxRuntimeMs}ms)`)
+  if (maxRuntimeMs && request.timeoutMs && request.timeoutMs > maxRuntimeMs) {
+    throw new Error(`Delegated task timeout exceeds manifest maxRuntimeMs (${maxRuntimeMs}ms)`)
   }
-  return task
+  return { maxRuntimeMs }
 }
 
 async function askForTask(context: RuntimeContext, request: ToolTaskRunInput) {
@@ -317,8 +317,7 @@ async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise
 
 async function defaultPluginRuntimeLimits(pluginDir?: string) {
   const config = await Config.current().catch(() => undefined)
-  const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources)
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits)
 }
 
 export function resolvePluginTaskWaitTimeoutMs(input: { requestedTimeoutMs: number; toolInvocationTimeoutMs: number }) {
