@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -162,6 +162,14 @@ async function readBuiltCss(outDir: string) {
   return chunks.join("\n")
 }
 
+async function readBuiltIndex(outDir: string) {
+  return readFile(path.join(outDir, "index.html"), "utf8")
+}
+
+async function readBuiltAssets(outDir: string) {
+  return readdir(path.join(outDir, "assets"))
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
@@ -180,16 +188,30 @@ async function runAppBuild(outDir: string) {
   throw new Error(`App build failed with exit code ${exitCode}\n${stdout}\n${stderr}`)
 }
 
-describe("app production CSS contract", () => {
-  test("preserves core component root declarations in the production build", async () => {
+describe("app production build contract", () => {
+  test("preserves core styles and keeps optional workbench resources off the initial route", async () => {
     const outDir = await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-"))
     try {
       await runAppBuild(outDir)
-      const css = await readBuiltCss(outDir)
+      const [css, index, assets] = await Promise.all([
+        readBuiltCss(outDir),
+        readBuiltIndex(outDir),
+        readBuiltAssets(outDir),
+      ])
 
       for (const contract of rootRuleContracts) {
         expectRootRule(css, contract)
       }
+
+      expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
+      expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
+        expect.stringMatching(/^BlexMonoNerdFontMono-Bold-/),
+        expect.stringMatching(/^BlexMonoNerdFontMono-Medium-/),
+        expect.stringMatching(/^BlexMonoNerdFontMono-Regular-/),
+      ])
+      const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
+      expect(markdownChunk).toBeDefined()
+      expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })
     }

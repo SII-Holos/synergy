@@ -43,6 +43,13 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
 
+## Preserve Loading Boundaries
+
+1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
+2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
+3. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
+4. Preserve `packages/app/src/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+
 ## Change Themes and Color Tokens
 
 1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
@@ -70,8 +77,9 @@ bun run --cwd packages/app build
 ```
 
 3. Inspect both themes, keyboard/focus, narrow layout, and loading/error behavior in an existing app or isolated second runtime.
-4. Exercise Desktop when native Browser, window chrome, protocol, or Electron behavior changed.
-5. Finish with `bun run quality:quick` when the change is ready for repository review.
+4. At 375 px, check that overlay surfaces are named and keyboard-contained and that every interactive control remains inside the viewport. Open each changed lazy panel once to prove its implementation and resources still load.
+5. Exercise Desktop when native Browser, window chrome, protocol, or Electron behavior changed.
+6. Finish with `bun run quality:quick` when the change is ready for repository review.
 
 ## Handoff
 

@@ -6,6 +6,7 @@ export type DialogSize = "compact" | "form" | "list" | "wide" | "command" | "con
 export type DialogPlacement = "center" | "top"
 
 export interface DialogProps extends ParentProps {
+  ariaLabel?: string
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
@@ -21,6 +22,7 @@ export function Dialog(props: DialogProps) {
     <div data-component="dialog" data-size={props.size ?? "content"} data-placement={props.placement ?? "center"}>
       <div data-slot="dialog-container">
         <Kobalte.Content
+          aria-label={props.ariaLabel}
           data-slot="dialog-content"
           onEscapeKeyDown={(e) => {
             if (props.dismissible === false) e.preventDefault()
@@ -53,6 +55,7 @@ export function Dialog(props: DialogProps) {
                 <Match when={props.action}>{props.action}</Match>
                 <Match when={true}>
                   <Kobalte.CloseButton
+                    aria-label="Close dialog"
                     data-slot="dialog-close-button"
                     data-component="icon-button"
                     data-variant="ghost"

@@ -73,7 +73,7 @@ export type SettingsPanelProps = DialogSettingsProps & {
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
   return (
-    <Dialog class="settings-dialog-panel">
+    <Dialog ariaLabel="Settings" class="settings-dialog-panel">
       <SettingsPanel {...props} onClose={() => dialog.close()} />
     </Dialog>
   )

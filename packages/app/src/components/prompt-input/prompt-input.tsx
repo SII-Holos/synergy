@@ -1834,6 +1834,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <IconButton
                         type="submit"
+                        aria-label="Start BlueprintLoop"
                         icon={getSemanticIcon("prompt.blueprintStart")}
                         variant="primary"
                         class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
@@ -1915,6 +1916,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 >
                   <IconButton
                     type="submit"
+                    aria-label={submitStopsSession() ? "Stop session" : "Send message"}
                     disabled={!canSubmit()}
                     icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
                     variant="primary"

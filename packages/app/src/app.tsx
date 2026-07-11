@@ -3,20 +3,15 @@ import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, typ
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@ericsanchezok/synergy-ui/font"
-import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
+import { MarkedProvider, ensureSynergyHighlightTheme } from "@ericsanchezok/synergy-ui/context/marked"
 import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
 import { CodeComponentProvider } from "@ericsanchezok/synergy-ui/context/code"
-import { Diff } from "@ericsanchezok/synergy-ui/diff"
-import { Code } from "@ericsanchezok/synergy-ui/code"
 import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
 import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
-import { TerminalProvider } from "@/context/terminal"
-import { PromptProvider } from "@/context/prompt"
-import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
@@ -43,7 +38,6 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
 import { DialogSelectServer } from "@/components/dialog"
 import { ServerConnectionErrorPage } from "@/pages/server-connection-error"
-import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 
 const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
 
@@ -64,6 +58,18 @@ const Session = lazy(async () => {
   const session = await import("@/pages/session")
   signalAppSurfaceReady()
   return session
+})
+
+const Diff = lazy(async () => {
+  await ensureSynergyHighlightTheme()
+  const diff = await import("@ericsanchezok/synergy-ui/diff")
+  return { default: diff.Diff }
+})
+
+const Code = lazy(async () => {
+  await ensureSynergyHighlightTheme()
+  const code = await import("@ericsanchezok/synergy-ui/code")
+  return { default: code.Code }
 })
 
 const PluginDetailPage = lazy(async () => {
@@ -242,17 +248,9 @@ function ConnectedApp() {
                         <Route
                           path="/session/:id?"
                           component={() => (
-                            <TerminalProvider>
-                              <ResourceOpenProvider>
-                                <PromptProvider>
-                                  <BuiltinWorkbenchPanelsProvider>
-                                    <Suspense fallback={<Loading />}>
-                                      <Session />
-                                    </Suspense>
-                                  </BuiltinWorkbenchPanelsProvider>
-                                </PromptProvider>
-                              </ResourceOpenProvider>
-                            </TerminalProvider>
+                            <Suspense fallback={<Loading />}>
+                              <Session />
+                            </Suspense>
                           )}
                         />
                       </Route>

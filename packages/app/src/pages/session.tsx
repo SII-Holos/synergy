@@ -60,6 +60,10 @@ import {
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { sessionLoadView } from "@/components/session/session-load-state"
+import { TerminalProvider } from "@/context/terminal"
+import { PromptProvider } from "@/context/prompt"
+import { ResourceOpenProvider } from "@/context/resource-open"
+import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 
 const handoff = {
   prompt: "",
@@ -68,7 +72,17 @@ const handoff = {
 }
 
 export default function Page() {
-  return <SessionPageContent />
+  return (
+    <TerminalProvider>
+      <ResourceOpenProvider>
+        <PromptProvider>
+          <BuiltinWorkbenchPanelsProvider>
+            <SessionPageContent />
+          </BuiltinWorkbenchPanelsProvider>
+        </PromptProvider>
+      </ResourceOpenProvider>
+    </TerminalProvider>
+  )
 }
 
 function SessionPageContent() {

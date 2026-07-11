@@ -360,6 +360,7 @@ export function Sidebar(props: SidebarProps) {
             <Tooltip value={entry.label} placement="right">
               <button
                 type="button"
+                aria-label={entry.label}
                 classList={{
                   "sb-global-btn": true,
                   "sb-global-active": isNavigationActive(entry),
@@ -384,6 +385,7 @@ export function Sidebar(props: SidebarProps) {
             <Tooltip value="Projects" placement="right">
               <button
                 type="button"
+                aria-label="Projects"
                 classList={{
                   "sb-icon-btn": true,
                   "sb-projects-flyout-trigger": true,
@@ -1248,6 +1250,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
       <Tooltip value="Agent" placement="right" inactive={props.isExpanded}>
         <button
           type="button"
+          aria-label="Agent menu"
           classList={{
             "sidebar-account-trigger": true,
             "sidebar-account-trigger--expanded": menuOpen(),

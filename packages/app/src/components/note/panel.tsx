@@ -1209,12 +1209,12 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       <Show when={view() === "list"}>
         <div class="flex flex-col h-full">
           <div class="shrink-0 px-4 pt-3 pb-2">
-            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
+            <div class="flex flex-wrap items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
               <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak-base shrink-0" />
               <input
                 type="text"
                 placeholder="Search notes..."
-                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                class="min-w-32 flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
                 value={search()}
                 onInput={(e) => setSearch(e.currentTarget.value)}
               />
@@ -1285,7 +1285,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
           </div>
 
           <Show when={selecting()}>
-            <div class="flex items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
+            <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
               <div class="flex min-w-0 items-center gap-2">
                 <span class="text-12-medium text-text-base">
                   {selectedNotes().size} / {visibleNotes()} selected
