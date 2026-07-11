@@ -1,7 +1,6 @@
-Send a message to a session. Use this to deliver results, notifications, or instructions to another session.
+Send an actionable user message to a session. The target session's agent will process and respond to the message.
 
 The `target` parameter identifies which session to send to:
 - A session ID (e.g. "ses_xxx") to send to a specific session
-- A contact ID to send to a holos friend's session
 
-By default, messages are sent as the assistant (role: "assistant") — useful for delivering task results or notifications without triggering a response. Set role to "user" to trigger the target session's agent to process and respond to the message.
+Only `role: "user"` is supported. Omitting `role` defaults to `user`. Calls with `role: "assistant"` are rejected; retry them with `role: "user"`.

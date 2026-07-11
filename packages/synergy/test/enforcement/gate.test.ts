@@ -654,6 +654,29 @@ describe("EnforcementGate network classification", () => {
   })
 })
 
+describe("EnforcementGate session_send classification", () => {
+  test("classifies supported user deliveries as identity actions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", {}).capabilities).toEqual([{ class: "identity_act", nonBypassable: true }])
+    expect(gate.classify("session_send", { role: "user" }).capabilities).toEqual([
+      { class: "identity_act", nonBypassable: true },
+    ])
+  })
+
+  test("leaves unsupported assistant role to schema validation without requesting approval", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", { role: "assistant" }).capabilities).toEqual([])
+  })
+})
+
 // ------------------------------------------------------------------
 // 4. Gate produces execution envelope and audit
 // ------------------------------------------------------------------

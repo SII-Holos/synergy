@@ -809,14 +809,11 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // session_send: user role can trigger another agent as the user; assistant
-      // role is still an outbound channel operation and remains profile-gated.
+      // session_send only supports actionable user delivery. Unsupported roles
+      // are left to schema validation so they fail before an approval request.
       if (toolName === "session_send") {
-        const role = args.role ?? ""
-        if (role === "user") {
+        if (args.role === undefined || args.role === "user") {
           caps.push({ class: "identity_act", nonBypassable: true })
-        } else {
-          caps.push({ class: "channel_outbound", nonBypassable: true })
         }
         return { capabilities: caps }
       }
