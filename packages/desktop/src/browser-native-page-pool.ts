@@ -37,7 +37,7 @@ interface Entry extends BrowserNativePageHandle {
   ) => void
 }
 
-const INITIAL_NATIVE_PAGE_BOUNDS = { x: 0, y: 0, width: 1280, height: 720 }
+const INITIAL_NATIVE_PAGE_VIEWPORT = { width: 1280, height: 720 }
 
 export class BrowserNativePagePool {
   private entries = new Map<string, Entry>()
@@ -58,7 +58,6 @@ export class BrowserNativePagePool {
           sandbox: true,
         },
       })
-      view.setBounds(INITIAL_NATIVE_PAGE_BOUNDS)
       const contents = view.webContents
       await contents.session.setProxy({ proxyRules: input.networkProxy.server })
     } catch (error) {
@@ -110,6 +109,7 @@ export class BrowserNativePagePool {
           input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
       })
       control = pageControl
+      await pageControl.execute({ type: "setViewport", ...INITIAL_NATIVE_PAGE_VIEWPORT })
       const entry: Entry = {
         ownerKey: input.ownerKey,
         view,

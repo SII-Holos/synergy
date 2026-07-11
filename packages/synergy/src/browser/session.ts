@@ -250,6 +250,7 @@ export class BrowserSessionImpl implements BrowserSession {
 
     await this.save()
     BrowserEvent.publish(this.owner, { type: "page.created", page: BrowserControl.pageState(browserPage) })
+    this.publishHostReady(browserPage)
     return browserPage
   }
 
@@ -574,6 +575,7 @@ export class BrowserSessionImpl implements BrowserSession {
       this._error = null
       await this.save()
       BrowserEvent.publish(this.owner, { type: "page.updated", page: BrowserControl.pageState(target) })
+      this.publishHostReady(target)
       return target
     } catch (migrationError) {
       let targetCloseError: unknown
@@ -608,6 +610,8 @@ export class BrowserSessionImpl implements BrowserSession {
         this._status = "active"
         this._error = null
         await this.save()
+        BrowserEvent.publish(this.owner, { type: "page.updated", page: BrowserControl.pageState(restored) })
+        this.publishHostReady(restored)
       } catch (restoreError) {
         let restoredCloseError: unknown
         if (restored) {
@@ -666,6 +670,12 @@ export class BrowserSessionImpl implements BrowserSession {
       suggestedAction: this._descriptor ? "Resume the Browser page to retry recovery." : "Retry the Browser command.",
     })
     await this.save()
+  }
+
+  private publishHostReady(page: BrowserPageBackend): void {
+    if (page.backend === "host") {
+      BrowserEvent.publish(this.owner, { type: "host.status", status: "ready", pageId: page.id })
+    }
   }
 
   private async closeFailedPage(page: BrowserPageBackend, cause: unknown): Promise<void> {

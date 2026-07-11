@@ -1,16 +1,13 @@
 import { describe, expect, mock, test } from "bun:test"
 
-const lifecycle: string[] = []
-const bounds: Array<{ x: number; y: number; width: number; height: number }> = []
+const commands: unknown[] = []
 let currentBounds = { x: 0, y: 0, width: 0, height: 0 }
 let resizePage: ((width: number, height: number) => void) | undefined
 
 class MockWebContents {
   readonly session = { setProxy: async () => undefined }
 
-  async loadURL() {
-    lifecycle.push("load")
-  }
+  async loadURL() {}
 
   getURL() {
     return "about:blank"
@@ -36,8 +33,6 @@ class MockWebContentsView {
   readonly webContents = new MockWebContents()
 
   setBounds(value: { x: number; y: number; width: number; height: number }) {
-    lifecycle.push("bounds")
-    bounds.push(value)
     currentBounds = value
   }
 
@@ -64,7 +59,8 @@ mock.module("../src/browser-webcontents-control.js", () => ({
       resizePage = options.resize
     }
 
-    async execute() {
+    async execute(command: unknown) {
+      commands.push(command)
       return { type: "void" }
     }
 
@@ -75,22 +71,22 @@ mock.module("../src/browser-webcontents-control.js", () => ({
 const { BrowserNativePagePool } = await import("../src/browser-native-page-pool.js")
 
 describe("Browser native page pool", () => {
-  test("sets a usable viewport before loading the native page", async () => {
-    lifecycle.length = 0
-    bounds.length = 0
+  test("sets a usable CSS viewport before the first navigation", async () => {
+    commands.length = 0
     const pool = new BrowserNativePagePool()
 
     await pool.create({
       ownerKey: "scope:test:session:test",
-      page: { id: "page-test", url: "about:blank", title: "", isLoading: false, lastActiveAt: null },
+      page: { id: "page-test", url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },
       networkProxy: { server: "http://127.0.0.1:1234", username: "user", password: "password" },
       downloadDir: "/tmp",
       emit() {},
     })
 
-    expect(lifecycle.slice(0, 2)).toEqual(["bounds", "load"])
-    expect(bounds[0]?.width).toBeGreaterThanOrEqual(1)
-    expect(bounds[0]?.height).toBeGreaterThanOrEqual(1)
+    expect(commands.slice(0, 2)).toEqual([
+      { type: "setViewport", width: 1280, height: 720 },
+      { type: "navigate", url: "https://example.com", source: "user" },
+    ])
   })
 
   test("viewport changes preserve the attached native view position", async () => {

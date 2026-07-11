@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import { BrowserOwner } from "../../src/browser/owner"
 import { BrowserSessionImpl } from "../../src/browser/session"
 import { BrowserStorage } from "../../src/browser/storage"
+import { BrowserEvent } from "../../src/browser/event"
 import type { BrowserBackendCommand, BrowserBackendResult, BrowserCheckpoint } from "@ericsanchezok/synergy-browser"
 import type { BrowserPageBackend } from "../../src/browser/page"
 
@@ -15,6 +16,7 @@ const owner: BrowserOwner.Info = {
 
 afterEach(async () => {
   await fs.rm(BrowserStorage.pathForOwner(owner), { force: true })
+  BrowserEvent.remove(owner)
 })
 
 describe("BrowserSession lazy restore", () => {
@@ -112,6 +114,44 @@ describe("BrowserSession lazy restore", () => {
     expect(events.indexOf("close:headless")).toBeLessThan(events.indexOf("create:host"))
     expect(events).toContain("restore:host")
     await session.closePage()
+  })
+
+  test("announces a ready Host page after creation and migration", async () => {
+    const protocolEvents: Array<{ type: string; status?: string; pageId?: string }> = []
+    const unsubscribe = BrowserEvent.subscribe(owner, (event) => protocolEvents.push(event))
+    const pageEvents: string[] = []
+    let desired: BrowserPageBackend["backend"] = "host"
+    const createSession = () =>
+      new BrowserSessionImpl(
+        owner,
+        async () => {
+          throw new Error("the injected page factory should satisfy both backends")
+        },
+        async ({ backend, id }) => fakePage(backend, id ?? `page-${backend}`, pageEvents, () => undefined),
+        () => desired,
+      )
+
+    const directHost = createSession()
+    await directHost.ensurePage(undefined, { resume: false })
+    expect(protocolEvents.slice(-2)).toMatchObject([
+      { type: "page.created" },
+      { type: "host.status", status: "ready", pageId: "page-host" },
+    ])
+    await directHost.closePage()
+
+    protocolEvents.length = 0
+    desired = "headless"
+    const migratedHost = createSession()
+    await migratedHost.ensurePage(undefined, { resume: false })
+    protocolEvents.length = 0
+    desired = "host"
+    await migratedHost.ensurePage(undefined, { resume: false })
+    expect(protocolEvents.slice(-2)).toMatchObject([
+      { type: "page.updated" },
+      { type: "host.status", status: "ready", pageId: "page-headless" },
+    ])
+    await migratedHost.closePage()
+    unsubscribe()
   })
 
   test("restores the original backend when target restore fails", async () => {
