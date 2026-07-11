@@ -38,7 +38,7 @@ External plugins run in one process per active `pluginId + version + generation`
 
 Capabilities only control Synergy Host Services. They do not claim to restrict direct OS access by the plugin process. Plugins own their business data, schema, backup, migration, and deletion. Synergy stores only installation metadata, approvals, Scope enablement, declarative settings, and plugin secrets.
 
-Complex UI is a trusted Solid component loaded only after user approval. It receives `PluginSurfaceContext`, whose operation client is bound to its own plugin identity. Complete state comes from query operations; events are small invalidation/state-change notifications.
+Complex UI is a trusted Solid component loaded only after user approval. plugin-kit compiles TSX into reactive DOM instructions and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship their own Solid runtime. The component receives `PluginSurfaceContext`, whose operation client is bound to its own plugin identity. Complete state comes from query operations; events are small invalidation/state-change notifications.
 
 Toolchain:
 

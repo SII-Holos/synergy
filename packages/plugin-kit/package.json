@@ -42,15 +42,19 @@
     "dist"
   ],
   "dependencies": {
+    "@babel/core": "catalog:",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "babel-preset-solid": "catalog:",
     "yargs": "18.0.0"
   },
   "peerDependencies": {
     "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "catalog:",
     "@tsconfig/node22": "catalog:",
+    "@types/babel__core": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/yargs": "17.0.33",

@@ -6,6 +6,10 @@ import {
   PluginArtifact,
   PluginManifest,
   compilePluginManifest,
+  hasBundledSolidRuntime,
+  hasUnlinkedSolidRuntimeImport,
+  hasUnsupportedSolidRuntimeImport,
+  rewritePluginSolidImports,
   type CompiledPluginArtifacts,
   type PluginContribution,
   type PluginDefinition,
@@ -15,6 +19,7 @@ import { UI } from "../ui.js"
 import { sha256File, sha256JSON } from "../lib/crypto.js"
 import { hashPackagedFiles, normalizeManifestPath, resolveUnder } from "../lib/artifact-assets.js"
 import { loadPluginDefinition } from "../lib/definition.js"
+import { solidCompilerPlugin } from "../lib/solid-compiler.js"
 
 function ensureDir(directory: string) {
   fs.mkdirSync(directory, { recursive: true })
@@ -94,11 +99,19 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
       outdir: outputDirectory,
       target: "browser",
       naming: "index.js",
-      external: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/h"],
-      jsx: { runtime: "automatic", importSource: "solid-js/h" },
+      external: ["solid-js", "solid-js/web", "solid-js/store"],
+      plugins: [solidCompilerPlugin()],
     })
     if (!result.success) throw new AggregateError(result.logs, "Plugin UI build failed")
     const output = path.join(outputDirectory, "index.js")
+    const source = fs.readFileSync(output, "utf8")
+    if (hasBundledSolidRuntime(source)) throw new Error("Plugin UI bundle contains a private Solid runtime")
+    if (hasUnsupportedSolidRuntimeImport(source))
+      throw new Error("Plugin UI bundle imports an unsupported Solid module")
+    const linked = rewritePluginSolidImports(source)
+    if (hasUnlinkedSolidRuntimeImport(linked))
+      throw new Error("Plugin UI bundle is not bound to the host Solid runtime")
+    fs.writeFileSync(output, linked)
     return { entry: "ui/index.js", sha256: sha256File(output), exports }
   } finally {
     fs.rmSync(tempDirectory, { recursive: true, force: true })

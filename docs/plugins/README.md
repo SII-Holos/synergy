@@ -3,8 +3,8 @@
 Synergy Plugin API 3 has one architecture path:
 
 1. A source module exports `definePlugin()`.
-2. plugin-kit validates the flat contribution list and generates `plugin.json`, runtime bundle, UI bundle, hashes, and generation.
-3. Installation reads generated data without importing plugin code, verifies integrity, and asks for capability and trusted-UI approval.
+2. plugin-kit validates the flat contribution list, compiles trusted TSX with the Solid compiler, binds it to the host's shared runtime, and generates `plugin.json`, bundles, hashes, and generation.
+3. Installation reads generated data without importing plugin code, verifies integrity, and asks for capability/trusted-UI approval.
 4. `ContributionAdapterRegistry` registers declarations with host subsystems.
 5. `PluginRuntimeRegistry` lazily starts one active runtime generation per plugin.
 6. The unified dispatcher invokes operations, tools, hooks, auth, and lifecycle handlers with a fresh invocation context.

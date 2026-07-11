@@ -6,12 +6,27 @@ import {
   compilePluginManifest,
   definePlugin,
   event,
+  hasUnlinkedSolidRuntimeImport,
+  hasUnsupportedSolidRuntimeImport,
   operation,
+  rewritePluginSolidImports,
   tool,
   workbenchPanel,
 } from "../src/index"
 
 describe("definePlugin", () => {
+  test("binds supported Solid imports to the host runtime and rejects alternate runtimes", () => {
+    const source = [
+      'import { createSignal } from "solid-js"',
+      'import { insert, template } from "solid-js/web"',
+      'import { createStore } from "solid-js/store"',
+    ].join("\n")
+    expect(hasUnlinkedSolidRuntimeImport(source)).toBe(true)
+    const linked = rewritePluginSolidImports(source)
+    expect(hasUnlinkedSolidRuntimeImport(linked)).toBe(false)
+    expect(hasUnsupportedSolidRuntimeImport('import { jsx } from "solid-js/h/jsx-runtime"')).toBe(true)
+  })
+
   test("compiles one source descriptor into a serializable manifest", () => {
     const plugin = definePlugin({
       id: "research",

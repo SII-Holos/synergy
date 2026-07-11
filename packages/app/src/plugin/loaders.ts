@@ -1,13 +1,11 @@
 import * as SolidRuntime from "solid-js"
 import * as SolidStoreRuntime from "solid-js/store"
 import * as SolidWebRuntime from "solid-js/web"
-import * as SolidHRuntime from "solid-js/h"
-import * as SolidJsxRuntime from "solid-js/h/jsx-runtime"
 import {
   PLUGIN_SOLID_RUNTIME_KEY,
-  rewritePluginSolidImports,
   hasUnsupportedSolidRuntimeImport,
   hasBundledSolidRuntime,
+  hasUnlinkedSolidRuntimeImport,
 } from "@ericsanchezok/synergy-plugin/loader"
 import { PLUGIN_UI_API_VERSION } from "@ericsanchezok/synergy-plugin/version"
 
@@ -15,19 +13,6 @@ type SharedSolidRuntime = {
   solid: typeof SolidRuntime
   web: typeof SolidWebRuntime
   store: typeof SolidStoreRuntime
-  h: typeof SolidHRuntime
-  jsx: typeof SolidJsxRuntime
-}
-
-type SharedSolidRuntimeName = keyof SharedSolidRuntime
-
-const SHARED_SOLID_IMPORTS: Record<string, SharedSolidRuntimeName> = {
-  "solid-js": "solid",
-  "solid-js/web": "web",
-  "solid-js/store": "store",
-  "solid-js/h": "h",
-  "solid-js/h/jsx-runtime": "jsx",
-  "solid-js/h/jsx-dev-runtime": "jsx",
 }
 
 function sharedSolidRuntime(): SharedSolidRuntime {
@@ -36,8 +21,6 @@ function sharedSolidRuntime(): SharedSolidRuntime {
     solid: SolidRuntime,
     web: SolidWebRuntime,
     store: SolidStoreRuntime,
-    h: SolidHRuntime,
-    jsx: SolidJsxRuntime,
   }
   return global[PLUGIN_SOLID_RUNTIME_KEY]
 }
@@ -53,15 +36,14 @@ export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string
 }
 
 /**
- * Load a single named export from a Tier 2 plugin's UI bundle.
+ * Load a single named export from a trusted plugin UI bundle.
  *
  * Verifies the plugin's required UI API version against the host's version
  * before importing. Throws if the versions are incompatible.
  *
- * The Synergy server rewrites Solid runtime imports in plugin UI bundles so
- * they resolve against the host's shared runtime. The client still defensively
- * validates and rewrites here as a fallback for older servers or local dev
- * proxies that may serve the raw bundle.
+ * plugin-kit compiles TSX with the Solid compiler and binds the generated DOM
+ * instructions to the host runtime before hashing the bundle. The host rejects
+ * bundles that bypass that build contract.
  *
  * @param pluginId        - Unique plugin identifier
  * @param assetsBaseUrl   - Fully resolved URL for the plugin UI asset.
@@ -90,22 +72,14 @@ export async function loadPluginExport<T = unknown>(
     }
     if (hasUnsupportedSolidRuntimeImport(source)) {
       throw new Error(
-        `Plugin ${pluginId} imports an unsupported Solid runtime subpath. Use solid-js, solid-js/web, solid-js/store, solid-js/h, solid-js/h/jsx-runtime, or solid-js/h/jsx-dev-runtime.`,
+        `Plugin ${pluginId} imports an unsupported Solid runtime subpath. Use solid-js, solid-js/web, or solid-js/store.`,
       )
     }
+    if (hasUnlinkedSolidRuntimeImport(source)) {
+      throw new Error(`Plugin ${pluginId} UI bundle is not bound to the Synergy Solid runtime.`)
+    }
 
-    // If the server already rewrote the bundle, import the original URL directly.
-    // Otherwise fall back to a client-side blob URL (acceptable in non-CSP contexts).
-    const alreadyRewritten = !source.includes(`from "solid-js`) && !source.includes(`from 'solid-js`)
-    const moduleUrl = alreadyRewritten
-      ? assetsBaseUrl
-      : URL.createObjectURL(
-          new Blob([`${rewritePluginSolidImports(source)}\n//# sourceURL=${assetsBaseUrl}`], {
-            type: "text/javascript",
-          }),
-        )
-
-    const mod = (await import(/* @vite-ignore */ moduleUrl)) as Record<string, unknown>
+    const mod = (await import(/* @vite-ignore */ assetsBaseUrl)) as Record<string, unknown>
     const exported = mod[exportName]
     if (exported === undefined) {
       throw new Error(`Export "${exportName}" not found in plugin ${pluginId} bundle at ${assetsBaseUrl}`)
