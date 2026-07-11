@@ -1,187 +1,95 @@
 ---
 name: find-logs
-description: "Guide for finding and reading Synergy logs, observability traces, and diagnostics. Use when debugging runtime issues, finding error messages, tracing session execution, or packaging diagnostics. Triggers: 'log', 'logs', 'logging', 'debug log', 'where are logs', 'find error', 'trace', 'diagnostics', 'observability'."
+description: Identify the exact Synergy backend and SYNERGY_HOME behind a local or managed runtime, inspect its logs and structured traces, and gather runtime evidence for failures. Use for errors, crashes, stuck sessions, tool calls, traces, daemon startup, performance incidents, multiple bun dev servers, reproducing state-dependent bugs, or adding temporary diagnostic instrumentation in an isolated worktree/runtime.
 ---
 
-# Finding and Reading Synergy Logs
+# Diagnose the Running Synergy Instance
 
-## Log File Locations
+## Identify the Backend Before Reading Logs
 
-| Scenario                       | Path                                       | Notes                               |
-| ------------------------------ | ------------------------------------------ | ----------------------------------- |
-| Development (`bun dev server`) | `~/.synergy/log/dev.log`                   | Single file, flushed on every write |
-| Production (daemon)            | `~/.synergy/log/{ISO8601}.log`             | e.g. `2026-07-10T160000.log`        |
-| Daemon service output          | `~/.synergy/state/daemon/logs/server.log`  | 10 MB rotation, keeps 5 archives    |
-| Dev archives                   | `~/.synergy/log/dev.{YYYYMMDD-HHMMSS}.log` | Max 10 files or 200 MB total        |
+Do not assume the default home or the most recently modified `dev.log` belongs to the failing client. One machine can run multiple Synergy backends, each with its own parent `SYNERGY_HOME`, `.synergy` root, runtime lock, state, and logs.
 
-**Rotation behavior**:
-
-- On dev restart, `dev.log` → archived to `dev.{YYYYMMDD-HHMMSS}.log`. Up to 10 kept.
-- On production startup, oldest timestamped logs are pruned, keeping newest 5.
-- Daemon log rotates at 10 MB (checked every 60 seconds).
-
-## Log Format
-
-```
-LEVEL YYYY-MM-DDTHH:mm:ss +NNNms service=name key=value message text
-```
-
-- **LEVEL**: `DEBUG`, `INFO`, `WARN`, `ERROR`
-- **Timestamp**: ISO 8601 to second precision
-- **`+NNNms`**: Milliseconds since previous log line (delta for performance spotting)
-- **Tag pairs**: `service=server`, `sessionID=ses_abc`, `callID=call_xyz`, etc.
-- **Message**: Control chars stripped, newlines escaped to `\n`
-- **Redaction**: Keys matching `token`, `secret`, `password`, `authorization`, `api_key`, `credential`, and similar patterns are replaced with `[redacted]`
-
-## How to Filter Logs
+1. Record the failing client, backend URL or port, approximate failure time, launch mode, and known development-home label. Keep local identifiers out of commits and remote reports.
+2. If the backend port is known, resolve its listener and inspect only that process:
 
 ```bash
-# Only errors
-rg "^ERROR" ~/.synergy/log/dev.log
-
-# By session
-rg "sessionID=ses_abc" ~/.synergy/log/dev.log
-
-# Real-time tail
-tail -f ~/.synergy/log/dev.log
-
-# Last 100 lines
-tail -100 ~/.synergy/log/dev.log
-
-# Search for a module's logs
-rg "service=cortex" ~/.synergy/log/dev.log
-rg "service=agent" ~/.synergy/log/dev.log
-rg "service=server" ~/.synergy/log/dev.log
-
-# Time range (replace date as needed)
-rg "2026-07-10T16:" ~/.synergy/log/dev.log
+TARGET_PORT=<backend-port>
+lsof -nP -iTCP:"$TARGET_PORT" -sTCP:LISTEN
+ps -p <pid> -o pid=,ppid=,etime=,command=
+lsof -nP -p <pid> | rg '/\.synergy/(log|state)/'
 ```
 
-## Log Levels
+The open `.../.synergy/log/dev.log` file usually identifies the parent `SYNERGY_HOME` for a source server without exposing the process's complete environment. If no log file is open, match the PID against `state/daemon/runtime-lock.json` under the small set of known candidate homes. Do not search credential directories or print a full process environment.
 
-Priority chain (highest wins):
-
-1. `--log-level` CLI flag (e.g., `bun dev server --log-level DEBUG`)
-2. `LOG_LEVEL` environment variable
-3. Config `general.logLevel` in `~/.synergy/config/synergy.d/00-general.jsonc`
-4. Default: `DEBUG` for local/dev builds, `INFO` for production
+3. Set the resolved parent home explicitly and verify the lock, process, and listening port agree:
 
 ```bash
-# Force DEBUG level
-LOG_LEVEL=DEBUG bun dev server
+INSTANCE_HOME=<resolved-parent-home>
+SYNERGY_HOME="$INSTANCE_HOME" synergy status --verbose
+curl -fsS "http://127.0.0.1:$TARGET_PORT/global/health"
+jq '{pid, startedAt, cwd, mode, command}' \
+  "$INSTANCE_HOME/.synergy/state/daemon/runtime-lock.json"
 ```
 
-## Log API (for coding)
+The root is `$INSTANCE_HOME/.synergy/`; `SYNERGY_HOME` names its parent. A lock records PID, start time, server/daemon mode, command, and working directory. `status --verbose` also reports the lock's listening ports, but its configured daemon health URL can differ from an explicit `bun dev --server-port`; verify that development port directly. Treat a PID or port mismatch as evidence that the wrong instance was selected or that the lock is stale. Resolve that mismatch before continuing.
 
-Code lives in `packages/synergy/src/util/log.ts`.
+If the process was launched with `--print-logs`, logs go to its terminal instead of a normal log file. Locate the owning terminal or rerun only an isolated test instance without that flag; do not restart the runtime carrying the current task.
 
-```ts
-import { Log } from "@/util/log"
+## Read the Correct Evidence
 
-// Create a logger for your domain
-const log = Log.create({ service: "my-feature" })
-
-log.debug("state changed", { key: value })
-log.info("operation complete", { count: 42 })
-log.warn("deprecated call", { caller: "foo" })
-log.error("unexpected condition", { error: err.message })
-
-// Auto-timed blocks (uses `using` dispose)
-{
-  using timer = log.time("expensive operation")
-  await doWork()
-  // "expensive operation took 123ms" auto-logged on scope exit
-}
-```
-
-Key API:
-
-- `Log.init({ print, dev, level })` — server startup, called once
-- `Log.create({ service: "name" })` — cached by service name
-- `Log.file()` — returns current log file path
-- `Log.Default` — singleton `service=default` logger
-
-## Observability Traces
-
-A separate **structured event tracing** system for performance analysis and call-chain tracking. Independent from the log subsystem.
-
-### Location
-
-```
-~/.synergy/state/observability/traces/{YYYY-MM-DD}.jsonl
-```
-
-One JSONL file per day. Each line is a JSON event object.
-
-### Querying
-
-The `Observability.query()` API filters by `traceId`, `sessionID`, `callID`, `since`, `level`, `limit`:
-
-```ts
-import { Observability } from "@/observability"
-
-const traces = await Observability.query({
-  sessionID: "ses_abc",
-  since: Date.now() - 3600_000, // last hour
-  limit: 100,
-})
-```
-
-From a shell, you can grep the JSONL directly:
+The CLI is the supported inspection entry point once the home is known:
 
 ```bash
-# Find all events for a session
-rg "ses_abc" ~/.synergy/state/observability/traces/2026-07-10.jsonl
-
-# Find all tool calls
-rg '"type":"tool_call"' ~/.synergy/state/observability/traces/2026-07-10.jsonl
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --dev --tail 200
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --dev --follow --service cortex
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --dev --level ERROR --grep 'timeout|compaction'
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --dev --archive 0 --tail 500
 ```
 
-### Retention
-
-- 7 days default, 250 MB max total
-- Cleanup runs on every `emit()`, throttled to once per 60 seconds
-- Code: `packages/synergy/src/observability/index.ts`
-
-## Diagnostics Package
-
-Create a comprehensive diagnostics bundle for sharing or filing issues:
+For normal `bun dev server`, `web`, or external-server Desktop runs, the current file is `$INSTANCE_HOME/.synergy/log/dev.log`. Restarting the development server archives the previous file as `dev.<timestamp>.log`, so inspect the archive covering the failure time after a restart. Direct file access is often the fastest local path:
 
 ```bash
-# CLI
-synergy diagnostics
-
-# HTTP
-curl http://localhost:{port}/observability/diagnostics
+LOG_FILE="$INSTANCE_HOME/.synergy/log/dev.log"
+tail -F "$LOG_FILE"
+rg '^ERROR|service=(server-runtime|session|cortex)' "$LOG_FILE"
 ```
 
-The `.tar.gz` includes:
+For an installed managed service, `synergy logs` reads `$INSTANCE_HOME/.synergy/state/daemon/logs/server.log`, where the service captures the server's printed output. Resolve current paths from [Storage and paths](../../../docs/reference/storage-and-paths.md) rather than copying paths from an unrelated home.
 
-- All log files (current, dev, daemon, dev archives)
-- Trace JSONL files (optionally filtered by `sessionID`)
-- `summary.json`: lock file state, running processes, pending reply sessions
-- Plugin runtime state
+Use structured observability when a trace, session, or tool call is known. These commands still require the resolved home:
 
-Code: `packages/synergy/src/observability/diagnostics.ts`
+```bash
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --session <session-id> --since 2h
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --trace-id <trace-id> --json
+SYNERGY_HOME="$INSTANCE_HOME" synergy logs --tool-call <call-id> --since 30m --json
+```
 
-## Key Environment Variables
+Correlate backend PID and port, server start time, reproduction time window, service, session, call, and trace. Find the earliest causal divergence or error; downstream cancellations are usually consequences, not separate root causes.
 
-| Variable            | Effect                                        |
-| ------------------- | --------------------------------------------- |
-| `SYNERGY_HOME`      | Override home base (`$SYNERGY_HOME/.synergy`) |
-| `SYNERGY_TEST_HOME` | Test override (checked before `os.homedir()`) |
-| `LOG_LEVEL`         | Set `DEBUG` / `INFO` / `WARN` / `ERROR`       |
-| `SYNERGY_DAEMON=1`  | Daemon mode, different log path               |
+## Escalate to Runtime Reproduction
 
-## Quick Reference: Important Paths
+Static code inspection establishes hypotheses. It is not sufficient evidence for bugs that depend on persisted state, ordering, concurrency, streaming, external responses, frontend/backend synchronization, or process lifecycle.
 
-| Path                                      | Purpose                                        |
-| ----------------------------------------- | ---------------------------------------------- |
-| `~/.synergy/`                             | Root of all Synergy data                       |
-| `~/.synergy/log/`                         | All log files                                  |
-| `~/.synergy/data/`                        | Session/message/permission/agenda JSON storage |
-| `~/.synergy/state/`                       | Daemon state, LSP PIDs, observability traces   |
-| `~/.synergy/state/observability/traces/`  | Daily JSONL trace files                        |
-| `~/.synergy/state/daemon/logs/server.log` | Daemon server log                              |
-| `~/.synergy/config/synergy.d/`            | Config domain files                            |
-| `~/.synergy/data/auth/`                   | API keys, provider OAuth, MCP credentials      |
+When the task authorizes code changes and existing evidence cannot distinguish the hypotheses:
+
+1. Load `architecture` to identify the ownership boundary, then create or reuse a task-owned worktree according to `git-guide`. Never instrument the primary/shared checkout.
+2. Load `develop-synergy`; start the worktree with a new isolated `SYNERGY_HOME` and explicit free ports. Never reuse, restart, or mutate the backend carrying the current task.
+3. Reproduce the original behavior before editing when possible. Record the exact action, expected invariant, observed state, server start time, and a narrow log/trace window.
+4. Add the smallest temporary observation that separates the hypotheses: structured logs around state transitions, counters, timing, assertions, or a focused diagnostic endpoint/test. Prefer the owning domain's `Log.create({ service: ... })` pattern and log identifiers or derived metadata instead of payload contents.
+5. Restart only the isolated backend when required, repeat the same reproduction, and compare the before/after event sequence. Inspect persisted state and frontend/runtime state only at the boundary relevant to the hypothesis.
+6. Turn the confirmed failure into a behavioral test before fixing it. Remove diagnostic-only logs and endpoints before committing; retain observability only when it is a durable, redacted product signal with an intentional schema and verification.
+
+Never log credentials, tokens, authorization headers, cookies, raw config, provider endpoints, full prompts/messages, file contents, or secret-like values. Do not truncate, rotate, delete, or hand-edit live logs, locks, or runtime state during diagnosis.
+
+## Package and Report
+
+Create a redacted diagnostics bundle only when a shareable artifact is needed:
+
+```bash
+SYNERGY_HOME="$INSTANCE_HOME" synergy diagnostics \
+  --session <session-id> --since 2h --output <path>.tar.gz
+```
+
+Review `summary.json` and the filtered trace before sharing. Sanitization reduces risk but does not make project names, commands, paths, IDs, or business data public-safe. For performance incidents, also read [Performance observability](../../../docs/operations/performance-observability.md) instead of inferring resource behavior from log volume.
+
+Report the identified runtime label and mode, backend port, time window, evidence sources and filters, reproduction, earliest causal event, confirmed owner boundary, confidence, and next verification step. Redact absolute paths, secrets, session content, and local identifiers from commits, PRs, issues, and other outbound text.

@@ -1,165 +1,66 @@
 ---
 name: inspect-sessions
-description: "Guide for reading raw Synergy session data from the filesystem storage. Use when investigating session state, reading message JSON directly, understanding the storage layout, or debugging persistence issues. Triggers: 'session data', 'storage', 'session json', 'raw session', 'where are sessions', 'persistence', 'inspect session', 'migration'."
+description: Inspect Synergy session metadata, health, messages, parts, inbox, indexes, lineage, and migration state without unsafe hydration or filesystem mutation. Use for corrupt or missing sessions, stuck pending replies, raw session JSON, Scope lookup, recovery, storage debugging, and session persistence investigations.
 ---
 
-# Inspecting Session Data and Storage
+# Inspect Session State
 
-## Storage Overview
+## Start with Recovery-safe Commands
 
-Synergy uses **file-based JSON storage** for all persistent data. Everything — sessions, messages, permissions, agenda items, notes — lives as JSON files under `~/.synergy/data/`. SQLite is only used for the embeddings library (`library.db`).
-
-All paths resolve relative to `Global.Path.data` = `~/.synergy/data/`.
-
-## Directory Structure
-
-```
-~/.synergy/data/
-├── sessions/{scopeID}/{sessionID}/
-│   ├── info.json              # Session metadata (title, model, time, parentID)
-│   ├── summary.json           # Session summary text
-│   ├── dag.json               # DAG task graph state
-│   ├── todo.json              # To-do list state
-│   ├── inbox/{itemID}.json    # Inbox items
-│   └── messages/{messageID}/
-│       ├── info.json          # Message metadata (role, timestamps, parentID)
-│       ├── parts/{partID}.json    # Individual message parts (text/tool-call/tool-result/attachment)
-│       └── history/{historyID}.json  # Undo/rewind history records
-├── session_index/{sessionID}.json    # Global sessionID → scopeID lookup
-├── session_nav_v2/{scopeID}.json     # Session navigation index
-├── session_child_index/{scopeID}/{parentID}.json  # Parent → child relationships
-├── session_page_index/{scopeID}.json  # Session page index
-├── notes/{scopeID}/{noteID}.json
-├── permissions/{scopeID}.json         # Permission overrides per scope
-├── permission-rules.json              # Global permission rules
-├── agenda/items/{scopeID}/{itemID}.json
-├── agenda/runs/{scopeID}/{itemID}/{runID}.json
-├── meta/version.json                  # Storage schema version
-├── meta/migration/log-{domain}.json   # Migration tracking per domain
-├── auth/                              # API keys, provider OAuth, MCP credentials
-├── shares/{shareID}.json
-├── holos/contacts/{id}.json
-├── holos/mailbox/{inbox|outbox}/{contactId}/{msgId}.json
-└── stats/                             # Usage statistics
-```
-
-## How to Find a Session
-
-### From the filesystem
+Preserve the target `SYNERGY_HOME` and working directory so Scope resolution matches the session.
 
 ```bash
-# Find your scope ID (SHA of project path)
-# Look in session_index for recent sessions
-ls -lt ~/.synergy/data/sessions/
-
-# All sessions in a scope
-ls ~/.synergy/data/sessions/{scopeID}/
-
-# Global lookup: sessionID → scopeID
-cat ~/.synergy/data/session_index/{sessionID}.json | jq .
-
-# Read session metadata
-cat ~/.synergy/data/sessions/{scopeID}/{sessionID}/info.json | jq .
-
-# Message count
-ls ~/.synergy/data/sessions/{scopeID}/{sessionID}/messages/ | wc -l
-
-# A message's parts
-ls ~/.synergy/data/sessions/{scopeID}/{sessionID}/messages/{messageID}/parts/
-
-# Read a part (tool call, tool result, or text)
-cat ~/.synergy/data/sessions/{scopeID}/{sessionID}/messages/{messageID}/parts/{partID}.json | jq .
+synergy session list --format json --max-count 20
+synergy session list --with-health --format json
+synergy session inspect <session-id> --json
 ```
 
-### From code
+`session inspect` reads health metadata without hydrating the message history. Supply `--scope <scope-id>` only when the global session index is missing.
 
-```ts
-import { Storage } from "@/storage/storage"
-import { StoragePath } from "@/storage/path"
-
-// Read session metadata
-const info = await Storage.read(StoragePath.sessionInfo(scopeID, sessionID))
-
-// Scan all messages in a session
-const messages = await Storage.scan(StoragePath.messages(scopeID, sessionID))
-
-// List all sessions in a scope
-const entries = await Storage.list(StoragePath.sessions(scopeID))
-
-// Read a single message
-const msg = await Storage.read(StoragePath.messageInfo(scopeID, sessionID, messageID))
-
-// Read a message part
-const part = await Storage.read(StoragePath.part(scopeID, sessionID, messageID, partID))
-```
-
-## Storage Write Properties
-
-- **Atomic writes**: Writes go to a temp file (`.tmp-{pid}-{timestamp}-{random}.json`), then `rename()` — no partial writes.
-- **Compact JSON**: Message and part writes use `{ compact: true }` (no pretty-print) for performance on the hot path.
-- **Pretty JSON**: Session metadata, config, and other writes use indented JSON for readability.
-- **Concurrent reads**: `Storage.readMany()` uses parallel reads (concurrency 32).
-
-## Key Code Files
-
-| File                                      | Purpose                                                                 |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| `packages/synergy/src/storage/storage.ts` | `Storage.read()`, `write()`, `update()`, `scan()`, `list()`, `remove()` |
-| `packages/synergy/src/storage/path.ts`    | `StoragePath` namespace — all canonical key builders                    |
-| `packages/synergy/src/global/index.ts`    | `Global.Path` — root path resolution, env vars, cache version           |
-
-## Migration System
-
-Migrations run on server startup via `migration/index.ts`. They upgrade persisted data between versions.
-
-### Domains (10 active)
-
-`session`, `scope`, `config`, `library`, `agenda`, `note`, `blueprint_loop`, `holos`, `browser`
-
-### Tracking
-
-Completed migrations are recorded in `meta/migration/log-{domain}.json`:
+For index problems, preview repairs before any mutation:
 
 ```bash
-cat ~/.synergy/data/meta/migration/log-session.json | jq .
+synergy session repair --dry-run --json
 ```
 
-### Migration Interface
+Run `--apply` or `session delete --yes` only when the user explicitly requests the state change and the inspection proves it is appropriate.
 
-```ts
-interface Migration {
-  id: string // e.g. "20260701-session-workflow-fields"
-  description: string
-  up(progress): Promise<void>
-  down?(progress): Promise<void> // Optional rollback
-  dependsOn?: string[] // DAG ordering
-  version?: string // Semver for ordering
-}
+## Inspect Raw Storage Read-only
+
+Read [Storage and paths](../../../docs/reference/storage-and-paths.md) and [Sessions and messages](../../../docs/architecture/session-and-messages.md) before interpreting records.
+
+Resolve the root as `<SYNERGY_HOME or OS home>/.synergy/data/`. Use the session index to find the owning Scope, then inspect:
+
+```text
+session_index/<session-id>.json
+sessions/<scope-id>/<session-id>/info.json
+sessions/<scope-id>/<session-id>/messages/<message-id>/info.json
+sessions/<scope-id>/<session-id>/messages/<message-id>/parts/<part-id>.json
 ```
 
-### Adding a New Migration
+Use `jq`, `rg`, `find`, and `ls` only for read-only inspection. Derive exact paths from `packages/synergy/src/storage/path.ts` when a collection name is uncertain; do not rely on an old directory diagram.
 
-1. Add the migration object to the domain's migration file (e.g., `src/session/migration.ts`)
-2. Register it: `MigrationRegistry.register("session", [...existing, newMigration])`
-3. The runner handles ordering (topological by `dependsOn` > semver by `version` > lexical by `id`)
-4. Rollback supported via `rollbackMigrations(domain, targetId)` — runs `down()` in reverse
+## Reconstruct the Invariants
 
-## Quick Reference: Path Resolution
+Check independently:
 
-In code, all paths go through `Global.Path` (`src/global/index.ts`):
+- session info readability, Scope, parent/child lineage, workflow, and `pendingReply`
+- root user message and assistant `rootID` / `parentID` semantics
+- `visible`, `includeInContext`, message `origin`, and part `origin`
+- tool-call/result pairing and terminal assistant state
+- inbox `mode` (`task`, `steer`, or `context`)
+- compaction anchor and continuation summary
+- session indexes versus readable on-disk records
+- migration log entries for the owning domain
 
-```ts
-Global.Path.data // ~/.synergy/data/
-Global.Path.log // ~/.synergy/log/
-Global.Path.state // ~/.synergy/state/
-Global.Path.config // ~/.synergy/config/
-Global.Path.cache // ~/.synergy/cache/
-Global.Path.auth // ~/.synergy/data/auth/
-```
+Use `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` when writing diagnostic code. Do not re-derive canonical semantics from retired booleans.
 
-Override with `SYNERGY_HOME` env var:
+## Protect Data
 
-```bash
-SYNERGY_HOME=/custom/path bun dev server
-# → /custom/path/.synergy/data/...
-```
+Never hand-edit a live session, copy only part of its directory tree, or delete an index to make an error disappear. Use session export/import, recovery repair, migrations, or domain APIs for changes. Stop the isolated target runtime before any raw backup; copy `library.db` only with a consistent SQLite backup workflow.
+
+Redact session content, absolute paths, credentials, and IDs before sharing evidence.
+
+## Report
+
+Return the target home/Scope, commands and records inspected, violated invariant, affected indexes or messages, repair preview, and the safest supported next action.

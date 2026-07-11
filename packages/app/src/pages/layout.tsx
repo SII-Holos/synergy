@@ -10,6 +10,7 @@ import { createStore } from "solid-js/store"
 import { showToast, Toast, toaster, setToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
@@ -124,7 +125,7 @@ export default function Layout(props: ParentProps) {
       const toastId = showToast({
         type: "warning",
         duration: 10000,
-        icon: "shield-alert",
+        icon: getSemanticIcon("permission.required"),
         title: "Permission required",
         description,
         actions: [

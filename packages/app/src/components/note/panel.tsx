@@ -67,7 +67,7 @@ type BlueprintVisualState = {
   label: string
   detail: string
   tone: "idle" | "running" | "waiting" | "auditing" | "failed" | "completed"
-  icon: string
+  icon: ReturnType<typeof getSemanticIcon>
 }
 
 function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
@@ -109,12 +109,17 @@ function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: Blueprint
       label: getLoopLabel(status),
       detail: getRunModeLabel(runMode),
       tone: getLoopTone(status),
-      icon: status === "auditing" ? "clipboard-check" : status === "waiting" ? "hourglass" : "zap",
+      icon:
+        status === "auditing"
+          ? getSemanticIcon("command.audit")
+          : status === "waiting"
+            ? getSemanticIcon("session.waiting")
+            : getSemanticIcon("command.start"),
     }
   }
   const latest = loops[0]
   if (latest?.status === "failed") {
-    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: "circle-x" }
+    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: getSemanticIcon("state.error") }
   }
   return {
     label: "Blueprint",
@@ -433,7 +438,7 @@ function RunMenu(props: {
   const options = [
     {
       mode: "current" as const,
-      icon: "square-play",
+      icon: getSemanticIcon("prompt.blueprintStart"),
       title: "Current session",
       description: props.canRunInCurrentSession
         ? "Run in the session you are viewing."
@@ -442,14 +447,14 @@ function RunMenu(props: {
     },
     {
       mode: "new" as const,
-      icon: "message-square",
+      icon: getSemanticIcon("session.new"),
       title: "New session",
       description: "Create a fresh session in this scope and start immediately.",
       disabled: false,
     },
     {
       mode: "worktree" as const,
-      icon: "git-branch",
+      icon: getSemanticIcon("workspace.worktree"),
       title: "New worktree session",
       description: props.canCreateWorktree
         ? "Create an isolated worktree session and start immediately."

@@ -1,5 +1,6 @@
 import { ErrorBoundary, type ParentProps } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { usePluginHost } from "../host"
 
 interface PluginErrorBoundaryProps extends ParentProps {
@@ -32,7 +33,7 @@ export function PluginErrorBoundary(props: PluginErrorBoundaryProps) {
         return (
           <div class="plugin-error-card">
             <div class="plugin-error-header">
-              <Icon name="alert-triangle" />
+              <Icon name={getSemanticIcon("state.error")} />
               <span>Plugin Error: {props.pluginId}</span>
               {props.componentName && <span class="plugin-error-component">{props.componentName}</span>}
             </div>
