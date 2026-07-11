@@ -6,7 +6,7 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
-import { resolveRuntimeIconState } from "@/components/status-bar-runtime"
+import { resolveRuntimeIconState } from "@/components/status-bar"
 import "./subagent-dock.css"
 
 type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>

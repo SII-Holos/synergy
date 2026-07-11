@@ -60,7 +60,6 @@ type PromptSubmitInput = {
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
-  activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
   pendingPlan: Accessor<boolean>
   clearPendingPlan: () => void
@@ -127,13 +126,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const sessions = input.sessionAttachments().slice()
     const mode = input.store.mode
     const currentContext = {
-      activeTab: prompt.context.activeTab(),
       items: prompt.context.items(),
     }
     const draftSnapshot = createPromptDraftSnapshot({
       prompt: currentPrompt,
       context: currentContext,
-      activeFile: input.activeFile(),
     })
     const failureRestoreSnapshot = createSubmitFailureRestoreSnapshot({
       prompt: currentPrompt,
@@ -186,8 +183,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         notes.length > 0 ||
         sessions.length > 0 ||
         currentContext.items.length > 0 ||
-        currentPrompt.some((part) => part.type === "file") ||
-        (!!input.activeFile() && currentContext.activeTab)
+        currentPrompt.some((part) => part.type === "file")
       if (hasContextOnlyInput) {
         showToast({
           type: "warning",
@@ -254,8 +250,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           sessions,
           fileAttachments: fileAttachmentsForTask,
           contextItems: currentContext.items,
-          activeFile: input.activeFile(),
-          activeTabIncluded: currentContext.activeTab,
         })
       : undefined
     if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
@@ -761,11 +755,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         filename: getFilename(path),
         model: { mode: "content" },
       })
-    }
-
-    const activePath = input.activeFile()
-    if (activePath && prompt.context.activeTab()) {
-      addContextFile(activePath)
     }
 
     for (const item of prompt.context.items()) {

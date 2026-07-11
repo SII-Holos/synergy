@@ -1,7 +1,7 @@
 import { createMemo, Show } from "solid-js"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useSync } from "@/context/sync"
-import { StatusBarIndicator } from "@/components/status-bar-indicator"
+import { StatusBarIndicator } from "@/components/status-bar"
 import { DialogSelectMcp } from "@/components/dialog"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { computeMcpStats } from "./session-connection-stats"

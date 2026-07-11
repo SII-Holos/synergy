@@ -1,5 +1,5 @@
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
-import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt-sanitize"
+import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt/sanitize"
 
 type FileSelection = {
   startLine: number
@@ -67,7 +67,6 @@ type ContextItem = {
 }
 
 type PromptContextSnapshot = {
-  activeTab: boolean
   items: ContextItem[]
 }
 
@@ -99,7 +98,6 @@ function sanitizePrompt(value: unknown): Prompt {
 function sanitizePromptContext(value: unknown): PromptContextSnapshot {
   const context = sanitizePromptContextValue(value)
   return {
-    activeTab: context.activeTab,
     items: sanitizeContextItems(context.items),
   }
 }
@@ -341,31 +339,18 @@ function restoreLegacyPromptDraft(parts: Part[], opts?: { directory?: string }):
   return {
     version: 1,
     prompt: sanitizePrompt([...prompt, ...attachments, ...sessionAttachments]),
-    context: {
-      activeTab: contextItems.length === 0,
-      items: contextItems,
-    },
+    context: { items: contextItems },
   }
 }
 
 export function createPromptDraftSnapshot(input: {
   prompt: Prompt
   context: PromptContextSnapshot
-  activeFile?: string
 }): PromptDraftSnapshot {
-  const prompt = sanitizePrompt(input.prompt)
-  const contextItems = [...sanitizeContextItems(input.context.items)]
-  const activeFile = input.activeFile
-  const activeFileMaterialized = input.context.activeTab && !!activeFile
-  if (activeFileMaterialized) contextItems.push({ type: "file", path: activeFile })
-
   return {
     version: 1,
-    prompt,
-    context: {
-      activeTab: activeFileMaterialized ? false : input.context.activeTab,
-      items: sanitizeContextItems(contextItems),
-    },
+    prompt: sanitizePrompt(input.prompt),
+    context: { items: sanitizeContextItems(input.context.items) },
   }
 }
 

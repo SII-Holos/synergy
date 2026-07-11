@@ -4570,6 +4570,7 @@ export type WorkspaceFileReadText = {
   totalBytes: number
   lineCount?: number
   truncated: boolean
+  truncationReason?: "size" | "range"
   nextRange?: WorkspaceFileTextRange
 }
 
@@ -10681,6 +10682,7 @@ export type WorkspaceFilesReadData = {
     offset?: number
     limit?: number
     preview?: "true" | "false"
+    mode?: "range" | "document"
   }
   url: "/workspace/files/read"
 }

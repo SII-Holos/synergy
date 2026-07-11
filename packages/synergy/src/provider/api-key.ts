@@ -341,6 +341,10 @@ export namespace Auth {
     return pool.find((item) => usablePoolEntry(item))
   }
 
+  export function hasUsableAlternative(entry: StoreEntry, credentialID: string) {
+    return materializePool(entry).some((item) => item.id !== credentialID && usablePoolEntry(item))
+  }
+
   export async function select(providerID: string): Promise<
     | {
         providerID: string

@@ -100,7 +100,7 @@ const P0_UI_FILES = [
 ]
 
 /** P0 app-side CSS files covered by the visual token contract */
-const P0_APP_FILES = ["../app/src/components/quick-actions.css"]
+const P0_APP_FILES = ["../app/src/components/prompt-input/quick-actions.css"]
 
 // ── Valid reference set (post-implementation target) ─────────
 
@@ -390,7 +390,7 @@ describe("Visual Token Contract", () => {
     })
 
     test("quick-actions.css pill 元素使用 --radius-full", async () => {
-      const css = await readFileSafe("../app/src/components/quick-actions.css")
+      const css = await readFileSafe("../app/src/components/prompt-input/quick-actions.css")
       const radiusFullRefs = (css.match(/var\(--radius-full\)/g) || []).length
       expect(radiusFullRefs, "quick-actions.css 的 pill 元素应使用 var(--radius-full)").toBeGreaterThan(0)
     })

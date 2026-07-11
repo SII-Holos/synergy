@@ -24,6 +24,7 @@ export const SemanticIconToken = {
   "workspace.branch": "git-branch",
   "workspace.add": "folder-input",
   "workspace.identity": "fingerprint",
+  "workspace.files": "folder-tree",
   "library.main": "book-open",
   "memory.main": "brain",
   "experience.main": "lightbulb",

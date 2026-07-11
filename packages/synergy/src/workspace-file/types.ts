@@ -66,6 +66,7 @@ export namespace WorkspaceFile {
       totalBytes: z.number().int().nonnegative(),
       lineCount: z.number().int().nonnegative().optional(),
       truncated: z.boolean(),
+      truncationReason: z.enum(["size", "range"]).optional(),
       nextRange: TextRange.optional(),
     })
     .meta({ ref: "WorkspaceFileReadText" })

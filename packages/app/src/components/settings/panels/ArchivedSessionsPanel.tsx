@@ -232,7 +232,7 @@ export function ArchivedSessionsPanel() {
               <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak" />
               <input
                 type="search"
-                class="min-w-0 flex-1 bg-transparent text-13-regular text-text-base outline-none placeholder:text-text-weaker"
+                class="settings-archive-control-text min-w-0 flex-1 bg-transparent text-text-base outline-none placeholder:text-text-weaker"
                 placeholder="Search archived sessions..."
                 value={search()}
                 onInput={(event) => scheduleSearch(event.currentTarget.value)}
@@ -243,7 +243,7 @@ export function ArchivedSessionsPanel() {
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <select
-                class="rounded-lg border border-border-weaker-base bg-surface-raised-base px-2.5 py-2 text-12-regular text-text-base outline-none"
+                class="settings-select rounded-lg border border-border-weaker-base bg-surface-raised-base px-2.5 py-2 text-text-base outline-none"
                 value={`${sortBy()}:${sortDir()}`}
                 onChange={(event) => {
                   const [nextSortBy, nextSortDir] = event.currentTarget.value.split(":") as [SortBy, SortDir]
@@ -271,7 +271,7 @@ export function ArchivedSessionsPanel() {
           <div class="flex flex-col gap-2 rounded-xl border border-border-weaker-base bg-surface-base/50 px-3 py-2 md:flex-row md:items-center md:justify-between">
             <button
               type="button"
-              class="flex items-center gap-2 text-left text-12-medium text-text-base disabled:cursor-not-allowed disabled:opacity-50"
+              class="settings-archive-control-label flex items-center gap-2 text-left text-text-base disabled:cursor-not-allowed disabled:opacity-50"
               disabled={items().length === 0 || busy()}
               onClick={toggleSelectVisible}
             >
@@ -302,7 +302,7 @@ export function ArchivedSessionsPanel() {
             </div>
           </div>
 
-          <div class="flex items-center justify-between text-11-regular text-text-weak">
+          <div class="settings-archive-caption flex items-center justify-between text-text-weak">
             <span>{pageLabel()}</span>
             <span>Restore keeps data; permanent deletion cannot be undone.</span>
           </div>
@@ -336,8 +336,8 @@ export function ArchivedSessionsPanel() {
                           <Icon name={getSemanticIcon("session.archive")} size="small" />
                         </div>
                         <div class="min-w-0">
-                          <div class="truncate text-13-medium text-text-base">{item.title || "Untitled session"}</div>
-                          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-11-regular text-text-weak">
+                          <div class="settings-row-title truncate">{item.title || "Untitled session"}</div>
+                          <div class="settings-archive-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-weak">
                             <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
                             <span>Archived {relativeTime(item.time.archived ?? item.time.updated)}</span>
                             <span title={formatArchivedAt(item.time.archived)}>
@@ -345,7 +345,7 @@ export function ArchivedSessionsPanel() {
                             </span>
                           </div>
                           <Show when={item.lastExchange?.user}>
-                            <div class="mt-1 line-clamp-1 text-11-regular text-text-weaker">
+                            <div class="settings-archive-caption mt-1 line-clamp-1 text-text-weaker">
                               You: {item.lastExchange!.user}
                             </div>
                           </Show>

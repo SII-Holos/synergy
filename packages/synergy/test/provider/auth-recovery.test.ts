@@ -10,6 +10,7 @@ import { tmpdir } from "../fixture/fixture"
 const PROVIDERS = [
   "test-refresh",
   "test-backup",
+  "test-api-confirm",
   "test-wrapped-api",
   "test-status",
   "test-exhausted",
@@ -75,6 +76,66 @@ test("a rejected primary API key switches to a backup within the single retry bu
   expect(keys).toEqual(["primary", "backup"])
   expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
   expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
+})
+
+test("a lone API key is invalidated only after a confirmed rejection", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "transient" })
+  let requests = 0
+
+  const recovered = await ProviderAuthRecovery.execute({
+    providerID: "test-api-confirm",
+    request: async () => new Response(null, { status: ++requests === 1 ? 401 : 200 }),
+  })
+
+  expect(recovered.status).toBe(200)
+  expect(requests).toBe(2)
+  expect(await Auth.get("test-api-confirm")).toMatchObject({ type: "api", key: "transient" })
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+    "connected",
+  )
+
+  await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
+  requests = 0
+  await expect(
+    ProviderAuthRecovery.execute({
+      providerID: "test-api-confirm",
+      request: async () => {
+        requests++
+        return new Response(null, { status: 401 })
+      },
+    }),
+  ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+  expect(requests).toBe(2)
+  expect(await Auth.get("test-api-confirm")).toBeUndefined()
+  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+    "action_required",
+  )
+})
+
+test("a lone API key confirmation retry preserves request headers and body", async () => {
+  await Auth.set("test-api-confirm", { type: "api", key: "valid" })
+  const bodies: string[] = []
+  const authorizations: string[] = []
+  let requests = 0
+  const transport = ProviderAuthRecovery.wrapFetch("test-api-confirm", async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    bodies.push(await request.text())
+    authorizations.push(new Headers(init?.headers ?? request.headers).get("authorization") ?? "")
+    return new Response(null, { status: ++requests === 1 ? 401 : 200 })
+  })
+
+  const response = await transport(
+    new Request("https://provider.test/v1/messages", {
+      method: "POST",
+      headers: { Authorization: "Bearer stale" },
+      body: JSON.stringify({ prompt: "hello" }),
+    }),
+  )
+
+  expect(response.status).toBe(200)
+  expect(bodies).toEqual(['{"prompt":"hello"}', '{"prompt":"hello"}'])
+  expect(authorizations).toEqual(["Bearer valid", "Bearer valid"])
 })
 
 test("generic SDK transport rewrites common API-key headers when selecting a backup", async () => {

@@ -115,6 +115,7 @@ export namespace WorkspaceFileRead {
       offset?: number
       limit?: number
       preview?: boolean
+      mode?: "range" | "document"
     },
     deps: {
       resolve(path: string): string
@@ -177,13 +178,34 @@ export namespace WorkspaceFileRead {
     const bytesToRead = capped ? LARGE_TEXT_PREVIEW_BYTES : info.size
     const text = await file.slice(0, bytesToRead).text()
     const lines = text.split(/\r?\n/)
+    if (input.mode === "document") {
+      return {
+        kind: "text",
+        path: info.path,
+        node: info,
+        content: text,
+        mimeType,
+        encoding: "utf-8",
+        range: {
+          offset: 0,
+          limit: Math.max(1, lines.length),
+          startLine: 1,
+          endLine: lines.length,
+        },
+        totalBytes: info.size,
+        lineCount: capped ? undefined : lines.length,
+        truncated: capped,
+        truncationReason: capped ? "size" : undefined,
+      }
+    }
+
     const offset = Math.max(0, input.offset ?? 0)
     const limit = Math.max(1, Math.min(input.limit ?? (input.preview ? 200 : DEFAULT_READ_LIMIT), 5000))
     const selected = lines.slice(offset, offset + limit)
     const endLine = offset + selected.length
     const hasMoreLines = endLine < lines.length
     const truncated = capped || hasMoreLines
-    const nextRange = truncated
+    const nextRange = hasMoreLines
       ? {
           offset: endLine,
           limit,
@@ -208,6 +230,7 @@ export namespace WorkspaceFileRead {
       totalBytes: info.size,
       lineCount: capped ? undefined : lines.length,
       truncated,
+      truncationReason: hasMoreLines ? "range" : capped ? "size" : undefined,
       nextRange,
     }
   }

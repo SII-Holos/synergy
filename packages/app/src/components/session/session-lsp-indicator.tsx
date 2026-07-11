@@ -1,6 +1,6 @@
 import { createMemo, Show } from "solid-js"
 import { useSync } from "@/context/sync"
-import { StatusBarIndicator } from "@/components/status-bar-indicator"
+import { StatusBarIndicator } from "@/components/status-bar"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { computeLspStats } from "./session-connection-stats"
 
