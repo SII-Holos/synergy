@@ -37,6 +37,7 @@
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-ui": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@pierre/diffs": "catalog:",
     "@kobalte/core": "catalog:",
     "@shikijs/transformers": "3.9.2",
     "@solid-primitives/active-element": "2.1.3",
