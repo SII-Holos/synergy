@@ -466,7 +466,7 @@ function DetailPopover(props: {
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
         <button
           type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onEdit}
           title="Edit"
         >
@@ -482,7 +482,7 @@ function DetailPopover(props: {
         <div class="flex-1" />
         <button
           type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onClose}
           title="Close"
         >
@@ -594,9 +594,9 @@ function ActionIconBtn(props: {
       type="button"
       classList={{
         "size-7 flex items-center justify-center rounded-lg transition-colors": true,
-        "text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
+        "text-icon-weak-base hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           !!props.danger && !props.loading,
-        "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !props.danger && !props.loading,
+        "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !props.danger && !props.loading,
         "opacity-40 pointer-events-none": props.loading,
       }}
       onClick={props.onClick}

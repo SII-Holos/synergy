@@ -679,19 +679,19 @@ function ScopeSection(props: {
           onClick={props.onToggle}
         >
           <span
-            class="shrink-0 text-icon-weak transition-transform duration-150"
+            class="shrink-0 text-icon-weak-base transition-transform duration-150"
             classList={{ "rotate-90": props.expanded }}
           >
             <Icon name={getSemanticIcon("navigation.expand")} size="small" />
           </span>
           <Show when={props.group.scopeType === "home"}>
-            <Icon name={getSemanticIcon("navigation.home")} size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("navigation.home")} size="small" class="text-icon-weak-base shrink-0" />
           </Show>
           <Show when={props.group.scopeType === "project" && !props.group.archived}>
-            <Icon name={getSemanticIcon("notes.folder")} size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("notes.folder")} size="small" class="text-icon-weak-base shrink-0" />
           </Show>
           <Show when={props.group.archived}>
-            <Icon name={getSemanticIcon("notes.archive")} size="small" class="text-icon-weak shrink-0" />
+            <Icon name={getSemanticIcon("notes.archive")} size="small" class="text-icon-weak-base shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
@@ -1210,7 +1210,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         <div class="flex flex-col h-full">
           <div class="shrink-0 px-4 pt-3 pb-2">
             <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
-              <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak shrink-0" />
+              <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak-base shrink-0" />
               <input
                 type="text"
                 placeholder="Search notes..."
@@ -1221,7 +1221,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               <Show when={search()}>
                 <button
                   type="button"
-                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
+                  class="flex items-center justify-center size-5 rounded-md text-icon-weak-base hover:text-icon-base transition-colors"
                   aria-label="Clear search"
                   onClick={() => setSearch("")}
                 >
@@ -1256,7 +1256,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 classList={{
                   "flex items-center justify-center size-7 rounded-lg transition-colors": true,
                   "text-icon-base bg-surface-raised-stronger-non-alpha": showArchived(),
-                  "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !showArchived(),
+                  "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !showArchived(),
                 }}
                 onClick={() => setShowArchived((v) => !v)}
                 title={showArchived() ? "Show active" : "Show archived"}
@@ -1266,7 +1266,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               <Show when={!selecting()}>
                 <button
                   type="button"
-                  class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                  class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                   onClick={() => setSelecting(true)}
                   title="Select notes"
                 >
@@ -1275,7 +1275,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               </Show>
               <button
                 type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                 onClick={() => refetch()}
                 title="Refresh"
               >
@@ -1370,7 +1370,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 when={displayGroups().length > 0}
                 fallback={
                   <div class="flex flex-col items-center justify-center py-16 gap-3">
-                    <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak" />
+                    <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak-base" />
                     <div class="text-14-medium text-text-weak">No notes found</div>
                   </div>
                 }
@@ -2287,7 +2287,7 @@ function NoteEditor(props: {
                 <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
                   <button
                     type="button"
-                    class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+                    class="flex size-4 items-center justify-center rounded-full text-icon-weak-base transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
                     onClick={() => removeTag(tag)}
                   >
                     <Icon name={getSemanticIcon("action.close")} size="small" class="size-2.5" />
@@ -2297,7 +2297,7 @@ function NoteEditor(props: {
               )}
             </For>
             <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
-              <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak shrink-0" />
+              <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak-base shrink-0" />
               <input
                 type="text"
                 class="min-w-0 flex-1 bg-transparent text-11-regular text-text-base outline-none placeholder:text-text-weaker"

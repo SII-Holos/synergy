@@ -6,7 +6,7 @@ import { PluginBuildCommand } from "../../src/cli/cmd/plugin-build"
 import { PluginCreateCommand } from "../../src/cli/cmd/plugin-create"
 import { PluginPackCommand } from "../../src/cli/cmd/plugin-pack"
 import { PluginValidateCommand } from "../../src/cli/cmd/plugin-validate"
-import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE, PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE, PLUGIN_UI_API_VERSION, PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { sha256File } from "../../../plugin-kit/src/lib/crypto"
 import { computeManifestHash, computePermissionsHash } from "../../../plugin-kit/src/lib/hash"
@@ -15,6 +15,17 @@ import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
 const templates = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon"] as const
+const themeSeeds = {
+  neutral: "#64748B",
+  primary: "#0EA5E9",
+  success: "#22C55E",
+  warning: "#F59E0B",
+  error: "#EF4444",
+  info: "#38BDF8",
+  interactive: "#0EA5E9",
+  diffAdd: "#22C55E",
+  diffDelete: "#EF4444",
+}
 
 async function linkDirectory(target: string, linkPath: string) {
   await fs.symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir")
@@ -53,6 +64,7 @@ describe("plugin scaffold toolchain", () => {
         }
         if (manifest.contributes?.ui?.entry) {
           expect(manifest.contributes.ui.entry).toMatch(/^\.\/ui\/index\.js$/)
+          expect(manifest.contributes.ui.minUIApiVersion).toBe(PLUGIN_UI_API_VERSION)
           expect(await Bun.file(path.join(pluginDir, "dist", "ui", "index.js")).exists()).toBe(true)
         }
         expect(await Bun.file(path.join(pluginDir, `${name}-0.1.0.synergy-plugin.tgz`)).exists()).toBe(true)
@@ -109,7 +121,7 @@ describe("plugin scaffold toolchain", () => {
                   group: "fixture",
                 },
               ],
-              themes: [{ id: "asset-theme", label: "Fixture", path: "./themes/default.css" }],
+              themes: [{ id: "asset-theme", label: "Fixture", path: "./themes/default.json" }],
               icons: [{ name: "asset-logo", path: "./icons/logo.svg" }],
             },
           },
@@ -144,7 +156,15 @@ export default plugin
     await Bun.write(path.join(pluginDir, "src", "settings-sandbox.js"), "export default function Settings() {}\n")
     await Bun.write(path.join(pluginDir, "skills", "frontend", "SKILL.md"), "# Frontend\n")
     await Bun.write(path.join(pluginDir, "scripts", "install.ts"), "export default async function install() {}\n")
-    await Bun.write(path.join(pluginDir, "themes", "default.css"), ":root { --asset-fixture: #2563eb; }\n")
+    await Bun.write(
+      path.join(pluginDir, "themes", "default.json"),
+      JSON.stringify({
+        name: "Fixture",
+        id: "asset-theme",
+        light: { seeds: themeSeeds },
+        dark: { seeds: themeSeeds },
+      }),
+    )
     await Bun.write(
       path.join(pluginDir, "icons", "logo.svg"),
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>\n',
@@ -163,7 +183,7 @@ export default plugin
       "dist/ui/index.js",
       "dist/skills/frontend/SKILL.md",
       "dist/scripts/install.ts",
-      "dist/themes/default.css",
+      "dist/themes/default.json",
       "dist/icons/logo.svg",
       "dist/icons/market.svg",
     ]

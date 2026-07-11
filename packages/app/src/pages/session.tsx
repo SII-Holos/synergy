@@ -1056,7 +1056,7 @@ function SessionPageContent() {
                           <Show when={conversationLoadView().type === "delayed-loading"}>
                             <button
                               type="button"
-                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
                               onClick={() => void refreshConversation()}
                             >
                               <Icon name={getSemanticIcon("action.refresh")} size="small" />
@@ -1071,7 +1071,7 @@ function SessionPageContent() {
                           <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
                             onClick={() => void refreshConversation()}
                           >
                             <Icon name={getSemanticIcon("action.refresh")} size="small" />
@@ -1087,7 +1087,7 @@ function SessionPageContent() {
                           </Show>
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base disabled:opacity-50"
                             disabled={conversationLoadView().type === "refreshing-empty"}
                             onClick={() => void refreshConversation()}
                           >
@@ -1189,7 +1189,7 @@ function SessionPageContent() {
               <span class="text-13-medium text-text-strong">{reviewCount()} Files Changed</span>
               <button
                 type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                 aria-label="Close review"
                 onClick={() => setStore("mobileReviewOpen", false)}
               >

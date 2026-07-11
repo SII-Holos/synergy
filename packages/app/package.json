@@ -9,6 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsgo -b",
+    "test": "bun script/test.ts",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",

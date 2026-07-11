@@ -32,13 +32,13 @@ const MODE_CONFIG = {
   removed: {
     icon: "action.remove" as const,
     prefix: "\u2212",
-    iconClass: "text-icon-weak opacity-50",
+    iconClass: "text-icon-weak-base opacity-50",
     containerClass: "",
   },
   unchanged: {
     icon: "state.empty" as const,
     prefix: "\u003D",
-    iconClass: "text-icon-weak",
+    iconClass: "text-icon-weak-base",
     containerClass: "",
   },
 } as const
@@ -92,7 +92,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
 
   const iconCircleClass = (mode: string) =>
     `inline-flex size-5 shrink-0 items-center justify-center rounded-full mt-px ${
-      mode === "added" ? "bg-surface-success-soft" : "bg-surface-muted"
+      mode === "added" ? "bg-surface-success-weak" : "bg-surface-weak"
     }`
 
   const titleClassForMode = (mode: string) =>
@@ -100,7 +100,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
       mode === "removed"
         ? "text-text-weak opacity-50 line-through"
         : mode === "added"
-          ? "text-text-success"
+          ? "text-text-on-success-base"
           : "text-text-base"
     }`
 
@@ -119,7 +119,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
                 <Icon
                   name={getSemanticIcon(categoryIcon(group.category))}
                   size="small"
-                  class="shrink-0 text-icon-weak"
+                  class="shrink-0 text-icon-weak-base"
                 />
                 <p class="text-12-medium text-text-weak uppercase tracking-wider">
                   {group.label}

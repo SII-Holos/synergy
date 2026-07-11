@@ -84,8 +84,8 @@ function Action(props: { icon: IconName; label?: string; title?: string; disable
       type="button"
       classList={{
         "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-13-medium transition-colors": true,
-        "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !props.disabled,
-        "text-icon-weaker": !!props.disabled,
+        "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !props.disabled,
+        "text-icon-weak-base": !!props.disabled,
       }}
       disabled={props.disabled}
       onClick={props.onClick}
@@ -156,7 +156,7 @@ function Card(props: {
       onClick={props.onClick}
     >
       <Show when={props.icon}>
-        <Icon name={props.icon!} size="normal" class="text-icon-weak shrink-0" />
+        <Icon name={props.icon!} size="normal" class="text-icon-weak-base shrink-0" />
       </Show>
       <div class="flex-1 min-w-0">
         <div class="text-14-medium text-text-strong truncate">{props.title}</div>
@@ -219,7 +219,7 @@ function Empty(props: { icon: IconName; title: string; description?: string; act
       class="flex flex-col items-center justify-center py-16 gap-3"
       style={{ animation: "fadeUp 0.4s ease-out 0.1s both" }}
     >
-      <Icon name={props.icon} size="large" class="text-icon-weak" />
+      <Icon name={props.icon} size="large" class="text-icon-weak-base" />
       <div class="text-center">
         <div class="text-14-medium text-text-weak">{props.title}</div>
         <Show when={props.description}>

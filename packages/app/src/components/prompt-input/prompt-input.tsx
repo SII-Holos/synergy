@@ -140,7 +140,7 @@ function WorkflowChip(props: {
             class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity"
             classList={{ "group-hover:opacity-0": !props.working() }}
           >
-            <Icon name={props.icon} size="small" class="text-icon-weak" />
+            <Icon name={props.icon} size="small" class="text-icon-weak-base" />
           </span>
           <span
             class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity"
@@ -803,7 +803,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             iconClass: lightLoopActive()
               ? "text-icon-base"
               : blueprintModeLocked()
-                ? "text-icon-weak"
+                ? "text-icon-weak-base"
                 : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": lightLoopActive(),
@@ -829,7 +829,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     ? "Plan is unavailable while Lattice is active"
                     : undefined,
             tooltip: blueprintModeLocked() ? "Plan is unavailable while a Blueprint is equipped" : undefined,
-            iconClass: planActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            iconClass: planActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
             labelClass: blueprintModeLocked() || latticeActive() || lightLoopActive() ? "text-text-weak" : undefined,
             classList: {
               "bg-workbench-selected-bg": planActive(),
@@ -846,7 +850,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             selected: latticeActive(),
             ariaDisabled: latticeMenuState.ariaDisabled,
             title: latticeMenuState.title,
-            iconClass: latticeActive() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+            iconClass: latticeActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
             classList: {
               "bg-workbench-selected-bg": latticeActive(),
               "text-text-base": latticeActive(),
@@ -1650,7 +1658,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <Icon
                             name={getSemanticIcon("navigation.collapse")}
                             size="small"
-                            class="text-icon-weak shrink-0"
+                            class="text-icon-weak-base shrink-0"
                           />
                         </button>
                       }

@@ -8,7 +8,8 @@ import {
   rewritePluginSolidImports,
   hasUnsupportedSolidRuntimeImport,
   hasBundledSolidRuntime,
-} from "@ericsanchezok/synergy-plugin"
+} from "@ericsanchezok/synergy-plugin/loader"
+import { PLUGIN_UI_API_VERSION } from "@ericsanchezok/synergy-plugin/version"
 
 type SharedSolidRuntime = {
   solid: typeof SolidRuntime
@@ -42,7 +43,7 @@ function sharedSolidRuntime(): SharedSolidRuntime {
 }
 
 /** Current UI API version this host supports. */
-export const CURRENT_UI_API_VERSION = "3.0"
+export const CURRENT_UI_API_VERSION = PLUGIN_UI_API_VERSION
 
 /** Check if a plugin's required UI API version is compatible with the host. */
 export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string): boolean {

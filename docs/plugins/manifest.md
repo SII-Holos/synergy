@@ -170,9 +170,11 @@ Manifest agents declare name, description, mode (`subagent`, `primary`, or `all`
 - declarative or Solid settings
 - message and composer slots
 - UI commands
-- themes and icons
+- structured JSON themes and SVG icons
 
 Solid surfaces require a built `.js` `entry` and `minUIApiVersion`. Declarative renderer fallbacks, form-schema settings, themes, and icons can exist without a JS entry when no Solid export is needed. See [UI contributions](ui-contributions.md).
+
+Theme declarations use `{ id, label, path }`, where `path` references a packaged `.json` theme containing light and dark seed palettes plus optional canonical-token overrides. The Web host validates and resolves the asset; theme declarations cannot load arbitrary CSS.
 
 ## Lifecycle and Runtime Preference
 

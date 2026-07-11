@@ -41,7 +41,7 @@ The build must externalize `solid-js`, `solid-js/web`, `solid-js/store`, and sup
 | `messageSlots`    | Add content at a named message slot  | Yes                                              |
 | `composerSlots`   | Add content around the composer      | Yes                                              |
 | `commands`        | Register a Web UI command            | Yes                                              |
-| `themes`          | Register packaged theme CSS          | No                                               |
+| `themes`          | Register a structured JSON theme     | No                                               |
 | `icons`           | Register packaged SVG icons          | No                                               |
 
 Surface IDs are namespaced by the host as `<plugin-id>:<surface-id>`. Navigation routes are generated under `/plugins/<plugin-id>/<navigation-id>`.
@@ -123,7 +123,50 @@ Slots should remain small and contextual. A surface that needs its own navigatio
 
 UI commands expose a label, optional description/icon, and named command export. They are registered in the host command registry under the plugin namespace.
 
-Themes are packaged CSS assets. Preserve the Web product polarity rule: in dark mode, content and selected surfaces step brighter than their container; in light mode, they step darker. Use host tokens where available and scope plugin selectors to avoid global overrides.
+Themes are packaged JSON assets with complete light and dark seed palettes. The host validates the theme, generates every canonical color token through the shared resolver, namespaces the selected theme ID, and applies the same runtime path used by the built-in Synergy theme.
+
+```jsonc
+{
+  "themes": [{ "id": "ocean", "label": "Ocean", "path": "./themes/ocean.json" }],
+}
+```
+
+The referenced JSON uses this shape:
+
+```jsonc
+{
+  "name": "Ocean",
+  "id": "ocean",
+  "light": {
+    "seeds": {
+      "neutral": "#64748B",
+      "primary": "#0284C7",
+      "success": "#16A34A",
+      "warning": "#D97706",
+      "error": "#DC2626",
+      "info": "#0EA5E9",
+      "interactive": "#0284C7",
+      "diffAdd": "#16A34A",
+      "diffDelete": "#DC2626",
+    },
+  },
+  "dark": {
+    "seeds": {
+      "neutral": "#94A3B8",
+      "primary": "#38BDF8",
+      "success": "#4ADE80",
+      "warning": "#FBBF24",
+      "error": "#F87171",
+      "info": "#38BDF8",
+      "interactive": "#38BDF8",
+      "diffAdd": "#4ADE80",
+      "diffDelete": "#F87171",
+    },
+  },
+}
+```
+
+Each variant may add `overrides` keyed only by canonical theme token names. Hex values and `var(--token)` references are accepted; unknown keys and arbitrary CSS are rejected. Preserve the Web polarity rule and verify common text/surface pairs at WCAG AA contrast. Use the plugin-kit `theme-icon` template as the current schema example. CSS-based theme contributors should follow [the structured-theme migration](../migrations/plugin-theme-json.md).
 
 Icons are packaged SVG assets loaded into the plugin icon registry. Treat SVG as code-bearing input: ship static reviewed assets, avoid remote fetches, and keep names plugin-specific.
 
@@ -141,5 +184,5 @@ One missing export or invalid surface is reported against that plugin. Reloading
 - Keep tool results meaningful without custom UI.
 - Use host navigation and workbench contracts instead of recreating them.
 - Keep keyboard, focus, loading, empty, error, and narrow-layout states usable.
-- Package every referenced JS, CSS, and SVG asset; never rely on source paths after build.
+- Package every referenced JS, JSON, CSS, and SVG asset; never rely on source paths after build.
 - Validate exports and build output before installation.

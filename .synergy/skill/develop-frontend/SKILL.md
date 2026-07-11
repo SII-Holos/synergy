@@ -43,12 +43,27 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
 
+## Change Themes and Color Tokens
+
+1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
+2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
+3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
+4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
+5. Plugin themes are complete structured JSON themes validated by the same schema and resolved by the same runtime. Do not add arbitrary plugin CSS theme overrides or theme-only token paths.
+6. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
+
+```bash
+bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
+bun test --cwd packages/app src/testing/color-token-contract.test.ts
+```
+
 ## Verify
 
 1. Run the narrow component, model, or context test first.
 2. Run:
 
 ```bash
+bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/app build

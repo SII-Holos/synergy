@@ -40,9 +40,9 @@ const ACTIVE_STATUSES = new Set(["active", "paused"])
 function stepBadgeClass(status: LatticeStep["status"]): string {
   switch (status) {
     case "completed":
-      return "text-text-success-base"
+      return "text-text-on-success-base"
     case "failed":
-      return "text-text-error-base"
+      return "text-text-on-critical-base"
     case "running":
       return "text-text-interactive-base"
     case "cancelled":
@@ -138,7 +138,7 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
             </span>
             <span class="text-text-weak">{r().phase}</span>
             <Show when={r().status === "paused"}>
-              <span class="text-text-warning-base">paused{r().statusReason ? ` (${r().statusReason})` : ""}</span>
+              <span class="text-text-on-warning-base">paused{r().statusReason ? ` (${r().statusReason})` : ""}</span>
             </Show>
             <span class="ml-auto text-text-weak">
               {steps(r()).filter((s) => s.status === "completed").length}/{steps(r()).length} · calls{" "}

@@ -35,6 +35,7 @@ Note and Blueprint detail headers should use flat toolbar controls with compact 
 Keep dense surfaces quiet enough for repeated daily use.
 Use one neutral surface system: light mode reads as a near-white canvas with white or transparent rows, hairline borders, and very light hover/selected fills; dark mode reads inward by getting brighter than its shell.
 Treat that surface model as a hierarchy invariant, not a per-page decoration choice; if a page drifts blue-gray or slab-heavy, audit the token source first, then the component consumer.
+Treat the semantic color palette as one complete theme contract. Every product color utility must resolve through that contract in light and dark mode; alternate themes change seeds or declared semantic overrides without bypassing the token graph. Generated boot fallbacks, runtime colors, and utility mappings must stay visually equivalent. Common text/background and status foreground/surface pairs meet WCAG AA contrast in every supported theme.
 
 ## Interaction & Visual Principles
 

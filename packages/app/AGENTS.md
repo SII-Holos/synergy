@@ -43,6 +43,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 Run the narrow UI/context test first, then:
 
 ```bash
+bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/app build
 bun run quality:quick

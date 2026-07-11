@@ -89,7 +89,7 @@ export function PermissionModeSelector(props: {
             )}
           </List>
           <Show when={props.working()}>
-            <div class="px-3 pb-2 text-11-regular text-text-warning">
+            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">
               Stop the session before changing permission mode.
             </div>
           </Show>

@@ -4,6 +4,7 @@ import { synergyTheme } from "./default-themes"
 import { resolveThemeVariant, themeToCss } from "./resolve"
 import { createSimpleContext } from "../context/helper"
 import { getPluginTheme, listThemeChoices, subscribePluginThemes } from "./plugin-theme-registry"
+import type { Theme } from "./types"
 import {
   COLOR_SCHEME_STORAGE_KEY,
   getSavedColorScheme,
@@ -13,7 +14,6 @@ import {
 } from "./color-scheme"
 
 const THEME_STYLE_ID = "synergy-theme"
-const PLUGIN_THEME_LINK_ID = "synergy-plugin-theme"
 
 function ensureThemeStyleElement(): HTMLStyleElement {
   const existing = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null
@@ -24,23 +24,13 @@ function ensureThemeStyleElement(): HTMLStyleElement {
   return element
 }
 
-function ensurePluginThemeLinkElement(): HTMLLinkElement {
-  const existing = document.getElementById(PLUGIN_THEME_LINK_ID) as HTMLLinkElement | null
-  if (existing) return existing
-  const element = document.createElement("link")
-  element.id = PLUGIN_THEME_LINK_ID
-  element.rel = "stylesheet"
-  document.head.appendChild(element)
-  return element
-}
-
 function applyBootShellColorScheme(mode: "light" | "dark") {
   document.documentElement.dataset.synergyColorScheme = mode
 }
 
-function applyThemeCss(mode: "light" | "dark") {
+function applyThemeCss(theme: Theme, mode: "light" | "dark", themeId = theme.id) {
   const isDark = mode === "dark"
-  const variant = isDark ? synergyTheme.dark : synergyTheme.light
+  const variant = isDark ? theme.dark : theme.light
   const tokens = resolveThemeVariant(variant, isDark)
   const css = themeToCss(tokens)
 
@@ -52,21 +42,8 @@ function applyThemeCss(mode: "light" | "dark") {
 
   ensureThemeStyleElement().textContent = fullCss
   document.documentElement.dataset.colorScheme = mode
+  document.documentElement.dataset.theme = themeId
   applyBootShellColorScheme(mode)
-}
-
-function applyPluginThemeCss(themeId: string) {
-  const pluginTheme = getPluginTheme(themeId)
-  const existing = document.getElementById(PLUGIN_THEME_LINK_ID) as HTMLLinkElement | null
-  if (!pluginTheme?.cssUrl) {
-    existing?.remove()
-    document.documentElement.dataset.theme = synergyTheme.id
-    return
-  }
-
-  const link = ensurePluginThemeLinkElement()
-  link.href = pluginTheme.cssUrl
-  document.documentElement.dataset.theme = pluginTheme.id
 }
 
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
@@ -78,7 +55,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mode: resolveColorSchemeMode(initialColorScheme),
       themeId: synergyTheme.id,
     })
-    applyThemeCss(resolveColorSchemeMode(initialColorScheme))
+    applyThemeCss(synergyTheme, resolveColorSchemeMode(initialColorScheme))
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
 
     onMount(() => {
@@ -96,17 +73,14 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     })
 
     createEffect(() => {
-      applyThemeCss(store.mode)
-    })
-
-    createEffect(() => {
       themeRegistryVersion()
       const activeId = store.themeId || synergyTheme.id
-      if (activeId !== synergyTheme.id && !getPluginTheme(activeId)) {
+      const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
+      if (activeId !== synergyTheme.id && !pluginTheme) {
         setStore("themeId", synergyTheme.id)
         return
       }
-      applyPluginThemeCss(activeId)
+      applyThemeCss(pluginTheme?.theme ?? synergyTheme, store.mode, activeId)
     })
 
     const setColorScheme = (scheme: ColorScheme) => {
@@ -124,7 +98,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     return {
       colorScheme: () => store.colorScheme,
       mode: () => store.mode,
-      theme: () => synergyTheme,
+      theme: () => getPluginTheme(store.themeId)?.theme ?? synergyTheme,
       themeId: () => store.themeId,
       themes: () => {
         themeRegistryVersion()

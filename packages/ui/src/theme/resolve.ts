@@ -1,5 +1,6 @@
-import type { ColorValue, Theme, HexColor, ResolvedTheme, ThemeVariant } from "./types"
+import type { ColorValue, Theme, HexColor, ResolvedTheme, ThemeToken, ThemeVariant } from "./types"
 import { generateNeutralScale, generateScale, hexToOklch, oklchToHex, withAlpha } from "./color"
+import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens"
 
 export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): ResolvedTheme {
   const { seeds, overrides = {} } = variant
@@ -19,7 +20,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   const neutralSelectionBorder = (darkAlpha: number, lightAlpha: number) =>
     withAlpha(neutral[11], isDark ? darkAlpha : lightAlpha) as ColorValue
 
-  const tokens: ResolvedTheme = {}
+  const tokens = {} as ResolvedTheme
 
   tokens["background-base"] = neutral[0]
   tokens["background-weak"] = layer(1, 1)
@@ -62,8 +63,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-interactive-hover"] = interactive[3]
   tokens["surface-interactive-weak"] = interactive[1]
   tokens["surface-interactive-weak-hover"] = interactive[2]
-  tokens["surface-interactive-solid"] = interactive[8]
-  tokens["surface-interactive-solid-hover"] = interactive[9]
+  tokens["surface-interactive-solid"] = interactive[isDark ? 6 : 10]
+  tokens["surface-interactive-solid-hover"] = interactive[isDark ? 7 : 11]
   tokens["surface-interactive-selected"] = layer(5, 4)
   tokens["surface-interactive-selected-weak"] = layer(4, 3)
 
@@ -120,8 +121,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-base"] = neutralAlpha[10]
   tokens["text-on-interactive-base"] = isDark ? neutral[11] : neutral[0]
   tokens["text-on-interactive-weak"] = neutralAlpha[10]
-  tokens["text-on-success-base"] = success[isDark ? 8 : 9]
-  tokens["text-on-critical-base"] = error[isDark ? 8 : 9]
+  tokens["text-on-success-base"] = success[isDark ? 8 : 10]
+  tokens["text-on-critical-base"] = error[isDark ? 8 : 10]
   tokens["text-on-critical-weak"] = error[7]
   tokens["text-on-critical-strong"] = error[11]
   tokens["text-on-warning-base"] = neutralAlpha[10]
@@ -301,11 +302,38 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["avatar-text-cyan"] = isDark ? "#369eff" : "#0894b3"
   tokens["avatar-text-lime"] = isDark ? "#c4f042" : "#5d770d"
 
-  for (const [key, value] of Object.entries(overrides)) {
+  for (const [key, value] of Object.entries(overrides) as Array<[ThemeToken, ColorValue]>) {
     tokens[key] = value
   }
 
+  assertResolvedTheme(tokens)
   return tokens
+}
+
+function assertResolvedTheme(tokens: ResolvedTheme) {
+  const actual = Object.keys(tokens)
+  const missing = THEME_TOKEN_NAMES.filter((token) => !(token in tokens))
+  const unknown = actual.filter((token) => !THEME_TOKEN_SET.has(token))
+  if (missing.length > 0 || unknown.length > 0) {
+    throw new Error(`Theme token contract mismatch: missing [${missing.join(", ")}], unknown [${unknown.join(", ")}]`)
+  }
+
+  const visiting = new Set<ThemeToken>()
+  const visited = new Set<ThemeToken>()
+  const visit = (token: ThemeToken, path: ThemeToken[]) => {
+    if (visited.has(token)) return
+    if (visiting.has(token)) throw new Error(`Cyclic theme token reference: ${[...path, token].join(" -> ")}`)
+    visiting.add(token)
+    const value = tokens[token]
+    const referenced = value.match(/^var\(--([a-z0-9-]+)\)$/)?.[1]
+    if (referenced) {
+      if (!THEME_TOKEN_SET.has(referenced)) throw new Error(`Unknown theme token reference: ${referenced}`)
+      visit(referenced as ThemeToken, [...path, token])
+    }
+    visiting.delete(token)
+    visited.add(token)
+  }
+  for (const token of THEME_TOKEN_NAMES) visit(token, [])
 }
 
 function generateNeutralAlphaScale(neutralScale: HexColor[], isDark: boolean): HexColor[] {

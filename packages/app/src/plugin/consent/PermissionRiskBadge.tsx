@@ -9,19 +9,19 @@ const RISK_CONFIG = {
   low: {
     label: "Low",
     icon: "state.success" as const,
-    containerClass: "bg-surface-success-soft text-text-success",
+    containerClass: "bg-surface-success-weak text-text-on-success-base",
     iconClass: "text-icon-success-base",
   },
   medium: {
     label: "Medium",
     icon: "state.warning" as const,
-    containerClass: "bg-surface-warning-soft text-text-warning",
+    containerClass: "bg-surface-warning-weak text-text-on-warning-base",
     iconClass: "text-icon-warning-base",
   },
   high: {
     label: "High",
     icon: "state.error" as const,
-    containerClass: "bg-surface-critical-soft text-text-critical",
+    containerClass: "bg-surface-critical-weak text-text-on-critical-base",
     iconClass: "text-icon-critical-base",
   },
 } as const

@@ -10,7 +10,7 @@ import {
 } from "solid-js"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
-import { registerPluginTheme } from "@ericsanchezok/synergy-ui/theme"
+import { parseTheme, registerPluginTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
@@ -51,7 +51,7 @@ function pluginNavigationPath(pluginId: string, navigationId: string) {
   return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(navigationId)}`
 }
 
-function registerPluginSurfaces(contributions: PluginContribution[]) {
+async function registerPluginSurfaces(contributions: PluginContribution[]) {
   const disposersByPlugin = new Map<string, Array<() => void>>()
   const uiErrors: PluginUIError[] = []
 
@@ -264,14 +264,25 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
     }
 
     for (const theme of ui.themes ?? []) {
-      disposers.push(
-        registerPluginTheme({
-          id: pluginSurfaceId(contribution.pluginId, theme.id),
-          label: theme.label,
-          cssUrl: assetUrl(contribution, theme.path),
-          pluginId: contribution.pluginId,
-        }),
-      )
+      try {
+        const response = await fetch(assetUrl(contribution, theme.path))
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const parsed = parseTheme(await response.json())
+        const id = pluginSurfaceId(contribution.pluginId, theme.id)
+        disposers.push(
+          registerPluginTheme({
+            id,
+            label: theme.label,
+            theme: parsed,
+            pluginId: contribution.pluginId,
+          }),
+        )
+      } catch (error) {
+        addError(
+          contribution.pluginId,
+          `Theme "${theme.id}" failed to load: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
     }
 
     for (const icon of ui.icons ?? []) {
@@ -339,7 +350,7 @@ export function PluginHostProvider(props: ParentProps) {
     try {
       const contributions = await fetchUIContributions(url)
       disposeRegisteredSurfaces()
-      const registered = registerPluginSurfaces(contributions)
+      const registered = await registerPluginSurfaces(contributions)
       disposePluginSurfaces = Array.from(registered.disposersByPlugin.values()).flat()
 
       batch(() => {

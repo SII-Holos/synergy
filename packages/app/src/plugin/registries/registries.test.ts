@@ -43,7 +43,7 @@ import { registerSettingsSection, getSettingsSections, getSettingsSection } from
 import { BUILTIN_SETTINGS_IDS } from "@/components/settings/catalog"
 
 // ── Theme Registry ─────────────────────────────────────────────────
-import { registerPluginTheme, listPluginThemes, getPluginTheme } from "@ericsanchezok/synergy-ui/theme"
+import { registerPluginTheme, listPluginThemes, getPluginTheme, synergyTheme } from "@ericsanchezok/synergy-ui/theme"
 
 // ── Icon Registry ──────────────────────────────────────────────────
 import { registerIcon, getIcon, hasIcon, listIcons } from "./icon-registry"
@@ -589,7 +589,7 @@ describe("PluginThemeRegistry", () => {
     const disposer = registerPluginTheme({
       id: "custom-theme",
       label: "Custom Theme",
-      cssUrl: "/theme.css",
+      theme: synergyTheme,
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
@@ -601,7 +601,7 @@ describe("PluginThemeRegistry", () => {
     const disposer = registerPluginTheme({
       id: "temp-theme",
       label: "Temporary",
-      cssUrl: "/temp.css",
+      theme: synergyTheme,
     })
     expect(getPluginTheme("temp-theme")).toBeDefined()
     disposer()
@@ -609,8 +609,8 @@ describe("PluginThemeRegistry", () => {
   })
 
   test("listPluginThemes includes added themes sorted by label", () => {
-    const disposeB = registerPluginTheme({ id: "theme-b", label: "B", cssUrl: "/b.css", pluginId: "p1" })
-    const disposeA = registerPluginTheme({ id: "theme-a", label: "A", cssUrl: "/a.css", pluginId: "p1" })
+    const disposeB = registerPluginTheme({ id: "theme-b", label: "B", theme: synergyTheme, pluginId: "p1" })
+    const disposeA = registerPluginTheme({ id: "theme-a", label: "A", theme: synergyTheme, pluginId: "p1" })
     const list = listPluginThemes().filter((theme) => theme.id === "theme-a" || theme.id === "theme-b")
     expect(list.map((theme) => theme.id)).toEqual(["theme-a", "theme-b"])
     disposeA()
@@ -622,8 +622,8 @@ describe("PluginThemeRegistry", () => {
   })
 
   test("duplicate registration replaces previous without crashing", () => {
-    const disposeFirst = registerPluginTheme({ id: "dup-theme", label: "First", cssUrl: "/first.css" })
-    const disposeSecond = registerPluginTheme({ id: "dup-theme", label: "Second", cssUrl: "/second.css" })
+    const disposeFirst = registerPluginTheme({ id: "dup-theme", label: "First", theme: synergyTheme })
+    const disposeSecond = registerPluginTheme({ id: "dup-theme", label: "Second", theme: synergyTheme })
     const theme = getPluginTheme("dup-theme")
     expect(theme!.label).toBe("Second")
     expect(listPluginThemes().filter((item) => item.id === "dup-theme").length).toBe(1)

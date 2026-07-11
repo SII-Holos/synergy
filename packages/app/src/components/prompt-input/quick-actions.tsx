@@ -216,7 +216,7 @@ export function QuickActions(props: QuickActionsProps) {
         <button
           type="button"
           disabled={props.disabled}
-          class="qa-trigger flex items-center justify-center size-6 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover active:scale-90 transition-all shadow-xs"
+          class="qa-trigger flex items-center justify-center size-6 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover active:scale-90 transition-all shadow-xs"
           onClick={() => setOpen(!open())}
         >
           <Icon name={open() ? "chevron-down" : "chevron-up"} size="small" />

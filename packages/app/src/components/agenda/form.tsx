@@ -385,7 +385,7 @@ export function AgendaForm(props: {
                   <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
                   <button
                     type="button"
-                    class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
+                    class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak-base hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
                     onClick={() => {
                       setHasSchedule(false)
                       setRepeatMode("off")
@@ -485,7 +485,7 @@ export function AgendaForm(props: {
               <span class="text-12-medium text-text-strong">Advanced settings</span>
               <span class="text-11-regular text-text-weaker truncate">Scope and run options.</span>
             </span>
-            <div class="shrink-0 text-icon-weak">
+            <div class="shrink-0 text-icon-weak-base">
               <Icon name={showAdvanced() ? "chevron-up" : "chevron-down"} size="small" />
             </div>
           </button>
@@ -813,7 +813,7 @@ function RepeatControl(props: {
             onClick={() => setUnitOpen((v) => !v)}
           >
             {props.unit}
-            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+            <Icon name="chevron-down" size="small" class="text-icon-weak-base" />
           </button>
           <Show when={unitOpen()}>
             <div class="agenda-picker-popover agenda-menu-popover">
@@ -922,7 +922,7 @@ function ScopePicker(props: {
         onClick={() => setOpen((v) => !v)}
       >
         <span class="truncate">{activeLabel()}</span>
-        <Icon name="chevron-down" size="small" class="shrink-0 text-icon-weak" />
+        <Icon name="chevron-down" size="small" class="shrink-0 text-icon-weak-base" />
       </button>
 
       <Show when={open()}>

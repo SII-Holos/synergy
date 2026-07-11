@@ -37,3 +37,5 @@ export {
 } from "./plugin-theme-registry"
 
 export { synergyTheme } from "./default-themes"
+export { ThemeSchema, parseTheme } from "./schema"
+export { THEME_TOKEN_NAMES, THEME_TOKEN_SET, type ThemeTokenName } from "./tokens"

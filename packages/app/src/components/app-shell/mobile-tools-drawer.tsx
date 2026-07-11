@@ -44,7 +44,7 @@ export function MobileToolsDrawer() {
             <span class="text-14-medium text-text-strong">Tools</span>
             <button
               type="button"
-              class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+              class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
               <Icon name={getSemanticIcon("action.close")} size="normal" />

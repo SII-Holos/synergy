@@ -35,7 +35,6 @@ import {
   PluginComposerSlotBridge,
   PluginThemeConfigBridge,
   PluginHostProvider,
-  PluginDetailPage,
   BuiltinNavigationPage,
   PluginNavigationPage,
 } from "@/plugin"
@@ -65,6 +64,11 @@ const Session = lazy(async () => {
   const session = await import("@/pages/session")
   signalAppSurfaceReady()
   return session
+})
+
+const PluginDetailPage = lazy(async () => {
+  const pluginDetail = await import("@/plugin/marketplace/PluginDetailPage")
+  return { default: pluginDetail.PluginDetailPage }
 })
 
 const Loading = () => (
@@ -192,7 +196,7 @@ function ConnectedApp() {
               </Match>
               <Match when={startupView() === "ready"}>
                 <Show when={showModelReadyWarning()}>
-                  <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-soft text-text-warning">
+                  <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-weak text-text-on-warning-base">
                     <span>⚠</span>
                     <span>
                       AI model not configured — run{" "}

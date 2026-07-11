@@ -72,7 +72,16 @@ Other package tests can run through Turbo or their package scripts:
 ```bash
 bun turbo test
 bun run desktop:test
+bun run --cwd packages/app test
 bun run --cwd packages/ui test
+```
+
+The App and shared UI package scripts are part of the Turbo test graph. The App runner isolates its production CSS build contract from ordinary unit tests. The UI runner executes ordinary suites together and isolates the session-turn timeline suite so its global module mocks cannot contaminate neighboring tests.
+
+Theme source changes also regenerate the static boot fallback, Tailwind color mappings, and JSON schema from the canonical token catalog:
+
+```bash
+bun run --cwd packages/ui generate:theme
 ```
 
 Write behavior tests around public invariants. Avoid source-text assertions that fail when an implementation is refactored without changing behavior.

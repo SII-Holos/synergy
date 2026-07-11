@@ -318,7 +318,7 @@ export const Terminal = (props: TerminalProps) => {
     >
       <div ref={container} class="size-full px-6 py-3" />
       <Show when={!connected()}>
-        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background/80 pointer-events-none">
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background-base/80 pointer-events-none">
           <span class="text-muted-foreground text-sm">{gone() ? "Session lost" : "Reconnecting..."}</span>
         </div>
       </Show>

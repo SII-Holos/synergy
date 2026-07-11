@@ -109,7 +109,7 @@ describe("app boot shell", () => {
     expect(createStoreIndex).toBeGreaterThan(initialSchemeIndex)
     expect(themeContext).toContain("colorScheme: initialColorScheme")
     expect(themeContext).toContain("mode: resolveColorSchemeMode(initialColorScheme)")
-    expect(themeContext).toContain("applyThemeCss(resolveColorSchemeMode(initialColorScheme))")
+    expect(themeContext).toContain("applyThemeCss(synergyTheme, resolveColorSchemeMode(initialColorScheme))")
     expect(themeContext).toContain("document.documentElement.dataset.colorScheme = mode")
     expect(themeContext).toContain("document.documentElement.dataset.synergyColorScheme = mode")
     expect(themeContext).not.toContain('colorScheme: "system" as ColorScheme')

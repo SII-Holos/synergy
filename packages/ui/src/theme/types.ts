@@ -1,3 +1,5 @@
+import type { ThemeTokenName } from "./tokens"
+
 export type HexColor = `#${string}`
 
 export interface OklchColor {
@@ -20,7 +22,7 @@ export interface ThemeSeedColors {
 
 export interface ThemeVariant {
   seeds: ThemeSeedColors
-  overrides?: Record<string, ColorValue>
+  overrides?: Partial<Record<ThemeTokenName, ColorValue>>
 }
 
 export interface Theme {
@@ -44,10 +46,10 @@ export type TokenCategory =
   | "diff"
   | "avatar"
 
-export type ThemeToken = string
+export type ThemeToken = ThemeTokenName
 
 export type CssVarRef = `var(--${string})`
 
 export type ColorValue = HexColor | CssVarRef
 
-export type ResolvedTheme = Record<ThemeToken, ColorValue>
+export type ResolvedTheme = Record<ThemeTokenName, ColorValue>

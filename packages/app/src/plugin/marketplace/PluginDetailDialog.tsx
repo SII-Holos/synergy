@@ -291,7 +291,7 @@ export function PluginDetailDialog(props: {
             when={plugin()}
             fallback={
               <div class="plugin-detail-empty">
-                <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak" />
+                <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
                 <span class="plugin-detail-empty-title">Plugin not found</span>
                 <span class="plugin-detail-empty-text">{props.pluginId} does not exist in this registry.</span>
               </div>

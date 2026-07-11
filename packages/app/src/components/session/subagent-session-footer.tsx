@@ -92,7 +92,7 @@ export function SubagentSessionFooter(props: {
   const statusInfo = createMemo(() => {
     const rs = retryStatus()
     if (rs) {
-      return { label: `Retry #${rs.attempt}`, tone: "text-text-critical-base", dot: "bg-icon-critical-base" }
+      return { label: `Retry #${rs.attempt}`, tone: "text-text-on-critical-base", dot: "bg-icon-critical-base" }
     }
     switch (props.cortex.status) {
       case "queued":
@@ -100,9 +100,9 @@ export function SubagentSessionFooter(props: {
       case "running":
         return { label: "Running", tone: "text-text-interactive-base", dot: "bg-text-interactive-base" }
       case "completed":
-        return { label: "Completed", tone: "text-text-success", dot: "bg-border-success-base" }
+        return { label: "Completed", tone: "text-text-on-success-base", dot: "bg-border-success-base" }
       case "error":
-        return { label: "Error", tone: "text-text-critical", dot: "bg-icon-critical-base" }
+        return { label: "Error", tone: "text-text-on-critical-base", dot: "bg-icon-critical-base" }
       case "cancelled":
         return { label: "Cancelled", tone: "text-text-subtle", dot: "bg-text-subtle" }
     }

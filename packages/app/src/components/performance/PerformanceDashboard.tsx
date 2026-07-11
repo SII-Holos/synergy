@@ -338,7 +338,10 @@ function MetricCard(props: {
         <Icon
           name={getSemanticIcon(props.icon)}
           size="small"
-          classList={{ "text-icon-weak": props.tone !== "warning", "text-icon-warning-base": props.tone === "warning" }}
+          classList={{
+            "text-icon-weak-base": props.tone !== "warning",
+            "text-icon-warning-base": props.tone === "warning",
+          }}
         />
       </div>
       <div class="mt-2 truncate text-20-semibold text-text-strong tabular-nums">{props.value}</div>
@@ -350,7 +353,7 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak-base" />
         <div>
           <h3 class="text-14-semibold text-text-strong">Runtime health and support</h3>
           <p class="mt-1 text-11-regular text-text-weak">
@@ -430,7 +433,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak-base" />
         <h3 class="text-14-semibold text-text-strong">Trace timeline</h3>
       </div>
       <Show when={props.traces.length > 0} fallback={<EmptyState label="No trace spans reported" />}>
@@ -442,7 +445,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
                 class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-hover-base"
                 onClick={() => props.onSelect(trace)}
               >
-                <div class="h-2 w-2 shrink-0 rounded-full bg-icon-accent-base" />
+                <div class="h-2 w-2 shrink-0 rounded-full bg-icon-interactive-base" />
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-12-medium text-text-strong">{trace.name}</div>
                   <div class="truncate text-11-regular text-text-weaker">
@@ -463,7 +466,7 @@ function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: Perform
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak-base" />
         <h3 class="text-14-semibold text-text-strong">Performance issues</h3>
       </div>
       <Show when={props.issues.length > 0} fallback={<EmptyState label="No active performance issues" />}>
@@ -524,7 +527,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
         {(group) => (
           <div class="performance-card rounded-xl p-4">
             <div class="mb-3 flex items-center gap-2">
-              <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak" />
+              <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak-base" />
               <h3 class="text-14-semibold text-text-strong">{group.title}</h3>
             </div>
             <Show when={group.items.length > 0} fallback={<EmptyState label="No slow items in this range" />}>
@@ -585,7 +588,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
     <div class="performance-frontend-grid">
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak-base" />
           <h3 class="text-14-semibold text-text-strong">Slow frontend</h3>
         </div>
         <Show when={slow().length > 0} fallback={<EmptyState label="No slow frontend routes in this range" />}>
@@ -608,7 +611,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
       </div>
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak-base" />
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">

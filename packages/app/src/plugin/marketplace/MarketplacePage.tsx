@@ -156,7 +156,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 />
               </div>
               <div class="plugin-marketplace-search">
-                <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak shrink-0" />
+                <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                 <input
                   type="text"
                   value={query()}
@@ -370,7 +370,7 @@ function EmptyState(props: { title: string; description: string }) {
   return (
     <div class="plugin-marketplace-empty">
       <span class="plugin-marketplace-empty-icon">
-        <Icon name={getSemanticIcon("plugins.main")} size="large" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("plugins.main")} size="large" class="text-icon-weak-base" />
       </span>
       <span class="plugin-marketplace-empty-title">{props.title}</span>
       <span class="plugin-marketplace-empty-description">{props.description}</span>

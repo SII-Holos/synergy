@@ -63,7 +63,7 @@ export function MobileDrawer() {
             </A>
             <button
               type="button"
-              class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+              class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
               <Icon name={getSemanticIcon("action.close")} size="normal" />
@@ -199,7 +199,11 @@ function ScopeListView(props: {
               >
                 {getScopeLabel(scope)}
               </span>
-              <Icon name={getSemanticIcon("navigation.expand")} size="small" class="ml-auto shrink-0 text-icon-weak" />
+              <Icon
+                name={getSemanticIcon("navigation.expand")}
+                size="small"
+                class="ml-auto shrink-0 text-icon-weak-base"
+              />
             </button>
           )
         }}

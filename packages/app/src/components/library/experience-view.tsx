@@ -764,7 +764,7 @@ function ExperienceCard(props: {
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
                 onClick={handleCopyExperience}
                 title={copyExperience.tooltip()}
                 data-copy-state={copyExperience.state()}
@@ -776,7 +776,7 @@ function ExperienceCard(props: {
               </button>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -868,7 +868,7 @@ function ExperienceCard(props: {
                 </Show>
               </div>
 
-              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak" />}>
+              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak-base" />}>
                 {(detail) => (
                   <>
                     <Show when={detail().script}>
@@ -918,7 +918,7 @@ function ExperienceCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
@@ -993,7 +993,7 @@ function CollapsibleSection(props: { label: string; expanded: boolean; onToggle:
         <span class="text-12-medium text-text-weak">Content</span>
         <span
           classList={{
-            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
             "rotate-90": props.expanded,
           }}
         >

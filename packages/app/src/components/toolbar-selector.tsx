@@ -36,7 +36,7 @@ export function ToolbarSelectorTrigger(props: { icon: IconName; label: string })
     >
       <Icon name={props.icon} size="small" class="text-icon-base" />
       <span>{props.label}</span>
-      <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="text-icon-weak" />
+      <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="text-icon-weak-base" />
     </button>
   )
 }

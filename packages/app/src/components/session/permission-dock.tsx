@@ -194,7 +194,7 @@ export function PermissionDock(props: PermissionDockProps) {
                 <Show when={riskReason()}>
                   {(reason) => (
                     <div class="flex items-center gap-1.5 text-12-regular text-text-weak">
-                      <Icon name={getSemanticIcon("state.warning")} size="small" class="shrink-0 text-icon-subtle" />
+                      <Icon name={getSemanticIcon("state.warning")} size="small" class="shrink-0 text-icon-weak-base" />
                       <span>{reason()}</span>
                     </div>
                   )}

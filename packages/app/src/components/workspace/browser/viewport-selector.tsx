@@ -52,7 +52,7 @@ export function ViewportSelector() {
 
   return (
     <div class="flex items-center gap-1.5 h-9 shrink-0 px-2 border-b border-border-weak-base bg-surface-raised-base">
-      <span class="text-11 text-text-weakest shrink-0 select-none font-medium tracking-wide uppercase">Viewport</span>
+      <span class="text-11 text-text-subtle shrink-0 select-none font-medium tracking-wide uppercase">Viewport</span>
 
       <div class="flex items-center gap-0.5">
         {PRESETS.map((preset) => (
@@ -76,7 +76,7 @@ export function ViewportSelector() {
 
       <input
         type="number"
-        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-weakest outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         value={localWidth()}
         onInput={(e) => setLocalWidth(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
@@ -84,11 +84,11 @@ export function ViewportSelector() {
         aria-label="Viewport width"
       />
 
-      <span class="text-11 text-text-weakest shrink-0">×</span>
+      <span class="text-11 text-text-subtle shrink-0">×</span>
 
       <input
         type="number"
-        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-weakest outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         value={localHeight()}
         onInput={(e) => setLocalHeight(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
