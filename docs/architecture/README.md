@@ -11,7 +11,7 @@ Synergy is a client-server system built around a persistent runtime:
 1. The global runtime owns installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
 2. A `Scope` selects home or project context for each request and session.
 3. A lazily started project `ScopeRuntime` owns project-sensitive services such as file watching, LSP, formatting, VCS, and command state.
-4. A durable session owns messages, inbox state, workflow state, workspace binding, and at most one active LLM loop.
+4. A durable session owns messages, inbox state, session-local workflow state, workspace binding, and at most one active LLM loop.
 5. The LLM loop resolves agent, model, context, tools, execution policy, and persistence for one root task at a time.
 6. The event system projects state changes to Web and Desktop clients, which reconcile them into scope-local stores.
 

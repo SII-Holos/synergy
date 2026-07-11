@@ -1,6 +1,8 @@
 # Workflow Runtime
 
-Session workflows provide durable orchestration above the ordinary serial LLM loop. The workflow field stores one active kind—`plan`, `lightloop`, or `lattice`—while BlueprintLoop keeps a separate execution record bound to the session.
+This document defines session-local workflow execution. A session's workflow field stores one active kind—`plan`, `lightloop`, or `lattice`—while BlueprintLoop keeps a separate execution record bound to that session. This contract does not define cross-session orchestration.
+
+These workflows provide durable orchestration above the ordinary serial LLM loop.
 
 ## Mutual Exclusion and Ownership
 

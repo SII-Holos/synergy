@@ -1,5 +1,7 @@
 # Workflows
 
+This document covers session-local workflow modes. Plan, Light Loop, and Lattice are owned by one session, while BlueprintLoop has a separate execution lifecycle bound to a session.
+
 Synergy workflows change how a session should continue beyond a single model response. They are durable session modes with explicit completion rules, not prompt labels.
 
 Only one of Plan, Light Loop, or Lattice can be active on a session at a time. BlueprintLoop is the execution lifecycle for a Blueprint and can either be started by the user or owned by a Lattice step.

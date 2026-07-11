@@ -47,6 +47,8 @@ ref/
 holos-paper/
 awcp-paper/
 research/
+!docs/research/
+!docs/research/**
 .research/
 /data/
 *.tgz
