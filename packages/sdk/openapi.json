@@ -14287,6 +14287,702 @@
         ]
       }
     },
+    "/{directory}/browser/webrtc/ticket": {
+      "post": {
+        "operationId": "browser.createViewerTicket",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native", "webrtc"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 2,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Create a Browser viewer ticket",
+        "description": "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
+        "responses": {
+          "200": {
+            "description": "Browser viewer ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserViewerTicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ticket request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Browser request payload is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserViewerTicketRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createViewerTicket({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/annotations": {
+      "post": {
+        "operationId": "browser.createAnnotation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native", "webrtc"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 2,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Create a Browser annotation",
+        "description": "Attach user feedback to a coordinate on the active Browser page.",
+        "responses": {
+          "200": {
+            "description": "Created Browser annotation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAnnotationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Annotation request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Browser request payload is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserAnnotationRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createAnnotation({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/diagnostics": {
+      "post": {
+        "operationId": "browser.diagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native", "webrtc"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 2,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Read Browser diagnostics",
+        "description": "Read bounded console, network, element, asset, or download diagnostics for the active page.",
+        "responses": {
+          "200": {
+            "description": "Browser diagnostics result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Diagnostics request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Browser request payload is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserDiagnosticsRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.diagnostics({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/session": {
+      "get": {
+        "operationId": "browser.session",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native", "webrtc"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 2,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Get Browser session state",
+        "description": "Read the browser session descriptor without creating, resuming, or navigating a page.",
+        "responses": {
+          "200": {
+            "description": "Browser session state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPISessionState"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Browser session error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.session({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/control": {
+      "post": {
+        "operationId": "browser.control",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native", "webrtc"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 2,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Control the Browser workspace",
+        "description": "Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.",
+        "responses": {
+          "200": {
+            "description": "Browser control result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserControlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid browser command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Retryable browser error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Browser request payload is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserControlRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.control({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/plugin/ui/contributions": {
       "get": {
         "operationId": "plugin.listUIContributions",
@@ -31469,6 +32165,985 @@
       "MailboxMessageList": {
         "type": "array",
         "items": {}
+      },
+      "BrowserViewerTicketResponse": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "ticket": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "expiresAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "iceServers": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "urls": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 20000
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      }
+                    }
+                  ]
+                },
+                "username": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "credential": {
+                  "type": "string",
+                  "maxLength": 20000
+                }
+              },
+              "required": ["urls"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["protocolVersion", "ticket", "expiresAt", "iceServers"],
+        "additionalProperties": false
+      },
+      "BrowserAPIError": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "error"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "commandId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "obstruction": {
+            "type": "object",
+            "properties": {
+              "tag": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "class": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "candidates": {
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "role": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "id": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "class": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "suggestedAction": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "locator": {}
+        },
+        "required": ["type", "code", "message", "retryable"],
+        "additionalProperties": false
+      },
+      "BrowserViewerTicketRequest": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          }
+        },
+        "required": ["protocolVersion", "pageId"],
+        "additionalProperties": false
+      },
+      "BrowserAnnotationResponse": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "annotation": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "pageURL": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "pageID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "element": {
+                "type": "string",
+                "maxLength": 100000
+              },
+              "comment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "styleFeedback": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 10000
+                }
+              },
+              "resolved": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["id", "pageURL", "pageID", "comment", "resolved", "createdAt"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["protocolVersion", "annotation"],
+        "additionalProperties": false
+      },
+      "BrowserAnnotationRequest": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "comment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "styleFeedback": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 10000
+            }
+          }
+        },
+        "required": ["protocolVersion", "pageId", "x", "y", "comment"],
+        "additionalProperties": false
+      },
+      "BrowserDiagnosticsResponse": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "action": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "data": {}
+        },
+        "required": ["protocolVersion", "pageId", "action", "data"],
+        "additionalProperties": false
+      },
+      "BrowserDiagnosticsRequest": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "commandId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "action": {
+            "type": "string",
+            "enum": ["console", "network", "elements", "assets", "downloads", "clear"]
+          },
+          "limit": {
+            "default": 200,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "required": ["protocolVersion", "pageId", "commandId", "action"],
+        "additionalProperties": false
+      },
+      "BrowserAPISessionState": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.state"
+          },
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "ownerKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "status": {
+            "type": "string",
+            "enum": ["empty", "suspended", "active", "migrating", "failed"]
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "isLoading": {
+                    "type": "boolean"
+                  },
+                  "lastActiveAt": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presentation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "const": 2
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["native", "webrtc"]
+                  },
+                  "capabilities": {
+                    "type": "object",
+                    "properties": {
+                      "native": {
+                        "type": "boolean"
+                      },
+                      "webrtc": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["native", "webrtc"],
+                    "additionalProperties": false
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": ["desktop-local", "remote-client", "requested"]
+                  }
+                },
+                "required": ["protocolVersion", "kind", "capabilities", "reason"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hostStatus": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "installing",
+              "starting",
+              "pending",
+              "ready",
+              "detached",
+              "restarting",
+              "idle",
+              "failed"
+            ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "error": {
+            "$ref": "#/components/schemas/BrowserAPIError"
+          }
+        },
+        "required": [
+          "type",
+          "protocolVersion",
+          "ownerKey",
+          "status",
+          "page",
+          "presentation",
+          "hostStatus",
+          "seq",
+          "epoch"
+        ],
+        "additionalProperties": false
+      },
+      "BrowserControlResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "control.result"
+          },
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "void"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "page": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "pattern": "^[a-zA-Z0-9._-]+$"
+                      },
+                      "url": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "isLoading": {
+                        "type": "boolean"
+                      },
+                      "lastActiveAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["type", "page"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "navigation"
+                  },
+                  "page": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "pattern": "^[a-zA-Z0-9._-]+$"
+                      },
+                      "url": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "isLoading": {
+                        "type": "boolean"
+                      },
+                      "lastActiveAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["type", "page"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "snapshot"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "snapshotId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "elements": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 20000
+                        },
+                        "role": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "value": {
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "depth": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000
+                        }
+                      },
+                      "required": ["ref", "role", "name", "depth"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["type", "pageId", "snapshotId", "elements", "truncated"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "action"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "action": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "snapshot": {}
+                },
+                "required": ["type", "pageId", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "wait"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "matched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["type", "pageId", "matched"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "evaluation"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "value": {}
+                },
+                "required": ["type", "pageId", "value"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "screenshot"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "dataUrl": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36700160
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["type", "pageId", "dataUrl", "width", "height"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "data"
+                  },
+                  "pageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "data": {}
+                },
+                "required": ["type", "pageId", "data"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["type", "protocolVersion", "result"],
+        "additionalProperties": false
+      },
+      "BrowserControlRequest": {
+        "type": "object",
+        "properties": {
+          "protocolVersion": {
+            "type": "number",
+            "const": 2
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "navigate"
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "source": {
+                    "default": "user",
+                    "type": "string",
+                    "const": "user"
+                  }
+                },
+                "required": ["type", "url"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "history"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": ["back", "forward"]
+                  }
+                },
+                "required": ["type", "direction"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "reload"
+                  },
+                  "ignoreCache": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "stop"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "resume"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "close"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "setViewport"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16384
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16384
+                  }
+                },
+                "required": ["type", "width", "height"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "dialog.respond"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "accept": {
+                    "type": "boolean"
+                  },
+                  "promptText": {
+                    "type": "string",
+                    "maxLength": 1000000
+                  }
+                },
+                "required": ["type", "requestId", "accept"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "filechooser.select"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "files": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        "mimeType": {
+                          "type": "string",
+                          "maxLength": 256
+                        },
+                        "dataBase64": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 36700160
+                        }
+                      },
+                      "required": ["name", "mimeType", "dataBase64"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["type", "requestId", "files"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "commandId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "traceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        },
+        "required": ["protocolVersion", "command", "commandId"],
+        "additionalProperties": false
       },
       "PluginStatus": {
         "type": "object",
