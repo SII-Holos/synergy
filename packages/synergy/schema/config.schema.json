@@ -203,47 +203,15 @@
       "ref": "PluginRuntimePolicyConfig",
       "type": "object",
       "properties": {
-        "thirdPartyDefaultMode": {
-          "description": "Default isolation mode for third-party plugins (npm, git, url)",
-          "default": "process",
-          "type": "string",
-          "enum": ["process", "worker"]
-        },
-        "highRiskRequiresProcess": {
-          "description": "Require process isolation for high-risk plugins regardless of source",
-          "default": true,
-          "type": "boolean"
-        },
-        "allowThirdPartyInProcess": {
-          "description": "Allow third-party plugins to request in-process mode (not recommended)",
-          "default": false,
-          "type": "boolean"
-        },
-        "allowWorkerMode": {
-          "description": "Allow plugins to request worker thread isolation",
-          "default": true,
-          "type": "boolean"
-        },
-        "allowLocalInProcess": {
-          "description": "Allow local plugins to run in-process",
-          "default": true,
-          "type": "boolean"
-        },
         "limits": {
           "description": "Default plugin runtime resource and request limits",
           "default": {
             "startupTimeoutMs": 5000,
             "toolInvocationTimeoutMs": 120000,
-            "hookInvocationTimeoutMs": 120000,
-            "bridgeRequestTimeoutMs": 120000,
+            "hostServiceRequestTimeoutMs": 120000,
             "taskRunTimeoutMs": 120000,
             "shutdownGraceMs": 1500,
-            "maxConcurrentRequests": 8,
-            "maxLogBytesPerMinute": 128000,
-            "memoryMb": 256,
-            "memoryPollIntervalMs": 10000,
-            "heartbeatIntervalMs": 5000,
-            "heartbeatMissesBeforeKill": 3
+            "heartbeatIntervalMs": 5000
           },
           "ref": "PluginRuntimeLimitsConfig",
           "type": "object",
@@ -260,14 +228,8 @@
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             },
-            "hookInvocationTimeoutMs": {
-              "description": "Maximum milliseconds for a plugin hook invocation",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "bridgeRequestTimeoutMs": {
-              "description": "Maximum milliseconds for one plugin-to-host bridge request",
+            "hostServiceRequestTimeoutMs": {
+              "description": "Maximum milliseconds for one plugin Host Service request",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -284,38 +246,8 @@
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             },
-            "maxConcurrentRequests": {
-              "description": "Maximum concurrent bridge requests",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "maxLogBytesPerMinute": {
-              "description": "Maximum plugin log bytes per minute",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "memoryMb": {
-              "description": "Maximum process runtime RSS in MB",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "memoryPollIntervalMs": {
-              "description": "Memory polling interval in milliseconds",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
             "heartbeatIntervalMs": {
               "description": "Heartbeat interval in milliseconds",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "heartbeatMissesBeforeKill": {
-              "description": "Missed heartbeats before process kill",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -324,14 +256,7 @@
           "additionalProperties": false
         }
       },
-      "required": [
-        "thirdPartyDefaultMode",
-        "highRiskRequiresProcess",
-        "allowThirdPartyInProcess",
-        "allowWorkerMode",
-        "allowLocalInProcess",
-        "limits"
-      ],
+      "required": ["limits"],
       "additionalProperties": false
     },
     "pluginMarketplace": {
@@ -490,6 +415,39 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "quick_switcher": {
+      "description": "Quick switcher model visibility preferences",
+      "ref": "QuickSwitcherConfig",
+      "type": "object",
+      "properties": {
+        "models": {
+          "description": "Per-model quick switcher visibility preferences",
+          "type": "array",
+          "items": {
+            "ref": "QuickSwitcherModelConfig",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "description": "Provider id for the quick switcher model preference",
+                "type": "string"
+              },
+              "modelID": {
+                "description": "Model id for the quick switcher model preference",
+                "type": "string"
+              },
+              "state": {
+                "description": "Whether to force-add or force-remove the model from the quick switcher",
+                "type": "string",
+                "enum": ["add", "remove"]
+              }
+            },
+            "required": ["providerID", "modelID", "state"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "default_agent": {
       "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
@@ -677,7 +635,8 @@
                         "items": {}
                       }
                     },
-                    "required": ["type"]
+                    "required": ["type"],
+                    "additionalProperties": false
                   }
                 },
                 "temperature": {
@@ -2356,7 +2315,7 @@
       "ref": "PermissionConfig"
     },
     "smartAllow": {
-      "description": "Use the Smart allow internal agent to auto-allow safe asks and soft denies",
+      "description": "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
       "type": "boolean"
     },
     "tools": {

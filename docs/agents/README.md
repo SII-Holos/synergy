@@ -8,8 +8,8 @@ For a plugin that runs on Synergy, start with:
 
 - [Plugin platform](../plugins/README.md)
 - [Getting started](../plugins/getting-started.md)
-- [Manifest reference](../plugins/manifest.md)
-- [Runtime and permissions](../plugins/runtime-and-permissions.md)
+- [Generated manifest](../plugins/manifest.md)
+- [Runtime and capabilities](../plugins/runtime-and-permissions.md)
 - [Public plugin SDK](../../packages/plugin/README.md)
 
 Use the published plugin kit and SDK. A Synergy source checkout is needed only when changing the platform, testing unreleased platform behavior, or diagnosing a host bug that cannot be isolated in the plugin project.

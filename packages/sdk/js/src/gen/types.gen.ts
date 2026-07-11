@@ -1606,13 +1606,9 @@ export type PluginRuntimeLimitsConfig = {
    */
   toolInvocationTimeoutMs?: number
   /**
-   * Maximum milliseconds for a plugin hook invocation
+   * Maximum milliseconds for one plugin Host Service request
    */
-  hookInvocationTimeoutMs?: number
-  /**
-   * Maximum milliseconds for one plugin-to-host bridge request
-   */
-  bridgeRequestTimeoutMs?: number
+  hostServiceRequestTimeoutMs?: number
   /**
    * Default maximum milliseconds for plugin delegated task runs
    */
@@ -1622,29 +1618,9 @@ export type PluginRuntimeLimitsConfig = {
    */
   shutdownGraceMs?: number
   /**
-   * Maximum concurrent bridge requests
-   */
-  maxConcurrentRequests?: number
-  /**
-   * Maximum plugin log bytes per minute
-   */
-  maxLogBytesPerMinute?: number
-  /**
-   * Maximum process runtime RSS in MB
-   */
-  memoryMb?: number
-  /**
-   * Memory polling interval in milliseconds
-   */
-  memoryPollIntervalMs?: number
-  /**
    * Heartbeat interval in milliseconds
    */
   heartbeatIntervalMs?: number
-  /**
-   * Missed heartbeats before process kill
-   */
-  heartbeatMissesBeforeKill?: number
 }
 
 /**

@@ -23,7 +23,7 @@ export function diffPermissions(
 
   // New plugin install: everything is added
   if (oldManifest === null) {
-    const items = generatePermissionItems(newManifest, newCapabilities)
+    const items = generatePermissionItems(newCapabilities)
     return {
       pluginId,
       fromVersion: undefined,
@@ -48,8 +48,8 @@ export function diffPermissions(
   const unchangedCaps = [...newSet].filter((c) => oldSet.has(c))
 
   // Generate items from both manifests
-  const oldItems = generatePermissionItems(oldManifest, oldCapabilities)
-  const newItems = generatePermissionItems(newManifest, newCapabilities)
+  const oldItems = generatePermissionItems(oldCapabilities)
+  const newItems = generatePermissionItems(newCapabilities)
 
   const oldByKey = new Map(oldItems.map((i) => [i.key, i]))
   const newByKey = new Map(newItems.map((i) => [i.key, i]))
@@ -64,29 +64,6 @@ export function diffPermissions(
     const oldItem = oldByKey.get(key)
     const newItem = newByKey.get(key)
     if (oldItem && newItem && oldItem.severity !== newItem.severity) {
-      changed.push({
-        key,
-        before: oldItem.severity,
-        after: newItem.severity,
-      })
-    }
-  }
-
-  // Diff non-capability items (UI, hooks, data) between old and new manifests.
-  // These have keys starting with "ui.", "data.", or "hooks." and are not in
-  // the capability sets.
-  const nonCapKeys = new Set([
-    ...oldItems.filter((i) => !oldSet.has(i.key)).map((i) => i.key),
-    ...newItems.filter((i) => !newSet.has(i.key)).map((i) => i.key),
-  ])
-  for (const key of nonCapKeys) {
-    const oldItem = oldByKey.get(key)
-    const newItem = newByKey.get(key)
-    if (oldItem && !newItem) {
-      removed.push(oldItem)
-    } else if (!oldItem && newItem) {
-      added.push(newItem)
-    } else if (oldItem && newItem && oldItem.severity !== newItem.severity) {
       changed.push({
         key,
         before: oldItem.severity,

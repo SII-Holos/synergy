@@ -189,7 +189,7 @@ export async function invokePluginTool(input: {
     ? AbortSignal.any([input.context.abort, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs)
   return resolved.execute(input.request.args ?? {}, {
-    toolCallId: input.context.callID ? `${input.context.callID}:bridge:${toolName}` : `bridge:${toolName}`,
+    toolCallId: input.context.callID ? `${input.context.callID}:host-service:${toolName}` : `host-service:${toolName}`,
     abortSignal: signal,
   }) as Promise<ToolResult>
 }

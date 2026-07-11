@@ -36,7 +36,7 @@ export interface StartPluginRuntimeInput {
   trustedBuiltin?: boolean
 }
 
-export interface PluginRuntimeBridgeInput {
+export interface PluginHostServiceInvocationInput {
   pluginId: string
   pluginDir: string
   manifest: PluginManifestType
@@ -46,7 +46,7 @@ export interface PluginRuntimeBridgeInput {
   signal: AbortSignal
 }
 
-export type PluginRuntimeBridge = (input: PluginRuntimeBridgeInput) => Promise<unknown>
+export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
 
 interface RuntimeInvocationRecord {
   context: RuntimeInvocationContextData
@@ -61,7 +61,7 @@ export class PluginRuntimeManager {
   readonly logs = new PluginLogBuffer()
   #invocations = new Map<string, RuntimeInvocationRecord>()
 
-  constructor(private readonly bridge: PluginRuntimeBridge = async () => undefined) {}
+  constructor(private readonly hostServices: PluginHostServiceDispatcher = async () => undefined) {}
 
   async start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
     const manifest = input.manifest
@@ -178,7 +178,7 @@ export class PluginRuntimeManager {
       onHostRequest: async (request) => {
         const invocation = this.#invocations.get(request.invocationId)
         if (!invocation) throw new Error(`Unknown plugin invocation: ${request.invocationId}`)
-        return this.bridge({
+        return this.hostServices({
           pluginId: entry.pluginId,
           pluginDir: invocation.pluginDir,
           manifest: invocation.manifest,
@@ -396,7 +396,7 @@ export class PluginRuntimeManager {
       capabilities: new Set(manifest.capabilities.map((item) => item.id)),
       log: this.#logger(entry.pluginId),
       invokeHost: (method, params) =>
-        this.bridge({
+        this.hostServices({
           pluginId: entry.pluginId,
           pluginDir,
           manifest,

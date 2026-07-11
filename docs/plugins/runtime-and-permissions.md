@@ -1,148 +1,104 @@
-# Plugin Runtime and Permissions
+# Plugin Runtime and Capabilities
 
-Synergy evaluates a plugin before importing it and continues enforcing the approved boundary while it runs. Source provenance, package integrity, declared permissions, approval, trust, runtime isolation, and per-call enforcement are related checks, not interchangeable labels.
+## Activation and Invocation
 
-## From Source to Running Plugin
+Synergy keeps one active runtime generation per plugin. The registry key is `pluginId + version + generation`; multiple enabled Scopes share it. A process starts lazily when an executable contribution is first invoked. `activate()` runs once for that generation and receives only plugin identity, version, generation, and a logger.
 
-The lifecycle is:
+Every handler invocation receives a fresh context:
 
-1. Resolve the plugin source and canonical ID.
-2. Read and validate `plugin.json` without importing runtime code.
-3. Verify package structure, hashes, and signatures where the source requires them.
-4. Derive install capabilities and risk from the manifest.
-5. Compare the request with the stored approval and configured approval policy.
-6. Select the effective trust tier, runtime mode, and resource limits.
-7. Load the descriptor and verify discovered contributions against the manifest.
-8. Route runtime calls through direct host services or the isolated host bridge.
-
-A failure disables that plugin with a reason. It does not remove built-in tools or stop unrelated plugins, MCP servers, or sessions.
-
-## Sources and Trust
-
-Plugin sources are classified as `builtin`, `local`, `official`, `npm`, `git`, or `url`.
-
-| Source            | Current trust decision                                                                |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| Built-in          | `trusted-import`                                                                      |
-| Official registry | `trusted-import`; the registry-reviewed package is integrity-verified                 |
-| Local path        | `trusted-import`; intended for author-controlled development                          |
-| npm               | `trusted-import` only with explicit trust and verified integrity; otherwise `sandbox` |
-| Git               | `trusted-import` only with explicit trust; otherwise `sandbox`                        |
-| URL               | always `sandbox`                                                                      |
-
-The trust-tier type also includes `declarative`, but the current source resolver assigns executable plugins either `trusted-import` or `sandbox`. Declarative UI fallbacks and form schemas are still useful, but should not be confused with the installed plugin's current trust decision.
-
-Trust does not grant capabilities. It helps determine whether code can be imported and where it executes; the approved manifest remains the capability ceiling.
-
-## Approval
-
-An approval record binds consent to:
-
-- canonical plugin ID and source
-- version
-- manifest and permissions hashes
-- approved capability strings
-- approved UI surfaces
-- calculated risk
-
-Changing the manifest or permission hash invalidates the old approval. Updates therefore surface newly requested capabilities instead of inheriting consent by plugin name alone.
-
-The approval policy can auto-approve built-ins, allow unsigned local development with consent, require signatures for non-local sources, or deny high-risk third-party plugins. Registry installation uses the same approval path as direct installation.
-
-Inspect the active declaration and decision with:
-
-```bash
-synergy plugin info <id>
-synergy plugin permissions <id>
-synergy plugin runtime status <id>
+```ts
+interface PluginInvocationContext {
+  requestId: string
+  scopeId: string
+  sessionId?: string
+  actor: PluginActor
+  signal: AbortSignal
+  log: PluginLogger
+  events: ScopedPluginEventPublisher
+  session?: SessionHostService
+  task?: TaskHostService
+  workspace?: WorkspaceHostService
+  settings?: PluginSettingsService
+  secrets?: PluginSecretsService
+  tools?: PluginToolHostService
+}
 ```
 
-## Runtime Modes
+The context is request state; do not cache it as a current Scope. Runtime startup never receives a raw SDK client, server URL, access token, or Scope/Session identity.
 
-The effective mode is one of:
+External plugins use `process`. Trusted built-ins may use `inProcess`. The process boundary isolates crashes, timeouts, and cleanup; it is not an OS security sandbox and does not claim to restrict direct filesystem or network access by plugin code.
 
-- `in-process` — the descriptor runs in the Synergy server process.
-- `worker` — the descriptor runs in a worker and communicates with the host.
-- `process` — the descriptor runs in a separate process and communicates through a bounded protocol.
+## Capabilities and Host Services
 
-The manifest's `runtime.mode` is a request. Host policy can select a stricter mode:
+Capabilities describe Synergy services the host may inject. A contribution's `requires` must be a subset of the definition's top-level capability list.
 
-- third-party sources default to `process`
-- high-risk plugins require `process` by default
-- an explicit `process` request is honored
-- a `worker` request requires worker mode to be enabled and the plugin to be trusted
-- third-party `in-process` execution is disabled by default
-- local `in-process` execution can be disabled by policy
+| Capability        | Context service or action                                                           |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `session.read`    | `context.session.get()`                                                             |
+| `session.control` | `context.session.abort()`                                                           |
+| `workspace.read`  | `context.workspace.read()` and `metadata()`                                         |
+| `workspace.write` | `context.workspace.write()`                                                         |
+| `task.run`        | `context.task.run()`                                                                |
+| `settings.read`   | `context.settings.get()`                                                            |
+| `settings.write`  | `context.settings.replace()`                                                        |
+| `secrets`         | plugin-scoped credential get/set/delete                                             |
+| `tool.invoke`     | `context.tools.invoke()`                                                            |
+| `ui.hostActions`  | trusted UI host navigation, panel, resource, notification, and confirmation actions |
 
-Worker mode does not fully support shell, file-write, or MCP-spawn capabilities; validation warns authors to use process mode for those operations.
+`task.run` may include `agents` and `maxRuntimeMs` constraints. Host methods validate capability, active Scope, workspace containment, actor requirements, and cancellation at the owning boundary. `task.run` and `tool.invoke` require an agent invocation context.
 
-Resource policy covers startup, tool, hook, bridge, delegated-task, and shutdown timeouts; concurrent requests; log rate; memory polling; and heartbeat failure. Global defaults come from `pluginRuntimePolicy`, then a manifest can provide valid positive overrides in `runtime.resources`.
+Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
 
-## Capability Layers
+## Operations
 
-The broad manifest permissions are the maximum capabilities the plugin can request. Each declared tool then supplies its own narrower capability profile. Runtime enforcement uses the actual operation and current session boundary.
+Operations are finite request/response handlers. `type` is `query` or `command`; both input and output are validated against generated JSON Schema. `expose` defaults to `['ui']`. Only operations that include `sdk` may be called through `client.plugin.invoke()`.
 
-Examples include:
+The server endpoint is:
 
-| Manifest declaration      | Runtime capability family         |
-| ------------------------- | --------------------------------- | --------------------------------- |
-| `tools.shell: true`       | shell execution                   |
-| `tools.filesystem: "read" | "write"`                          | file read or write                |
-| `tools.network: true`     | network access                    |
-| `tools.mcp: "invoke"      | "spawn"`                          | MCP invocation or process startup |
-| `tools.task`              | delegated Cortex task             |
-| `data.session`            | session metadata or content       |
-| `data.workspace`          | workspace metadata or content     |
-| `data.config`             | plugin or global configuration    |
-| `data.secrets: "own"`     | the plugin's credential namespace |
-| `permissions.ui: true`    | declared Web UI surfaces          |
-| `permissions.hooks`       | event and mutation hook families  |
+```text
+POST /plugin/:pluginId/operations/:operationId/invoke
+```
 
-Unknown plugin tools are treated as protected opaque operations rather than silently inheriting the plugin's other tools.
+The host checks plugin existence, Scope enablement, contribution identity, caller exposure, schemas, timeout, cancellation, and generation. Stable error codes are:
 
-## Isolated Host Bridge
+```text
+PLUGIN_NOT_FOUND
+PLUGIN_DISABLED
+PLUGIN_UNAVAILABLE
+CONTRIBUTION_NOT_FOUND
+INPUT_INVALID
+OUTPUT_INVALID
+CAPABILITY_DENIED
+CONFLICT
+TIMEOUT
+CANCELLED
+RUNTIME_ERROR
+```
 
-Worker and process runtimes receive proxies for host-owned services. The bridge maps requests for configuration, credentials, cache, files, shell, network, session/workspace data, delegated tasks, and tool invocation to the corresponding approved capability.
+Long-running domain work returns a plugin-owned handle and reports changes through declared events. Synergy does not create a generic plugin Job or business-data store.
 
-File and shell requests require an active plugin tool call. They therefore inherit the current Scope, directory, control profile, permission decision, and sandbox boundary rather than becoming ambient plugin powers.
+## Events
 
-`context.task.run()` is gated by `permissions.tools.task`, including any declared agent allowlist and maximum runtime. `context.tools.invoke()` can invoke only tools visible or explicitly allowed in the current execution context.
+Declare every publishable event with an ID and payload schema. `context.events.publish()` validates that declaration and payload, then attaches plugin ID/version, generation, Scope, optional Session, sequence, and timestamp. A plugin cannot publish as another plugin or Scope.
+
+Events are for invalidation and small changes. Consumers should re-run a query for a complete snapshot. UI subscriptions are filtered by plugin ID, Scope, and event ID.
 
 ## Hooks
 
-Hooks can observe or transform runtime behavior, so their permission declaration matters as much as tool permissions. The SDK currently includes:
+Plugins contribute handlers to host-defined hook points. A plugin cannot define execution semantics for a new point.
 
-- runtime lifecycle, config, and event hooks
-- chat-message, parameter, system-prompt, model-history, compaction, and text transforms
-- permission and tool before/after hooks
-- completed session-turn and Cortex-task hooks
-- Agenda run hooks
-- Note create, update, and search hooks
-- Library memory-search and experience-encoding hooks
+- `observer` observes and cannot replace the value.
+- `transform` returns the next value in a serial chain.
+- `guard` returns `{ allow, reason?, value? }`.
 
-Use the narrowest hook declaration: selected event names instead of all events, own tools instead of all tools, and explicit transform flags only where the plugin actually mutates model input or output.
+Ordering is priority, plugin ID, then contribution ID. Each hook point owns input/output schema, timeout, and failure policy. A handler failure degrades that contribution. It propagates only when the point's failure policy requires it; a guard denial always propagates as a denial.
 
-## Plugin-Owned State
+## Generation Changes and Lifecycle
 
-Plugin configuration lives in the plugin's config namespace. Cache values live under the plugin cache directory and may carry a TTL.
+A new generation starts and validates before it becomes active. The previous generation drains in-flight calls. A late response from an inactive generation is rejected.
 
-Plugin credentials currently use unencrypted JSON at:
+`lifecycle.upgrade` runs on the prepared new version before activation. Failure keeps the old version active. Plugin migrations must be idempotent because Synergy cannot roll back arbitrary plugin-owned data changes.
 
-```text
-~/.synergy/data/plugin/<id>/auth.json
-```
+`lifecycle.uninstall` runs before registration, approval, settings, and runtime state are removed. Failure stops normal uninstall. Force uninstall skips the handler and may leave plugin-owned data.
 
-Treat the filesystem containing `SYNERGY_HOME` as sensitive. Do not put unrelated secrets in plugin config, cache, logs, tool output, or packaged assets.
-
-## Recovery and Diagnosis
-
-```bash
-synergy plugin list
-synergy plugin runtime status <id>
-synergy plugin doctor
-synergy plugin doctor --fix
-```
-
-Doctor detects and, where safe, repairs duplicate specs, stale lock entries, broken archive cache records, missing resolved paths, and runtime-state entries for removed files. It does not manufacture a valid package when the original artifact is unavailable or invalid.
-
-See [Security](security.md) for the author and reviewer checklist.
+Synergy does not delete or migrate plugin business data. The plugin owns its schema, location, concurrency, backup, upgrade, and cleanup policy.

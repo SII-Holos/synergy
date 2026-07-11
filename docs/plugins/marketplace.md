@@ -1,120 +1,60 @@
-# Plugin Marketplace and Registry
+# Plugin Marketplace
 
-The public Synergy Plugin Marketplace is a GitHub-backed aggregator. Each plugin owns its source repository and GitHub Release artifacts; the registry repository stores reviewed metadata that points to those artifacts.
+The Plugins workspace separates catalog discovery from installation state:
 
-Official index:
+- **Discover** searches one registry source: Official or Local registry.
+- **Installed** lists every configured plugin and its health, regardless of source.
+- **Development** filters installed entries to directory registrations.
 
-```text
-https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json
-```
+A directory plugin therefore appears in both Installed and Development. A package published to the local registry is a catalog entry, not a directory registration.
 
-Registry repository:
+## Package Sources
 
-```text
-https://github.com/SII-Holos/synergy-plugins
-```
+Synergy accepts built local directories, `.synergy-plugin.tgz` archives, npm packages, git specs, URLs, built-ins, and official/local registry artifacts. Every source resolves to the same generated manifest and artifact contract before approval.
 
-## Marketplace Configuration
+Directory resolution uses `dist/plugin.json` when a built project root is registered. Archives are inspected for unsafe paths before extraction. Remote package dependencies must already be bundled or declared in the packaged runtime; Synergy does not run dependency installation from manifest metadata.
 
-Configuration belongs in `50-plugins.jsonc`:
+## Official and Local Registries
 
-```jsonc
-{
-  "pluginMarketplace": {
-    "enabled": true,
-    "registryUrl": "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
-    "includeLocalRegistry": true,
-    "cacheTtlMs": 3600000,
-    "offlineCache": true,
-    "requestTimeoutMs": 10000,
-    "artifactDownloadTimeoutMs": 60000,
-    "cliRequestTimeoutMs": 120000,
-  },
-}
-```
+The default official index is the reviewed `SII-Holos/synergy-plugins` GitHub registry. Its lightweight index links to per-plugin metadata and release artifacts. The local registry stores development catalog entries and artifacts under the configured Synergy home.
 
-Remote indexes, detail records, and downloaded artifacts are cached under `~/.synergy/cache/plugin-market/`. The cache namespace is derived from `registryUrl`, so a custom registry does not overwrite the official cache. When `offlineCache` is enabled, stale verified metadata can support browsing during a network failure; installation still needs a valid cached or downloadable artifact.
+Registry identity, generated manifest ID, approval ID, lockfile key, signature plugin ID, and UI/runtime namespace must match.
 
-## Official Publication
-
-```bash
-synergy-plugin publish-market --repo https://github.com/owner/my-plugin
-```
-
-The command validates, builds, packs, signs, prepares release assets, updates a registry checkout, rebuilds and validates its index, and opens a pull request when GitHub tooling is available. If upload, push, or PR creation cannot be automated, it prints the remaining commands.
-
-`official` and `verified` are maintainer-reviewed registry labels. The authoring CLI does not grant them to a submission.
-
-For a manual registry entry:
+## Publish Flow
 
 ```bash
 synergy-plugin build
+synergy-plugin validate --runtime-discovery
 synergy-plugin pack
-synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy-plugin entry my-plugin-0.1.0.synergy-plugin.tgz \
-  --repo https://github.com/owner/my-plugin \
-  --write-entry ../synergy-plugins/plugins/my-plugin.json
+synergy-plugin sign my-plugin-1.0.0.synergy-plugin.tgz
+synergy-plugin publish-market --repo https://github.com/owner/my-plugin
 ```
 
-Then, in the registry checkout:
+`publish-market` prepares release/registry metadata and the official registry pull-request workflow. `entry` can generate metadata for a manual registry workflow. Official and verified labels are maintainer decisions; author tooling does not grant them.
 
-```bash
-bun install
-bun run build-registry
-bun run validate
-bun run build-registry --check
-```
+Publishing is explicit. Build, validate, test, pack, local dev, and install do not mutate a remote registry.
 
-`entry` writes aggregator metadata; it does not upload a release or mutate the remote registry.
+## Install and Update Transaction
 
-## Local Marketplace Testing
+Installation follows this order:
 
-```bash
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
-```
+1. resolve or stage the package;
+2. read generated metadata without importing runtime code;
+3. validate API version, contribution schema, artifact paths, hashes, signature, and registry identity;
+4. compute capability and trusted-UI approval changes;
+5. obtain user approval when required;
+6. update the plugin config domain, lockfile, approval record, and incompatible-package record under the installation lock;
+7. reload and verify exactly one plugin registration;
+8. commit staged artifacts and remove rollback state.
 
-The local registry stores metadata at `~/.synergy/data/registry/plugins.json` and artifacts under `~/.synergy/data/registry/artifacts/<plugin-id>/<version>/`. Web Marketplace views can filter between the official and local sources.
+Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Upgrade lifecycle failure leaves the previous version active.
 
-## Registry Contract
+Old-format packages are recorded as incompatible and require reinstall. They are never loaded through a compatibility reader.
 
-The top-level `registry.json` is the list/search index. `plugins/<plugin-id>.json` contains versions, download and signature URLs, signer identity, integrity, manifest and permission hashes, risk, effective runtime metadata, compatibility, tools, and UI surface summaries.
+## Removal
 
-These values must agree:
+Normal uninstall runs `lifecycle.uninstall` before changing registration state. Failure stops removal. A successful transaction removes every config spec that resolves to the canonical plugin ID, its lockfile entry, approval, plugin settings, incompatible records, and active runtime registration.
 
-- registry ID and detail filename
-- `plugin.json.name`
-- runtime descriptor `id`
-- signature plugin ID
-- approval and lockfile ID
+Force uninstall skips the lifecycle handler and may leave plugin-owned data. Plugin archives or registry caches that are not registration state may be retained for cache reuse and are reported by plugin doctor when invalid or orphaned.
 
-`engines.synergy` originates in the packaged manifest and is copied to the registry version's compatibility metadata.
-
-## Verified Installation
-
-Official installation follows this chain:
-
-```text
-registry version
-  -> artifact download
-  -> archive SHA-256
-  -> registry-reviewed signer
-  -> Ed25519 signature and payload hashes
-  -> package and manifest inspection
-  -> permission approval
-  -> cached-artifact installation
-```
-
-Installation rejects a missing or invalid signature, unexpected signer, integrity mismatch, mismatched manifest hashes, ID/version mismatch, yanked version, unsafe path, or incomplete package. If consent is needed, the server returns the manifest, capability summary, risk, permission diff, and an artifact cache key; the approved retry reuses the verified cached artifact.
-
-The archive must be the `.synergy-plugin.tgz` produced by the kit, not a source repository archive. It must include at least:
-
-```text
-plugin.json
-runtime/index.js
-integrity.json
-permissions.summary.json
-```
-
-## Ownership Boundary
-
-The registry reviews metadata, signer identity, and the distributable contract. The plugin repository remains responsible for source, releases, changelog, support, and vulnerability response. Signing proves which key produced an artifact; it does not prove the plugin is safe or correct. Review the requested capabilities and source before approving installation.
+Use `synergy plugin doctor` to inspect duplicate specs, stale lock entries, config drift, unresolved registrations, invalid caches, and invalid runtime state.

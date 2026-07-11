@@ -1,4 +1,3 @@
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { riskForCapabilities } from "../capability"
 import type { PermissionItem } from "./schema"
 
@@ -15,7 +14,7 @@ const labels: Record<string, { title: string; description: string; category: Per
   },
   "task.run": {
     title: "Run delegated tasks",
-    description: "Start Synergy tasks from plugin operations or tools.",
+    description: "Start Synergy tasks from plugin tools invoked by an agent.",
     category: "tools",
   },
   "workspace.read": {
@@ -55,7 +54,7 @@ const labels: Record<string, { title: string; description: string; category: Per
   },
 }
 
-export function generatePermissionItems(_manifest: PluginManifest, capabilities: string[]): PermissionItem[] {
+export function generatePermissionItems(capabilities: string[]): PermissionItem[] {
   return [...new Set(capabilities)].sort().map((key) => {
     const label = labels[key] ?? {
       title: key,

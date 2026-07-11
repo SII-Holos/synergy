@@ -72,5 +72,5 @@ export { fetchUIContributions } from "./api"
 export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 
 // Consent UI components
-export { PermissionDiffList, PermissionRiskBadge, InstallConsentDialog } from "./consent"
+export { PermissionRiskBadge, InstallConsentDialog } from "./consent"
 export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./consent"

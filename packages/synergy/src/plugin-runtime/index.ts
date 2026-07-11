@@ -1,8 +1,8 @@
 export {
   PluginRuntimeManager,
   PluginRuntimeError,
-  type PluginRuntimeBridge,
-  type PluginRuntimeBridgeInput,
+  type PluginHostServiceDispatcher,
+  type PluginHostServiceInvocationInput,
   type PluginRuntimeErrorCode,
 } from "./manager.js"
 export {

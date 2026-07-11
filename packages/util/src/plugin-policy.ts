@@ -6,16 +6,10 @@ export type PolicyRisk = "low" | "medium" | "high"
 export interface RuntimeLimits {
   startupTimeoutMs: number
   toolInvocationTimeoutMs: number
-  hookInvocationTimeoutMs: number
-  bridgeRequestTimeoutMs: number
+  hostServiceRequestTimeoutMs: number
   taskRunTimeoutMs: number
   shutdownGraceMs: number
-  maxConcurrentRequests: number
-  maxLogBytesPerMinute: number
-  memoryMb: number
-  memoryPollIntervalMs: number
   heartbeatIntervalMs: number
-  heartbeatMissesBeforeKill: number
 }
 
 export type RuntimeLimitOverrides = Partial<RuntimeLimits>
@@ -25,16 +19,10 @@ export const DEFAULT_PLUGIN_RUNTIME_POLICY = {} satisfies PluginRuntimePolicyInp
 export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
   startupTimeoutMs: 5_000,
   toolInvocationTimeoutMs: 120_000,
-  hookInvocationTimeoutMs: 120_000,
-  bridgeRequestTimeoutMs: 120_000,
+  hostServiceRequestTimeoutMs: 120_000,
   taskRunTimeoutMs: 120_000,
   shutdownGraceMs: 1_500,
-  maxConcurrentRequests: 8,
-  maxLogBytesPerMinute: 128_000,
-  memoryMb: 256,
-  memoryPollIntervalMs: 10_000,
   heartbeatIntervalMs: 5_000,
-  heartbeatMissesBeforeKill: 3,
 }
 
 export interface PluginTrustDecision {

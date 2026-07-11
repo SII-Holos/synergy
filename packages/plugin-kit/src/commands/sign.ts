@@ -59,17 +59,15 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Signing${UI.Style.TEXT_NORMAL} ${path.basename(tarballPath)}`)
 
   const tarballHash = sha256File(tarballPath)
-  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.normalizedManifestFile)
+  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.manifestFile)
   if (!manifestRaw)
-    throw new Error(
-      `Failed to extract ${PluginArtifact.normalizedManifestFile} from tarball. Has the plugin been built?`,
-    )
+    throw new Error(`Failed to extract ${PluginArtifact.manifestFile} from tarball. Has the plugin been built?`)
 
   let manifest: PluginManifestType
   try {
     manifest = PluginManifest.parse(JSON.parse(manifestRaw)) as PluginManifestType
   } catch {
-    throw new Error(`Failed to parse ${PluginArtifact.normalizedManifestFile} from tarball`)
+    throw new Error(`Failed to parse ${PluginArtifact.manifestFile} from tarball`)
   }
 
   if (!extractFromTarball(tarballPath, PluginArtifact.permissionsSummaryFile)) {

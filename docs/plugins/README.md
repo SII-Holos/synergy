@@ -1,30 +1,36 @@
 # Synergy Plugin Platform
 
-Synergy Plugin API 3 has one architecture path:
+Synergy Plugin API 3 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
 
-1. A source module exports `definePlugin()`.
-2. plugin-kit validates the flat contribution list, compiles trusted TSX with the Solid compiler, binds it to the host's shared runtime, and generates `plugin.json`, bundles, hashes, and generation.
-3. Installation reads generated data without importing plugin code, verifies integrity, and asks for capability/trusted-UI approval.
-4. `ContributionAdapterRegistry` registers declarations with host subsystems.
-5. `PluginRuntimeRegistry` lazily starts one active runtime generation per plugin.
-6. The unified dispatcher invokes operations, tools, hooks, auth, and lifecycle handlers with a fresh invocation context.
-7. The UI host supplies one `PluginSurfaceContext` to every trusted component.
+## Start Here
 
-Operations are finite request/response calls. They default to UI-only and enter the public SDK only with `expose: ["ui", "sdk"]`. Long-running domain work returns the plugin's own handle and publishes declared events; Synergy does not impose a generic Job or plugin database.
+| Task                                                                                      | Document                                                       |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Create, build, validate, run, and package a plugin                                        | [Getting started](getting-started.md)                          |
+| Understand the generated `plugin.json` contract                                           | [Generated manifest](manifest.md)                              |
+| Understand capabilities, Host Services, runtime generations, hooks, events, and lifecycle | [Runtime and capabilities](runtime-and-permissions.md)         |
+| Contribute agent-callable tools and delegated work                                        | [Tools and delegation](tools-and-delegation.md)                |
+| Add workbench, navigation, renderer, settings, theme, or icon contributions               | [UI contributions](ui-contributions.md)                        |
+| Browse, publish, install, update, or remove packages                                      | [Marketplace](marketplace.md)                                  |
+| Review trust and operational boundaries                                                   | [Security](security.md)                                        |
+| Look up TypeScript APIs                                                                   | [`packages/plugin` reference](../../packages/plugin/README.md) |
 
-Hooks use host-declared points with observer, transform, or guard semantics. Ordering is priority, plugin ID, then contribution ID. A handler failure degrades that contribution unless the hook point explicitly requires failure propagation.
+## One Contract
 
-External runtime mode is `process`; built-ins may use `inProcess`. There is no worker mode, plugin iframe tier, or OS sandbox claim in the plugin API.
+The source definition owns plugin identity, capabilities, declarations, and handlers. Authors do not maintain a source `plugin.json`, a separate handler map, or a permission tree. `plugin.json` is build output.
 
-The Plugins workspace separates user tasks instead of mixing source and state:
+Every contribution has a plugin-local unique `id` and a discriminating `kind`. Executable contributions are operations, tools, hooks, auth providers, and lifecycle handlers. Agents, skills, MCP servers, and UI metadata are declarative. Host adapters register each kind with its owning Synergy subsystem.
 
-- **Discover** searches a selected catalog source: Official or Local registry.
-- **Installed** lists every configured plugin and its health, regardless of origin.
-- **Development** lists directory registrations created with `file://` or plugin-kit dev.
+The plugin ID remains identical across the definition, generated manifest, registry entry, lockfile, approval, runtime generation, asset URLs, and UI surface IDs. A mismatch is an error, not an alias.
 
-An installed plugin can therefore appear in both Installed and Development. Local registry packages are
-catalog entries published through `publish-market`; they are not directory registrations.
+## Runtime and Data Ownership
 
-Upgrade and uninstall handlers are lifecycle contributions. Upgrade runs on the prepared new generation before activation; failure leaves the old generation active. Forced uninstall skips cleanup and may leave plugin-owned data.
+External plugins run in a separate process for crash, timeout, and cleanup isolation. Trusted built-ins may run in process. There is no plugin worker mode, iframe tier, or claim that the process boundary is an OS security sandbox.
 
-See [`packages/plugin/README.md`](../../packages/plugin/README.md) for the authoring API.
+One active `pluginId + version + generation` runtime is shared by every Scope that enables the plugin. Scope, Session, actor, cancellation, logger, events, and capability-gated Host Services are injected into each invocation. Plugins never receive a raw Synergy client, server URL, or token.
+
+Synergy stores installation metadata, approval, per-Scope enablement, declarative settings, and plugin credentials. A plugin owns its business data, schema, concurrency, backup, upgrade, and deletion policy.
+
+## UI Model
+
+Simple metadata is rendered by the host. Complex surfaces are trusted Solid components loaded only after approval. plugin-kit compiles TSX and binds it to the host's shared Solid runtime. Every trusted component receives one `PluginSurfaceContext`; it reads complete state through query operations, sends intent through command operations, and treats events as scoped invalidation or small state-change notifications.

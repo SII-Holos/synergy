@@ -1,8 +1,9 @@
 # Synergy Plugin API 3
 
-`definePlugin()` is the only source of plugin identity, capabilities, declarations, and executable handlers. Authors do not write `plugin.json`; `synergy-plugin build` generates it together with the runtime and trusted UI bundles.
+`definePlugin()` is the only source of plugin identity, capabilities, contributions, and executable handlers. Authors do not write `plugin.json`; `synergy-plugin build` generates it with runtime/UI bundles and integrity metadata.
 
 ```ts
+import z from "zod"
 import { capability, definePlugin, event, operation, workbenchPanel } from "@ericsanchezok/synergy-plugin"
 
 export default definePlugin({
@@ -11,12 +12,12 @@ export default definePlugin({
   description: "Example plugin",
   capabilities: [capability("workspace.read"), capability("ui.hostActions")],
   contributions: [
-    event({ id: "example.changed", payload: { type: "object" } }),
+    event({ id: "example.changed", payload: z.object({ reason: z.string() }) }),
     operation({
       id: "example.get",
       type: "query",
-      input: { type: "object", additionalProperties: false },
-      output: { type: "object" },
+      input: z.object({}),
+      output: z.object({ scopeId: z.string() }),
       async handler(_input, context) {
         return { scopeId: context.scopeId }
       },
@@ -26,27 +27,68 @@ export default definePlugin({
       label: "Example",
       surface: "side",
       cardinality: "singleton",
-      component: { source: "src/ui/main.tsx" },
+      component: { source: "./src/ui.tsx" },
     }),
   ],
 })
 ```
 
-Contributions form one flat discriminated union. Executable kinds are `operation`, `tool`, `hook`, `authProvider`, `lifecycle.upgrade`, and `lifecycle.uninstall`. Declarative kinds include agents, skills, MCP servers, settings, navigation, themes, icons, and UI surfaces.
+## Definition Rules
 
-External plugins run in one process per active `pluginId + version + generation`. Multiple Scopes share that runtime; every invocation receives a fresh Scope/Session context. The process boundary isolates crashes and resource cleanup and is not an OS security sandbox.
+- Plugin IDs use lowercase letters, digits, dots, and hyphens and begin with a letter.
+- Contribution IDs are unique across the whole plugin.
+- A contribution's `requires` entries must exist in top-level `capabilities`.
+- `operation()` defaults to `expose: ['ui']`; add `sdk` explicitly for public SDK access.
+- Zod and JSON Schema are accepted for operation, event, and tool schemas.
+- `activate()` runs once per runtime generation and does not receive Scope or Session state.
 
-Capabilities only control Synergy Host Services. They do not claim to restrict direct OS access by the plugin process. Plugins own their business data, schema, backup, migration, and deletion. Synergy stores only installation metadata, approvals, Scope enablement, declarative settings, and plugin secrets.
+## Contribution Factories
 
-Complex UI is a trusted Solid component loaded only after user approval. plugin-kit compiles TSX into reactive DOM instructions and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship their own Solid runtime. The component receives `PluginSurfaceContext`, whose operation client is bound to its own plugin identity. Complete state comes from query operations; events are small invalidation/state-change notifications.
+Executable factories: `operation`, `tool`, `hook`, `authProvider`, `lifecycleUpgrade`, and `lifecycleUninstall`.
 
-Toolchain:
+Declarative factories: `event`, `agent`, `skill`, `mcp`, `workbenchPanel`, `navigationItem`, `messageRenderer`, `composerAction`, `settings`, `theme`, and `icon`.
 
-```sh
+The generated manifest contains declarations only. Runtime startup reports its actual handler IDs, and the host requires an exact match.
+
+## Invocation Context
+
+Every executable call receives a fresh `PluginInvocationContext` with request ID, Scope, optional Session, actor, cancellation, logger, scoped events, and only the Host Services allowed by approved capabilities. Plugins never receive a raw Synergy client, server URL, or token.
+
+Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.run` and `tool.invoke` additionally require an agent invocation context.
+
+## Trusted UI
+
+Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.
+
+Source component shape:
+
+```tsx
+import type { Component } from "solid-js"
+import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin/ui"
+
+const Panel: Component<{ context: PluginSurfaceContext }> = (props) => (
+  <section aria-label={props.context.surface.id}>Plugin content</section>
+)
+
+export default Panel
+```
+
+## Runtime and Data
+
+External plugins run in one process per active `pluginId + version + generation`; enabled Scopes share it and receive separate invocation contexts. Trusted built-ins may use `inProcess`. The process boundary is crash/resource cleanup isolation, not an OS security sandbox.
+
+Plugins own their business data, schema, concurrency, backup, migration, and deletion. Synergy stores only installation metadata, approval, Scope enablement, declarative settings, and plugin credentials.
+
+## Toolchain
+
+```bash
 synergy-plugin build
-synergy-plugin validate
+synergy-plugin validate --runtime-discovery
+synergy-plugin test
 synergy-plugin pack
 synergy-plugin dev --server-url http://127.0.0.1:PORT
 ```
 
-Live development must use an isolated `SYNERGY_HOME`. A successful rebuild publishes a new generation atomically; failed builds leave the previous generation active.
+Live reload requires an explicit isolated `SYNERGY_HOME`. Successful rebuilds publish a new generation atomically; failed builds leave the previous generation active.
+
+See [`docs/plugins`](../../docs/plugins/README.md) for architecture, lifecycle, marketplace, security, and UI guidance.

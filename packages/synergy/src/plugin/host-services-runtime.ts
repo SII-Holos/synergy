@@ -2,7 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 import Ajv2020 from "ajv/dist/2020"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import type { PluginRuntimeBridgeInput } from "../plugin-runtime/manager"
+import type { PluginHostServiceInvocationInput } from "../plugin-runtime/manager"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -32,19 +32,19 @@ const capabilityByMethod = {
 const validators = new Map<string, ReturnType<Ajv2020["compile"]>>()
 const sequences = new Map<string, number>()
 
-function assertCapability(input: PluginRuntimeBridgeInput) {
+function assertCapability(input: PluginHostServiceInvocationInput) {
   if (input.method === "event.publish") return
   const required = capabilityByMethod[input.method]
   const granted = input.manifest.capabilities.some((capability) => capability.id === required)
   if (!granted) throw new Error(`Plugin ${input.pluginId} does not declare capability "${required}"`)
 }
 
-function params(input: PluginRuntimeBridgeInput): Record<string, unknown> {
+function params(input: PluginHostServiceInvocationInput): Record<string, unknown> {
   if (!input.params || typeof input.params !== "object" || Array.isArray(input.params)) return {}
   return input.params as Record<string, unknown>
 }
 
-async function inScope<T>(input: PluginRuntimeBridgeInput, fn: () => Promise<T>): Promise<T> {
+async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Promise<T>): Promise<T> {
   const scope = await Scope.fromID(input.invocation.scopeId)
   if (!scope) throw new Error(`Plugin invocation scope not found: ${input.invocation.scopeId}`)
   return ScopeContext.provide({ scope, fn })
@@ -64,7 +64,7 @@ function eventContribution(manifest: PluginManifestType, eventId: string) {
   )
 }
 
-function validateEvent(input: PluginRuntimeBridgeInput, eventId: string, payload: unknown) {
+function validateEvent(input: PluginHostServiceInvocationInput, eventId: string, payload: unknown) {
   const contribution = eventContribution(input.manifest, eventId)
   if (!contribution) throw new Error(`Plugin event is not declared: ${eventId}`)
   const key = `${input.pluginId}:${eventId}:${JSON.stringify(contribution.payload)}`
@@ -78,7 +78,7 @@ function validateEvent(input: PluginRuntimeBridgeInput, eventId: string, payload
   }
 }
 
-async function publishEvent(input: PluginRuntimeBridgeInput) {
+async function publishEvent(input: PluginHostServiceInvocationInput) {
   const value = params(input)
   const eventId = value.eventId
   if (typeof eventId !== "string") throw new Error("event.publish requires eventId")
@@ -99,7 +99,7 @@ async function publishEvent(input: PluginRuntimeBridgeInput) {
   })
 }
 
-export async function executePluginHostService(input: PluginRuntimeBridgeInput): Promise<unknown> {
+export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
     const value = params(input)

@@ -48,8 +48,8 @@ Use `@ericsanchezok/synergy-plugin-kit` and the public `@ericsanchezok/synergy-p
 
 - [Plugin documentation](docs/plugins/README.md): platform overview and canonical index.
 - [Getting started](docs/plugins/getting-started.md): create, develop, validate, build, test, sign, pack, install, and publish.
-- [Manifest reference](docs/plugins/manifest.md): `plugin.json` contract and contribution families.
-- [Runtime and permissions](docs/plugins/runtime-and-permissions.md): provenance, trust, approval, isolation, bridge, lifecycle, and hooks.
+- [Generated manifest](docs/plugins/manifest.md): build-produced `plugin.json`, contribution declarations, artifacts, and handler matching.
+- [Runtime and capabilities](docs/plugins/runtime-and-permissions.md): approval, generations, scoped Host Services, operations, events, hooks, and lifecycle.
 - [Tools and delegation](docs/plugins/tools-and-delegation.md): public runtime tools, helpers, delegated tasks, attachments, and display metadata.
 - [UI contributions](docs/plugins/ui-contributions.md): renderers, workbench surfaces, settings, slots, themes, icons, and commands.
 - [Marketplace](docs/plugins/marketplace.md): official/local registries, signing, publishing, installation, and update flow.

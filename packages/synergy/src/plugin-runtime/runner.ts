@@ -87,7 +87,7 @@ function logger(): PluginLogger {
 
 function hostRequest(invocationId: string, method: PluginHostServiceMethod, params: unknown): Promise<unknown> {
   const requestId = crypto.randomUUID()
-  const timeoutMs = activation?.runtimeLimits.bridgeRequestTimeoutMs
+  const timeoutMs = activation?.runtimeLimits.hostServiceRequestTimeoutMs
   if (!timeoutMs) return Promise.reject(new Error("Plugin runtime is not active"))
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {

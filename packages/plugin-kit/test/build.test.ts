@@ -5,6 +5,7 @@ import { pathToFileURL } from "url"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { buildPluginProject } from "../src/commands/build"
 import { publishGeneration } from "../src/commands/dev"
+import { packPluginProject } from "../src/commands/pack"
 
 describe("plugin build and dev generations", () => {
   test("compiled Solid UI remains reactive after asynchronous state changes", async () => {
@@ -126,6 +127,54 @@ export default definePlugin({
       expect(await publishGeneration(root)).toBe(false)
       expect(fs.readFileSync(pointerPath, "utf-8")).toBe(current)
       expect(fs.existsSync(pointer.directory)).toBe(true)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("signs the generated plugin.json from a packed artifact", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "sign-fixture-"))
+    try {
+      fs.mkdirSync(path.join(root, "src"), { recursive: true })
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "sign-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+      )
+      fs.writeFileSync(
+        path.join(root, "src", "index.ts"),
+        `
+import { definePlugin } from "@ericsanchezok/synergy-plugin"
+export default definePlugin({
+  id: "sign-fixture",
+  version: "1.0.0",
+  description: "Signing fixture",
+  contributions: [],
+})
+`,
+      )
+
+      expect(await buildPluginProject(root)).toBe(true)
+      const archive = packPluginProject(root)
+      const runner = path.join(root, "sign.mjs")
+      fs.writeFileSync(
+        runner,
+        `
+import { signPluginTarball } from ${JSON.stringify(pathToFileURL(path.join(import.meta.dir, "..", "src", "commands", "sign.ts")).href)}
+await signPluginTarball(process.argv[2])
+`,
+      )
+      const child = Bun.spawn([process.execPath, runner, archive], {
+        cwd: root,
+        env: { ...process.env, SYNERGY_HOME: path.join(root, "home") },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect(stderr).toBe("")
+      expect(exitCode).toBe(0)
+      const signature = JSON.parse(fs.readFileSync(`${archive}.sig`, "utf-8"))
+      expect(signature.pluginId).toBe("sign-fixture")
+      expect(signature.version).toBe("1.0.0")
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

@@ -21478,16 +21478,10 @@
         "default": {
           "startupTimeoutMs": 5000,
           "toolInvocationTimeoutMs": 120000,
-          "hookInvocationTimeoutMs": 120000,
-          "bridgeRequestTimeoutMs": 120000,
+          "hostServiceRequestTimeoutMs": 120000,
           "taskRunTimeoutMs": 120000,
           "shutdownGraceMs": 1500,
-          "maxConcurrentRequests": 8,
-          "maxLogBytesPerMinute": 128000,
-          "memoryMb": 256,
-          "memoryPollIntervalMs": 10000,
-          "heartbeatIntervalMs": 5000,
-          "heartbeatMissesBeforeKill": 3
+          "heartbeatIntervalMs": 5000
         },
         "type": "object",
         "properties": {
@@ -21503,14 +21497,8 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "hookInvocationTimeoutMs": {
-            "description": "Maximum milliseconds for a plugin hook invocation",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "bridgeRequestTimeoutMs": {
-            "description": "Maximum milliseconds for one plugin-to-host bridge request",
+          "hostServiceRequestTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin Host Service request",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -21527,38 +21515,8 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "maxConcurrentRequests": {
-            "description": "Maximum concurrent bridge requests",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "maxLogBytesPerMinute": {
-            "description": "Maximum plugin log bytes per minute",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "memoryMb": {
-            "description": "Maximum process runtime RSS in MB",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "memoryPollIntervalMs": {
-            "description": "Memory polling interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
           "heartbeatIntervalMs": {
             "description": "Heartbeat interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "heartbeatMissesBeforeKill": {
-            "description": "Missed heartbeats before process kill",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991

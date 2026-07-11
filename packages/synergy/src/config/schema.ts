@@ -1150,18 +1150,12 @@ export const PluginRuntimeLimits = z
       .positive()
       .optional()
       .describe("Maximum milliseconds for a plugin tool invocation"),
-    hookInvocationTimeoutMs: z
+    hostServiceRequestTimeoutMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Maximum milliseconds for a plugin hook invocation"),
-    bridgeRequestTimeoutMs: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Maximum milliseconds for one plugin-to-host bridge request"),
+      .describe("Maximum milliseconds for one plugin Host Service request"),
     taskRunTimeoutMs: z
       .number()
       .int()
@@ -1169,12 +1163,7 @@ export const PluginRuntimeLimits = z
       .optional()
       .describe("Default maximum milliseconds for plugin delegated task runs"),
     shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
-    maxConcurrentRequests: z.number().int().positive().optional().describe("Maximum concurrent bridge requests"),
-    maxLogBytesPerMinute: z.number().int().positive().optional().describe("Maximum plugin log bytes per minute"),
-    memoryMb: z.number().int().positive().optional().describe("Maximum process runtime RSS in MB"),
-    memoryPollIntervalMs: z.number().int().positive().optional().describe("Memory polling interval in milliseconds"),
     heartbeatIntervalMs: z.number().int().positive().optional().describe("Heartbeat interval in milliseconds"),
-    heartbeatMissesBeforeKill: z.number().int().positive().optional().describe("Missed heartbeats before process kill"),
   })
   .strict()
   .meta({ ref: "PluginRuntimeLimitsConfig" })
