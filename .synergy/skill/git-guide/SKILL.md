@@ -1,6 +1,6 @@
 ---
 name: git-guide
-description: Safely inspect Synergy git history, create or reuse task worktrees and topic branches, stage focused changes, write redacted agent commit messages, rebase, push, or open pull requests. Use for git status, blame, archaeology, commits, branches, worktrees, protected branches, rebases, pushes, PR preparation, GitHub publication, or agent co-author rules in this shared repository.
+description: Safely inspect Synergy git history, create or reuse task worktrees and topic branches, stage focused changes, write redacted agent commit messages, rebase, push, or open pull requests. Use for git status, blame, archaeology, commits, branches, worktrees, protected branches, rebases, pushes, PR preparation, GitHub publication, GitHub CLI permission classification, or agent co-author rules in this shared repository.
 ---
 
 # Git Guide for Synergy Development
@@ -97,6 +97,23 @@ gh issue comment <number> --body-file /synergy/note/<note-id>
 Do not interpolate Note contents into a shell command or pass them to an option that executes the file as code.
 
 The `autonomous` profile permits ordinary remote publication from worktrees and denies remote writes from the shared checkout. Enter the task worktree before pushing or creating a pull request. This capability boundary does not replace the user's authorization to publish.
+
+## GitHub CLI Permission Matrix
+
+The permission system classifies `gh` commands before applying the active control profile. The table shows the base profile decision before user rules, approval cache, SmartAllow, GitHub authorization, or ordinary runtime failures.
+
+| Command                              | Capability             | Guarded  | Autonomous                  | Full Access |
+| ------------------------------------ | ---------------------- | -------- | --------------------------- | ----------- |
+| `gh pr view/list/status/checks/diff` | `shell_read`           | ✅ allow | ✅ allow                    | ✅ allow    |
+| `gh pr create`                       | `shell_remote_publish` | ⚠️ ask   | ✅ allow in a task worktree | ✅ allow    |
+| `gh pr comment` / `gh pr review`     | `shell_remote_publish` | ⚠️ ask   | ✅ allow in a task worktree | ✅ allow    |
+| `gh pr edit` / `gh pr ready`         | `shell_remote_write`   | ⚠️ ask   | ❌ deny                     | ✅ allow    |
+| `gh issue view/list/status`          | `shell_read`           | ✅ allow | ✅ allow                    | ✅ allow    |
+| `gh issue create/comment`            | `shell_remote_publish` | ⚠️ ask   | ✅ allow in a task worktree | ✅ allow    |
+| `gh issue edit/close/reopen`         | `shell_remote_write`   | ⚠️ ask   | ❌ deny                     | ✅ allow    |
+| `gh pr merge/close/reopen`           | `shell_destructive`    | ⚠️ ask   | ❌ deny                     | ✅ allow    |
+
+Outside a worktree, Synergy upgrades `shell_remote_publish` to `shell_remote_write`; Autonomous therefore denies publication from the shared checkout. Unknown write-capable `gh` subcommands default to `shell_remote_write`. Full Access silently allows permission-system capabilities but does not override task authorization, protected-branch rules, GitHub permissions, validation failures, or network/runtime errors.
 
 ## Rebase or Recover
 
