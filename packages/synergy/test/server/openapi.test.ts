@@ -122,12 +122,28 @@ describe("OpenAPI spec generation", () => {
     expect(spec.paths["/global/performance/traces"]?.get?.operationId).toBe("performance.traces.list")
     expect(spec.paths["/global/performance/traces/{traceId}"]?.get?.operationId).toBe("performance.traces.detail")
     expect(spec.paths["/global/performance/issues"]?.get?.operationId).toBe("performance.issues.list")
+    expect(spec.paths["/global/performance/inflight"]?.get?.operationId).toBe("performance.inflight")
+    const inflightParameters = spec.paths["/global/performance/inflight"]?.get?.parameters ?? []
+    expect(inflightParameters.map((item) => ("name" in item ? item.name : undefined))).toEqual([
+      "scopeID",
+      "sessionID",
+      "staleMs",
+      "limit",
+    ])
     expect(spec.paths["/global/performance/config"]?.get?.operationId).toBe("performance.config.get")
     expect(spec.paths["/global/performance/config"]?.patch?.operationId).toBe("performance.config.update")
     expect(spec.paths["/global/performance/browser-metrics"]?.post?.operationId).toBe(
       "performance.browserMetrics.ingest",
     )
     expect(spec.paths["/global/performance/events"]?.get?.operationId).toBe("performance.events.stream")
+    expect(spec.paths["/global/diagnostics"]?.get?.operationId).toBe("observability.diagnostics.summary")
+    const diagnosticsResponse = spec.paths["/global/diagnostics"]?.get?.responses?.["200"]
+    const diagnosticsSchema = JSON.stringify(
+      diagnosticsResponse && "content" in diagnosticsResponse
+        ? diagnosticsResponse.content?.["application/json"]?.schema
+        : undefined,
+    )
+    expect(diagnosticsSchema).toContain("DiagnosticsSummary")
   })
 
   test("does not expose legacy file or find routes", async () => {

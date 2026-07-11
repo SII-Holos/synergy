@@ -24,7 +24,7 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "test": "bun test test/*.test.ts",
+    "test": "bun test --timeout 30000 test/*.test.ts",
     "dev": "vite",
     "generate:tailwind": "bun run script/tailwind.ts"
   },

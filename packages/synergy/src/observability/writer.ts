@@ -1,8 +1,9 @@
 import fs from "fs/promises"
-import { PerformanceIssues } from "./issues"
-import { PerformanceMetrics } from "./metrics"
+import { ObservabilityConfig } from "@/observability/config"
+import { ObservabilityIssues } from "./issues"
+import { ObservabilityMetrics } from "./metrics"
 
-export namespace PerformanceWriter {
+export namespace ObservabilityWriter {
   interface Entry {
     file: string
     line: string
@@ -18,22 +19,23 @@ export namespace PerformanceWriter {
   let lastDepthMetricAt = 0
 
   export function append(file: string, line: string) {
+    if (!ObservabilityConfig.current().storage.jsonlMirrorEnabled) return
     if (queue.length >= MAX_QUEUE) {
       dropped++
       queue.shift()
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "observability.writer.dropped",
         value: 1,
         unit: "count",
         module: "observability",
         labels: { reason: "queue_full", dropped },
       })
-      PerformanceIssues.raise({
+      ObservabilityIssues.raise({
         code: "PERF_OBSERVABILITY_WRITER_BACKPRESSURE",
         severity: "warning",
         module: "observability",
         title: "Observability writer queue is dropping entries",
-        message: "Observability writer queue is full and oldest entries are being dropped",
+        message: "Observability writer queue is full and oldest mirror entries are being dropped",
         evidence: { queueDepth: queue.length, dropped },
       })
     }
@@ -41,7 +43,7 @@ export namespace PerformanceWriter {
     const now = Date.now()
     if (now - lastDepthMetricAt >= 1000) {
       lastDepthMetricAt = now
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "observability.writer.queue_depth",
         value: queue.length,
         unit: "count",
@@ -62,6 +64,10 @@ export namespace PerformanceWriter {
     return flushing
   }
 
+  export function stats() {
+    return { queueDepth: queue.length, dropped }
+  }
+
   async function flushAll() {
     while (queue.length > 0) {
       const start = performance.now()
@@ -76,24 +82,24 @@ export namespace PerformanceWriter {
         await fs.mkdir(file.replace(/[\\/][^\\/]+$/, ""), { recursive: true }).catch(() => {})
         await fs.appendFile(file, lines.join(""), "utf8").catch(() => {
           dropped += lines.length
-          PerformanceMetrics.record({
+          ObservabilityMetrics.record({
             name: "observability.writer.dropped",
             value: lines.length,
             unit: "count",
             module: "observability",
             labels: { reason: "append_failed" },
           })
-          PerformanceIssues.raise({
+          ObservabilityIssues.raise({
             code: "PERF_OBSERVABILITY_WRITER_APPEND_FAILED",
             severity: "error",
             module: "observability",
             title: "Observability writer append failed",
-            message: "Observability writer could not append queued entries",
+            message: "Observability writer could not append queued mirror entries",
             evidence: { dropped: lines.length },
           })
         })
       }
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "observability.writer.flush.duration",
         value: performance.now() - start,
         unit: "ms",
@@ -101,10 +107,6 @@ export namespace PerformanceWriter {
         labels: { batchSize: batch.length, remaining: queue.length },
       })
     }
-  }
-
-  export function stats() {
-    return { queueDepth: queue.length, dropped }
   }
 
   function scheduleFlush() {
@@ -118,5 +120,5 @@ export namespace PerformanceWriter {
 }
 
 process.once("beforeExit", () => {
-  void PerformanceWriter.flush()
+  void ObservabilityWriter.flush()
 })

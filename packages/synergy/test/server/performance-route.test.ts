@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
-import { PerformanceConfig } from "../../src/performance/config"
-import { PerformanceMetrics } from "../../src/performance/metrics"
-import { PerformanceStore } from "../../src/performance/store"
+import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilitySpans } from "../../src/observability/spans"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
+import { ObservabilityStore } from "../../src/observability/store"
 import { Server } from "../../src/server/server"
 
 const homes: string[] = []
@@ -15,8 +16,8 @@ beforeEach(() => {
   const home = mkdtempSync(path.join(tmpdir(), "synergy-perf-route-"))
   homes.push(home)
   process.env.SYNERGY_TEST_HOME = home
-  PerformanceStore.close()
-  PerformanceConfig.refresh()
+  ObservabilityStore.close()
+  ObservabilityConfig.refresh()
 })
 
 afterEach(() => {
@@ -25,14 +26,14 @@ afterEach(() => {
 
 describe("performance routes", () => {
   test("summary returns dashboard shape without project scope", async () => {
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name: "http.request.duration",
       value: 25,
       unit: "ms",
       module: "server",
       labels: { method: "GET", path: "/global/performance/summary", status: 200 },
     })
-    PerformanceStore.flush()
+    ObservabilityStore.flush()
 
     const response = await Server.App().request("/global/performance/summary?windowMs=60000")
     expect(response.status).toBe(200)
@@ -61,6 +62,51 @@ describe("performance routes", () => {
     expect(body.batchId).toStartWith("brb_")
   })
 
+  test("browser metric ingestion drops unsafe context strings", async () => {
+    const response = await Server.App().request("/global/performance/browser-metrics", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sentAt: Date.now(),
+        page: {
+          routeName: "prompt raw contract",
+          pathTemplate: "/session/:id?token=secret",
+          sessionID: "prompt: summarize confidential contract",
+          correlationId: "Authorization:BasicSecret",
+          navigationId: "nav_safe-1",
+        },
+        metrics: [
+          {
+            name: "frontend.token.paint.duration",
+            value: 3,
+            unit: "ms",
+            labels: { sessionID: "sk-live-secret", messageID: "msg_safe-1", component: "ConversationView" },
+          },
+        ],
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    ObservabilityStore.flush()
+    const metrics = ObservabilityStore.queryMetrics({ since: 0, names: ["frontend.token.paint.duration"] })
+    expect(metrics).toHaveLength(1)
+    expect(metrics[0].session_id).toBeNull()
+    expect(metrics[0].correlation_id).not.toBe("Authorization:BasicSecret")
+    const labels = JSON.parse(metrics[0].labels_json)
+    expect(labels.navigationId).toBe("nav_safe-1")
+    expect(labels.messageID).toBe("msg_safe-1")
+    expect(labels.component).toBe("ConversationView")
+    expect(JSON.stringify(labels)).not.toContain("sk-live-secret")
+    const conn = ObservabilityStore.open()!
+    const batch = conn
+      .prepare("SELECT page_json FROM obs_browser_batches ORDER BY received_time DESC LIMIT 1")
+      .get() as {
+      page_json: string
+    }
+    expect(batch.page_json).not.toContain("prompt")
+    expect(batch.page_json).not.toContain("Authorization")
+  })
+
   test("performance routes return stable error codes for invalid requests", async () => {
     const invalidSummary = await Server.App().request("/global/performance/summary?windowMs=0")
     expect(invalidSummary.status).toBe(400)
@@ -80,6 +126,26 @@ describe("performance routes", () => {
     expect(response.status).toBe(404)
     const body = await response.json()
     expect(body.code).toBe("PERF_TRACE_NOT_FOUND")
+  })
+
+  test("trace detail includes span kind field", async () => {
+    const span = ObservabilitySpans.start({
+      name: "llm.stream",
+      module: "llm",
+      attributes: { model: "test" },
+    })!
+    const traceId = span.traceId
+    ObservabilitySpans.end(span)
+    ObservabilityStore.flush()
+
+    const response = await Server.App().request(`/global/performance/traces/${traceId}`)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.spans).toBeArray()
+    expect(body.spans.length).toBeGreaterThan(0)
+    expect(body.spans[0]).toHaveProperty("kind")
+    expect(typeof body.spans[0].kind).toBe("string")
+    expect(body.spans[0].kind.length).toBeGreaterThan(0)
   })
 
   test("timeline enforces allowed metrics and bucket limits", async () => {
@@ -102,10 +168,10 @@ describe("performance routes", () => {
 
   test("capped metric queries preserve newest rows and summary exposes partial quality", async () => {
     const now = Date.now()
-    const conn = PerformanceStore.open()
+    const conn = ObservabilityStore.open()
     expect(conn).toBeDefined()
     const insert = conn!.prepare(
-      `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,labels_json,sample_rate)
+      `INSERT INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,labels_json,sample_rate)
        VALUES (?1,?2,?3,'http.request.duration',?4,'ms','backend','server',?5,1)`,
     )
     const insertMetrics = conn!.transaction(() => {
@@ -122,13 +188,13 @@ describe("performance routes", () => {
     })
     insertMetrics()
 
-    const newest = PerformanceStore.queryMetrics({
+    const newest = ObservabilityStore.queryMetrics({
       since: now - 60_000,
       names: ["http.request.duration"],
       limit: 3,
       newestFirst: true,
     })
-    expect(newest.map((row) => row.value)).toEqual([49_999, 50_000, 50_001])
+    expect(newest.map((row) => row.value)).toEqual([50_001, 50_000, 49_999])
 
     const summary = await Server.App().request("/global/performance/summary?windowMs=86400000")
     expect(summary.status).toBe(200)
@@ -140,18 +206,18 @@ describe("performance routes", () => {
 
   test("timeline returns chart metrics with aggregation metadata", async () => {
     const now = Date.now()
-    PerformanceMetrics.record({ name: "http.request.duration", value: 10, unit: "ms", module: "server" })
-    PerformanceMetrics.record({ name: "http.request.duration", value: 40, unit: "ms", module: "server" })
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({ name: "http.request.duration", value: 10, unit: "ms", module: "server" })
+    ObservabilityMetrics.record({ name: "http.request.duration", value: 40, unit: "ms", module: "server" })
+    ObservabilityMetrics.record({
       name: "process.cpu.utilization",
       value: 0.2,
       unit: "ratio",
       module: "process",
       source: "process",
     })
-    PerformanceMetrics.record({ name: "session.turn.duration", value: 25, unit: "ms", module: "session" })
-    PerformanceMetrics.record({ name: "storage.operation.count", value: 1, unit: "count", module: "storage" })
-    PerformanceStore.flush()
+    ObservabilityMetrics.record({ name: "session.turn.duration", value: 25, unit: "ms", module: "session" })
+    ObservabilityMetrics.record({ name: "storage.operation.count", value: 1, unit: "count", module: "storage" })
+    ObservabilityStore.flush()
 
     const from = new Date(now - 1_000).toISOString()
     const to = new Date(now + 2_000).toISOString()
@@ -223,39 +289,39 @@ describe("performance routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         sentAt: Date.now(),
-        page: { routeName: "Session Detail", pathTemplate: "/session/:id?token=secret" },
+        page: { routeName: "SessionDetail", pathTemplate: "/session/:id?token=secret" },
         metrics: [],
         resourceEntries: [{ name: "/global/session?token=secret", startTime: 1, duration: 80 }],
         longTasks: [{ startTime: 2, duration: 120, attribution: "script" }],
       }),
     })
     expect(response.status).toBe(200)
-    PerformanceStore.flush()
+    ObservabilityStore.flush()
 
     const summary = await Server.App().request("/global/performance/summary?windowMs=60000")
     expect(summary.status).toBe(200)
     const body = await summary.json()
-    expect(body.top.slowFrontend.some((item: { label: string }) => item.label === "Session Detail")).toBe(true)
+    expect(body.top.slowFrontend.some((item: { label: string }) => item.label === "SessionDetail")).toBe(true)
     expect(body.top.slowFrontend.every((item: { label: string }) => !item.label.includes("token"))).toBe(true)
   })
 
   test("timeline filters by providerID and returns ascending nullable buckets", async () => {
     const now = Date.now()
-    PerformanceMetrics.record({
-      name: "llm.call.duration",
+    ObservabilityMetrics.record({
+      name: "llm.request.duration",
       value: 10,
       unit: "ms",
       module: "llm",
       labels: { providerID: "provider-a" },
     })
-    PerformanceMetrics.record({
-      name: "llm.call.duration",
+    ObservabilityMetrics.record({
+      name: "llm.request.duration",
       value: 20,
       unit: "ms",
       module: "llm",
       labels: { providerID: "provider-b" },
     })
-    PerformanceStore.flush()
+    ObservabilityStore.flush()
 
     const from = new Date(now - 1_000).toISOString()
     const to = new Date(now + 2_000).toISOString()
@@ -285,9 +351,24 @@ describe("performance routes", () => {
     expect(body.config.enabled).toBe(true)
     expect(body.sources).toContain("runtime.observability.performance")
   })
+
+  test("inflight route reports running spans", async () => {
+    const span = (await import("../../src/observability/spans")).ObservabilitySpans.start({
+      name: "tool.execution",
+      module: "tool",
+      tool: "bash",
+      attributes: { phase: "execute" },
+    })
+    ObservabilityStore.flush()
+
+    const response = await Server.App().request("/global/performance/inflight?limit=10")
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.spans.some((item: { spanId: string }) => item.spanId === span?.spanId)).toBe(true)
+  })
 })
 
 process.on("exit", () => {
-  PerformanceStore.close()
+  ObservabilityStore.close()
   for (const home of homes) rmSync(home, { recursive: true, force: true })
 })

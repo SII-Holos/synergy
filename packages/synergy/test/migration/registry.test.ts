@@ -6,7 +6,7 @@ import { MigrationRegistry } from "../../src/migration/registry"
 describe("MigrationRegistry", () => {
   test("registers all domains", () => {
     const domainCount = MigrationRegistry.list().size
-    expect(domainCount).toBe(9)
+    expect(domainCount).toBe(10)
   })
 
   test("has expected domain names", () => {
@@ -19,6 +19,7 @@ describe("MigrationRegistry", () => {
       "holos",
       "library",
       "note",
+      "observability",
       "scope",
       "session",
     ])

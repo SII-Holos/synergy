@@ -1,7 +1,6 @@
 import { RuntimeReload } from "@/runtime/reload"
 import { ScopeContext } from "@/scope/context"
-import { NamedError } from "@ericsanchezok/synergy-util/error"
-import z from "zod"
+import { ProviderAuthRecoveryError } from "./auth-recovery-error"
 import { Auth } from "./api-key"
 import { ProviderAuthHealth } from "./auth-health"
 import { ProviderProfile } from "./profile"
@@ -24,15 +23,7 @@ export namespace ProviderAuthRecovery {
     throwOnActionRequired?: boolean
   }
 
-  export const Error = NamedError.create(
-    "ProviderAuthenticationRequiredError",
-    z.object({
-      providerID: z.string(),
-      failureCode: z.string(),
-      actionRequired: z.literal(true),
-      message: z.string(),
-    }),
-  )
+  export const Error = ProviderAuthRecoveryError
 
   const handledFetches = new WeakSet<FetchLike>()
 

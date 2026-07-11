@@ -81,6 +81,7 @@ Desktop cold start should show a native Synergy shell immediately instead of a b
 Desktop managed-local project selection should use native OS folder picking for Add/Open Project because the Electron shell and managed server share local filesystem authority. Web, remote-server, and desktop external-server project selection must browse the server filesystem instead of exposing local desktop paths; that server browser should use an explicit search action, clear base/query state, and bounded server-side browse rather than keystroke-driven recursive scanning.
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+Performance and Diagnostics are developer diagnostic workbench surfaces. Organize them around evidence, current health, inflight or stale work, and recovery actions; keep raw trace IDs, span IDs, correlation IDs, and debug tables in detail or copy areas instead of making them default primary labels.
 
 Performance should separate server process resources from registered tool child process resources. Main RSS, heap, CPU, and event-loop signals belong in the primary resource cards and charts; tool child process count, aggregate RSS, and top child memory contributors should be visible as support-oriented diagnostics without crowding the main time-series model.
 

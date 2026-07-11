@@ -1,4 +1,4 @@
-import { PerformanceMetrics } from "@/performance/metrics"
+import { ObservabilityMetrics } from "@/observability/metrics"
 
 export namespace ServerSseMetrics {
   export function open(stream: string) {
@@ -22,7 +22,7 @@ export namespace ServerSseMetrics {
   }
 
   function record(name: string, value: number, labels: Record<string, string>, unit: "count" | "ms" = "count") {
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name,
       value,
       unit,

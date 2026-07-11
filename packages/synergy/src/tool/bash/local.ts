@@ -20,6 +20,7 @@ import { ToolTimeout } from "../timeout"
 import { GitHubProvider } from "@/provider/github"
 import { BashVirtualFile } from "./virtual-file"
 import type { BashSandboxPrepare } from "./shared"
+import { ObservabilityRedaction } from "@/observability/redaction"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -173,7 +174,7 @@ export const LocalBashBackend = {
       })
 
     await trace("bash.parser.start", {
-      command: params.command,
+      command: ObservabilityRedaction.commandSummary(params.command),
       shell,
     })
     const tree = await parser().then((p) => p.parse(params.command))
@@ -213,7 +214,6 @@ export const LocalBashBackend = {
     }
     await trace("bash.parser.end", {
       patternCount: patterns.size,
-      patterns: Array.from(patterns),
     })
 
     const detachedRisk = detectDetachedDaemonRisk(params.command)
@@ -231,7 +231,7 @@ export const LocalBashBackend = {
 
     if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await trace("bash.permission.ask", {
-        patterns: Array.from(patterns),
+        patternCount: patterns.size,
         capability: ShellSafety.capability(params.command),
       })
       await ctx.ask({
@@ -242,7 +242,7 @@ export const LocalBashBackend = {
         },
       })
       await trace("bash.permission.resolved", {
-        patterns: Array.from(patterns),
+        patternCount: patterns.size,
       })
     }
 
@@ -281,10 +281,7 @@ export const LocalBashBackend = {
           await trace(
             "attachment.discovery.error",
             {
-              error:
-                error instanceof Error
-                  ? { name: error.name, message: error.message, stack: error.stack }
-                  : String(error),
+              error: ObservabilityRedaction.errorInfo(error),
             },
             "error",
           )
@@ -444,7 +441,7 @@ export const LocalBashBackend = {
       await trace(
         "bash.child.error",
         {
-          error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
+          error: ObservabilityRedaction.errorInfo(e),
         },
         "error",
       )
@@ -513,7 +510,7 @@ export const LocalBashBackend = {
       void trace(
         "bash.child.error",
         {
-          error: { name: error.name, message: error.message, stack: error.stack },
+          error: ObservabilityRedaction.errorInfo(error),
         },
         "error",
       )
@@ -555,7 +552,7 @@ export const LocalBashBackend = {
     await trace("process.spawn", {
       processId: regProc.id,
       pid: child.pid,
-      command: params.command,
+      command: ObservabilityRedaction.commandSummary(params.command),
       sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
       backgroundAfterSeconds,
       timeoutSeconds: params.timeoutSeconds,

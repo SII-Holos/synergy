@@ -1,15 +1,23 @@
-import { PerformanceSchema } from "./schema"
+import z from "zod"
 
-export namespace PerformanceConfig {
-  let cached: PerformanceSchema.Config | undefined
+export namespace ObservabilityConfig {
+  let dirty = true
+  let cached: Info | undefined
 
   export function current() {
-    return cached ?? defaults
+    if (cached && !dirty) return cached
+    cached = effective()
+    dirty = false
+    return cached
   }
 
   export function refresh(input?: { observability?: { enabled?: boolean; maxBytes?: number; performance?: Raw } }) {
-    cached = effective(input)
-    return cached
+    if (input) {
+      cached = effective(input)
+      dirty = false
+    } else {
+      dirty = true
+    }
   }
 
   export interface Raw {
@@ -38,11 +46,38 @@ export namespace PerformanceConfig {
     thresholds?: Record<string, number | undefined>
   }
 
+  export const Schema = z.object({
+    enabled: z.boolean(),
+    samplingRate: z.number(),
+    metricRetentionMs: z.number(),
+    traceRetentionMs: z.number(),
+    resourceSampleIntervalMs: z.number(),
+    slowTraceThresholdMs: z.number(),
+    maxTraceEvents: z.number(),
+    maxTimelineBuckets: z.number(),
+    maxTraceListLimit: z.number(),
+    maxAttributeStringLength: z.number(),
+    dashboardRefreshMs: z.number(),
+    sseHeartbeatMs: z.number(),
+    sseBufferSize: z.number(),
+    perClientSseQueueSize: z.number(),
+    rateLimits: z.record(z.string(), z.number()).default({}),
+    redactAttributeKeys: z.array(z.string()),
+    storage: z.object({
+      sqliteEnabled: z.boolean(),
+      jsonlMirrorEnabled: z.boolean(),
+      maxSqliteBytes: z.number(),
+      walCheckpointIntervalMs: z.number(),
+    }),
+    thresholds: z.record(z.string(), z.number()),
+  })
+  export type Info = z.infer<typeof Schema>
+
   export const defaults = {
     enabled: true,
     samplingRate: 1,
-    metricRetentionMs: 60 * 60 * 1000,
-    traceRetentionMs: 30 * 60 * 1000,
+    metricRetentionMs: 24 * 60 * 60 * 1000,
+    traceRetentionMs: 24 * 60 * 60 * 1000,
     resourceSampleIntervalMs: 5000,
     slowTraceThresholdMs: 5000,
     maxTraceEvents: 2000,
@@ -78,10 +113,11 @@ export namespace PerformanceConfig {
       "body",
       "headers",
       "env",
+      "stack",
     ],
     storage: {
       sqliteEnabled: true,
-      jsonlMirrorEnabled: true,
+      jsonlMirrorEnabled: false,
       maxSqliteBytes: 250 * 1024 * 1024,
       walCheckpointIntervalMs: 60_000,
     },
@@ -101,15 +137,15 @@ export namespace PerformanceConfig {
       frontendPoorInpMs: 200,
       frontendPoorCls: 0.1,
     },
-  } satisfies PerformanceSchema.Config
+  } satisfies Info
 
   export function effective(input?: {
     observability?: { enabled?: boolean; maxBytes?: number; performance?: Raw }
-  }): PerformanceSchema.Config {
+  }): Info {
     const observability = input?.observability
     const raw = observability?.performance as Raw | undefined
     const enabled = raw?.enabled ?? observability?.enabled !== false
-    return PerformanceSchema.Config.parse({
+    return Schema.parse({
       ...defaults,
       ...raw,
       enabled,
@@ -126,9 +162,12 @@ export namespace PerformanceConfig {
       storage: {
         ...defaults.storage,
         ...(raw?.storage ?? {}),
-        maxSqliteBytes: Math.min(
-          raw?.storage?.maxSqliteBytes ?? defaults.storage.maxSqliteBytes,
-          observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
+        maxSqliteBytes: Math.max(
+          1024 * 1024,
+          Math.min(
+            raw?.storage?.maxSqliteBytes ?? defaults.storage.maxSqliteBytes,
+            observability?.maxBytes ?? defaults.storage.maxSqliteBytes,
+          ),
         ),
       },
       thresholds: { ...defaults.thresholds, ...(raw?.thresholds ?? {}) },

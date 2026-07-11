@@ -1,11 +1,10 @@
 import { EventEmitter } from "events"
-import type { PerformanceSchema } from "./schema"
+import type { ObservabilitySchema } from "./schema"
 
-export namespace PerformanceEvents {
+export namespace ObservabilityLiveEvents {
   export type Event =
-    | { type: "performance.issue.raised"; issue: PerformanceSchema.Issue }
-    | { type: "performance.trace.ended"; trace: PerformanceSchema.TraceListItem }
-    | { type: "performance.collector.dropped"; dropped: number; reason: string }
+    | { type: "issue.raised"; issue: ObservabilitySchema.Issue }
+    | { type: "trace.ended"; trace: ObservabilitySchema.Span }
 
   const emitter = new EventEmitter()
   emitter.setMaxListeners(200)

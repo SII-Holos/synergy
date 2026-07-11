@@ -10,7 +10,7 @@ import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { ProviderTransform } from "@/provider/transform"
-import { ProviderAuthRecovery } from "@/provider/auth-recovery"
+import { ProviderAuthRecoveryError } from "@/provider/auth-recovery-error"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
@@ -1244,7 +1244,7 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
-      case ProviderAuthRecovery.Error.isInstance(e):
+      case ProviderAuthRecoveryError.isInstance(e):
         return new MessageV2.AuthError(
           {
             providerID: e.data.providerID,

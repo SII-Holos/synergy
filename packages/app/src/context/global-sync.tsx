@@ -55,6 +55,7 @@ import {
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { recordTokenApply } from "@/components/performance/browser-metrics"
 
 type GlobalPaths = {
   home: string
