@@ -1,4 +1,4 @@
-import { app, WebContentsView, type BrowserWindow } from "electron"
+import { app, WebContentsView, type BrowserWindow, type WebContents } from "electron"
 import type {
   BrowserBackendCommand,
   BrowserBackendResult,
@@ -21,6 +21,7 @@ export interface BrowserNativePageHandle {
   state(): BrowserPage
   execute(command: BrowserBackendCommand): Promise<BrowserBackendResult>
   destroy(): Promise<void>
+  isAlive(): boolean
 }
 
 interface Entry extends BrowserNativePageHandle {
@@ -42,9 +43,10 @@ const INITIAL_NATIVE_PAGE_VIEWPORT = { width: 1280, height: 720 }
 export class BrowserNativePagePool {
   private entries = new Map<string, Entry>()
   private creating = new Set<string>()
+  private destroying = new Map<string, Promise<void>>()
 
   async create(input: BrowserNativePageInput): Promise<BrowserNativePageHandle> {
-    if (this.entries.has(input.ownerKey) || this.creating.has(input.ownerKey)) {
+    if (this.entries.has(input.ownerKey) || this.creating.has(input.ownerKey) || this.destroying.has(input.ownerKey)) {
       throw new Error("Browser owner already has a native page.")
     }
     this.creating.add(input.ownerKey)
@@ -53,11 +55,13 @@ export class BrowserNativePagePool {
       view = new WebContentsView({
         webPreferences: {
           partition: browserProfilePartition(input.ownerKey),
+          backgroundThrottling: false,
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
         },
       })
+      view.setBounds({ x: 0, y: 0, width: 1280, height: 720 })
       const contents = view.webContents
       await contents.session.setProxy({ proxyRules: input.networkProxy.server })
     } catch (error) {
@@ -121,6 +125,7 @@ export class BrowserNativePagePool {
           return pageControl.execute(command)
         },
         destroy: () => this.destroyEntry(input.ownerKey),
+        isAlive: () => !contents.isDestroyed(),
       }
       this.entries.set(input.ownerKey, entry)
       contents.on("did-start-loading", () =>
@@ -181,14 +186,55 @@ export class BrowserNativePagePool {
   }
 
   private async destroyEntry(ownerKey: string): Promise<void> {
+    const active = this.destroying.get(ownerKey)
+    if (active) return active
     const entry = this.entries.get(ownerKey)
     if (!entry) return
-    if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close({ waitForBeforeUnload: false })
-    if (!entry.view.webContents.isDestroyed()) throw new Error("Native Browser page did not close synchronously.")
-    this.entries.delete(ownerKey)
+    const operation = this.closeEntry(ownerKey, entry).finally(() => this.destroying.delete(ownerKey))
+    this.destroying.set(ownerKey, operation)
+    return operation
+  }
+
+  private async closeEntry(ownerKey: string, entry: Entry): Promise<void> {
+    const contents = entry.view.webContents as WebContents | undefined
     app.off("login", entry.onLogin)
     const results = await Promise.allSettled([entry.control.dispose(), entry.diagnostics.dispose()])
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (contents) {
+      try {
+        await closeWebContents(contents)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (!contents || contents.isDestroyed()) this.entries.delete(ownerKey)
     if (failures.length) throw new AggregateError(failures, "Native Browser page resources were not fully released.")
   }
+}
+
+function closeWebContents(contents: WebContents, timeoutMs = 5_000): Promise<void> {
+  if (contents.isDestroyed()) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (error?: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      contents.off("destroyed", destroyed)
+      if (error) reject(error)
+      else resolve()
+    }
+    const destroyed = () => finish()
+    const timer = setTimeout(
+      () => finish(new Error(`Native Browser page did not close within ${timeoutMs}ms.`)),
+      timeoutMs,
+    )
+    contents.once("destroyed", destroyed)
+    try {
+      contents.close({ waitForBeforeUnload: false })
+      if (contents.isDestroyed()) finish()
+    } catch (error) {
+      finish(error)
+    }
+  })
 }

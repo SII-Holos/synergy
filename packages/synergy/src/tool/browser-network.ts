@@ -4,7 +4,7 @@ import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
-    "Page, filter, inspect, or clear browser network records. Sensitive headers and payload data are redacted by default.",
+    "Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific id. Sensitive headers and payload data are redacted by default.",
   parameters: z
     .object({
       action: z.enum(["list", "get", "clear"]).default("list"),

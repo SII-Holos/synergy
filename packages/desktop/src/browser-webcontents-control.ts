@@ -11,7 +11,7 @@ import {
   type CdpTransport,
 } from "@ericsanchezok/synergy-browser"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
-import { inputModifiers } from "./browser-input.js"
+import { inputModifiers, type ElectronInputModifier } from "./browser-input.js"
 
 export interface BrowserWebContentsPageState {
   id: string
@@ -42,6 +42,26 @@ class ElectronCdpTransport implements CdpTransport {
 
   async send<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
     const contents = this.requireContents()
+    if (method === "Input.dispatchMouseEvent" && params?.type === "mouseMoved") {
+      contents.sendInputEvent({
+        type: "mouseMove",
+        x: Number(params.x ?? 0),
+        y: Number(params.y ?? 0),
+        modifiers: cdpInputModifiers(params.modifiers),
+      })
+      return {} as T
+    }
+    if (method === "Input.dispatchMouseEvent" && params?.type === "mouseWheel") {
+      contents.sendInputEvent({
+        type: "mouseWheel",
+        x: Number(params.x ?? 0),
+        y: Number(params.y ?? 0),
+        deltaX: Number(params.deltaX ?? 0),
+        deltaY: Number(params.deltaY ?? 0),
+        modifiers: cdpInputModifiers(params.modifiers),
+      })
+      return {} as T
+    }
     this.attach(contents)
     const command = contents.debugger.sendCommand(method, params) as Promise<T>
     return withCdpCommandTimeout(command, method, cdpCommandTimeoutMs(method, params))
@@ -87,6 +107,16 @@ class ElectronCdpTransport implements CdpTransport {
     contents.debugger.on("message", this.messageListener)
     this.attachedContents = contents
   }
+}
+
+function cdpInputModifiers(input: unknown): ElectronInputModifier[] {
+  const mask = Number(input ?? 0)
+  const modifiers: ElectronInputModifier[] = []
+  if (mask & 1) modifiers.push("alt")
+  if (mask & 2) modifiers.push("control")
+  if (mask & 4) modifiers.push("meta")
+  if (mask & 8) modifiers.push("shift")
+  return modifiers
 }
 
 export class BrowserWebContentsControl {

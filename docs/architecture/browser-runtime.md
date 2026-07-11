@@ -42,7 +42,9 @@ Sending a command on the events socket is rejected. GET session state and the ev
 
 For a Desktop-local, same-host client, presentation selection uses the native path. Electron owns a `WebContentsView` attached to the application window and executes the shared command model against its `webContents`.
 
-The native view reports navigation, loading, page state, dialogs, downloads, and lifecycle events back into host control. Its bounds are managed by the Desktop shell; the Web UI remains responsible for the surrounding Browser workspace.
+The native view reports navigation, loading, page state, dialogs, downloads, and lifecycle events back into host control. Its bounds are managed by the Desktop shell; the Web UI remains responsible for the surrounding Browser workspace. Shared viewport commands can change the view's CSS width and height, but they preserve the presentation origin assigned by the shell.
+
+Native pages start with a real 1280×720 CSS viewport before attachment so navigation checkpoints and tool commands never observe a zero-sized document. When a Host page is created or a headless page migrates to Host, the server publishes page-scoped readiness after the canonical page event. An already-open workspace can then attach the live `WebContentsView` immediately; attachment and resize ignore zero-sized layout frames and surface IPC failures as structured Browser errors.
 
 ## WebRTC Presentation
 
@@ -74,6 +76,12 @@ Browser routes attach trace IDs, command IDs, owner keys, page IDs, presentation
 API errors stay structured through the SDK boundary. WebRTC retries only retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed.
 
 The interactive surface continues to use live native or WebRTC presentation. Screenshots, DOM snapshots, console entries, network records, and accessibility snapshots are inspection products and tool inputs.
+
+Browser page close is asynchronous and idempotent. Desktop detaches diagnostics and CDP control, waits for Electron destruction, clears owner maps and tickets, and only then acknowledges logical closure. A subsequent navigation creates a fresh page for the same owner; cleanup errors cannot leave an active descriptor pointing at destroyed `webContents`.
+
+Tool actions keep failures atomic and results directly useful to the agent. Select strings match HTML option values while `{ label }` selects visible text; a missing option does not alter selection. Targeted scroll resolves and scrolls the nearest real scroll container. `includeSnapshot` appends the resulting accessibility snapshot and ID to the tool output so the next action does not require an extra snapshot call. Console and network tools support the clear → reproduce → list → get debugging flow.
+
+`browser_screenshot` persists each PNG as a Synergy asset. When the active model accepts image input, the tool also supplies the PNG directly as a provider-file model attachment. For text-only models, it returns the real local asset path and directs the agent to the available `look_at` tool. Screenshot inspection does not depend on guessed session paths or an unavailable image tool.
 
 ## Invariants
 

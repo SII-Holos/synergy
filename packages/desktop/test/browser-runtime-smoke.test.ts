@@ -22,6 +22,38 @@ afterEach(async () => {
 
 describe("Electron Browser Host broker contract", () => {
   runtimeTest(
+    "preserves native presentation origin across viewport resize and recreates an owner after close",
+    async () => {
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-native-smoke-"))
+      temporaryDirectories.push(directory)
+      const build = await Bun.build({
+        entrypoints: [path.resolve(import.meta.dir, "fixture/browser-native-page-pool.ts")],
+        outdir: directory,
+        target: "node",
+        external: ["electron"],
+      })
+      if (!build.success) throw new AggregateError(build.logs, "Native Browser smoke fixture did not build.")
+      const electron =
+        process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? path.resolve(import.meta.dir, "../node_modules/.bin/electron")
+      const child = Bun.spawn(
+        [
+          electron,
+          ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+          path.join(directory, "browser-native-page-pool.js"),
+        ],
+        { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
+      )
+      const exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
+      if (exitCode !== 0) {
+        const stdout = await new Response(child.stdout).text().catch(() => "")
+        const stderr = await new Response(child.stderr).text().catch(() => "")
+        throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdout}\n${stderr}`)
+      }
+    },
+    45_000,
+  )
+
+  runtimeTest(
     "executes protocol v2 through the same CDP controller without a control fallback",
     async () => {
       const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-host-smoke-"))
@@ -170,7 +202,7 @@ describe("Electron Browser Host broker contract", () => {
             mode: "readonly",
             expression: `document.body.dataset.readonlyMutation = 'blocked'`,
           }),
-        ).rejects.toMatchObject({ code: "browser_evaluation_failed" })
+        ).rejects.toMatchObject({ code: "browser_readonly_side_effect_rejected" })
         await expect(
           command({
             type: "action",

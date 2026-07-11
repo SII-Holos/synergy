@@ -166,6 +166,12 @@ export class BrowserHostBrokerClient {
         this.pages.delete(message.ownerKey)
         this.result(message.requestId, { type: "void" })
       } catch (error) {
+        if (!entry.page.isAlive()) {
+          this.pages.delete(message.ownerKey)
+          console.error("Browser Host page closed with cleanup errors.", error)
+          this.result(message.requestId, { type: "void" })
+          return
+        }
         this.failure(message.requestId, error)
       }
       return

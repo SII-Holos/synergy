@@ -45,6 +45,9 @@ export function withCdpCommandTimeout<T>(command: Promise<T>, method: string, ti
 }
 
 export function cdpCommandTimeoutMs(method: string, params?: Record<string, unknown>): number {
+  if (method === "Runtime.callFunctionOn" && typeof params?.timeout === "number") {
+    return Math.min(122_000, Math.max(2_000, params.timeout + 2_000))
+  }
   if (method === "Runtime.evaluate" && typeof params?.timeout === "number") {
     return Math.min(123_000, Math.max(10_000, params.timeout + 3_000))
   }
@@ -177,24 +180,39 @@ interface LocatorSummary {
   candidates: BrowserObstruction[]
 }
 
-interface ElementState {
+interface ElementSample {
   visible: boolean
   enabled: boolean
   editable: boolean
-  stable: boolean
   receivesEvents: boolean
   box: { x: number; y: number; width: number; height: number } | null
   obstruction?: BrowserObstruction
 }
 
+interface ElementState extends ElementSample {
+  stable: boolean
+}
+
 const DEFAULT_ACTION_TIMEOUT_MS = 5_000
 const POLL_MS = 100
+const ACTION_STABILITY_POLL_MS = 50
 const MAX_TRACE_EVENTS = 20_000
 const MAX_TRACE_BYTES = 50 * 1024 * 1024
 const MAX_SCREENSHOT_BYTES = 25 * 1024 * 1024
 const MAX_REF_ENTRIES = 25_000
 const MAX_SNAPSHOT_TEXT_CHARS = 2_000_000
 const LONG_LIVED_NETWORK_TYPES = new Set(["WebSocket", "EventSource"])
+
+function boxesAreStable(previous: ElementState["box"], current: ElementState["box"]): boolean {
+  if (!previous || !current) return previous === current
+  return (
+    Math.abs(previous.x - current.x) < 0.5 &&
+    Math.abs(previous.y - current.y) < 0.5 &&
+    Math.abs(previous.width - current.width) < 0.5 &&
+    Math.abs(previous.height - current.height) < 0.5
+  )
+}
+
 export interface CdpPageControllerOptions {
   pageId: string
   transport: CdpTransport
@@ -891,17 +909,17 @@ export class CdpPageController {
           `function(values) {
             const options = Array.from(this.options ?? []);
             const wanted = values.map((item) => typeof item === "string" ? { value: item } : item);
-            let count = 0;
-            for (const option of options) {
-              const selected = wanted.some((item) =>
+            const selectedIndexes = new Set();
+            for (let index = 0; index < options.length; index++) {
+              const option = options[index];
+              if (wanted.some((item) =>
                 item.value !== undefined ? option.value === item.value :
                 item.label !== undefined ? option.label === item.label :
                 item.index !== undefined ? options.indexOf(option) === item.index : false
-              );
-              option.selected = selected;
-              if (selected) count++;
+              )) selectedIndexes.add(index);
             }
-            if (!count) throw new Error("No requested option exists");
+            if (!selectedIndexes.size) throw new Error("No requested option exists");
+            for (let index = 0; index < options.length; index++) options[index].selected = selectedIndexes.has(index);
             this.dispatchEvent(new Event("input", { bubbles: true }));
             this.dispatchEvent(new Event("change", { bubbles: true }));
           }`,
@@ -963,7 +981,24 @@ export class CdpPageController {
         break
       }
       case "scroll":
-        if (point) {
+        if (objectId) {
+          await this.callOnObject(
+            objectId,
+            `function(deltaX, deltaY) {
+              const canScroll = (element) => {
+                const style = getComputedStyle(element);
+                const scrollsX = /(auto|scroll|overlay)/.test(style.overflowX) && element.scrollWidth > element.clientWidth;
+                const scrollsY = /(auto|scroll|overlay)/.test(style.overflowY) && element.scrollHeight > element.clientHeight;
+                return (deltaX !== 0 && scrollsX) || (deltaY !== 0 && scrollsY);
+              };
+              let target = this;
+              while (target && target !== document.documentElement && !canScroll(target)) target = target.parentElement;
+              if (!target || !canScroll(target)) target = document.scrollingElement || document.documentElement;
+              target.scrollBy(deltaX, deltaY);
+            }`,
+            [action.deltaX, action.deltaY],
+          )
+        } else if (point) {
           await this.options.transport.send("Input.dispatchMouseEvent", {
             type: "mouseWheel",
             x: point.x,
@@ -1210,8 +1245,20 @@ export class CdpPageController {
   ): Promise<ElementState> {
     const deadline = this.now() + timeoutMs
     let state: ElementState | undefined
+    let previousBox: ElementState["box"] | undefined
     do {
-      state = await this.callOnObject<ElementState>(objectId, actionabilityFunction, [action])
+      const remainingMs = Math.max(1, deadline - this.now())
+      const sampled = await this.callOnObject<ElementSample>(
+        objectId,
+        actionabilityFunction,
+        [action, previousBox === undefined],
+        remainingMs,
+      )
+      state = {
+        ...sampled,
+        stable: previousBox !== undefined && boxesAreStable(previousBox, sampled.box),
+      }
+      previousBox = sampled.box
       const needsEditable = action === "fill" || action === "type"
       const needsEnabled = !["hover", "scroll", "screenshot"].includes(action)
       const needsEvents = action !== "screenshot"
@@ -1224,7 +1271,7 @@ export class CdpPageController {
       ) {
         return { ...state, box: await this.absoluteBox(objectId, state.box) }
       }
-      if (this.now() < deadline) await this.sleep(POLL_MS)
+      if (this.now() < deadline) await this.sleep(Math.min(ACTION_STABILITY_POLL_MS, deadline - this.now()))
     } while (this.now() < deadline)
 
     if (state?.obstruction) {
@@ -1326,7 +1373,8 @@ export class CdpPageController {
         pageId: this.options.pageId,
         locator,
         obstruction: { candidates: summary.candidates },
-        suggestedAction: "Scope the locator to a stable container or use a fresh snapshot ref.",
+        suggestedAction:
+          "Use exact matching, scope the locator to a stable container, choose a role/test-id/CSS locator, or use a fresh snapshot ref.",
       })
     }
     const result = await this.runtimeEvaluate(`(${expression})[0]`, {
@@ -1522,7 +1570,7 @@ export class CdpPageController {
       case "locator": {
         try {
           const objectId = await this.resolveLocatorObject(condition.locator)
-          const state = await this.callOnObject<ElementState>(objectId, actionabilityFunction, ["wait"])
+          const state = await this.callOnObject<ElementSample>(objectId, actionabilityFunction, ["wait"])
           if (condition.state === "attached") return true
           if (condition.state === "detached") return false
           if (condition.state === "visible") return state.visible
@@ -1964,12 +2012,21 @@ export class CdpPageController {
       ...params,
     })
     if (result.exceptionDetails) {
+      const message =
+        result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "Browser evaluation failed."
+      if (params.throwOnSideEffect === true && /possible side-effect/i.test(message)) {
+        throw new BrowserProtocolError({
+          code: "browser_readonly_side_effect_rejected",
+          message: "Chromium could not prove that this read-only expression is free of side effects.",
+          retryable: false,
+          pageId: this.options.pageId,
+          suggestedAction:
+            "Use a simpler expression, split the inspection into smaller reads, or use browser_read, browser_snapshot, or browser_inspect.",
+        })
+      }
       throw new BrowserProtocolError({
         code: "browser_evaluation_failed",
-        message:
-          result.exceptionDetails.exception?.description ??
-          result.exceptionDetails.text ??
-          "Browser evaluation failed.",
+        message,
         retryable: false,
         pageId: this.options.pageId,
       })
@@ -1981,6 +2038,7 @@ export class CdpPageController {
     objectId: string,
     functionDeclaration: string,
     args: unknown[] = [],
+    timeoutMs?: number,
   ): Promise<T> {
     const result = await this.options.transport.send<RuntimeResult>("Runtime.callFunctionOn", {
       objectId,
@@ -1989,6 +2047,7 @@ export class CdpPageController {
       awaitPromise: true,
       returnByValue: true,
       userGesture: true,
+      ...(timeoutMs ? { timeout: timeoutMs } : {}),
     })
     if (result.exceptionDetails) {
       throw new BrowserProtocolError({
@@ -2090,21 +2149,18 @@ function keyDefinition(input: string): { key: string; code: string; virtualKeyCo
   return { key: input, code: input, virtualKeyCode: 0 }
 }
 
-const actionabilityFunction = `async function(action) {
-  this.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-  const first = this.getBoundingClientRect();
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+const actionabilityFunction = `function(action, shouldScroll) {
+  if (shouldScroll) this.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   const rect = this.getBoundingClientRect();
   const style = getComputedStyle(this);
   const visible = rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
   const enabled = !this.matches?.(":disabled") && this.getAttribute?.("aria-disabled") !== "true";
   const editable = this.matches?.("input:not([readonly]),textarea:not([readonly]),select,[contenteditable=true]") ?? false;
-  const stable = Math.abs(first.x - rect.x) < 0.5 && Math.abs(first.y - rect.y) < 0.5 && Math.abs(first.width - rect.width) < 0.5 && Math.abs(first.height - rect.height) < 0.5;
   const x = rect.x + rect.width / 2;
   const y = rect.y + rect.height / 2;
   const root = this.getRootNode?.();
   const hit = root?.elementFromPoint?.(x, y) || document.elementFromPoint(x, y);
-  const receivesEvents = action === "screenshot" || hit === this || this.contains?.(hit);
+  const receivesEvents = action === "screenshot" || !hit || hit === this || this.contains?.(hit);
   const obstruction = receivesEvents || !hit ? undefined : {
     tag: hit.tagName?.toLowerCase(),
     role: hit.getAttribute?.("role"),
@@ -2116,7 +2172,6 @@ const actionabilityFunction = `async function(action) {
     visible,
     enabled,
     editable,
-    stable,
     receivesEvents,
     box: visible ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
     obstruction,
@@ -2198,8 +2253,9 @@ const webVitalsBootstrap = `(() => {
           return !ariaHidden(el) && role === locator.role && (locator.name === undefined || exact(accessibleName(el), locator.name, locator.exact));
         });
         case "label": return elements.filter((el) => {
+          const labelable = el.matches?.("button,input:not([type=hidden]),meter,output,progress,select,textarea") || el.isContentEditable;
           const labelled = el.hasAttribute?.("aria-label") || el.hasAttribute?.("aria-labelledby") || (el.labels?.length ?? 0) > 0;
-          return labelled && exact(accessibleName(el), locator.text, locator.exact);
+          return labelable && labelled && exact(accessibleName(el), locator.text, locator.exact);
         });
         case "placeholder": return elements.filter((el) => exact(el.getAttribute?.("placeholder") || "", locator.text, locator.exact));
         case "text": {

@@ -214,6 +214,10 @@ export class BrowserWebRTCHost {
     return this.pageState()
   }
 
+  isAlive(): boolean {
+    return Boolean(this.browserWindow && !this.browserWindow.isDestroyed())
+  }
+
   async destroy(): Promise<void> {
     const failures: unknown[] = []
     app.off("login", this.onLogin)

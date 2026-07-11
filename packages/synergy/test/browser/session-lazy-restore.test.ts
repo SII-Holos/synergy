@@ -88,6 +88,8 @@ describe("BrowserSession lazy restore", () => {
 
   test("migrates between backends with at most one live page", async () => {
     const events: string[] = []
+    const protocolEvents: string[] = []
+    const unsubscribe = BrowserEvent.subscribe(owner, (event) => protocolEvents.push(event.type))
     let livePages = 0
     let desired: BrowserPageBackend["backend"] = "headless"
     const session = new BrowserSessionImpl(
@@ -113,45 +115,34 @@ describe("BrowserSession lazy restore", () => {
     expect(livePages).toBe(1)
     expect(events.indexOf("close:headless")).toBeLessThan(events.indexOf("create:host"))
     expect(events).toContain("restore:host")
+    expect(protocolEvents.slice(-2)).toEqual(["page.updated", "host.status"])
+    unsubscribe()
     await session.closePage()
   })
 
-  test("announces a ready Host page after creation and migration", async () => {
-    const protocolEvents: Array<{ type: string; status?: string; pageId?: string }> = []
-    const unsubscribe = BrowserEvent.subscribe(owner, (event) => protocolEvents.push(event))
-    const pageEvents: string[] = []
-    let desired: BrowserPageBackend["backend"] = "host"
-    const createSession = () =>
-      new BrowserSessionImpl(
-        owner,
-        async () => {
-          throw new Error("the injected page factory should satisfy both backends")
-        },
-        async ({ backend, id }) => fakePage(backend, id ?? `page-${backend}`, pageEvents, () => undefined),
-        () => desired,
-      )
+  test("announces a ready Host after creating a page for an already-open Browser panel", async () => {
+    const events: Array<{ type: string; pageId?: string; status?: string }> = []
+    const unsubscribe = BrowserEvent.subscribe(owner, (event) => {
+      if (event.type === "page.created") events.push({ type: event.type, pageId: event.page.id })
+      if (event.type === "host.status") events.push({ type: event.type, pageId: event.pageId, status: event.status })
+    })
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) => fakePage("host", id ?? "page-host-ready", [], () => undefined),
+      () => "host",
+    )
 
-    const directHost = createSession()
-    await directHost.ensurePage(undefined, { resume: false })
-    expect(protocolEvents.slice(-2)).toMatchObject([
-      { type: "page.created" },
-      { type: "host.status", status: "ready", pageId: "page-host" },
-    ])
-    await directHost.closePage()
+    await session.ensurePage(undefined, { resume: false })
 
-    protocolEvents.length = 0
-    desired = "headless"
-    const migratedHost = createSession()
-    await migratedHost.ensurePage(undefined, { resume: false })
-    protocolEvents.length = 0
-    desired = "host"
-    await migratedHost.ensurePage(undefined, { resume: false })
-    expect(protocolEvents.slice(-2)).toMatchObject([
-      { type: "page.updated" },
-      { type: "host.status", status: "ready", pageId: "page-headless" },
+    expect(events).toEqual([
+      { type: "page.created", pageId: "page-host-ready" },
+      { type: "host.status", pageId: "page-host-ready", status: "ready" },
     ])
-    await migratedHost.closePage()
     unsubscribe()
+    await session.closePage()
   })
 
   test("restores the original backend when target restore fails", async () => {

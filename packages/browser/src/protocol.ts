@@ -310,12 +310,19 @@ const BrowserLocatorInnerSchema: z.ZodType<BrowserLocator> = z.lazy(() =>
       .object({
         kind: z.literal("role"),
         role: nonEmpty,
-        name: z.string().max(20_000).optional(),
-        exact: z.boolean().optional(),
+        name: z.string().max(20_000).optional().describe("Accessible name for the requested role."),
+        exact: z.boolean().optional().describe("Match the accessible name exactly instead of by substring."),
         ...scopeShape(),
       })
       .strict(),
-    z.object({ kind: z.literal("label"), text: nonEmpty, exact: z.boolean().optional(), ...scopeShape() }).strict(),
+    z
+      .object({
+        kind: z.literal("label"),
+        text: nonEmpty.describe("Label text associated with a form control; use role/name for named buttons."),
+        exact: z.boolean().optional().describe("Match the label text exactly instead of by substring."),
+        ...scopeShape(),
+      })
+      .strict(),
     z
       .object({ kind: z.literal("placeholder"), text: nonEmpty, exact: z.boolean().optional(), ...scopeShape() })
       .strict(),
@@ -347,8 +354,8 @@ export const BrowserModifierSchema = z.enum(["Alt", "Control", "ControlOrMeta", 
 export type BrowserModifier = z.infer<typeof BrowserModifierSchema>
 
 const actionBase = {
-  timeoutMs,
-  includeSnapshot: z.boolean().optional(),
+  timeoutMs: timeoutMs.describe("Maximum time for locator resolution and actionability checks."),
+  includeSnapshot: z.boolean().optional().describe("Return a fresh accessibility snapshot after the action."),
 }
 
 export const BrowserActionSchema = z.discriminatedUnion("type", [
@@ -415,7 +422,10 @@ export const BrowserActionSchema = z.discriminatedUnion("type", [
           ]),
         )
         .min(1)
-        .max(100),
+        .max(100)
+        .describe(
+          'Options to select. A string matches the HTML option value exactly; use {label: "Visible text"} to select by displayed label or {index: 0} by zero-based index.',
+        ),
       ...actionBase,
     })
     .strict(),
@@ -436,8 +446,8 @@ export const BrowserActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("scroll"),
       target: BrowserTargetSchema.optional(),
-      deltaX: z.number().min(-1_000_000_000).max(1_000_000_000),
-      deltaY: z.number().min(-1_000_000_000).max(1_000_000_000),
+      deltaX: z.number().min(-1_000_000_000).max(1_000_000_000).describe("Horizontal CSS pixels."),
+      deltaY: z.number().min(-1_000_000_000).max(1_000_000_000).describe("Vertical CSS pixels."),
       ...actionBase,
     })
     .strict(),

@@ -4,13 +4,13 @@ import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
 export const BrowserConsoleTool = Tool.define("browser_console", {
   description:
-    "Page, filter, inspect, or clear redacted browser console entries, including source and stack information.",
+    "Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for full details.",
   parameters: z
     .object({
       action: z.enum(["list", "get", "clear"]).default("list"),
       id: z.string().max(20_000).optional().describe("Required only for get."),
-      level: z.string().max(1_000).optional(),
-      filter: z.string().max(20_000).optional(),
+      level: z.string().max(1_000).optional().describe("Optional console level filter for list."),
+      filter: z.string().max(20_000).optional().describe("Optional case-insensitive text filter for list."),
       page: z.number().int().min(0).optional(),
       pageSize: z.number().int().min(1).max(500).optional(),
     })

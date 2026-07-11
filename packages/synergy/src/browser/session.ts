@@ -673,9 +673,8 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   private publishHostReady(page: BrowserPageBackend): void {
-    if (page.backend === "host") {
-      BrowserEvent.publish(this.owner, { type: "host.status", status: "ready", pageId: page.id })
-    }
+    if (page.backend !== "host" || !page.isAlive()) return
+    BrowserEvent.publish(this.owner, { type: "host.status", pageId: page.id, status: "ready" })
   }
 
   private async closeFailedPage(page: BrowserPageBackend, cause: unknown): Promise<void> {

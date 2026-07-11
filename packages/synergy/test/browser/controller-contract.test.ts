@@ -81,6 +81,14 @@ describe("shared CDP page controller contract", () => {
     expect(await page.locator('[aria-label="Name"]').inputValue()).toBe("Ada")
     expect(await page.locator("#check").isChecked()).toBe(true)
     expect(await page.locator('[aria-label="Plan"]').inputValue()).toBe("pro")
+    await expect(
+      action({
+        type: "select",
+        target: { kind: "role", role: "combobox", name: "Plan" },
+        values: [{ label: "Enterprise" }],
+      }),
+    ).rejects.toThrow("No requested option exists")
+    expect(await page.locator('[aria-label="Plan"]').inputValue()).toBe("pro")
     expect(await page.frameLocator("#child").locator("body").getAttribute("data-clicked")).toBe("yes")
     expect(await page.evaluate(() => (globalThis as any).events)).toEqual(
       expect.arrayContaining(["click", "Enter", "dragstart", "drop", "shadow"]),
@@ -90,7 +98,7 @@ describe("shared CDP page controller contract", () => {
   test("rejects readonly mutation, permits trusted mutation, and detects obstruction quickly", async () => {
     await expect(
       controller.execute({ type: "evaluate", mode: "readonly", expression: "document.body.dataset.changed = 'yes'" }),
-    ).rejects.toMatchObject({ code: "browser_evaluation_failed" })
+    ).rejects.toMatchObject({ code: "browser_readonly_side_effect_rejected" })
     await controller.execute({ type: "evaluate", mode: "trusted", expression: "document.body.dataset.changed = 'yes'" })
     expect(await page.locator("body").getAttribute("data-changed")).toBe("yes")
 

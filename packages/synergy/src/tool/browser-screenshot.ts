@@ -7,7 +7,7 @@ import { Identifier } from "../id/id"
 
 export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   description:
-    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. A failed requested type never falls back to another capture.",
+    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Image-capable models receive it directly; text-only models receive a saved local path for look_at. A failed requested type never falls back to another capture.",
   parameters: z
     .object({
       fullPage: z.literal(true).optional(),
@@ -39,10 +39,15 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
         const buffer = Buffer.from(result.dataUrl.split(",", 2)[1] ?? "", "base64")
         const filename = `browser-${page.id.slice(0, 8)}-${Date.now()}.png`
         const assetId = await Asset.write(buffer, "image/png", filename)
+        const filePath = Asset.filePath(assetId)
         const kind = params.target ? "locator" : params.clip ? "clip" : params.fullPage ? "fullPage" : "viewport"
+        const supportsImageInput = ctx.extra?.model?.capabilities?.input?.image === true
+        const delivery = supportsImageInput
+          ? "The screenshot is available in the current model context."
+          : `Use look_at with file_path ${JSON.stringify(filePath)} to inspect the screenshot visually.`
         return {
           title: `Screenshot of ${page.url || page.title || "page"}`,
-          output: `Captured ${kind} screenshot (${result.width}x${result.height}) as ${filename}.`,
+          output: `Captured ${kind} screenshot (${result.width}x${result.height}) as ${filename}. ${delivery}`,
           metadata: {
             pageId: page.id,
             url: page.url,
@@ -51,6 +56,8 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
             captureKind: kind,
             assetId,
             filename,
+            filePath,
+            modelDelivery: supportsImageInput ? "provider-file" : "look_at",
           },
           attachments: [
             {
@@ -60,12 +67,18 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
               type: "attachment" as const,
               mime: "image/png",
               filename,
-              url: `asset://${assetId}`,
+              url: supportsImageInput ? result.dataUrl : `asset://${assetId}`,
+              localPath: filePath,
               presentation: { renderer: "image" as const, size: "large" as const, crop: false },
-              model: {
-                mode: "summary" as const,
-                summary: `${filename} browser screenshot ${result.width}x${result.height}`,
-              },
+              model: supportsImageInput
+                ? {
+                    mode: "provider-file" as const,
+                    summary: `${filename} browser screenshot ${result.width}x${result.height}`,
+                  }
+                : {
+                    mode: "summary" as const,
+                    summary: `${filename} browser screenshot ${result.width}x${result.height} at ${filePath}`,
+                  },
             },
           ],
         }

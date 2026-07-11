@@ -30,6 +30,9 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 3. Typecheck `packages/synergy`, `packages/desktop`, and `packages/app`; regenerate the SDK only for OpenAPI-visible changes.
 4. Exercise both relevant presentations in an isolated runtime. A native-only check does not prove WebRTC behavior, and a remote check does not prove Desktop bounds/lifecycle.
 5. Finish with `bun run quality:quick` and update the architecture/product contract when ownership, lifecycle, policy, transport, or presentation changes.
+6. When screenshot delivery changes, verify both model paths: image-capable models receive provider-file image context, while text-only models receive a real readable asset path for `look_at` under autonomous permissions.
+7. For native lifecycle changes, test both page timing orders: open workspace → first navigation and active page → open workspace. Verify a non-zero initial checkpoint, live surface attachment, close, and same-owner recreation.
+8. For Browser action changes, verify failure atomicity and agent-facing guidance. `select` must distinguish value from label, targeted scroll must finish on a real scroll container, and `includeSnapshot` must make the next DOM state available without a second tool call.
 
 ## Handoff
 

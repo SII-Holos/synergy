@@ -27,22 +27,33 @@ interface BrowserNavigationMetadata {
   pageId?: string
   url?: string
   title?: string
+  isLoading?: boolean
   action?: string
   resultType?: string
 }
 
 export const BrowserNavigationTool = Tool.define<typeof parameters, BrowserNavigationMetadata>("browser_navigation", {
-  description: "Navigate, resume, close, or read the one browser page owned by the current session.",
+  description:
+    "Navigate, resume, close, or read the one browser page owned by the current session. Navigation can return while loading; use browser_wait before asserting page content or title. Close is terminal for the current page and should be tested only after all navigation, debugging, and external-site checks; a later goto creates a new page.",
   parameters,
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
     if (params.action === "current") {
       const session = await BrowserToolHelper.getOrCreateSession(owner)
       const page = session.page ?? session.descriptor
+      const isLoading = session.page?.loading ?? false
       return {
         title: page ? "Current browser page" : "No browser page",
-        output: page ? `Status: ${session.status}\nURL: ${page.url}\nTitle: ${page.title}` : "No browser page is open.",
-        metadata: { status: session.status, pageId: page?.id, url: page?.url, title: page?.title },
+        output: page
+          ? `Status: ${session.status}\nLoading: ${isLoading ? "yes" : "no"}\nURL: ${page.url}\nTitle: ${page.title || (isLoading ? "(loading)" : "(empty)")}`
+          : "No browser page is open.",
+        metadata: {
+          status: session.status,
+          pageId: page?.id,
+          url: page?.url,
+          title: page?.title,
+          isLoading,
+        },
       }
     }
 
@@ -59,9 +70,13 @@ export const BrowserNavigationTool = Tool.define<typeof parameters, BrowserNavig
 
     const session = await BrowserToolHelper.getOrCreateSession(owner)
     const page = session.page ?? session.descriptor
+    const resultPage = result.type === "navigation" || result.type === "page" ? result.page : undefined
+    const isLoading = resultPage?.isLoading ?? session.page?.loading ?? false
     return {
       title: `Browser navigation: ${params.action}`,
-      output: page ? `URL: ${page.url}\nTitle: ${page.title}` : "Browser page closed.",
+      output: page
+        ? `Loading: ${isLoading ? "yes" : "no"}\nURL: ${page.url}\nTitle: ${page.title || (isLoading ? "(loading)" : "(empty)")}`
+        : "Browser page closed.",
       metadata: {
         action: params.action,
         resultType: result.type,
@@ -69,6 +84,7 @@ export const BrowserNavigationTool = Tool.define<typeof parameters, BrowserNavig
         pageId: page?.id,
         url: page?.url,
         title: page?.title,
+        isLoading,
       },
     }
   },
