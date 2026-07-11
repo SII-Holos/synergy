@@ -42,6 +42,7 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 4. Keep controls labeled, keyboard reachable, focus-visible, WCAG AA, reduced-motion safe, and usable at narrow widths.
 5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
+7. For imperative renderers, use the dependency's typed live-update API and cover it with a boundary test. Do not hide an unsupported method behind a cast; same-mode theme changes must repaint already-mounted renderers.
 
 ## Preserve Loading Boundaries
 

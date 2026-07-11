@@ -57,7 +57,9 @@ describe("plugin scaffold toolchain", () => {
 
         const manifest = await Bun.file(path.join(pluginDir, "dist", "plugin.json")).json()
         expect(manifest.name).toBe(name)
-        expect(manifest.engines?.synergy).toBe(PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE)
+        expect(manifest.engines?.synergy).toBe(
+          template === "theme-icon" ? ">=2.4.4" : PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+        )
         expect(manifest.main).toBe("./runtime/index.js")
         if (template === "api-connector") {
           expect(manifest.permissions?.network?.connectDomains).toEqual(["api.example.com"])

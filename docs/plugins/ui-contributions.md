@@ -125,6 +125,8 @@ UI commands expose a label, optional description/icon, and named command export.
 
 Themes are packaged JSON assets with complete light and dark seed palettes. The host validates and resolves every asset before registration, requires its `id` to match the manifest, generates every canonical color token through the shared resolver, namespaces the selected theme ID, and applies the same runtime path used by the built-in Synergy theme.
 
+Structured JSON theme contributions require `engines.synergy` to include Synergy 2.4.4 or later. Earlier hosts interpret theme assets as CSS and cannot apply this contract.
+
 ```jsonc
 {
   "themes": [{ "id": "ocean", "label": "Ocean", "path": "./themes/ocean.json" }],
@@ -168,7 +170,7 @@ The referenced JSON uses this shape:
 
 Seeds must be opaque three- or six-digit hex colors. Each variant may add `overrides` keyed only by canonical theme token names; overrides accept hex values and `var(--token)` references. The host rejects unknown keys, arbitrary CSS, cyclic references, and overrides that break required WCAG AA text/surface pairs. Use the plugin-kit `theme-icon` template as the current schema example. See [Frontend themes and color](../reference/frontend-theming.md) for seed selection, authoring workflow, and verification. CSS-based theme contributors should follow [the structured-theme migration](../migrations/plugin-theme-json.md).
 
-Icons are packaged SVG assets loaded into the plugin icon registry. Treat SVG as code-bearing input: ship static reviewed assets, avoid remote fetches, and keep names plugin-specific.
+Icons are packaged SVG assets loaded into the plugin icon registry. Manifest references use the plugin-local icon name; the host namespaces the registered icon as `<plugin-id>:<icon-name>` so unrelated plugins cannot collide. Treat SVG as code-bearing input: ship static reviewed assets and avoid remote fetches.
 
 ## Loading and Failure Behavior
 

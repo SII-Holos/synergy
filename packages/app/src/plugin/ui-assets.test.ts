@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { synergyTheme } from "@ericsanchezok/synergy-ui/theme"
 import type { PluginContribution } from "./api"
-import { loadPluginUIAssets } from "./ui-assets"
+import { loadPluginUIAssets, resolvePluginIconReference } from "./ui-assets"
 
 function contribution(pluginId: string, themeId = "theme"): PluginContribution {
   return {
@@ -43,10 +43,29 @@ describe("plugin UI asset loading", () => {
     expect(result.errors).toEqual([])
     expect(result.themes.has("assets:theme")).toBe(true)
     expect(result.icons.get("assets:mark")).toEqual({
-      name: "mark",
+      name: "assets:mark",
       svgContent: "<svg></svg>",
       pluginId: "assets",
     })
+    expect(resolvePluginIconReference(input, "mark")).toBe("assets:mark")
+    expect(resolvePluginIconReference(input, "circle")).toBe("circle")
+  })
+
+  test("keeps same-named icons from different plugins distinct", async () => {
+    const one = contribution("one")
+    const two = contribution("two")
+    one.ui!.themes = []
+    two.ui!.themes = []
+    one.ui!.icons = [{ name: "logo", path: "./logo.svg" }]
+    two.ui!.icons = [{ name: "logo", path: "./logo.svg" }]
+
+    const result = await loadPluginUIAssets([one, two], {
+      fetcher: async () => new Response("<svg></svg>"),
+    })
+
+    expect([...result.icons.values()].map((icon) => icon.name).sort()).toEqual(["one:logo", "two:logo"])
+    expect(resolvePluginIconReference(one, "logo")).toBe("one:logo")
+    expect(resolvePluginIconReference(two, "logo")).toBe("two:logo")
   })
 
   test("rejects resolver-invalid themes without exposing them", async () => {

@@ -355,6 +355,8 @@ import type {
 
 Supported UI surfaces are tool renderers, part renderers, navigation, settings sections, workbench panels, message slots, composer slots, structured JSON themes, icons, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
 
+Structured JSON theme plugins require Synergy 2.4.4 or later. Use `PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE` for their `engines.synergy` declaration; use `PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE` when a plugin only depends on the general plugin protocol floor.
+
 ## Runtime Modes
 
 Synergy resolves each plugin to one runtime mode:

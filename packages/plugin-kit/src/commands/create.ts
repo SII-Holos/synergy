@@ -2,7 +2,11 @@ import path from "path"
 import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
-import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE, PLUGIN_UI_API_VERSION } from "@ericsanchezok/synergy-plugin"
+import {
+  PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+  PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE,
+  PLUGIN_UI_API_VERSION,
+} from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
@@ -21,13 +25,13 @@ interface FileTemplate {
   content(name: string): string
 }
 
-function pluginJson(name: string, extra: (name: string) => object): string {
+function pluginJson(name: string, extra: (name: string) => object, minSynergyRange: string): string {
   const base = {
     name,
     version: "0.1.0",
     description: `${name} plugin`,
     engines: {
-      synergy: PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+      synergy: minSynergyRange,
     },
     permissions: {},
     contributes: {},
@@ -450,6 +454,7 @@ interface TemplateDef {
   label: string
   manifest: (name: string) => object
   files: FileTemplate[]
+  minSynergyRange?: string
 }
 
 const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
@@ -490,6 +495,7 @@ const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
   "theme-icon": {
     label: "Theme & Icon - themes and icon contributions",
     manifest: manifestThemeIcon,
+    minSynergyRange: PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE,
     files: [
       { relativePath: "src/index.ts", content: indexThemeIcon },
       { relativePath: "themes/default.json", content: themeJson },
@@ -507,7 +513,11 @@ function scaffold(name: string, templateName: TemplateName, template: TemplateDe
   fs.mkdirSync(targetDir, { recursive: true })
 
   const files: FileTemplate[] = [
-    { relativePath: "plugin.json", content: (pluginName) => pluginJson(pluginName, template.manifest) },
+    {
+      relativePath: "plugin.json",
+      content: (pluginName) =>
+        pluginJson(pluginName, template.manifest, template.minSynergyRange ?? PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE),
+    },
     { relativePath: "package.json", content: (pluginName) => packageJson(pluginName, templateName) },
     { relativePath: "tsconfig.json", content: tsconfigJson },
     { relativePath: "README.md", content: readmeMd },

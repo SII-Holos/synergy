@@ -21,7 +21,9 @@ description: Add, modify, or review Synergy's public plugin manifest/SDK, plugin
 5. Keep in-process, worker, and process runtime modes explicit. Preserve supervisor health, timeouts, logs, bridge method allowlists, failure isolation, and removal/reload cleanup.
 6. Namespace plugin config, auth, cache, tools, hooks, assets, commands, and UI surfaces. Keep credentials out of config, logs, bundles, diagnostics, and browser-local storage.
 7. For UI contributions, enforce UI API-major compatibility, shared Solid externalization, named exports, asset packaging, declarative fallbacks, host-owned accessibility/layout, and one disposer per registration. Built-in host UI uses semantic icons; plugin-declared icons stay in the plugin icon registry.
-8. Theme contributions are packaged structured JSON themes with light/dark seeds and typed canonical-token overrides. Validate them through the shared theme schema and resolver; do not load arbitrary CSS as a product theme. Keep plugin-kit scaffolds, copied assets, host registration, and migration guidance aligned.
+8. When a contribution changes how the host interprets a packaged asset, raise the owning compatibility floor and make scaffolds emit that range. A migration guide does not make a new artifact compatible with an older released host.
+9. Keep plugin icon manifest references local to the plugin while namespacing registry entries and host-owned surface references as `<plugin-id>:<icon-name>`.
+10. Theme contributions are packaged structured JSON themes with light/dark seeds and typed canonical-token overrides. Validate them through the shared theme schema and resolver; do not load arbitrary CSS as a product theme. Keep plugin-kit scaffolds, copied assets, host registration, and migration guidance aligned.
 
 ## Verify and Publish Contracts
 

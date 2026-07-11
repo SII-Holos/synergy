@@ -95,6 +95,8 @@ bun install
 
 `theme-icon` is the scaffold name for declarative theme and optional SVG icon assets; it is not a separate theme format. For a theme-only plugin, remove the generated icon file and its `contributes.ui.icons` entry.
 
+Structured themes require Synergy 2.4.4 or later. The current scaffold writes that minimum to `engines.synergy`; preserve it when editing the manifest manually.
+
 Then:
 
 1. Edit the generated `themes/default.json` with complete light and dark seeds.

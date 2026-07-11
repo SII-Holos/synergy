@@ -5,6 +5,7 @@ import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
+import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -15,13 +16,6 @@ export interface TerminalProps extends ComponentProps<"div"> {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
-
-type TerminalColors = {
-  background: string
-  foreground: string
-  cursor: string
-  selectionBackground: string
-}
 
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
@@ -43,7 +37,7 @@ export const Terminal = (props: TerminalProps) => {
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
 
-  const getTerminalColors = (): TerminalColors => {
+  const getTerminalColors = (): TerminalTheme => {
     const mode = theme.mode()
     const tokens = theme.tokens()
     const text = resolveThemeColor(tokens, "text-stronger")
@@ -58,15 +52,13 @@ export const Terminal = (props: TerminalProps) => {
     }
   }
 
-  const [terminalColors, setTerminalColors] = createSignal<TerminalColors>(getTerminalColors())
+  const [terminalColors, setTerminalColors] = createSignal<TerminalTheme>(getTerminalColors())
 
   createEffect(() => {
     const colors = getTerminalColors()
     setTerminalColors(colors)
     if (!term) return
-    const setOption = (term as unknown as { setOption?: (key: string, value: TerminalColors) => void }).setOption
-    if (!setOption) return
-    setOption("theme", colors)
+    applyTerminalTheme(term, colors)
   })
 
   const focusTerminal = () => {

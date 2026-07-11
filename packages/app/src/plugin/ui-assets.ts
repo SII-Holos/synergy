@@ -17,6 +17,12 @@ export interface PluginUIAssets {
   errors: PluginUIAssetError[]
 }
 
+export function resolvePluginIconReference(contribution: PluginContribution, iconName: string | undefined) {
+  if (!iconName) return iconName
+  const declared = contribution.ui?.icons?.some((icon) => icon.name === iconName)
+  return declared ? pluginSurfaceId(contribution.pluginId, iconName) : iconName
+}
+
 interface PluginUIAssetLoadOptions {
   signal?: AbortSignal
   fetcher?: (input: string, init?: RequestInit) => Promise<Response>
@@ -77,7 +83,7 @@ export async function loadPluginUIAssets(
             kind: "icon" as const,
             key,
             value: {
-              name: definition.name,
+              name: key,
               svgContent,
               pluginId: contribution.pluginId,
             } satisfies LoadedPluginIcon,

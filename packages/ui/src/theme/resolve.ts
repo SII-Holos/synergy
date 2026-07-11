@@ -57,8 +57,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-inset-strong"] = layer(6, 4)
   tokens["surface-inset-strong-hover"] = layer(7, 5)
   tokens["surface-raised-base"] = layer(3, 2)
-  tokens["surface-float-base"] = isDark ? neutral[2] : neutral[11]
-  tokens["surface-float-base-hover"] = isDark ? neutral[3] : neutral[10]
+  tokens["surface-float-base"] = layer(0, 2)
+  tokens["surface-float-base-hover"] = layer(1, 3)
   tokens["surface-raised-base-hover"] = layer(4, 3)
   tokens["surface-raised-base-active"] = layer(5, 4)
   tokens["surface-raised-strong"] = layer(4, 3)

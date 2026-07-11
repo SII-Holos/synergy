@@ -216,6 +216,9 @@ describe("resolveTheme (synergy)", () => {
       expectReadablePair(variant, "text-on-warning-base", "surface-warning-weak")
       expectReadablePair(variant, "text-on-critical-base", "surface-critical-weak")
     }
+    expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
+    expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")
+    expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
   })
 
   test("theme parsing rejects unknown tokens and unsupported color syntax", () => {

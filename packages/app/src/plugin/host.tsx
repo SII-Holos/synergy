@@ -25,7 +25,7 @@ import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-regis
 import { registerUICommand, type PluginUICommand } from "./registries/ui-command-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
 import { pluginSurfaceId } from "./surface-id"
-import { loadPluginUIAssets, type PluginUIAssets } from "./ui-assets"
+import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
 
 export type PluginUIStatus = PluginLifecycleState
 
@@ -127,7 +127,12 @@ function registerPluginSurfaces(contributions: PluginContribution[], assets: Plu
       disposers.push(
         toolRendererRegistry.register(toolId, {
           loader,
-          fallback: renderer.fallback,
+          fallback: renderer.fallback
+            ? {
+                ...renderer.fallback,
+                icon: resolvePluginIconReference(contribution, renderer.fallback.icon),
+              }
+            : undefined,
         }),
       )
     }
@@ -159,7 +164,7 @@ function registerPluginSurfaces(contributions: PluginContribution[], assets: Plu
         registerWorkbenchPanel({
           id: pluginSurfaceId(contribution.pluginId, panel.id),
           label: panel.label,
-          icon: panel.icon,
+          icon: resolvePluginIconReference(contribution, panel.icon),
           surface: panel.surface,
           cardinality: panel.cardinality,
           requiresSession: panel.requiresSession,
@@ -182,7 +187,7 @@ function registerPluginSurfaces(contributions: PluginContribution[], assets: Plu
           id: pluginSurfaceId(contribution.pluginId, navigation.id),
           navigationId: navigation.id,
           label: navigation.label,
-          icon: navigation.icon,
+          icon: resolvePluginIconReference(contribution, navigation.icon),
           placement: navigation.placement,
           path: pluginNavigationPath(contribution.pluginId, navigation.id),
           order: navigation.order,
@@ -203,7 +208,7 @@ function registerPluginSurfaces(contributions: PluginContribution[], assets: Plu
         registerSettingsSection({
           id: pluginSurfaceId(contribution.pluginId, section.id),
           label: section.label,
-          icon: section.icon,
+          icon: resolvePluginIconReference(contribution, section.icon),
           group: section.group,
           formSchema: section.formSchema,
           order: section.order,
@@ -280,7 +285,7 @@ function registerPluginSurfaces(contributions: PluginContribution[], assets: Plu
           commandId: command.id,
           label: command.label,
           description: command.description,
-          icon: command.icon,
+          icon: resolvePluginIconReference(contribution, command.icon),
           pluginId: contribution.pluginId,
           loader,
         }),
