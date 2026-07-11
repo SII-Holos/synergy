@@ -11,6 +11,14 @@ describe("OpenAPI spec generation", () => {
     expect(spec.openapi).toBe("3.1.1")
     expect(spec.paths).toBeDefined()
     expect(Object.keys(spec.paths).length).toBeGreaterThan(0)
+    const providerResponse = spec.paths["/provider"]?.get as Record<string, any>
+    const responseSchema = providerResponse.responses["200"].content["application/json"].schema
+    const providerSchema = spec.components?.schemas?.Provider
+    const modelSchema = spec.components?.schemas?.Model
+    expect(responseSchema.properties.all.items).toEqual({ $ref: "#/components/schemas/Provider" })
+    expect(JSON.stringify(providerSchema)).toContain("#/components/schemas/Model")
+    expect(JSON.stringify(modelSchema)).toContain("reasoningEfforts")
+    expect(JSON.stringify(modelSchema)).not.toContain("reasoning_options")
   })
 
   test("includes /session/index route with operationId session.index", async () => {

@@ -664,6 +664,22 @@
                 "reasoning": {
                   "type": "boolean"
                 },
+                "reasoning_options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "values": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    },
+                    "required": ["type"]
+                  }
+                },
                 "temperature": {
                   "type": "boolean"
                 },

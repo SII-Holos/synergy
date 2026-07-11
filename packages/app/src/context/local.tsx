@@ -259,7 +259,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
           const defaultModelID = providers.default()[provider.id]
           push(find(defaultModelID ? { providerID: provider.id, modelID: defaultModelID } : undefined))
-          push(newest(providerModels.filter((model) => model.reasoning)))
+          push(newest(providerModels.filter((model) => model.capabilities.reasoning)))
           push(
             newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)),
           )
@@ -267,9 +267,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             newest(
               providerModels.filter(
                 (model) =>
-                  model.modalities?.input?.includes("image") ||
-                  model.modalities?.input?.includes("pdf") ||
-                  model.modalities?.input?.includes("video"),
+                  model.capabilities.input.image || model.capabilities.input.pdf || model.capabilities.input.video,
               ),
             ),
           )

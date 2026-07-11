@@ -5,7 +5,6 @@ import z from "zod"
 import { mapValues } from "remeda"
 import { Provider } from "../provider/provider"
 import { Config } from "../config/config"
-import { ModelsDev } from "../provider/models"
 import { ProviderAuth } from "../provider/auth"
 import { Log } from "../util/log"
 import { errors } from "./error"
@@ -54,7 +53,7 @@ export const ProviderRoute = new Hono()
             "application/json": {
               schema: resolver(
                 z.object({
-                  all: ModelsDev.Provider.array(),
+                  all: Provider.Info.array(),
                   default: z.record(z.string(), z.string()),
                   connected: z.array(z.string()),
                   configProviders: z.array(z.string()),

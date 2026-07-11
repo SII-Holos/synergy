@@ -219,15 +219,12 @@ export const ConnectedModelManager: Component<{
 
       const defaultModelID = providers.default()[providerID]
       push(providerModels.find((model) => model.id === defaultModelID))
-      push(newest(providerModels.filter((model) => model.reasoning)))
+      push(newest(providerModels.filter((model) => model.capabilities.reasoning)))
       push(newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)))
       push(
         newest(
           providerModels.filter(
-            (model) =>
-              model.modalities?.input?.includes("image") ||
-              model.modalities?.input?.includes("pdf") ||
-              model.modalities?.input?.includes("video"),
+            (model) => model.capabilities.input.image || model.capabilities.input.pdf || model.capabilities.input.video,
           ),
         ),
       )
