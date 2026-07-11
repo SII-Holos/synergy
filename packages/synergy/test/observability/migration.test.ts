@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdirSync } from "fs"
 import { Database } from "bun:sqlite"
+import { getMigrationStatus, runMigrations } from "../../src/migration"
 import { ObservabilityMigration } from "../../src/observability/migration"
 import { ObservabilityStore } from "../../src/observability/store"
 import { PerformanceDashboard } from "../../src/performance/dashboard"
@@ -46,6 +47,48 @@ describe("ObservabilityMigration", () => {
     expect(summary.backend.requestCount).toBe(1)
   })
 
+  test("migrates the camel-case traceId metric schema", async () => {
+    seedLegacyPerformanceStore("camel")
+
+    await ObservabilityMigration.migrateLegacyPerformance()
+
+    const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })
+    expect(metrics.map((row) => row.metric_id)).toEqual(["legacy_metric_1"])
+  })
+
+  test("prefers the canonical trace_id when both legacy metric columns exist", async () => {
+    seedLegacyPerformanceStore("both")
+
+    await ObservabilityMigration.migrateLegacyPerformance()
+
+    expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })).toHaveLength(1)
+    expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_camel_fallback" })).toHaveLength(0)
+  })
+
+  test("records a released-schema upgrade through the central migration runner", async () => {
+    seedLegacyPerformanceStore()
+
+    const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
+    const status = await getMigrationStatus("observability")
+
+    expect(summary.completed).toBe(4)
+    expect(status.observability.pending).toHaveLength(0)
+    expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
+  })
+
+  test("rolls back the canonical copy when a legacy table is malformed", async () => {
+    seedLegacyPerformanceStore()
+    const legacy = new Database(ObservabilityStore.legacyPerformancePath())
+    legacy.exec("ALTER TABLE perf_spans DROP COLUMN source")
+    legacy.close(false)
+
+    await expect(ObservabilityMigration.migrateLegacyPerformance()).rejects.toThrow("source")
+
+    const target = ObservabilityStore.initializeForMigration()
+    const row = target.prepare("SELECT COUNT(*) AS count FROM obs_metrics").get() as { count: number }
+    expect(row.count).toBe(0)
+  })
+
   test("migrates legacy perf tables even when runtime observability is disabled", async () => {
     seedLegacyPerformanceStore()
     ObservabilityConfig.refresh({
@@ -74,6 +117,17 @@ describe("ObservabilityMigration", () => {
     const db = ObservabilityStore.initializeForMigration()
     const row = db.prepare("PRAGMA auto_vacuum").get() as { auto_vacuum: number }
     expect(row.auto_vacuum).toBe(2)
+  })
+
+  test("synchronizes schema metadata for an existing observability database", async () => {
+    const db = ObservabilityStore.initializeForMigration()
+    db.prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '2')").run()
+
+    await ObservabilityMigration.synchronizeSchemaMetadata()
+    await ObservabilityMigration.synchronizeSchemaMetadata()
+
+    const row = db.prepare("SELECT value FROM obs_meta WHERE key = 'schemaVersion'").get() as { value: string }
+    expect(row.value).toBe(String(ObservabilityStore.schemaVersion))
   })
 
   test("backfills redaction across previously written canonical tables idempotently", async () => {
@@ -120,25 +174,55 @@ describe("ObservabilityMigration", () => {
     expect(canonical).not.toContain("/Users/private/project")
     expect(canonical).toContain("sc_legacy")
   })
+
+  test("redacts canonical telemetry across multiple bounded batches", async () => {
+    const db = ObservabilityStore.initializeForMigration()
+    const insert = db.prepare(
+      `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,module,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
+       VALUES (?1,1,'1970-01-01T00:00:00.001Z','warning','open','BATCH','Batch issue','Batch message','test',?2,1,1,1,?3,'{}')`,
+    )
+    db.transaction(() => {
+      for (let index = 0; index < 1_001; index++) {
+        insert.run(`batch-issue-${index}`, '{"authorization":"Bearer batch-secret"}', `batch-fingerprint-${index}`)
+      }
+    })()
+
+    await ObservabilityMigration.redactCanonicalTelemetry()
+
+    const row = db
+      .prepare("SELECT COUNT(*) AS count FROM obs_issues WHERE evidence_json LIKE '%batch-secret%'")
+      .get() as { count: number }
+    expect(row.count).toBe(0)
+  })
 })
 
-function seedLegacyPerformanceStore() {
+function seedLegacyPerformanceStore(traceShape: "snake" | "camel" | "both" = "snake") {
   const legacyPath = ObservabilityStore.legacyPerformancePath()
   mkdirSync(legacyPath.slice(0, legacyPath.lastIndexOf("/")), { recursive: true })
   const db = new Database(legacyPath, { create: true })
   const now = Date.now()
+  const traceColumns =
+    traceShape === "snake" ? "trace_id TEXT" : traceShape === "camel" ? "traceId TEXT" : "traceId TEXT,trace_id TEXT"
   try {
     db.exec(`
-      CREATE TABLE perf_metrics (metric_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,name TEXT NOT NULL,value REAL NOT NULL,unit TEXT NOT NULL,source TEXT NOT NULL,module TEXT NOT NULL,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,traceId TEXT,trace_id TEXT,span_id TEXT,parent_span_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,labels_json TEXT NOT NULL DEFAULT '{}',sample_rate REAL NOT NULL DEFAULT 1);
+      CREATE TABLE perf_metrics (metric_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,name TEXT NOT NULL,value REAL NOT NULL,unit TEXT NOT NULL,source TEXT NOT NULL,module TEXT NOT NULL,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,${traceColumns},span_id TEXT,parent_span_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,labels_json TEXT NOT NULL DEFAULT '{}',sample_rate REAL NOT NULL DEFAULT 1);
       CREATE TABLE perf_spans (trace_id TEXT NOT NULL,span_id TEXT PRIMARY KEY,parent_span_id TEXT,name TEXT NOT NULL,module TEXT NOT NULL,source TEXT NOT NULL,start_time INTEGER NOT NULL,end_time INTEGER,duration_ms REAL,status TEXT NOT NULL,error_code TEXT,error_message TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,attributes_json TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE perf_resource_samples (sample_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,source TEXT NOT NULL,trace_id TEXT,scope_id TEXT,session_id TEXT,pid INTEGER,process_id TEXT,process_role TEXT NOT NULL DEFAULT 'unknown',cpu_user_micros REAL,cpu_system_micros REAL,cpu_utilization_ratio REAL,memory_rss_bytes INTEGER,memory_heap_total_bytes INTEGER,memory_heap_used_bytes INTEGER,memory_external_bytes INTEGER,memory_array_buffers_bytes INTEGER,event_loop_lag_ms REAL,event_loop_sample_window_ms REAL,app_read_bytes INTEGER,app_written_bytes INTEGER,app_read_ops INTEGER,app_write_ops INTEGER,os_read_bytes INTEGER,os_written_bytes INTEGER,os_available INTEGER,labels_json TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE perf_issues (issue_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,severity TEXT NOT NULL,status TEXT NOT NULL,code TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,recommendation TEXT,module TEXT NOT NULL,trace_id TEXT,span_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,evidence_json TEXT NOT NULL DEFAULT '{}',first_seen_time INTEGER NOT NULL,last_seen_time INTEGER NOT NULL,occurrence_count INTEGER NOT NULL,fingerprint TEXT NOT NULL);
       CREATE TABLE perf_browser_batches (batch_id TEXT PRIMARY KEY,received_time INTEGER NOT NULL,sent_at INTEGER NOT NULL,source TEXT NOT NULL,accepted INTEGER NOT NULL,rejected INTEGER NOT NULL,page_json TEXT NOT NULL DEFAULT '{}');
     `)
-    db.prepare(
-      `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,trace_id,labels_json,sample_rate)
-       VALUES ('legacy_metric_1',?1,?2,'http.request.duration',42,'ms','backend','server','trace_legacy','{"path":"/legacy?token=tok_legacy_metric_secret","authorization":"Bearer legacy-authorization-secret"}',1)`,
-    ).run(now, new Date(now).toISOString())
+    if (traceShape === "both") {
+      db.prepare(
+        `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,traceId,trace_id,labels_json,sample_rate)
+         VALUES ('legacy_metric_1',?1,?2,'http.request.duration',42,'ms','backend','server','trace_camel_fallback','trace_legacy','{"path":"/legacy?token=tok_legacy_metric_secret","authorization":"Bearer legacy-authorization-secret"}',1)`,
+      ).run(now, new Date(now).toISOString())
+    } else {
+      const traceColumn = traceShape === "camel" ? "traceId" : "trace_id"
+      db.prepare(
+        `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,${traceColumn},labels_json,sample_rate)
+         VALUES ('legacy_metric_1',?1,?2,'http.request.duration',42,'ms','backend','server','trace_legacy','{"path":"/legacy?token=tok_legacy_metric_secret","authorization":"Bearer legacy-authorization-secret"}',1)`,
+      ).run(now, new Date(now).toISOString())
+    }
     db.prepare(
       `INSERT INTO perf_spans (trace_id,span_id,name,module,source,start_time,end_time,duration_ms,status,error_code,error_message,attributes_json)
        VALUES ('trace_legacy','legacy_span_1','http.request','server','backend',?1,?2,42,'ok','LEGACY_FAILURE','legacy failed with sk-legacy-secret','{}')`,

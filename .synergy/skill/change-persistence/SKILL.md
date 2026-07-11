@@ -32,6 +32,7 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 3. Migrate to one canonical current path, then remove obsolete runtime adapters where the migrated state makes them unnecessary.
 4. Keep compatibility readers only at a named boundary when migration cannot make old data impossible; do not spread legacy checks through business logic.
 5. Preserve secrets and owner-only permissions. Never log raw credentials or include them in diagnostics fixtures.
+6. Build old-state fixtures from schemas emitted by shipped writers. Do not use a synthetic superset of multiple historical variants as the only upgrade fixture.
 
 ## Verify
 
@@ -44,6 +45,7 @@ Test:
 - index/read consistency
 - deletion/archival/import/export behavior
 - startup runner execution and dependency ordering
+- a clone or fixture of the latest released state for startup-blocking migrations
 
 Use real temporary `SYNERGY_HOME`, Scope, storage, or SQLite fixtures instead of broad mocks. Run the narrow domain test, migration tests, recovery/integration tests, typecheck, and `bun run quality:quick`.
 

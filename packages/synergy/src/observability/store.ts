@@ -7,7 +7,7 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
 
 export namespace ObservabilityStore {
-  const SCHEMA_VERSION = "4"
+  export const schemaVersion = 4
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
   const SIZE_CAP_TABLES = [
@@ -782,7 +782,7 @@ export namespace ObservabilityStore {
   function initialize(conn: Database) {
     const now = Date.now()
     conn.exec(SQL)
-    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION)
+    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(String(schemaVersion))
     conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
     conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
     conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))

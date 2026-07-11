@@ -7,10 +7,12 @@ import { ObservabilityRedaction } from "./redaction"
 import { ObservabilityStore } from "./store"
 
 export namespace ObservabilityMigration {
-  export const schemaVersion = 4
+  const BATCH_SIZE = 500
+  export const schemaVersion = ObservabilityStore.schemaVersion
   export const id = "20260705-observability-store-v2"
   export const redactionBackfillId = "20260711-observability-redaction-backfill"
   export const incrementalVacuumId = "20260711-observability-incremental-vacuum"
+  export const schemaMetadataId = "20260712-observability-schema-metadata-v4"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -66,11 +68,30 @@ export namespace ObservabilityMigration {
     })()
   }
 
+  export async function synchronizeSchemaMetadata(progress: (current: number, total: number) => void = () => {}) {
+    const target = ObservabilityStore.initializeForMigration()
+    target.prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(String(schemaVersion))
+    progress(1, 1)
+  }
+
   function hasTable(db: Database, table: string) {
     const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table) as
       | { name?: string }
       | undefined
     return !!row?.name
+  }
+
+  function tableColumns(db: Database, table: string) {
+    const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+    return new Set(rows.map((row) => row.name))
+  }
+
+  function legacyMetricTraceSql(db: Database) {
+    const columns = tableColumns(db, "perf_metrics")
+    if (columns.has("trace_id") && columns.has("traceId")) return "COALESCE(NULLIF(trace_id,''),traceId)"
+    if (columns.has("trace_id")) return "trace_id"
+    if (columns.has("traceId")) return "traceId"
+    return "NULL"
   }
 
   function legacyMetricNameSql() {
@@ -91,9 +112,9 @@ export namespace ObservabilityMigration {
     if (!hasTable(legacy, "perf_metrics")) return
     const rows = legacy
       .prepare(
-        `SELECT metric_id,time,iso,${legacyMetricNameSql()} AS name,value,unit,source,module,scope_id,session_id,message_id,call_id,COALESCE(NULLIF(trace_id,''),traceId) AS trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate FROM perf_metrics`,
+        `SELECT metric_id,time,iso,${legacyMetricNameSql()} AS name,value,unit,source,module,scope_id,session_id,message_id,call_id,${legacyMetricTraceSql(legacy)} AS trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate FROM perf_metrics`,
       )
-      .all() as LegacyMetricRow[]
+      .iterate() as IterableIterator<LegacyMetricRow>
     const insert = target.prepare(
       `INSERT OR IGNORE INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate,redaction_json)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
@@ -133,7 +154,7 @@ export namespace ObservabilityMigration {
       .prepare(
         `SELECT trace_id,span_id,parent_span_id,name,module,source,start_time,end_time,duration_ms,status,error_code,error_message,scope_id,session_id,message_id,call_id,rid,process_id,pid,tool FROM perf_spans`,
       )
-      .all() as LegacySpanRow[]
+      .iterate() as IterableIterator<LegacySpanRow>
     const insert = target.prepare(
       `INSERT OR IGNORE INTO obs_spans (trace_id,span_id,parent_span_id,kind,name,module,source,start_time,end_time,duration_ms,last_activity_time,heartbeat_count,stalled,status,error_code,error_message,scope_id,session_id,message_id,call_id,rid,process_id,pid,tool,attributes_json,redaction_json)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,0,0,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,'{}',?23)`,
@@ -175,7 +196,7 @@ export namespace ObservabilityMigration {
 
   function copyResources(legacy: Database, target: Database) {
     if (!hasTable(legacy, "perf_resource_samples")) return
-    const rows = legacy.prepare("SELECT * FROM perf_resource_samples").all() as LegacyResourceRow[]
+    const rows = legacy.prepare("SELECT * FROM perf_resource_samples").iterate() as IterableIterator<LegacyResourceRow>
     const insert = target.prepare(
       `INSERT OR IGNORE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,labels_json,redaction_json)
        VALUES (?1,?2,?3,?4,NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)`,
@@ -222,7 +243,7 @@ export namespace ObservabilityMigration {
       .prepare(
         `SELECT issue_id,time,iso,severity,status,code,title,message,recommendation,module,trace_id,span_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint FROM perf_issues`,
       )
-      .all() as LegacyIssueRow[]
+      .iterate() as IterableIterator<LegacyIssueRow>
     const insert = target.prepare(
       `INSERT OR IGNORE INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,trace_id,span_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
@@ -266,7 +287,9 @@ export namespace ObservabilityMigration {
 
   function copyBrowserBatches(legacy: Database, target: Database) {
     if (!hasTable(legacy, "perf_browser_batches")) return
-    const rows = legacy.prepare("SELECT * FROM perf_browser_batches").all() as LegacyBrowserBatchRow[]
+    const rows = legacy
+      .prepare("SELECT * FROM perf_browser_batches")
+      .iterate() as IterableIterator<LegacyBrowserBatchRow>
     const insert = target.prepare(
       `INSERT OR IGNORE INTO obs_browser_batches (batch_id,received_time,sent_at,source,accepted,rejected,page_json)
        VALUES (?1,?2,?3,?4,?5,?6,?7)`,
@@ -295,114 +318,132 @@ export namespace ObservabilityMigration {
     }
   }
 
-  function redactMetrics(target: Database) {
-    const rows = target.prepare("SELECT metric_id,labels_json FROM obs_metrics").all() as Array<{
-      metric_id: string
-      labels_json?: string | null
-    }>
-    const update = target.prepare("UPDATE obs_metrics SET labels_json = ?, redaction_json = ? WHERE metric_id = ?")
-    for (const row of rows) {
-      const labels = ObservabilityRedaction.redactRecord(parseJsonRecord(row.labels_json))
-      update.run(JSON.stringify(labels.value), JSON.stringify(labels.summary), row.metric_id)
+  function forEachBatch<Row extends { migration_id: string }>(
+    target: Database,
+    sql: string,
+    visit: (row: Row) => void,
+  ) {
+    const select = target.prepare(sql)
+    let after: string | null = null
+    while (true) {
+      const rows = select.all(after, BATCH_SIZE) as Row[]
+      if (rows.length === 0) return
+      for (const row of rows) visit(row)
+      after = rows[rows.length - 1].migration_id
     }
+  }
+
+  function redactMetrics(target: Database) {
+    const update = target.prepare("UPDATE obs_metrics SET labels_json = ?, redaction_json = ? WHERE metric_id = ?")
+    forEachBatch<{ migration_id: string; labels_json?: string | null }>(
+      target,
+      "SELECT metric_id AS migration_id,labels_json FROM obs_metrics WHERE (?1 IS NULL OR metric_id > ?1) ORDER BY metric_id LIMIT ?2",
+      (row) => {
+        const labels = ObservabilityRedaction.redactRecord(parseJsonRecord(row.labels_json))
+        update.run(JSON.stringify(labels.value), JSON.stringify(labels.summary), row.migration_id)
+      },
+    )
   }
 
   function redactSpans(target: Database) {
-    const rows = target.prepare("SELECT span_id,name,error_message,attributes_json FROM obs_spans").all() as Array<{
-      span_id: string
-      name: string
-      error_message?: string | null
-      attributes_json?: string | null
-    }>
     const update = target.prepare(
       "UPDATE obs_spans SET name = ?, error_message = ?, attributes_json = ?, redaction_json = ? WHERE span_id = ?",
     )
-    for (const row of rows) {
-      const name = ObservabilityRedaction.text(row.name)
-      const errorMessage = row.error_message ? ObservabilityRedaction.text(row.error_message) : null
-      const attributes = ObservabilityRedaction.redactRecord(parseJsonRecord(row.attributes_json))
-      update.run(
-        name,
-        errorMessage,
-        JSON.stringify(attributes.value),
-        JSON.stringify(withTextChanges(attributes.summary, name !== row.name || errorMessage !== row.error_message)),
-        row.span_id,
-      )
-    }
+    forEachBatch<{
+      migration_id: string
+      name: string
+      error_message?: string | null
+      attributes_json?: string | null
+    }>(
+      target,
+      "SELECT span_id AS migration_id,name,error_message,attributes_json FROM obs_spans WHERE (?1 IS NULL OR span_id > ?1) ORDER BY span_id LIMIT ?2",
+      (row) => {
+        const name = ObservabilityRedaction.text(row.name)
+        const errorMessage = row.error_message ? ObservabilityRedaction.text(row.error_message) : null
+        const attributes = ObservabilityRedaction.redactRecord(parseJsonRecord(row.attributes_json))
+        update.run(
+          name,
+          errorMessage,
+          JSON.stringify(attributes.value),
+          JSON.stringify(withTextChanges(attributes.summary, name !== row.name || errorMessage !== row.error_message)),
+          row.migration_id,
+        )
+      },
+    )
   }
 
   function redactEvents(target: Database) {
-    const rows = target.prepare("SELECT event_id,cwd,data_json FROM obs_events").all() as Array<{
-      event_id: string
-      cwd?: string | null
-      data_json?: string | null
-    }>
     const update = target.prepare("UPDATE obs_events SET cwd = ?, data_json = ?, redaction_json = ? WHERE event_id = ?")
-    for (const row of rows) {
-      const data = ObservabilityRedaction.redactRecord(parseJsonRecord(row.data_json))
-      update.run(
-        row.cwd ? ObservabilityRedaction.cwdScope(row.cwd) : null,
-        JSON.stringify(data.value),
-        JSON.stringify(data.summary),
-        row.event_id,
-      )
-    }
+    forEachBatch<{ migration_id: string; cwd?: string | null; data_json?: string | null }>(
+      target,
+      "SELECT event_id AS migration_id,cwd,data_json FROM obs_events WHERE (?1 IS NULL OR event_id > ?1) ORDER BY event_id LIMIT ?2",
+      (row) => {
+        const data = ObservabilityRedaction.redactRecord(parseJsonRecord(row.data_json))
+        update.run(
+          row.cwd ? ObservabilityRedaction.cwdScope(row.cwd) : null,
+          JSON.stringify(data.value),
+          JSON.stringify(data.summary),
+          row.migration_id,
+        )
+      },
+    )
   }
 
   function redactResources(target: Database) {
-    const rows = target.prepare("SELECT sample_id,labels_json FROM obs_resource_samples").all() as Array<{
-      sample_id: string
-      labels_json?: string | null
-    }>
     const update = target.prepare(
       "UPDATE obs_resource_samples SET labels_json = ?, redaction_json = ? WHERE sample_id = ?",
     )
-    for (const row of rows) {
-      const labels = ObservabilityRedaction.redactRecord(parseJsonRecord(row.labels_json))
-      update.run(JSON.stringify(labels.value), JSON.stringify(labels.summary), row.sample_id)
-    }
+    forEachBatch<{ migration_id: string; labels_json?: string | null }>(
+      target,
+      "SELECT sample_id AS migration_id,labels_json FROM obs_resource_samples WHERE (?1 IS NULL OR sample_id > ?1) ORDER BY sample_id LIMIT ?2",
+      (row) => {
+        const labels = ObservabilityRedaction.redactRecord(parseJsonRecord(row.labels_json))
+        update.run(JSON.stringify(labels.value), JSON.stringify(labels.summary), row.migration_id)
+      },
+    )
   }
 
   function redactIssues(target: Database) {
-    const rows = target
-      .prepare("SELECT issue_id,title,message,recommendation,evidence_json FROM obs_issues")
-      .all() as Array<{
-      issue_id: string
+    const update = target.prepare(
+      "UPDATE obs_issues SET title = ?, message = ?, recommendation = ?, evidence_json = ?, redaction_json = ? WHERE issue_id = ?",
+    )
+    forEachBatch<{
+      migration_id: string
       title: string
       message: string
       recommendation?: string | null
       evidence_json?: string | null
-    }>
-    const update = target.prepare(
-      "UPDATE obs_issues SET title = ?, message = ?, recommendation = ?, evidence_json = ?, redaction_json = ? WHERE issue_id = ?",
+    }>(
+      target,
+      "SELECT issue_id AS migration_id,title,message,recommendation,evidence_json FROM obs_issues WHERE (?1 IS NULL OR issue_id > ?1) ORDER BY issue_id LIMIT ?2",
+      (row) => {
+        const title = ObservabilityRedaction.text(row.title)
+        const message = ObservabilityRedaction.text(row.message)
+        const recommendation = row.recommendation ? ObservabilityRedaction.text(row.recommendation) : null
+        const evidence = ObservabilityRedaction.redactRecord(parseJsonRecord(row.evidence_json))
+        const changed = title !== row.title || message !== row.message || recommendation !== row.recommendation
+        update.run(
+          title,
+          message,
+          recommendation,
+          JSON.stringify(evidence.value),
+          JSON.stringify(withTextChanges(evidence.summary, changed)),
+          row.migration_id,
+        )
+      },
     )
-    for (const row of rows) {
-      const title = ObservabilityRedaction.text(row.title)
-      const message = ObservabilityRedaction.text(row.message)
-      const recommendation = row.recommendation ? ObservabilityRedaction.text(row.recommendation) : null
-      const evidence = ObservabilityRedaction.redactRecord(parseJsonRecord(row.evidence_json))
-      const changed = title !== row.title || message !== row.message || recommendation !== row.recommendation
-      update.run(
-        title,
-        message,
-        recommendation,
-        JSON.stringify(evidence.value),
-        JSON.stringify(withTextChanges(evidence.summary, changed)),
-        row.issue_id,
-      )
-    }
   }
 
   function redactBrowserBatches(target: Database) {
-    const rows = target.prepare("SELECT batch_id,page_json FROM obs_browser_batches").all() as Array<{
-      batch_id: string
-      page_json?: string | null
-    }>
     const update = target.prepare("UPDATE obs_browser_batches SET page_json = ? WHERE batch_id = ?")
-    for (const row of rows) {
-      const page = ObservabilityRedaction.value(parseJsonRecord(row.page_json))
-      update.run(JSON.stringify(page.value), row.batch_id)
-    }
+    forEachBatch<{ migration_id: string; page_json?: string | null }>(
+      target,
+      "SELECT batch_id AS migration_id,page_json FROM obs_browser_batches WHERE (?1 IS NULL OR batch_id > ?1) ORDER BY batch_id LIMIT ?2",
+      (row) => {
+        const page = ObservabilityRedaction.value(parseJsonRecord(row.page_json))
+        update.run(JSON.stringify(page.value), row.migration_id)
+      },
+    )
   }
 
   function withTextChanges(
@@ -576,6 +617,16 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.redactionBackfillId],
     async up(progress) {
       await ObservabilityMigration.enableIncrementalVacuum(progress)
+    },
+  },
+  {
+    id: ObservabilityMigration.schemaMetadataId,
+    description: "Synchronize observability schema metadata",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.incrementalVacuumId],
+    async up(progress) {
+      await ObservabilityMigration.synchronizeSchemaMetadata(progress)
     },
   },
 ]
