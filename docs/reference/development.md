@@ -136,6 +136,9 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | Internal LLM call, model-backed classifier, existing session invocation, or delegated child task | `integrate-llm`                                    |
 | HTTP route, OpenAPI schema, generated SDK, or internal Web API call                              | `change-server-api`                                |
 | Durable storage, schema, index, migration, or recovery                                           | `change-persistence`                               |
+| Capability, permission, control-profile, enforcement, or sandbox behavior                        | `change-execution-boundaries`                      |
+| Browser ownership/control, Desktop native presentation, or WebRTC                                | `change-browser-runtime`                           |
+| Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |
 | Test selection, isolated runtime, or Git operation                                               | `testing-guide`, `develop-synergy`, or `git-guide` |
 

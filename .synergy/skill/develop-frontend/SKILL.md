@@ -26,12 +26,13 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 
 1. Name the user-facing meaning before choosing a glyph.
 2. Reuse an existing token only when the new control has the same meaning. Similar appearance or location is not enough.
-3. Add a new semantic token before using an icon for a new product entity, navigation concept, state, setting, command, or action.
-4. Choose a built-in glyph that is not already mapped to another semantic token. If two meanings truly require the same glyph, make that equivalence explicit and add a focused test instead of allowing accidental reuse.
-5. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
-6. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Tool icons follow `add-tool`, not the product semantic-token registry.
+3. Add a new token to `packages/ui/src/components/semantic-icon.tsx` before using an icon for a new product entity, navigation concept, state, setting, command, or action.
+4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph.
+5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
+6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
+7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.
 
-Before handoff, scan the token map for duplicate glyph values and inspect nearby UI for raw product icon literals.
+Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
 
 ## Preserve Product Presentation
 

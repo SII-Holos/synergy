@@ -20,7 +20,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       registerWorkbenchPanel({
         id: "notes",
         label: "Notes",
-        icon: "notebook-pen",
+        icon: getSemanticIcon("notes.main"),
         surface: "side",
         cardinality: "singleton",
         pluginId: "builtin",
@@ -70,7 +70,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       registerWorkbenchPanel({
         id: "browser",
         label: "Browser",
-        icon: "globe",
+        icon: getSemanticIcon("browser.main"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,
@@ -81,7 +81,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       registerWorkbenchPanel({
         id: "terminal",
         label: "Terminal",
-        icon: "terminal",
+        icon: getSemanticIcon("terminal.main"),
         surface: "bottom",
         cardinality: "multi",
         pluginId: "builtin",

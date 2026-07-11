@@ -1,21 +1,22 @@
 import { For } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
 
 interface ToolbarAction {
   id: DevPanel
   label: string
-  icon: string
+  icon: SemanticIconTokenName
 }
 
-const ACTIONS = [
-  { id: "screenshot" as DevPanel, label: "Screenshot", icon: "image" },
-  { id: "inspect" as DevPanel, label: "Inspect", icon: "scan-eye" },
-  { id: "console" as DevPanel, label: "Console", icon: "terminal" },
-  { id: "network" as DevPanel, label: "Network", icon: "signal" },
-  { id: "elements" as DevPanel, label: "Elements", icon: "pen" },
-  { id: "assets" as DevPanel, label: "Assets", icon: "package" },
-  { id: "downloads" as DevPanel, label: "Downloads", icon: "download" },
+const ACTIONS: ToolbarAction[] = [
+  { id: "screenshot", label: "Screenshot", icon: "browser.screenshot" },
+  { id: "inspect", label: "Inspect", icon: "browser.inspect" },
+  { id: "console", label: "Console", icon: "browser.console" },
+  { id: "network", label: "Network", icon: "browser.network" },
+  { id: "elements", label: "Elements", icon: "browser.elements" },
+  { id: "assets", label: "Assets", icon: "browser.assets" },
+  { id: "downloads", label: "Downloads", icon: "browser.downloads" },
 ]
 
 export function DevToolbar() {
@@ -40,7 +41,7 @@ export function DevToolbar() {
       <For each={ACTIONS}>
         {(action) => (
           <IconButton
-            icon={action.icon}
+            icon={getSemanticIcon(action.icon)}
             variant={isActive(action.id) && action.label !== "Screenshot" ? "primary" : "ghost"}
             size="normal"
             onClick={() => handleClick(action)}

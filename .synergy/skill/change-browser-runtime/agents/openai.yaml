@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Browser Runtime"
+  short_description: "Modify Synergy Browser and Desktop presentation safely"
+  default_prompt: "Use $change-browser-runtime to implement this Synergy Browser ownership, control, native, or WebRTC change safely."

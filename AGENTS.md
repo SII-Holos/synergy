@@ -8,6 +8,7 @@ These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGEN
 - Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Keep retired names inside `docs/migrations/` or `docs/research/` only.
 - Start architecture work at [docs/README.md](docs/README.md), then read only the relevant product, architecture, reference, plugin, or operations document.
 - Inspect adjacent domains before assuming a directory is the abstraction boundary.
+- Keep a nearest `AGENTS.md` in every workspace package and update it when that package's ownership, public boundary, or verification commands change.
 - Fix the root cause with a focused change; preserve unrelated user work and avoid opportunistic cleanup.
 
 The project-local `architecture` skill provides the code-tracing workflow. It links to the canonical documents rather than duplicating their contents.
@@ -158,6 +159,9 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 - `architecture` — trace ownership and cross-cutting flows
 - `develop-frontend`, `integrate-llm` — Web/shared UI and model-backed operation workflows
 - `change-server-api`, `change-persistence` — API/SDK and durable-state workflows
+- `change-execution-boundaries` — capabilities, permissions, control profiles, enforcement, and sandboxing
+- `change-browser-runtime` — Browser ownership/control plus Desktop native and WebRTC presentation
+- `change-plugin-runtime` — public plugin contracts, installation, runtime isolation, bridge, and UI host
 - `develop-synergy` — run an isolated second instance
 - `testing-guide` — choose fixtures and verification gates
 - `git-guide` — worktree, commit, rebase, push, and PR safety

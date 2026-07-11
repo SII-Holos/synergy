@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Execution Boundaries"
+  short_description: "Modify Synergy permissions, enforcement, and sandboxing"
+  default_prompt: "Use $change-execution-boundaries to implement this Synergy permission, capability, control-profile, or sandbox change safely."

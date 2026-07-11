@@ -14,6 +14,9 @@ description: Route a Synergy source change to the current repository development
    - LLM or internal-agent invocation: `integrate-llm`
    - HTTP route, OpenAPI, SDK, or Web API client: `change-server-api`
    - durable state, schema, index, or migration: `change-persistence`
+   - capabilities, permissions, control profiles, enforcement, or sandboxing: `change-execution-boundaries`
+   - Browser ownership/control, Desktop native presentation, or WebRTC: `change-browser-runtime`
+   - plugin manifest, installation, runtime, bridge, marketplace, or UI host: `change-plugin-runtime`
    - built-in agent, CLI command, or first-party tool: `add-agent`, `add-cli-command`, or `add-tool`
    - tests or manual runtime validation: `testing-guide` and `develop-synergy`
    - Git/worktree/PR operations: `git-guide`
@@ -35,7 +38,8 @@ A durable development convention is part of the implementation deliverable, not 
 3. Create a new verb-led development Skill when no existing workflow would reliably trigger for that class of change. Keep it focused and link it from this router, root `AGENTS.md`, and `llms.txt`.
 4. Update canonical docs when the rule describes product or architecture truth; update `packages/app/PRODUCT.md` when it describes durable interaction or visual behavior.
 5. Keep root/package `AGENTS.md` concise: retain safety, global invariants, and Skill routing there; put executable steps and examples in Skills.
-6. Validate every changed or added Skill with the repository's `skill-creator` validator and verify its links.
+6. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
+7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
 Do not add a rule only to a PR comment, prompt, or one package guide if future agents need it to implement the same change correctly.
 

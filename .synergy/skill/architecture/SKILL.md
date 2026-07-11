@@ -23,6 +23,9 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
    - LLM-backed operation: `integrate-llm`
    - HTTP/OpenAPI/SDK contract: `change-server-api`
    - durable state or migration: `change-persistence`
+   - capability/permission/sandbox behavior: `change-execution-boundaries`
+   - Browser/Desktop/WebRTC runtime: `change-browser-runtime`
+   - plugin public/host/runtime behavior: `change-plugin-runtime`
 
 ## Trace from Evidence
 

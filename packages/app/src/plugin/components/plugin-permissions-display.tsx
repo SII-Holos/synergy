@@ -1,5 +1,6 @@
 import { For, Show, createMemo } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { PluginPermissions } from "../api"
 
 interface PluginPermissionsDisplayProps {
@@ -9,7 +10,7 @@ interface PluginPermissionsDisplayProps {
 }
 
 interface PermissionItem {
-  icon: string
+  icon: SemanticIconTokenName
   label: string
   warning?: boolean
   changed?: "new" | "removed"
@@ -65,7 +66,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
     // UI permissions
     if (p?.ui === true) {
       addItem({
-        icon: "panel-left",
+        icon: "plugins.permission.ui",
         label: "Plugin UI surfaces",
       })
     }
@@ -82,14 +83,14 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         const diff = arrayDiff(connectDomains, prevDomains)
         for (const d of diff.added) {
           networkItems.push({
-            icon: "globe",
+            icon: "plugins.permission.network",
             label: `Network access to: ${d}`,
             changed: "new",
           })
         }
         for (const d of diff.removed) {
           networkItems.push({
-            icon: "globe",
+            icon: "plugins.permission.network",
             label: `No longer connects to: ${d}`,
             changed: "removed",
           })
@@ -97,13 +98,13 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         // Show unchanged domains only if no diff item was generated
         if (diff.added.length === 0 && diff.removed.length === 0) {
           networkItems.push({
-            icon: "globe",
+            icon: "plugins.permission.network",
             label: `Network access to: ${connectDomains!.join(", ")}`,
           })
         }
       } else {
         networkItems.push({
-          icon: "globe",
+          icon: "plugins.permission.network",
           label: `Network access to: ${connectDomains!.join(", ")}`,
         })
       }
@@ -112,7 +113,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
       // Resource domains are less important, show only if no connect domains
       if (!hasArrayItems(p, ["network", "connectDomains"])) {
         networkItems.push({
-          icon: "globe",
+          icon: "plugins.permission.network",
           label: `Resource access to: ${p!.network!.resourceDomains!.join(", ")}`,
         })
       }
@@ -124,19 +125,19 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
     // Data permissions
     const dataItems: PermissionItem[] = []
     if (p?.data?.session === "metadata") {
-      dataItems.push({ icon: "file-text", label: "Read session metadata" })
+      dataItems.push({ icon: "plugins.permission.data", label: "Read session metadata" })
     }
     if (p?.data?.session === "read") {
-      dataItems.push({ icon: "file-text", label: "Read session data" })
+      dataItems.push({ icon: "plugins.permission.data", label: "Read session data" })
     }
     if (p?.data?.workspace === "metadata") {
-      dataItems.push({ icon: "folder", label: "Read workspace metadata" })
+      dataItems.push({ icon: "plugins.permission.filesystem", label: "Read workspace metadata" })
     }
     if (p?.data?.workspace === "read") {
-      dataItems.push({ icon: "folder", label: "Read workspace files" })
+      dataItems.push({ icon: "plugins.permission.filesystem", label: "Read workspace files" })
     }
     if (p?.data?.config === "global") {
-      dataItems.push({ icon: "settings", label: "Access global config" })
+      dataItems.push({ icon: "plugins.permission.config", label: "Access global config" })
     }
     if (dataItems.length > 0) {
       groups.push({ title: "Data", items: dataItems })
@@ -146,14 +147,14 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
     const toolItems: PermissionItem[] = []
     if (hasPermission(p, ["tools", "shell"])) {
       toolItems.push({
-        icon: "terminal",
+        icon: "plugins.permission.shell",
         label: "Invoke shell commands",
         warning: true,
       })
     }
     if (hasPermission(p, ["tools", "filesystem"])) {
       toolItems.push({
-        icon: "folder",
+        icon: "plugins.permission.filesystem",
         label: "Access filesystem",
         warning: true,
       })
@@ -190,11 +191,11 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
                 <For each={group.items}>
                   {(item) => (
                     <li class="flex items-center gap-2 text-13-regular text-text-base">
-                      <Icon name={item.icon} size="small" class="shrink-0 text-text-weak" />
+                      <Icon name={getSemanticIcon(item.icon)} size="small" class="shrink-0 text-text-weak" />
                       <span>{item.label}</span>
                       <Show when={item.warning}>
                         <span class="inline-flex items-center gap-1 rounded-full bg-surface-warning-soft px-2 py-0.5 text-11-medium text-text-warning">
-                          <Icon name="alert-triangle" size="small" />
+                          <Icon name={getSemanticIcon("state.warning")} size="small" />
                           Elevated access
                         </span>
                       </Show>
@@ -224,7 +225,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
 
       {/* UI execution indicator */}
       <div class="flex items-center gap-3 rounded-lg border border-border-base bg-surface-base p-3">
-        <Icon name="shield-check" size="small" class="text-text-success" />
+        <Icon name={getSemanticIcon("plugins.permission.hostUi")} size="small" class="text-text-success" />
         <div>
           <p class="text-13-medium text-text-base">Host-rendered UI</p>
           <p class="text-12-regular text-text-weak">Can render declared surfaces in Synergy after approval.</p>
@@ -234,7 +235,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
       {/* Risky permissions warning */}
       <Show when={hasRiskyPermissions()}>
         <div class="flex items-start gap-2 rounded-lg border border-border-warning bg-surface-warning-soft p-3">
-          <Icon name="alert-triangle" size="small" class="mt-0.5 text-text-warning shrink-0" />
+          <Icon name={getSemanticIcon("state.warning")} size="small" class="mt-0.5 text-text-warning shrink-0" />
           <div>
             <p class="text-13-medium text-text-warning">Elevated permissions requested</p>
             <p class="text-12-regular text-text-weak mt-0.5">

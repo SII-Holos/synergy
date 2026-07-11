@@ -75,6 +75,7 @@ The project-local `.synergy/skill/` files are executable workflows for this repo
 - `architecture`, `develop-synergy`, `testing-guide`, and `git-guide`
 - `development-standards`, `develop-frontend`, and `integrate-llm`
 - `change-server-api` and `change-persistence`
+- `change-execution-boundaries`, `change-browser-runtime`, and `change-plugin-runtime`
 - `add-agent`, `add-cli-command`, and `add-tool`
 - `find-logs`, `inspect-sessions`, and `release-log-workflow`
 

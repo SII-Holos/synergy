@@ -1,4 +1,4 @@
 interface:
   display_name: "Integrate LLM"
   short_description: "Choose and implement the correct Synergy LLM call path"
-  default_prompt: "Design this Synergy LLM integration using the correct sessionless, session, or Cortex execution path."
+  default_prompt: "Use $integrate-llm to design this Synergy model call with the correct sessionless, session, or Cortex path."
