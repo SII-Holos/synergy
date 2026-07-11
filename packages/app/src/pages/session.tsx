@@ -59,6 +59,7 @@ import {
 } from "@/components/session/worktree-session"
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
+import { sessionLoadView } from "@/components/session/session-load-state"
 
 const handoff = {
   prompt: "",
@@ -139,6 +140,7 @@ function SessionPageContent() {
     promptHeight: 0,
     mobileReviewOpen: false,
     mobileReviewSelectedFile: undefined as string | undefined,
+    delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
@@ -146,7 +148,6 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
-  const [emptyRefreshing, setEmptyRefreshing] = createSignal(false)
   const [workspaceProgress, setWorkspaceProgress] = createSignal<Record<string, SessionWorkspaceProgress>>({})
   const [workspaceProgressActions, setWorkspaceProgressActions] = createSignal<
     Record<string, SessionWorkspaceProgressActions>
@@ -341,6 +342,31 @@ function SessionPageContent() {
     if (!id) return true
     return sync.data.message[id] !== undefined
   })
+  const messageLoad = createMemo(() => {
+    const id = params.id
+    if (!id) return { phase: "idle" as const, generation: 0, hasSnapshot: false }
+    return sync.session.loadState(id)
+  })
+  let loadingRecoveryTimer: ReturnType<typeof setTimeout> | undefined
+  createEffect(
+    on(
+      () => [params.id, messageLoad().phase, messageLoad().generation, messageLoad().hasSnapshot] as const,
+      ([sessionID, phase, generation, hasSnapshot]) => {
+        clearTimeout(loadingRecoveryTimer)
+        setStore("delayedMessageLoad", undefined)
+        if (!sessionID || phase !== "loading" || hasSnapshot) return
+        loadingRecoveryTimer = setTimeout(() => {
+          setStore("delayedMessageLoad", { sessionID, generation })
+        }, 10_000)
+      },
+    ),
+  )
+  const messageLoadDelayed = createMemo(() => {
+    const delayed = store.delayedMessageLoad
+    if (!delayed) return false
+    const load = messageLoad()
+    return delayed.sessionID === params.id && delayed.generation === load.generation
+  })
   const historyMore = createMemo(() => {
     const id = params.id
     if (!id) return false
@@ -479,6 +505,24 @@ function SessionPageContent() {
     const found = visibleUserMessages()?.find((m) => m.id === store.messageId)
     return found ?? lastUserMessage()
   })
+  const conversationLoadView = createMemo(() =>
+    sessionLoadView({
+      hasRenderableContent: !!(activeMessage() || (timeline()?.length ?? 0) > 0 || visibleWorkspaceProgress()),
+      messages: params.id ? sync.data.message[params.id] : [],
+      load: messageLoad(),
+      delayed: messageLoadDelayed(),
+    }),
+  )
+  const conversationLoadError = createMemo(() => {
+    const view = conversationLoadView()
+    if (view.type === "initial-error" || view.type === "empty-error") return view.error
+    return ""
+  })
+  const refreshConversation = async () => {
+    const id = params.id
+    if (!id) return
+    await sync.session.refresh(id).catch(() => undefined)
+  }
   const setActiveMessage = (message: UserMessage | undefined) => {
     setStore("messageId", message?.id)
   }
@@ -525,7 +569,7 @@ function SessionPageContent() {
         }
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
-        if (connected && id) sync.session.sync(id, { refreshVolatile: true })
+        if (connected && id) void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
       },
     ),
   )
@@ -909,6 +953,7 @@ function SessionPageContent() {
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
     hydratedSessions.clear()
     initializedSessions.clear()
+    clearTimeout(loadingRecoveryTimer)
   })
 
   return (
@@ -942,102 +987,122 @@ function SessionPageContent() {
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
-                    <Show
-                      when={activeMessage() || (timeline()?.length ?? 0) > 0 || visibleWorkspaceProgress()}
-                      fallback={
-                        <Show
-                          when={messagesReady()}
-                          fallback={
-                            <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                              <Spinner class="size-10 text-text-weak" />
-                              <span class="text-sm text-text-weak">Loading conversation…</span>
-                            </div>
-                          }
-                        >
-                          <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                            <span class="text-sm text-text-weak">No messages yet</span>
+                    <Switch>
+                      <Match when={conversationLoadView().type === "conversation"}>
+                        <SessionConversation
+                          sessionID={params.id!}
+                          paramsDir={params.dir!}
+                          timeline={timeline}
+                          pendingTimeline={pendingTimeline}
+                          workspaceTransition={visibleWorkspaceProgress}
+                          workspaceTransitionActions={visibleWorkspaceProgressActions}
+                          visibleUserMessages={visibleUserMessages}
+                          lastUserMessage={lastRenderableUserMessage}
+                          activeMessage={activeMessage}
+                          showTabs={showTabs}
+                          isWorking={isWorking}
+                          turnStart={store.turnStart}
+                          turnBatch={turnBatch}
+                          onSetTurnStart={(start) => setStore("turnStart", start)}
+                          historyMore={historyMore}
+                          historyLoading={historyLoading}
+                          onLoadMore={() => {
+                            const id = params.id
+                            if (!id) return
+                            setStore("turnStart", 0)
+                            void sync.session.history.loadMore(id).catch(() => undefined)
+                          }}
+                          scrolledUp={scrolledUp}
+                          onScrolledUpChange={setScrolledUp}
+                          autoScroll={autoScroll}
+                          onClearHash={clearHash}
+                          onScheduleScrollSpy={scheduleScrollSpy}
+                          setScrollRef={setScrollRef}
+                          isDesktop={isDesktop}
+                          scrollToMessage={scrollToMessage}
+                          anchor={anchor}
+                          terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
+                          workspaceOpen={sideOpen}
+                          onRewind={openRewindConfirm}
+                          onReviewChanges={(input) => {
+                            if (isDesktop()) {
+                              void workbench.openPanel("session-review", {
+                                reuseExisting: true,
+                                init: {
+                                  ...(input.file ? { resourceId: input.file } : {}),
+                                  source: input.messageID,
+                                },
+                              })
+                            } else {
+                              setStore({
+                                mobileReviewOpen: true,
+                                mobileReviewSelectedFile: input.file,
+                              })
+                            }
+                          }}
+                          onPendingGuide={(item) => void guidePending(item)}
+                          onPendingRemove={(item) => void removePending(item)}
+                          rollbackActive={rollbackActive()}
+                        />
+                      </Match>
+                      <Match
+                        when={
+                          conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"
+                        }
+                      >
+                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
+                          <Spinner class="size-10 text-text-weak" />
+                          <span class="text-sm text-text-weak">Loading conversation…</span>
+                          <Show when={conversationLoadView().type === "delayed-loading"}>
                             <button
                               type="button"
-                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
-                              disabled={emptyRefreshing()}
-                              onClick={async () => {
-                                const id = params.id
-                                if (!id || emptyRefreshing()) return
-                                setEmptyRefreshing(true)
-                                try {
-                                  await sync.session.refresh(id)
-                                } finally {
-                                  setEmptyRefreshing(false)
-                                }
-                              }}
+                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                              onClick={() => void refreshConversation()}
                             >
-                              <Icon
-                                name={getSemanticIcon("action.refresh")}
-                                size="small"
-                                class={emptyRefreshing() ? "animate-spin" : undefined}
-                              />
-                              <span>Refresh</span>
+                              <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                              <span>Retry</span>
                             </button>
-                          </div>
-                        </Show>
-                      }
-                    >
-                      <SessionConversation
-                        sessionID={params.id!}
-                        paramsDir={params.dir!}
-                        timeline={timeline}
-                        pendingTimeline={pendingTimeline}
-                        workspaceTransition={visibleWorkspaceProgress}
-                        workspaceTransitionActions={visibleWorkspaceProgressActions}
-                        visibleUserMessages={visibleUserMessages}
-                        lastUserMessage={lastRenderableUserMessage}
-                        activeMessage={activeMessage}
-                        showTabs={showTabs}
-                        isWorking={isWorking}
-                        turnStart={store.turnStart}
-                        turnBatch={turnBatch}
-                        onSetTurnStart={(start) => setStore("turnStart", start)}
-                        historyMore={historyMore}
-                        historyLoading={historyLoading}
-                        onLoadMore={() => {
-                          const id = params.id
-                          if (!id) return
-                          setStore("turnStart", 0)
-                          sync.session.history.loadMore(id)
-                        }}
-                        scrolledUp={scrolledUp}
-                        onScrolledUpChange={setScrolledUp}
-                        autoScroll={autoScroll}
-                        onClearHash={clearHash}
-                        onScheduleScrollSpy={scheduleScrollSpy}
-                        setScrollRef={setScrollRef}
-                        isDesktop={isDesktop}
-                        scrollToMessage={scrollToMessage}
-                        anchor={anchor}
-                        terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
-                        workspaceOpen={sideOpen}
-                        onRewind={openRewindConfirm}
-                        onReviewChanges={(input) => {
-                          if (isDesktop()) {
-                            void workbench.openPanel("session-review", {
-                              reuseExisting: true,
-                              init: {
-                                ...(input.file ? { resourceId: input.file } : {}),
-                                source: input.messageID,
-                              },
-                            })
-                          } else {
-                            setStore({
-                              mobileReviewOpen: true,
-                              mobileReviewSelectedFile: input.file,
-                            })
-                          }
-                        }}
-                        onPendingGuide={(item) => void guidePending(item)}
-                        onPendingRemove={(item) => void removePending(item)}
-                        rollbackActive={rollbackActive()}
-                      />
-                    </Show>
+                          </Show>
+                        </div>
+                      </Match>
+                      <Match when={conversationLoadView().type === "initial-error"}>
+                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                          <span class="text-sm text-text-strong">Couldn’t load conversation</span>
+                          <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
+                          <button
+                            type="button"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                            onClick={() => void refreshConversation()}
+                          >
+                            <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                            <span>Retry</span>
+                          </button>
+                        </div>
+                      </Match>
+                      <Match when={true}>
+                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                          <span class="text-sm text-text-weak">No messages yet</span>
+                          <Show when={conversationLoadView().type === "empty-error"}>
+                            <span class="max-w-md text-sm text-text-critical-base">{conversationLoadError()}</span>
+                          </Show>
+                          <button
+                            type="button"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
+                            disabled={conversationLoadView().type === "refreshing-empty"}
+                            onClick={() => void refreshConversation()}
+                          >
+                            <Icon
+                              name={getSemanticIcon("action.refresh")}
+                              size="small"
+                              class={conversationLoadView().type === "refreshing-empty" ? "animate-spin" : undefined}
+                            />
+                            <span>
+                              {conversationLoadView().type === "refreshing-empty" ? "Refreshing…" : "Refresh"}
+                            </span>
+                          </button>
+                        </div>
+                      </Match>
+                    </Switch>
                   </Match>
                   <Match when={true}>{null}</Match>
                 </Switch>
