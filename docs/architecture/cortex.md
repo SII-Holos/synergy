@@ -16,7 +16,7 @@ A Cortex task records:
 - visibility and notification behavior
 - output mode and resolved output
 
-Task status moves through `pending`, `queued`, `running`, and one terminal state: `completed`, `error`, `cancelled`, or `interrupted`. `interrupted` means durable metadata says work was active, but no live runtime survived restart; it is distinct from an execution error.
+Task status moves through `queued`, `running`, and one terminal state: `completed`, `error`, `cancelled`, or `interrupted`. A Task is created only when it has entered the Cortex queue, so there is no separate `pending` lifecycle state. `interrupted` means durable metadata says work was active, but no live runtime survived restart; it is distinct from an execution error.
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, and output.
 

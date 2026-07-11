@@ -4,7 +4,7 @@ import { CortexTypes } from "../../src/cortex/types"
 describe("CortexTypes", () => {
   describe("TaskStatus", () => {
     test("accepts valid status values", () => {
-      expect(CortexTypes.TaskStatus.parse("pending")).toBe("pending")
+      expect(CortexTypes.TaskStatus.safeParse("pending").success).toBe(false)
       expect(CortexTypes.TaskStatus.parse("queued")).toBe("queued")
       expect(CortexTypes.TaskStatus.parse("running")).toBe("running")
       expect(CortexTypes.TaskStatus.parse("completed")).toBe("completed")

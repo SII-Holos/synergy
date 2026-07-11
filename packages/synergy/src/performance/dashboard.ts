@@ -37,12 +37,12 @@ export namespace PerformanceDashboard {
     const cortexStats = {
       totalCount: cortexTasks.length,
       byStatus: {
-        pending: cortexTasks.filter((task) => task.status === "pending").length,
         queued: cortexTasks.filter((task) => task.status === "queued").length,
         running: cortexTasks.filter((task) => task.status === "running").length,
         completed: cortexTasks.filter((task) => task.status === "completed").length,
         error: cortexTasks.filter((task) => task.status === "error").length,
         cancelled: cortexTasks.filter((task) => task.status === "cancelled").length,
+        interrupted: cortexTasks.filter((task) => task.status === "interrupted").length,
       },
       retainedPromptChars: cortexTasks.reduce((sum, task) => sum + task.prompt.length, 0),
       retainedOutputChars: cortexTasks.reduce((sum, task) => {
@@ -160,12 +160,12 @@ export namespace PerformanceDashboard {
         sessionRuntimes: runtimeStats,
         cortexTasks: {
           totalCount: cortexStats.totalCount,
-          pendingCount: cortexStats.byStatus.pending,
           queuedCount: cortexStats.byStatus.queued,
           runningCount: cortexStats.byStatus.running,
           completedCount: cortexStats.byStatus.completed,
           errorCount: cortexStats.byStatus.error,
           cancelledCount: cortexStats.byStatus.cancelled,
+          interruptedCount: cortexStats.byStatus.interrupted,
           retainedPromptChars: cortexStats.retainedPromptChars,
           retainedOutputChars: cortexStats.retainedOutputChars,
           retainedErrorChars: cortexStats.retainedErrorChars,

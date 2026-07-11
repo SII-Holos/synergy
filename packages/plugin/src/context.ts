@@ -41,7 +41,7 @@ export type PluginTaskOwner = {
   correlationId: string
 }
 
-export type PluginTaskStatus = "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+export type PluginTaskStatus = "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
 
 export type PluginTaskOutputConfig =
   | { mode?: "summary" }

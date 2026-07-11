@@ -2,7 +2,7 @@ import z from "zod"
 import { Identifier } from "../id/id"
 
 export namespace CortexTypes {
-  export const TaskStatus = z.enum(["pending", "queued", "running", "completed", "error", "cancelled", "interrupted"])
+  export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
 
   export const PluginTaskOwner = z.object({

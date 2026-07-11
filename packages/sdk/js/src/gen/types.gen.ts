@@ -550,12 +550,12 @@ export type PerfDashboardSummary = {
     }
     cortexTasks: {
       totalCount: number
-      pendingCount: number
       queuedCount: number
       runningCount: number
       completedCount: number
       errorCount: number
       cancelledCount: number
+      interruptedCount: number
       retainedPromptChars: number
       retainedOutputChars: number
       retainedErrorChars: number
@@ -3556,6 +3556,14 @@ export type SessionCortexDelegation = {
     correlationId: string
   }
   timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
 }
 
 export type SessionSuperPlanInfo = {
@@ -4566,10 +4574,14 @@ export type CortexTask = {
   description: string
   prompt: string
   agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
   executionRole?: "primary" | "delegated_subagent"
   category?: string
   dagNodeId?: string
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   startedAt: number
   completedAt?: number
   error?: string
@@ -4628,6 +4640,14 @@ export type CortexTask = {
     correlationId: string
   }
   timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
 }
 
 export type Command = {
@@ -10358,7 +10378,7 @@ export type CortexOutputResponses = {
    */
   200: {
     taskID: string
-    status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+    status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
     rendered: string
     output?:
       | {

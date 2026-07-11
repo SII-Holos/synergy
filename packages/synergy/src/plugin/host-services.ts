@@ -108,7 +108,7 @@ export async function cancelPluginTask(input: {
   handle: PluginTaskHandle
 }): Promise<void> {
   const snapshot = await getPluginTask(input)
-  if (snapshot.status !== "pending" && snapshot.status !== "queued" && snapshot.status !== "running") return
+  if (snapshot.status !== "queued" && snapshot.status !== "running") return
   await Cortex.cancel(input.handle.taskId)
 }
 

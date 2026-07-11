@@ -541,13 +541,18 @@ export namespace Cortex {
     }
     finalizingTasks.add(taskID)
 
-    task.completedAt = Date.now()
-    task.usage = await taskUsage(task.sessionID)
-    if (error) task.error = error
-    if (output) task.output = output
-    tasks.set(taskID, task)
-
-    setTaskStatus(taskID, status)
+    try {
+      task.completedAt = Date.now()
+      task.usage = await taskUsage(task.sessionID)
+      if (error) task.error = error
+      if (output) task.output = output
+      tasks.set(taskID, task)
+      setTaskStatus(taskID, status)
+    } finally {
+      // Once the terminal status is visible, isTerminal() is the durable race guard.
+      // Keeping task IDs forever would turn this transient lock into a process-lifetime leak.
+      finalizingTasks.delete(taskID)
+    }
     const timeout = taskTimeouts.get(taskID)
     if (timeout) {
       clearTimeout(timeout)

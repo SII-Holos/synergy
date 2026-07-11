@@ -123,10 +123,8 @@ describe("computeCortexStats", () => {
     } satisfies CortexStats)
   })
 
-  test("running and queued count as active", () => {
-    expect(
-      computeCortexStats([cortex("s1", "running"), cortex("s1", "queued"), cortex("s1", "pending")], "s1"),
-    ).toEqual({
+  test("running and queued are the only active Cortex states", () => {
+    expect(computeCortexStats([cortex("s1", "running"), cortex("s1", "queued")], "s1")).toEqual({
       active: 2,
       completed: 0,
       hasRunning: true,

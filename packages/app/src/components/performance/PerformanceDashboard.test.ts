@@ -35,12 +35,12 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
       },
       cortexTasks: {
         totalCount: 0,
-        pendingCount: 0,
         queuedCount: 0,
         runningCount: 0,
         completedCount: 0,
         errorCount: 0,
         cancelledCount: 0,
+        interruptedCount: 0,
         retainedPromptChars: 0,
         retainedOutputChars: 0,
         retainedErrorChars: 0,
