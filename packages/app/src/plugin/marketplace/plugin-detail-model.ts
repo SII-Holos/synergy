@@ -7,10 +7,16 @@ import type { InstalledPlugin, PluginDetail } from "./types"
 
 type RuntimeMode = RegistryPluginSummary["runtimeMode"]
 
-export type MarketplaceSummary = RegistryPluginSummary & {
+export type MarketplaceSummary = Omit<RegistryPluginSummary, "source"> & {
+  catalogSource?: RegistryPluginSummary["source"]
   repo?: string
   homepage?: string
   downloads?: number
+}
+
+export function registryPluginSummary(summary: RegistryPluginSummary): MarketplaceSummary {
+  const { source, ...rest } = summary
+  return { ...rest, catalogSource: source }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -73,7 +79,6 @@ export function fallbackPluginSummary(input: {
     uiSurfaces: uiSurfacesFromManifest(manifest),
     tools: toolsFromManifest(manifest),
     downloads: 0,
-    source: "local",
   }
 }
 

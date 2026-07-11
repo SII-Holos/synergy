@@ -18,9 +18,10 @@ import {
   collectAllPermissions,
   fallbackPluginSummary,
   isRegistryPluginNotFoundError,
+  registryPluginSummary,
   toTimestamp,
-  type MarketplaceSummary,
 } from "./plugin-detail-model"
+import { installationLabel } from "./view-model"
 import type { PermissionSeverity, PluginPermissionDiff } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
@@ -92,7 +93,7 @@ function repositoryHost(url: string | undefined): string {
 
 export function PluginDetailDialog(props: {
   pluginId: string
-  source: RegistrySource
+  source?: RegistrySource
   installedPlugin?: InstalledPlugin
   onChanged?: () => void | Promise<void>
 }) {
@@ -104,16 +105,16 @@ export function PluginDetailDialog(props: {
   const [error, setError] = createSignal<string | null>(null)
 
   const [summary] = createResource(
-    () => ({ id: props.pluginId, source: props.source }),
+    () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
     async ({ id, source }) => {
       const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 8, source })
-      const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []) as MarketplaceSummary[]
+      const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []).map(registryPluginSummary)
       return plugins.find((plugin) => plugin.id === id || plugin.name === id) ?? null
     },
   )
 
   const [versions] = createResource(
-    () => ({ id: props.pluginId, source: props.source }),
+    () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
     async ({ id, source }) => {
       try {
         const res = await globalSDK.client.registry.plugins.versions({ id, source })
@@ -136,6 +137,16 @@ export function PluginDetailDialog(props: {
   const installedInfo = createMemo(
     () => props.installedPlugin ?? (installedPlugins() ?? []).find((plugin) => plugin.id === props.pluginId),
   )
+  const developmentInstallation = createMemo(() => {
+    const installation = installedInfo()?.installation
+    return installation?.kind === "directory" ? installation : null
+  })
+  const sourceLabel = createMemo(() => {
+    if (props.source === "official") return "Official registry"
+    if (props.source === "local") return "Local registry"
+    const installed = installedInfo()
+    return installed ? installationLabel(installed) : "Installed plugin"
+  })
 
   const [installedDetail] = createResource(
     () => installedInfo()?.id,
@@ -191,14 +202,15 @@ export function PluginDetailDialog(props: {
 
   async function performInstall(kind: "install" | "update") {
     const version = latestVersion()
-    if (!version || busy()) return
+    const source = props.source
+    if (!version || !source || busy()) return
     setAction(kind)
     setError(null)
     try {
       await globalSDK.client.api.plugins.installFromRegistry({
         id: props.pluginId,
         version: version.version,
-        source: props.source,
+        source,
       })
       await refreshAfterMutation()
     } catch (err) {
@@ -214,6 +226,8 @@ export function PluginDetailDialog(props: {
   }
 
   function openApprovalDialog(approval: ApprovalRequiredError) {
+    const source = approval.source ?? props.source
+    if (!source) return
     dialog.show(() => (
       <InstallConsentDialog
         manifest={approval.manifest}
@@ -223,12 +237,12 @@ export function PluginDetailDialog(props: {
             pluginId: approval.pluginId,
             manifest: approval.manifest,
             capabilities: approval.capabilities,
-            source: approval.source ?? props.source,
+            source,
           })
           await globalSDK.client.api.plugins.installFromRegistry({
             id: approval.pluginId,
             version: approval.version,
-            source: approval.source ?? props.source,
+            source,
           })
           await pluginHost.reload()
           await props.onChanged?.()
@@ -239,7 +253,7 @@ export function PluginDetailDialog(props: {
   }
 
   async function performUninstall() {
-    if (busy() || !installedVersion()) return
+    if (busy() || !installedInfo()) return
     setAction("uninstall")
     setError(null)
     try {
@@ -255,7 +269,7 @@ export function PluginDetailDialog(props: {
   }
 
   function requestUninstall() {
-    if (busy() || !installedVersion()) return
+    if (busy() || !installedInfo()) return
     confirm.show({
       ...uninstallPluginConfirm(plugin()?.name ?? props.pluginId),
       onConfirm: performUninstall,
@@ -312,35 +326,35 @@ export function PluginDetailDialog(props: {
                     <div class="plugin-detail-badges">
                       <VerifiedBadge verified={current().verified} official={current().official} />
                       <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
-                      <span class="plugin-detail-chip">
-                        {props.source === "official" ? "Official source" : "Local source"}
-                      </span>
+                      <span class="plugin-detail-chip">{sourceLabel()}</span>
                     </div>
                   </div>
                 </section>
 
                 <div class="plugin-detail-action-row">
-                  <button
-                    type="button"
-                    class="plugin-detail-primary-action"
-                    disabled={busy() || Boolean(installedVersion() && !updateAvailable()) || !latestVersion()}
-                    onClick={() => void performInstall(installedVersion() ? "update" : "install")}
-                  >
-                    <Icon
-                      name={
-                        busy() && action() !== "uninstall"
-                          ? "loader-circle"
-                          : installedVersion()
-                            ? "refresh-ccw"
-                            : "download"
-                      }
-                      size="small"
-                      class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
-                    />
-                    {primaryLabel()}
-                  </button>
+                  <Show when={props.source}>
+                    <button
+                      type="button"
+                      class="plugin-detail-primary-action"
+                      disabled={busy() || Boolean(installedVersion() && !updateAvailable()) || !latestVersion()}
+                      onClick={() => void performInstall(installedVersion() ? "update" : "install")}
+                    >
+                      <Icon
+                        name={
+                          busy() && action() !== "uninstall"
+                            ? "loader-circle"
+                            : installedVersion()
+                              ? "refresh-ccw"
+                              : "download"
+                        }
+                        size="small"
+                        class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
+                      />
+                      {primaryLabel()}
+                    </button>
+                  </Show>
 
-                  <Show when={installedVersion()}>
+                  <Show when={installedInfo()}>
                     <button
                       type="button"
                       class="plugin-detail-secondary-action"
@@ -384,11 +398,34 @@ export function PluginDetailDialog(props: {
                 <section class="plugin-detail-meta-grid">
                   <DetailMetric label="Latest" value={latestVersion()?.version ?? current().latestVersion ?? "—"} />
                   <DetailMetric label="Installed" value={installedVersion() ?? "Not installed"} />
+                  <DetailMetric label="Source" value={sourceLabel()} />
                   <DetailMetric label="Runtime" value={latestVersion()?.runtimeMode ?? current().runtimeMode ?? "—"} />
                   <DetailMetric label="Updated" value={timeAgo(current().updatedAt)} />
                   <DetailMetric label="Author" value={current().author?.name ?? "Unknown"} />
                   <DetailMetric label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
                 </section>
+
+                <Show when={developmentInstallation()}>
+                  {(installation) => (
+                    <section class="plugin-detail-section">
+                      <div class="plugin-detail-section-heading">
+                        <h3>Development registration</h3>
+                        <span>{installedInfo()?.health === "disabled" ? "Disabled" : "Active"}</span>
+                      </div>
+                      <div class="plugin-detail-development-path">{installation().path}</div>
+                      <div class="plugin-detail-chip-cloud">
+                        <Show when={installedInfo()?.apiVersion}>
+                          {(apiVersion) => <span class="plugin-detail-chip">Plugin API {apiVersion()}</span>}
+                        </Show>
+                        <Show when={installedInfo()?.generation}>
+                          {(generation) => (
+                            <span class="plugin-detail-chip">Generation {generation().slice(0, 12)}</span>
+                          )}
+                        </Show>
+                      </div>
+                    </section>
+                  )}
+                </Show>
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">

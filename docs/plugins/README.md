@@ -16,6 +16,15 @@ Hooks use host-declared points with observer, transform, or guard semantics. Ord
 
 External runtime mode is `process`; built-ins may use `inProcess`. There is no worker mode, plugin iframe tier, or OS sandbox claim in the plugin API.
 
+The Plugins workspace separates user tasks instead of mixing source and state:
+
+- **Discover** searches a selected catalog source: Official or Local registry.
+- **Installed** lists every configured plugin and its health, regardless of origin.
+- **Development** lists directory registrations created with `file://` or plugin-kit dev.
+
+An installed plugin can therefore appear in both Installed and Development. Local registry packages are
+catalog entries published through `publish-market`; they are not directory registrations.
+
 Upgrade and uninstall handlers are lifecycle contributions. Upgrade runs on the prepared new generation before activation; failure leaves the old generation active. Forced uninstall skips cleanup and may leave plugin-owned data.
 
 See [`packages/plugin/README.md`](../../packages/plugin/README.md) for the authoring API.

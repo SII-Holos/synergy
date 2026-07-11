@@ -31369,9 +31369,88 @@
           "generation": {
             "type": "string"
           },
-          "source": {
-            "type": "string",
-            "enum": ["local", "npm", "git", "url", "builtin", "official"]
+          "installation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "directory"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec", "path"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "archive"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec", "path"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "registry"
+                  },
+                  "registry": {
+                    "type": "string",
+                    "enum": ["official", "local"]
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "registry", "spec"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "package"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["npm", "git", "url"]
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "source", "spec"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "builtin"
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec"]
+              }
+            ]
           },
           "trust": {
             "type": "string",
@@ -31498,7 +31577,7 @@
         "required": [
           "id",
           "name",
-          "source",
+          "installation",
           "trust",
           "health",
           "loaded",

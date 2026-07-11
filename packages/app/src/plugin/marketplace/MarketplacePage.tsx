@@ -14,20 +14,14 @@ import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
+import { installationLabel, installedPluginsForView, MARKETPLACE_NAV_ITEMS, type MarketplaceView } from "./view-model"
 import "./marketplace.css"
 
-type MarketplaceView = RegistrySource | "installed"
 type RowState = "available" | "installed" | "update"
 type MarketplacePageProps = Partial<RouteSectionProps> & {
   initialPluginId?: string
   initialSource?: RegistrySource
 }
-
-const NAV_ITEMS: { id: MarketplaceView; label: string }[] = [
-  { id: "official", label: "Official" },
-  { id: "installed", label: "Installed" },
-  { id: "local", label: "Local" },
-]
 
 function timeAgo(ts: number | string): string {
   const timestamp = typeof ts === "number" ? ts : Date.parse(ts)
@@ -41,10 +35,6 @@ function timeAgo(ts: number | string): string {
   return new Date(timestamp).toLocaleDateString()
 }
 
-function normalize(value: string | undefined): string {
-  return (value ?? "").trim().toLowerCase()
-}
-
 export function MarketplacePage(props: MarketplacePageProps) {
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
@@ -52,7 +42,8 @@ export function MarketplacePage(props: MarketplacePageProps) {
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const [query, setQuery] = createSignal("")
   const [debouncedQuery, setDebouncedQuery] = createSignal("")
-  const [view, setView] = createSignal<MarketplaceView>(props.initialSource ?? "official")
+  const [view, setView] = createSignal<MarketplaceView>("discover")
+  const [catalogSource, setCatalogSource] = createSignal<RegistrySource>(props.initialSource ?? "official")
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -63,7 +54,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
   }
 
   const [searchResults, { refetch: refetchSearchResults }] = createResource(
-    () => (view() === "installed" ? undefined : { q: debouncedQuery(), source: view() as RegistrySource }),
+    () => (view() === "discover" ? { q: debouncedQuery(), source: catalogSource() } : undefined),
     async (input) => {
       const res = await globalSDK.client.registry.plugins.search({
         q: input.q || undefined,
@@ -93,18 +84,15 @@ export function MarketplacePage(props: MarketplacePageProps) {
   })
 
   const installedList = createMemo(() => {
-    const q = normalize(debouncedQuery())
-    const list = installedPlugins() ?? []
-    if (!q) return list
-    return list.filter((plugin) =>
-      [plugin.id, plugin.name, plugin.version].some((value) => normalize(value).includes(q)),
-    )
+    const current = view()
+    if (current === "discover") return []
+    return installedPluginsForView(installedPlugins() ?? [], current, debouncedQuery())
   })
 
   const resultCount = createMemo(() =>
-    view() === "installed" ? installedList().length : (searchResults()?.length ?? 0),
+    view() === "discover" ? (searchResults()?.length ?? 0) : installedList().length,
   )
-  const currentLabel = createMemo(() => NAV_ITEMS.find((item) => item.id === view())?.label ?? "Official")
+  const currentLabel = createMemo(() => MARKETPLACE_NAV_ITEMS.find((item) => item.id === view())?.label ?? "Discover")
 
   async function refreshMarketplace() {
     await Promise.all([refetchInstalledPlugins(), refetchSearchResults()])
@@ -112,14 +100,13 @@ export function MarketplacePage(props: MarketplacePageProps) {
 
   function openPlugin(
     pluginId: string,
-    source: RegistrySource,
-    options: { closeToMarketplace?: boolean; installedPlugin?: InstalledPlugin } = {},
+    options: { source?: RegistrySource; closeToMarketplace?: boolean; installedPlugin?: InstalledPlugin } = {},
   ) {
     dialog.show(
       () => (
         <PluginDetailDialog
           pluginId={pluginId}
-          source={source}
+          source={options.source}
           installedPlugin={options.installedPlugin}
           onChanged={() => {
             void refreshMarketplace()
@@ -135,7 +122,10 @@ export function MarketplacePage(props: MarketplacePageProps) {
   onMount(() => {
     if (!props.initialPluginId) return
     queueMicrotask(() =>
-      openPlugin(props.initialPluginId!, props.initialSource ?? "official", { closeToMarketplace: true }),
+      openPlugin(props.initialPluginId!, {
+        source: props.initialSource ?? "official",
+        closeToMarketplace: true,
+      }),
     )
   })
 
@@ -151,7 +141,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
             <div class="plugin-marketplace-header-controls">
               <div class="plugin-marketplace-nav">
                 <AppPanel.SegmentedNav
-                  items={NAV_ITEMS}
+                  items={[...MARKETPLACE_NAV_ITEMS]}
                   active={view()}
                   onChange={(id) => setView(id as MarketplaceView)}
                 />
@@ -187,41 +177,69 @@ export function MarketplacePage(props: MarketplacePageProps) {
                     </Show>
                   </p>
                 </div>
+                <Show when={view() === "discover"}>
+                  <div class="plugin-marketplace-source-filter" aria-label="Plugin catalog source">
+                    <button
+                      type="button"
+                      aria-pressed={catalogSource() === "official"}
+                      classList={{ active: catalogSource() === "official" }}
+                      onClick={() => setCatalogSource("official")}
+                    >
+                      Official
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={catalogSource() === "local"}
+                      classList={{ active: catalogSource() === "local" }}
+                      onClick={() => setCatalogSource("local")}
+                    >
+                      Local registry
+                    </button>
+                  </div>
+                </Show>
               </div>
 
-              <Show when={view() !== "installed" && searchResults.loading}>
+              <Show when={view() === "discover" && searchResults.loading}>
                 <SkeletonRows />
               </Show>
 
-              <Show when={view() === "installed" && installedPlugins.loading}>
+              <Show when={view() !== "discover" && installedPlugins.loading}>
                 <SkeletonRows />
               </Show>
 
-              <Show when={view() !== "installed" && !searchResults.loading && (searchResults()?.length ?? 0) === 0}>
+              <Show when={view() === "discover" && !searchResults.loading && (searchResults()?.length ?? 0) === 0}>
                 <EmptyState
                   title={debouncedQuery() ? "No plugins found" : "No plugins available"}
                   description={
                     debouncedQuery()
                       ? `No results for "${debouncedQuery()}".`
-                      : view() === "official"
-                        ? "The official marketplace has not returned any plugins yet."
-                        : "Local development plugins will appear here once registered."
+                      : catalogSource() === "official"
+                        ? "The official plugin registry has not returned any plugins yet."
+                        : "No packages have been published to the local registry."
                   }
                 />
               </Show>
 
-              <Show when={view() === "installed" && !installedPlugins.loading && installedList().length === 0}>
+              <Show when={view() !== "discover" && !installedPlugins.loading && installedList().length === 0}>
                 <EmptyState
-                  title={debouncedQuery() ? "No installed plugins found" : "No plugins installed"}
+                  title={
+                    debouncedQuery()
+                      ? `No ${view() === "development" ? "development" : "installed"} plugins found`
+                      : view() === "development"
+                        ? "No development plugins"
+                        : "No plugins installed"
+                  }
                   description={
                     debouncedQuery()
-                      ? `No installed plugins match "${debouncedQuery()}".`
-                      : "Install a plugin from the official marketplace to see it here."
+                      ? `No plugins match "${debouncedQuery()}".`
+                      : view() === "development"
+                        ? "Directory plugins registered with file:// or plugin-kit dev will appear here."
+                        : "Installed plugins will appear here regardless of where they came from."
                   }
                 />
               </Show>
 
-              <Show when={view() !== "installed" && (searchResults()?.length ?? 0) > 0}>
+              <Show when={view() === "discover" && (searchResults()?.length ?? 0) > 0}>
                 <div class="plugin-marketplace-list">
                   <For each={searchResults()}>
                     {(plugin) => {
@@ -239,7 +257,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                           plugin={plugin}
                           state={rowState()}
                           installedVersion={installed()}
-                          onClick={() => openPlugin(plugin.id, plugin.source as RegistrySource)}
+                          onClick={() => openPlugin(plugin.id, { source: plugin.source as RegistrySource })}
                         />
                       )
                     }}
@@ -247,13 +265,14 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 </div>
               </Show>
 
-              <Show when={view() === "installed" && installedList().length > 0}>
+              <Show when={view() !== "discover" && installedList().length > 0}>
                 <div class="plugin-marketplace-list">
                   <For each={installedList()}>
                     {(plugin) => (
                       <InstalledPluginRow
                         plugin={plugin}
-                        onClick={() => openPlugin(plugin.id, "local", { installedPlugin: plugin })}
+                        development={view() === "development"}
+                        onClick={() => openPlugin(plugin.id, { installedPlugin: plugin })}
                       />
                     )}
                   </For>
@@ -319,7 +338,7 @@ function PluginRow(props: {
   )
 }
 
-function InstalledPluginRow(props: { plugin: InstalledPlugin; onClick: () => void }) {
+function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boolean; onClick: () => void }) {
   const disabled = () => props.plugin.health === "disabled"
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.id,
@@ -338,10 +357,14 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; onClick: () => voi
           <Show
             when={disabled()}
             fallback={
-              <>
-                {props.plugin.tools.length} tools · {props.plugin.operations.length} operations ·{" "}
-                {props.plugin.uiContributions} UI surfaces commands
-              </>
+              props.development && props.plugin.installation.kind === "directory" ? (
+                props.plugin.installation.path
+              ) : (
+                <>
+                  {props.plugin.tools.length} tools · {props.plugin.operations.length} operations ·{" "}
+                  {props.plugin.uiContributions} UI surfaces
+                </>
+              )
             }
           >
             {props.plugin.disabledReason ?? "Plugin disabled"}
@@ -349,6 +372,20 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; onClick: () => voi
         </span>
         <span class="plugin-marketplace-row-meta">
           <span>{props.plugin.id}</span>
+          <span aria-hidden="true">·</span>
+          <span>{installationLabel(props.plugin)}</span>
+          <Show when={props.plugin.apiVersion}>
+            <span aria-hidden="true">·</span>
+            <span>API {props.plugin.apiVersion}</span>
+          </Show>
+          <Show when={props.plugin.generation}>
+            {(generation) => (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>Generation {generation().slice(0, 8)}</span>
+              </>
+            )}
+          </Show>
         </span>
       </span>
       <span class="plugin-marketplace-row-status">
@@ -359,7 +396,7 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; onClick: () => voi
             "plugin-marketplace-state-disabled": disabled(),
           }}
         >
-          {disabled() ? "Disabled" : "Installed"}
+          {disabled() ? "Disabled" : props.development ? "Development" : "Installed"}
         </span>
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />

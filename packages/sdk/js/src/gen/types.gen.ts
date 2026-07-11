@@ -5671,7 +5671,31 @@ export type PluginStatus = {
   version?: string
   apiVersion?: string
   generation?: string
-  source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+  installation:
+    | {
+        kind: "directory"
+        spec: string
+        path: string
+      }
+    | {
+        kind: "archive"
+        spec: string
+        path: string
+      }
+    | {
+        kind: "registry"
+        registry: "official" | "local"
+        spec: string
+      }
+    | {
+        kind: "package"
+        source: "npm" | "git" | "url"
+        spec: string
+      }
+    | {
+        kind: "builtin"
+        spec: string
+      }
   trust: "declarative" | "trusted-import"
   health: "loaded" | "disabled"
   disabledReason?: string

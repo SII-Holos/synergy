@@ -144,15 +144,20 @@ export const state = ScopedState.create(
           throw new Error(`Plugin ${resolved.manifest.id}@${resolved.manifest.version} requires capability approval`)
         }
         const current = selected.get(resolved.manifest.id)
-        const lockedSpec = lockfile?.plugins[resolved.manifest.id]?.spec
+        const lockEntry = lockfile?.plugins[resolved.manifest.id]
+        const lockedSpec = lockEntry?.spec
+        const installed =
+          lockedSpec === spec && lockEntry?.source ? { ...resolved, source: lockEntry.source } : resolved
         if (!current || lockedSpec === spec) {
-          selected.set(resolved.manifest.id, { spec, resolved })
+          selected.set(resolved.manifest.id, { spec, resolved: installed })
         }
       } catch (error) {
+        const locked = Object.entries(lockfile?.plugins ?? {}).find(([, entry]) => entry.spec === spec)
         failures.push(
           disabled({
-            pluginId: PluginSpec.displayName(spec),
+            pluginId: locked?.[0] ?? PluginSpec.displayName(spec),
             spec,
+            source: locked?.[1].source,
             phase: "resolve",
             reason: error instanceof Error ? error.message : String(error),
           }),
