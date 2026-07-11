@@ -57,6 +57,7 @@ const CortexDelegationInfoInner = z.object({
   output: CortexTypes.TaskOutput.optional(),
   owner: CortexTypes.PluginTaskOwner.optional(),
   timeoutMs: z.number().int().positive().optional(),
+  usage: CortexTypes.TaskUsage.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })

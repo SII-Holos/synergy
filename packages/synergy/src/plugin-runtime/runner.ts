@@ -107,6 +107,12 @@ function contextFor(
   return createPluginInvocationContext({
     requestId,
     data,
+    runtime: {
+      hostVersion: activation?.hostVersion ?? "unknown",
+      pluginVersion: activation?.version ?? "unknown",
+      pluginGeneration: activation?.generation ?? "unknown",
+      protocolVersion: activation?.protocolVersion ?? PLUGIN_RUNTIME_PROTOCOL_VERSION,
+    },
     signal: abort,
     capabilities: new Set(activation?.capabilities ?? []),
     log: logger(),

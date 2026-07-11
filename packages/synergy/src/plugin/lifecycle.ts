@@ -88,11 +88,15 @@ function sessionId(input: unknown): string | undefined {
       : undefined
 }
 
-export async function trigger<Input, Output>(pointName: string, input: Input, initial: Output): Promise<Output> {
+async function triggerPlugins<Input, Output>(
+  pointName: string,
+  input: Input,
+  initial: Output,
+  plugins: LoadedPlugin[],
+): Promise<Output> {
   const point = PluginHookPointRegistry.get(pointName)
   validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
   let value = initial
-  const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
   const handlers = sortPluginHookHandlers(
     plugins.flatMap((plugin) => hookContributions(plugin, pointName).map((contribution) => ({ plugin, contribution }))),
   )
@@ -129,6 +133,23 @@ export async function trigger<Input, Output>(pointName: string, input: Input, in
     }
   }
   return value
+}
+
+export async function trigger<Input, Output>(pointName: string, input: Input, initial: Output): Promise<Output> {
+  const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
+  return triggerPlugins(pointName, input, initial, plugins)
+}
+
+export async function triggerForPlugin<Input, Output>(
+  pluginId: string,
+  pluginGeneration: string,
+  pointName: string,
+  input: Input,
+  initial: Output,
+): Promise<Output> {
+  const plugin = await getPlugin(pluginId)
+  if (!plugin || plugin.manifest.artifacts.generation !== pluginGeneration) return initial
+  return triggerPlugins(pointName, input, initial, [plugin])
 }
 
 export async function init() {

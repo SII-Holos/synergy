@@ -1,9 +1,10 @@
-import type { PluginInvocationContext, PluginLogger } from "@ericsanchezok/synergy-plugin"
+import type { PluginInvocationContext, PluginLogger, PluginRuntimeIdentity } from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceMethod, RuntimeInvocationContextData } from "./protocol.js"
 
 export function createPluginInvocationContext(input: {
   requestId: string
   data: RuntimeInvocationContextData
+  runtime: PluginRuntimeIdentity
   signal: AbortSignal
   capabilities: ReadonlySet<string>
   log: PluginLogger
@@ -43,6 +44,7 @@ export function createPluginInvocationContext(input: {
     requestId: input.requestId,
     scopeId: input.data.scopeId,
     sessionId: input.data.sessionId,
+    runtime: input.runtime,
     actor: input.data.actor,
     signal: input.signal,
     log: input.log,

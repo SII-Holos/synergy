@@ -13,6 +13,16 @@ export namespace CortexTypes {
   })
   export type PluginTaskOwner = z.infer<typeof PluginTaskOwner>
 
+  export const TaskUsage = z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    reasoningTokens: z.number(),
+    cacheReadTokens: z.number(),
+    cacheWriteTokens: z.number(),
+    cost: z.number(),
+  })
+  export type TaskUsage = z.infer<typeof TaskUsage>
+
   export const TaskToolProgress = z.object({
     id: z.string(),
     tool: z.string(),
@@ -77,6 +87,12 @@ export namespace CortexTypes {
       description: z.string(),
       prompt: z.string(),
       agent: z.string(),
+      model: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
 
@@ -93,6 +109,7 @@ export namespace CortexTypes {
       output: TaskOutput.optional(),
       owner: PluginTaskOwner.optional(),
       timeoutMs: z.number().int().positive().optional(),
+      usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>

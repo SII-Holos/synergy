@@ -6,6 +6,12 @@ describe("plugin task host context", () => {
     const calls: Array<{ method: string; params: unknown }> = []
     const context = createPluginInvocationContext({
       requestId: "request-one",
+      runtime: {
+        hostVersion: "test",
+        pluginVersion: "1.0.0",
+        pluginGeneration: "generation-one",
+        protocolVersion: 4,
+      },
       data: {
         scopeId: "scope-one",
         directory: "/workspace",
@@ -45,6 +51,12 @@ describe("plugin task host context", () => {
   test("does not expose task methods without task.delegate", () => {
     const context = createPluginInvocationContext({
       requestId: "request-two",
+      runtime: {
+        hostVersion: "test",
+        pluginVersion: "1.0.0",
+        pluginGeneration: "generation-one",
+        protocolVersion: 4,
+      },
       data: { scopeId: "scope-one", directory: "/workspace", actor: { type: "ui" } },
       signal: AbortSignal.any([]),
       capabilities: new Set(),

@@ -27,6 +27,41 @@ export type PluginTaskHandle = {
   sessionId: string
 }
 
+export type PluginRuntimeIdentity = {
+  hostVersion: string
+  pluginVersion: string
+  pluginGeneration: string
+  protocolVersion: number
+}
+
+export type PluginTaskOwner = {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  correlationId: string
+}
+
+export type PluginTaskStatus = "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+
+export type PluginTaskOutputConfig =
+  | { mode?: "summary" }
+  | { mode: "final_response" }
+  | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
+
+export type PluginTaskOutput =
+  | { mode: "summary"; value: string }
+  | { mode: "final_response"; value: string }
+  | { mode: "structured"; value: unknown }
+
+export type PluginTaskUsage = {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  cost: number
+}
+
 export type PluginTaskParent = {
   sessionId: string
   messageId: string
@@ -41,10 +76,7 @@ export type PluginTaskStartInput = {
   tools?: Record<string, boolean>
   visibility?: "visible" | "hidden"
   timeoutMs?: number
-  output?:
-    | { mode?: "summary" }
-    | { mode: "final_response" }
-    | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
+  output?: PluginTaskOutputConfig
   category?: string
   model?: {
     providerID: string
@@ -53,12 +85,21 @@ export type PluginTaskStartInput = {
 }
 
 export type PluginTaskSnapshot = PluginTaskHandle & {
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
-  output?:
-    | { mode: "summary"; value: string }
-    | { mode: "final_response"; value: string }
-    | { mode: "structured"; value: unknown }
+  status: PluginTaskStatus
+  owner: PluginTaskOwner
+  agent: string
+  model?: { providerID: string; modelID: string }
+  startedAt: number
+  completedAt?: number
+  timeoutMs?: number
+  outputConfig?: PluginTaskOutputConfig
+  output?: PluginTaskOutput
+  usage?: PluginTaskUsage
   error?: string
+}
+
+export type PluginCortexTaskAfterInput = {
+  task: PluginTaskSnapshot
 }
 
 export interface TaskHostService {
@@ -92,6 +133,7 @@ export interface PluginInvocationContext {
   requestId: string
   scopeId: string
   sessionId?: string
+  runtime: PluginRuntimeIdentity
   actor: PluginActor
   signal: AbortSignal
   log: PluginLogger

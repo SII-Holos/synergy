@@ -12,8 +12,21 @@ export default definePlugin({
       id: "scope.get",
       type: "query",
       input: z.object({}),
-      output: z.object({ scopeId: z.string(), activations: z.number() }),
-      handler: async (_input, context) => ({ scopeId: context.scopeId, activations }),
+      output: z.object({
+        scopeId: z.string(),
+        activations: z.number(),
+        runtime: z.object({
+          hostVersion: z.string(),
+          pluginVersion: z.string(),
+          pluginGeneration: z.string(),
+          protocolVersion: z.number(),
+        }),
+      }),
+      handler: async (_input, context) => ({
+        scopeId: context.scopeId,
+        activations,
+        runtime: context.runtime,
+      }),
     }),
     operation({
       id: "delay.get",

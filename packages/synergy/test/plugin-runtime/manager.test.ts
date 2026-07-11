@@ -37,8 +37,16 @@ describe("PluginRuntimeManager", () => {
         pluginDir: path.dirname(entryPath),
         manifest,
       })
-      expect(first).toEqual({ scopeId: "scope-one", activations: 1 })
-      expect(second).toEqual({ scopeId: "scope-two", activations: 1 })
+      expect(first).toMatchObject({
+        scopeId: "scope-one",
+        activations: 1,
+        runtime: {
+          pluginVersion: "1.0.0",
+          pluginGeneration: "manager-test",
+          protocolVersion: 4,
+        },
+      })
+      expect(second).toMatchObject({ scopeId: "scope-two", activations: 1 })
       expect(manager.registry.list()).toHaveLength(1)
     } finally {
       await manager.stop(manifest.id)
@@ -68,7 +76,15 @@ describe("PluginRuntimeManager", () => {
         pluginDir: path.dirname(entryPath),
         manifest,
       })
-      expect(result).toEqual({ scopeId: "builtin-scope", activations: 1 })
+      expect(result).toMatchObject({
+        scopeId: "builtin-scope",
+        activations: 1,
+        runtime: {
+          pluginVersion: "1.0.0",
+          pluginGeneration: "in-process-test",
+          protocolVersion: 4,
+        },
+      })
       expect(manager.registry.active(manifest.id)?.mode).toBe("inProcess")
     } finally {
       await manager.stop(manifest.id)

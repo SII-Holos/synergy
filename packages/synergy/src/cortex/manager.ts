@@ -20,6 +20,8 @@ import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
 import { CortexOutput } from "./output"
 import { ScopeContext } from "../scope/context"
+import { Observability } from "../observability"
+import { pluginTaskSnapshotFromTask } from "./plugin-task"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -30,6 +32,7 @@ export namespace Cortex {
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
   const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+  const finalizingTasks = new Set<string>()
   let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
@@ -141,6 +144,7 @@ export namespace Cortex {
           parentMessageID: input.parentMessageID,
           description: input.description,
           agent: input.agent,
+          model: input.model,
           executionRole,
           status: "queued",
           startedAt: Date.now(),
@@ -185,6 +189,7 @@ export namespace Cortex {
       description: input.description,
       prompt: input.prompt,
       agent: input.agent,
+      model: input.model,
       executionRole: input.executionRole,
       category: input.category,
       dagNodeId: input.dagNodeId,
@@ -210,6 +215,7 @@ export namespace Cortex {
       draft.cortex.parentMessageID = input.parentMessageID
       draft.cortex.description = input.description
       draft.cortex.agent = input.agent
+      draft.cortex.model = input.model
       draft.cortex.executionRole = input.executionRole
       draft.cortex.status = "queued"
       draft.cortex.startedAt = task.startedAt
@@ -221,6 +227,8 @@ export namespace Cortex {
     })
 
     tasks.set(taskID, task)
+    emitPluginTaskObservability(task, "started")
+    emitPluginTaskObservability(task, "queued")
     SessionManager.registerChildRuntime(session.id)
 
     if (task.visibility !== "hidden") {
@@ -240,9 +248,9 @@ export namespace Cortex {
     setTaskStatus(taskID, "running")
 
     const run = runTask(current, input.model)
-      .catch((error) => {
+      .catch(async (error) => {
         log.error("task error", { taskID, error })
-        updateTaskStatus(taskID, "error", String(error))
+        await updateTaskStatus(taskID, "error", String(error))
       })
       .finally(() => {
         taskRuns.delete(taskID)
@@ -254,7 +262,7 @@ export namespace Cortex {
         const active = tasks.get(taskID)
         if (!active || isTerminal(active.status)) return
         SessionInvoke.cancel(active.sessionID)
-        updateTaskStatus(taskID, "error", `Task exceeded its ${input.timeoutMs}ms runtime limit.`)
+        void updateTaskStatus(taskID, "error", `Task exceeded its ${input.timeoutMs}ms runtime limit.`)
       }, input.timeoutMs)
       taskTimeouts.set(taskID, timeout)
     }
@@ -269,6 +277,7 @@ export namespace Cortex {
     task.status = status
     tasks.set(taskID, task)
     log.info("task status updated", { taskID, status })
+    emitPluginTaskObservability(task, status)
 
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
@@ -279,6 +288,29 @@ export namespace Cortex {
     })
 
     publishVisibleTasksUpdate()
+  }
+
+  function emitPluginTaskObservability(task: CortexTypes.Task, phase: string): void {
+    if (!task.owner) return
+    void Observability.emit(`plugin.task.${phase}`, {
+      traceId: task.owner.correlationId,
+      sessionID: task.sessionID,
+      scopeID: task.owner.scopeId,
+      level: phase === "error" || phase === "interrupted" ? "error" : "info",
+      data: {
+        pluginId: task.owner.pluginId,
+        pluginGeneration: task.owner.pluginGeneration,
+        correlationId: task.owner.correlationId,
+        taskId: task.id,
+        status: task.status,
+        agent: task.agent,
+        model: task.model,
+        startedAt: task.startedAt,
+        completedAt: task.completedAt,
+        durationMs: task.completedAt ? task.completedAt - task.startedAt : undefined,
+        usage: task.usage,
+      },
+    })
   }
 
   function publishVisibleTasksUpdate(): void {
@@ -311,6 +343,11 @@ export namespace Cortex {
       throw new Error("Structured Cortex output is not supported for external agents")
     }
     CortexOutput.assertValidStructuredSchema(outputConfig)
+    const currentTask = tasks.get(task.id)
+    if (currentTask) {
+      currentTask.model = resolvedModel
+      tasks.set(task.id, currentTask)
+    }
     // Persist resolved model to session metadata
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
@@ -412,7 +449,7 @@ export namespace Cortex {
         if (outputResolution && !outputResolution.ok) {
           unsub()
           unsub = undefined
-          updateTaskStatus(
+          await updateTaskStatus(
             task.id,
             "error",
             `Structured output validation failed after ${CortexOutput.maxRepairTurns(outputConfig)} repair turns: ${outputResolution.error}`,
@@ -425,11 +462,11 @@ export namespace Cortex {
       unsub = undefined
 
       const completedOutput = await completedTaskOutput(task, agent, outputConfig, outputResolution)
-      updateTaskStatus(task.id, "completed", undefined, completedOutput)
+      await updateTaskStatus(task.id, "completed", undefined, completedOutput)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
-      updateTaskStatus(task.id, "error", String(error))
+      await updateTaskStatus(task.id, "error", String(error))
     }
   }
 
@@ -452,6 +489,30 @@ export namespace Cortex {
     return { mode: "summary", value }
   }
 
+  async function taskUsage(sessionID: string): Promise<CortexTypes.TaskUsage> {
+    const messages = await Session.messages({ sessionID, raw: true }).catch(() => [])
+    return messages.reduce<CortexTypes.TaskUsage>(
+      (total, message) => {
+        if (message.info.role !== "assistant") return total
+        total.inputTokens += message.info.tokens.input
+        total.outputTokens += message.info.tokens.output
+        total.reasoningTokens += message.info.tokens.reasoning
+        total.cacheReadTokens += message.info.tokens.cache.read
+        total.cacheWriteTokens += message.info.tokens.cache.write
+        total.cost += message.info.cost
+        return total
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cost: 0,
+      },
+    )
+  }
+
   function rootMessageID(message: MessageV2.WithParts): string {
     if (message.info.role === "assistant") return message.info.rootID ?? message.info.parentID
     return message.info.rootID ?? message.info.id
@@ -461,12 +522,12 @@ export namespace Cortex {
     return value.length > maxChars ? value.slice(0, maxChars - 3) + "..." : value
   }
 
-  function updateTaskStatus(
+  async function updateTaskStatus(
     taskID: string,
     status: CortexTypes.TaskStatus,
     error?: string,
     output?: CortexTypes.TaskOutput,
-  ): void {
+  ): Promise<void> {
     const task = tasks.get(taskID)
     if (!task) return
 
@@ -474,8 +535,14 @@ export namespace Cortex {
       log.info("ignoring task status update for terminal task", { taskID, current: task.status, next: status })
       return
     }
+    if (finalizingTasks.has(taskID)) {
+      log.info("ignoring concurrent task finalization", { taskID, next: status })
+      return
+    }
+    finalizingTasks.add(taskID)
 
     task.completedAt = Date.now()
+    task.usage = await taskUsage(task.sessionID)
     if (error) task.error = error
     if (output) task.output = output
     tasks.set(taskID, task)
@@ -488,11 +555,13 @@ export namespace Cortex {
     }
 
     // Terminal-specific: extra session fields (status already synced by setTaskStatus)
-    void Session.update(task.sessionID, (draft) => {
+    await Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
         draft.cortex.completedAt = task.completedAt
+        draft.cortex.model = task.model
         if (error) draft.cortex.error = error
         if (output) draft.cortex.output = output
+        draft.cortex.usage = task.usage
       }
     }).catch((error) => {
       log.error("failed to persist terminal task fields", { taskID, error })
@@ -505,16 +574,26 @@ export namespace Cortex {
     if (task.visibility !== "hidden") {
       Bus.publish(Event.TaskCompleted, { task })
     }
-    void Session.get(task.sessionID)
-      .then((session) =>
-        ScopeContext.provide({
-          scope: session.scope,
-          fn: () => Plugin.trigger("cortex.task.after", { task }, {}),
-        }),
-      )
-      .catch((error) => {
-        log.error("cortex task hook failed", { taskID, error })
-      })
+    const pluginSnapshot = pluginTaskSnapshotFromTask(task)
+    if (pluginSnapshot) {
+      void Session.get(task.sessionID)
+        .then((session) =>
+          ScopeContext.provide({
+            scope: session.scope,
+            fn: () =>
+              Plugin.triggerForPlugin(
+                pluginSnapshot.owner.pluginId,
+                pluginSnapshot.owner.pluginGeneration,
+                "cortex.task.after",
+                { task: pluginSnapshot },
+                {},
+              ),
+          }),
+        )
+        .catch((error) => {
+          log.error("cortex task hook failed", { taskID, error })
+        })
+    }
 
     updateDagNode(task)
 
@@ -775,7 +854,7 @@ export namespace Cortex {
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     SessionInvoke.cancel(task.sessionID)
-    updateTaskStatus(taskID, "cancelled")
+    await updateTaskStatus(taskID, "cancelled")
 
     const run = taskRuns.get(taskID)
     // Don't block cancel on processor settle — status is already "cancelled".

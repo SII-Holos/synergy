@@ -11,6 +11,12 @@ interface PluginInvocationContext {
   requestId: string
   scopeId: string
   sessionId?: string
+  runtime: {
+    hostVersion: string
+    pluginVersion: string
+    pluginGeneration: string
+    protocolVersion: number
+  }
   actor: PluginActor
   signal: AbortSignal
   log: PluginLogger
@@ -24,7 +30,7 @@ interface PluginInvocationContext {
 }
 ```
 
-The context is request state; do not cache it as a current Scope. Runtime startup never receives a raw SDK client, server URL, access token, or Scope/Session identity.
+The context is request state; do not cache it as a current Scope. `runtime` is read-only provenance identity for the active generation. Runtime startup never receives a raw SDK client, server URL, access token, or Scope/Session identity.
 
 External plugins use `process`. Trusted built-ins may use `inProcess`. The process boundary isolates crashes, timeouts, and cleanup; it is not an OS security sandbox and does not claim to restrict direct filesystem or network access by plugin code.
 

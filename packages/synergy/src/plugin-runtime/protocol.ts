@@ -5,6 +5,8 @@ export interface RuntimeActivationData {
   pluginId: string
   version: string
   generation: string
+  hostVersion: string
+  protocolVersion: number
   capabilities: string[]
   runtimeLimits: RuntimeLimits
 }
@@ -76,5 +78,5 @@ export interface SerializedPluginRuntimeError {
   code?: string
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 3
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 4
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

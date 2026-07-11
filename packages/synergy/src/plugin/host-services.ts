@@ -18,6 +18,7 @@ import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
+import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
 
 type RuntimeContext = {
   pluginId?: string
@@ -79,22 +80,6 @@ export async function startPluginTask(input: {
   return { taskId: task.id, sessionId: task.sessionID }
 }
 
-function taskSnapshot(
-  handle: PluginTaskHandle,
-  input: {
-    status: PluginTaskSnapshot["status"]
-    output?: PluginTaskSnapshot["output"]
-    error?: string
-  },
-): PluginTaskSnapshot {
-  return {
-    ...handle,
-    status: input.status,
-    ...(input.output ? { output: input.output } : {}),
-    ...(input.error ? { error: input.error } : {}),
-  }
-}
-
 export async function getPluginTask(input: {
   pluginId: string
   pluginGeneration: string
@@ -106,18 +91,14 @@ export async function getPluginTask(input: {
     assertPluginTaskOwner(active.owner, input.pluginId, input.pluginGeneration, input.scopeId)
     if (active.sessionID !== input.handle.sessionId)
       throw new Error("Plugin task handle session does not match Cortex task")
-    return taskSnapshot(input.handle, { status: active.status, output: active.output, error: active.error })
+    return pluginTaskSnapshotFromTask(active)!
   }
 
   const session = await Session.get(input.handle.sessionId)
   const delegated = session?.cortex
   if (!delegated || delegated.taskID !== input.handle.taskId) throw new Error("Plugin task not found")
   assertPluginTaskOwner(delegated.owner, input.pluginId, input.pluginGeneration, input.scopeId)
-  return taskSnapshot(input.handle, {
-    status: delegated.status,
-    output: delegated.output,
-    error: delegated.error,
-  })
+  return pluginTaskSnapshotFromSession(input.handle, delegated)!
 }
 
 export async function cancelPluginTask(input: {

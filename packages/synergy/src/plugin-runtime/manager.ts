@@ -7,6 +7,7 @@ import { DEFAULT_LIMITS, type RuntimeLimits } from "./health.js"
 import { PluginLogBuffer } from "./logs.js"
 import { createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
+import { Installation } from "../global/installation.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -149,6 +150,8 @@ export class PluginRuntimeManager {
         pluginId: manifest.id,
         version: manifest.version,
         generation,
+        hostVersion: Installation.VERSION,
+        protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
         capabilities: manifest.capabilities.map((item) => item.id),
         runtimeLimits: limits,
       },
@@ -392,6 +395,12 @@ export class PluginRuntimeManager {
     const context = createPluginInvocationContext({
       requestId,
       data,
+      runtime: {
+        hostVersion: Installation.VERSION,
+        pluginVersion: entry.version,
+        pluginGeneration: entry.generation,
+        protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
+      },
       signal: controller.signal,
       capabilities: new Set(manifest.capabilities.map((item) => item.id)),
       log: this.#logger(entry.pluginId),

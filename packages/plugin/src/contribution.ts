@@ -1,5 +1,5 @@
 import z from "zod"
-import type { PluginInvocationContext } from "./context.js"
+import type { PluginCortexTaskAfterInput, PluginInvocationContext } from "./context.js"
 import type { PluginAgent, PluginSkill } from "./plugin-types.js"
 import type { ToolDisplay, ToolResult } from "./tool.js"
 
@@ -33,10 +33,17 @@ export interface ToolContribution<Input = unknown> extends ContributionBase<"too
   handler(input: Input, context: PluginInvocationContext): Promise<string | ToolResult>
 }
 
-export interface HookContribution extends ContributionBase<"hook"> {
-  point: string
+export interface PluginHookPointInputs {
+  "cortex.task.after": PluginCortexTaskAfterInput
+}
+
+export interface HookContribution<Point extends string = string> extends ContributionBase<"hook"> {
+  point: Point
   priority: number
-  handler(input: unknown, context: PluginInvocationContext): Promise<unknown>
+  handler(
+    input: Point extends keyof PluginHookPointInputs ? PluginHookPointInputs[Point] : unknown,
+    context: PluginInvocationContext,
+  ): Promise<unknown>
 }
 
 export interface AgentContribution extends ContributionBase<"agent"> {
@@ -182,7 +189,9 @@ export function tool<Input>(input: Omit<ToolContribution<Input>, "kind">): ToolC
   return { ...input, kind: "tool" }
 }
 
-export function hook(input: Omit<HookContribution, "kind" | "priority"> & { priority?: number }): HookContribution {
+export function hook<Point extends string>(
+  input: Omit<HookContribution<Point>, "kind" | "priority"> & { priority?: number },
+): HookContribution<Point> {
   return { ...input, kind: "hook", priority: input.priority ?? 0 }
 }
 

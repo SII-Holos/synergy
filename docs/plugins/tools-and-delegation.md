@@ -46,9 +46,11 @@ await context.task.cancel(handle)
 
 `start()` returns the task and child Session identity immediately. It does not wait for agent completion. The input requires a plugin-owned `correlationId`; Cortex persists it with owner metadata containing plugin ID, generation, and Scope ID.
 
-`get()` reads the live Cortex task when present and otherwise reconstructs the snapshot from durable child Session metadata. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin and Scope.
+`get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
 
-For durable workflows, contribute an observer to `cortex.task.after`, validate the owner/correlation ID, persist domain progress, and schedule the next unit of work. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
+For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. Synergy invokes this hook only for the plugin that owns the Task. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
+
+Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.task.running`, and terminal `plugin.task.*` observability records. They use the plugin correlation ID as the trace ID and include generation, Scope, Task, Session, resolved model, and duration. The child Session remains the source of truth for full Agent messages and tool traces; plugins should keep stable Task/Session references instead of copying Session history.
 
 A non-agent handler may call `start()` only when it supplies an explicit parent Session/message in the active Scope. This supports hook-driven continuations and trusted plugin UI commands using a previously bound control Session. Agent tool handlers may omit `parent`; the current invocation supplies it.
 
