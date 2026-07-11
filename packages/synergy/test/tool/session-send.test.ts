@@ -70,7 +70,7 @@ describe("session_send tool", () => {
     })
   })
 
-  test("assistant-role delivery remains a silent context delivery", async () => {
+  test("defaults omitted role to an actionable user delivery", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -80,31 +80,55 @@ describe("session_send tool", () => {
         ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
           deliveries.push(input)
         })
+        const ask = mock(async () => {})
 
         const tool = await SessionSendTool.init()
         const result = await tool.execute(
           {
             target: target.id,
-            content: "context update",
-            role: "assistant",
-          },
+            content: "please continue",
+          } as any,
           {
             ...baseContext,
-            ask: mock(async () => {}),
+            ask,
           },
         )
 
+        expect(ask).toHaveBeenCalledTimes(1)
         expect(deliveries).toHaveLength(1)
-        expect(deliveries[0].waitForProcessing).toBeUndefined()
-        expect(deliveries[0].mail.type).toBe("assistant")
-        expect(deliveries[0].mail.metadata).toMatchObject({
-          source: "session_send",
-          sourceSessionID: "ses_source",
-        })
-        expect(result.output).toContain("Message delivered")
+        expect(deliveries[0].waitForProcessing).toBe(false)
+        expect(deliveries[0].mail.type).toBe("user")
+        expect(result.metadata.role).toBe("user")
 
         await Session.remove(target.id)
       },
     })
+  })
+
+  test("rejects assistant role before requesting permission or delivering", async () => {
+    const ask = mock(async () => {})
+    const deliver = mock(async () => {})
+    ;(SessionManager.deliver as any) = deliver
+
+    const tool = await SessionSendTool.init()
+    const parsed = tool.parameters.safeParse({ target: "ses_target", content: "context update", role: "assistant" })
+    expect(parsed.error?.issues[0]?.message).toBe(
+      'session_send only supports role "user". Retry the call with role: "user".',
+    )
+    const result = tool.execute(
+      {
+        target: "ses_target",
+        content: "context update",
+        role: "assistant",
+      } as any,
+      {
+        ...baseContext,
+        ask,
+      },
+    )
+    await expect(result).rejects.toThrow('session_send only supports role "user"')
+
+    expect(ask).not.toHaveBeenCalled()
+    expect(deliver).not.toHaveBeenCalled()
   })
 })

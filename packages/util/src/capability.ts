@@ -487,7 +487,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   email_read: "communication_email",
   email_send: "communication_email",
   communication_email: "communication_email",
-  session_send: "channel_outbound",
+  session_send: "identity_act",
   channel_outbound: "channel_outbound",
   identity_act: "identity_act",
   platform_control: "platform_control",
