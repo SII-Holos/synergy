@@ -4,14 +4,15 @@ This documentation describes the current Synergy product and implementation. Cod
 
 ## Start Here
 
-| Reader or task                  | Start with                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| Understand the product          | [Product overview](product/overview.md)                                                     |
-| Install or operate Synergy      | [CLI reference](reference/cli.md) and [configuration reference](reference/configuration.md) |
-| Understand the runtime          | [Architecture overview](architecture/README.md)                                             |
-| Contribute to the repository    | [Development reference](reference/development.md) and [CONTRIBUTING.md](../CONTRIBUTING.md) |
-| Build a plugin                  | [Plugin documentation](plugins/README.md)                                                   |
-| Modify Synergy with an AI agent | [AGENTS.md](../AGENTS.md)                                                                   |
+| Reader or task                   | Start with                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| Understand the product           | [Product overview](product/overview.md)                                                     |
+| Install or operate Synergy       | [CLI reference](reference/cli.md) and [configuration reference](reference/configuration.md) |
+| Understand the runtime           | [Architecture overview](architecture/README.md)                                             |
+| Contribute to the repository     | [Development reference](reference/development.md) and [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| Change frontend colors or themes | [Frontend themes and color](reference/frontend-theming.md)                                  |
+| Build a plugin                   | [Plugin documentation](plugins/README.md)                                                   |
+| Modify Synergy with an AI agent  | [AGENTS.md](../AGENTS.md)                                                                   |
 
 ## Product
 
@@ -52,6 +53,7 @@ Reference documents answer exact operational and repository questions without re
 - [Storage and paths](reference/storage-and-paths.md)
 - [Package map](reference/packages.md)
 - [Development](reference/development.md)
+- [Frontend themes and color](reference/frontend-theming.md)
 
 ## Plugins
 

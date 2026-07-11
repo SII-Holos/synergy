@@ -30,7 +30,7 @@ function ratio(value: number, total: number) {
 
 function CompactStat(props: { label: string; value: string; hint: string }) {
   return (
-    <div class="rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
       <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">{props.label}</div>
       <div class="mt-1 text-16-semibold tabular-nums tracking-tight text-text-base">{props.value}</div>
       <div class="mt-1 text-10-regular leading-4 text-text-weak">{props.hint}</div>
@@ -44,16 +44,16 @@ function CompositionRow(props: { label: string; value: string; share: number; to
       ? {
           text: "text-text-diff-add-base",
           dot: "bg-text-diff-add-base",
-          bar: "bg-[var(--apple-light-8)]",
+          bar: "bg-surface-diff-add-strong",
         }
       : {
           text: "text-text-diff-delete-base",
           dot: "bg-text-diff-delete-base",
-          bar: "bg-[var(--ember-light-8)]",
+          bar: "bg-surface-diff-delete-strong",
         }
 
   return (
-    <div class="rounded-[1rem] bg-surface-base/38 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="rounded-[1rem] bg-surface-base/38 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2">
           <span class={`size-2 rounded-full ${toneClasses().dot}`} />
@@ -108,7 +108,7 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
         style={{ animation: "fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
       >
         <div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-          <div class="rounded-[1.35rem] bg-[linear-gradient(135deg,rgba(70,124,102,0.16),rgba(42,54,72,0.06)_42%,rgba(193,136,84,0.1))] p-[1px] shadow-[0_18px_45px_rgba(26,31,43,0.12)]">
+          <div class="rounded-[1.35rem] bg-surface-inset-base p-px ring-1 ring-inset ring-border-weaker-base">
             <div class="rounded-[calc(1.35rem-1px)] bg-surface-base/74 px-4 py-4 backdrop-blur-sm">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
@@ -121,7 +121,7 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                   </div>
                   <div class="mt-1 text-11-regular text-text-weak">{growthLine()}</div>
                 </div>
-                <div class="rounded-[1rem] bg-surface-base/55 px-3.5 py-2.5 text-right shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+                <div class="rounded-[1rem] bg-surface-base/55 px-3.5 py-2.5 text-right ring-1 ring-inset ring-border-weaker-base">
                   <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Code flow</div>
                   <div class="mt-1 text-15-semibold tabular-nums tracking-tight text-text-base">
                     {formatSignedCompact(props.codeChanges.netLines)}
@@ -130,7 +130,7 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                 </div>
               </div>
 
-              <div class="mt-5 rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+              <div class="mt-5 rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
                 <div class="flex items-center justify-between gap-3">
                   <div>
                     <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
@@ -146,11 +146,11 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                 <div class="mt-3 h-3 overflow-hidden rounded-full bg-surface-inset-base/72 p-0.5">
                   <div class="flex h-full gap-0.5">
                     <div
-                      class="h-full rounded-full bg-[var(--apple-light-8)]"
+                      class="h-full rounded-full bg-surface-diff-add-strong"
                       style={{ width: `${Math.max(addShare(), addShare() > 0 ? 6 : 0)}%` }}
                     />
                     <div
-                      class="h-full rounded-full bg-[var(--ember-light-8)]"
+                      class="h-full rounded-full bg-surface-diff-delete-strong"
                       style={{ width: `${Math.max(removeShare(), removeShare() > 0 ? 6 : 0)}%` }}
                     />
                   </div>

@@ -25,6 +25,7 @@ Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regen
 Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hierarchy, theme behavior, navigation, workspace layout, or durable UX taste. Update it when a decision should survive future refactors.
 
 - Preserve surface polarity: dark-mode content/selection steps brighter than its container; light-mode content/selection steps darker.
+- Follow [Frontend themes and color](../../docs/reference/frontend-theming.md). Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. Imperative renderers must consume the active resolved tokens and update on same-mode theme switches.
 - Use semantic icon tokens from `packages/ui/src/components/semantic-icon.tsx` for non-tool product UI. Reuse a token only for the same user-facing meaning; add a new token and an unused glyph for a new meaning. Raw Lucide icons belong only to narrow base, file-type, tool, or plugin plumbing with an explicit reason; tool icons follow `add-tool`.
 - Preserve keyboard focus, labels, WCAG AA contrast, reduced-motion behavior, loading/empty/error states, and narrow layouts.
 - Register optional built-in workbench content through `WorkbenchPanelEntry.loader`. Keep Notes/Tiptap/Mermaid, Files/Monaco, Browser, Terminal, and Review implementations out of the route shell until the panel opens.

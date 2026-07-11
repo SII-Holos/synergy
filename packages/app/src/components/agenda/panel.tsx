@@ -279,7 +279,7 @@ export function AgendaPanel() {
               <AppPanel.Title>Agenda</AppPanel.Title>
               <button
                 type="button"
-                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
+                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-border-weaker-selected shadow-sm transition-colors hover:bg-text-base"
                 onClick={openCreate}
               >
                 <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />

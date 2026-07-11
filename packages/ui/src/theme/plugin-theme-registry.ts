@@ -19,6 +19,7 @@ export function registerPluginTheme(theme: PluginThemeDefinition): () => void {
   pluginThemes.set(theme.id, theme)
   notify()
   return () => {
+    if (pluginThemes.get(theme.id) !== theme) return
     pluginThemes.delete(theme.id)
     notify()
   }

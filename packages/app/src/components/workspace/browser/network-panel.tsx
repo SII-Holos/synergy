@@ -1,12 +1,12 @@
 import { For, Show, createMemo } from "solid-js"
 import { useBrowser, type NetworkEntry } from "./browser-store"
 
-const METHOD_COLORS: Record<string, string> = {
-  GET: "text-green-400",
-  POST: "text-blue-400",
-  PUT: "text-amber-400",
-  PATCH: "text-orange-400",
-  DELETE: "text-red-400",
+const METHOD_COLOR_CLASSES: Record<string, string> = {
+  GET: "text-chart-series-3",
+  POST: "text-chart-series-5",
+  PUT: "text-chart-series-4",
+  PATCH: "text-chart-series-4",
+  DELETE: "text-chart-series-7",
 }
 
 function statusLabel(status: number | undefined): string {
@@ -14,13 +14,13 @@ function statusLabel(status: number | undefined): string {
   return String(status)
 }
 
-function statusColor(status: number | undefined): string {
+function statusColorClass(status: number | undefined): string {
   if (status == null) return "text-text-weaker"
   if (status < 200) return "text-text-subtle"
-  if (status < 300) return "text-green-400"
-  if (status < 400) return "text-blue-400"
-  if (status < 500) return "text-amber-400"
-  return "text-red-400"
+  if (status < 300) return "text-text-on-success-base"
+  if (status < 400) return "text-text-on-info-base"
+  if (status < 500) return "text-text-on-warning-base"
+  return "text-text-on-critical-base"
 }
 
 function truncateUrl(url: string, max = 80): string {
@@ -57,8 +57,12 @@ export function NetworkPanel() {
           <For each={requests()}>
             {(req) => (
               <div class="flex gap-2 px-3 py-1 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
-                <span class={`w-12 shrink-0 tabular-nums ${statusColor(req.status)}`}>{statusLabel(req.status)}</span>
-                <span class={`w-14 shrink-0 ${METHOD_COLORS[req.method] ?? "text-text-base"}`}>{req.method}</span>
+                <span class={`w-12 shrink-0 tabular-nums ${statusColorClass(req.status)}`}>
+                  {statusLabel(req.status)}
+                </span>
+                <span class={`w-14 shrink-0 ${METHOD_COLOR_CLASSES[req.method] ?? "text-text-base"}`}>
+                  {req.method}
+                </span>
                 <span class="w-28 shrink-0 text-text-weaker truncate">{req.type || "---"}</span>
                 <span class="flex-1 text-text-strong truncate" title={req.url}>
                   {truncateUrl(req.url)}

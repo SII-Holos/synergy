@@ -69,6 +69,15 @@
   --color-button-ghost-hover2: var(--button-ghost-hover2);
   --color-button-secondary-base: var(--button-secondary-base);
   --color-button-secondary-hover: var(--button-secondary-hover);
+  --color-chart-series-1: var(--chart-series-1);
+  --color-chart-series-2: var(--chart-series-2);
+  --color-chart-series-3: var(--chart-series-3);
+  --color-chart-series-4: var(--chart-series-4);
+  --color-chart-series-5: var(--chart-series-5);
+  --color-chart-series-6: var(--chart-series-6);
+  --color-chart-series-7: var(--chart-series-7);
+  --color-chart-series-8: var(--chart-series-8);
+  --color-chart-series-9: var(--chart-series-9);
   --color-icon-active: var(--icon-active);
   --color-icon-agent-ask-base: var(--icon-agent-ask-base);
   --color-icon-agent-build-base: var(--icon-agent-build-base);
@@ -193,6 +202,7 @@
   --color-surface-interactive-solid-hover: var(--surface-interactive-solid-hover);
   --color-surface-interactive-weak: var(--surface-interactive-weak);
   --color-surface-interactive-weak-hover: var(--surface-interactive-weak-hover);
+  --color-surface-overlay: var(--surface-overlay);
   --color-surface-raised-base: var(--surface-raised-base);
   --color-surface-raised-base-active: var(--surface-raised-base-active);
   --color-surface-raised-base-hover: var(--surface-raised-base-hover);

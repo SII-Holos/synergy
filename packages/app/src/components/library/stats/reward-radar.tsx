@@ -11,6 +11,7 @@ import {
   Filler,
   Tooltip,
 } from "chart.js"
+import { useChartTheme } from "../../visualization/use-chart-theme"
 
 ChartJS.register(RadialLinearScale, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Tooltip)
 
@@ -34,6 +35,7 @@ type DimStats = {
 }
 
 export function RewardRadar(props: { dimensions: DimStats[] }) {
+  const theme = useChartTheme()
   const dims = () => props.dimensions
 
   // Radar chart: uses avg per dimension
@@ -46,12 +48,12 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         {
           label: "Average",
           data: d.map((dim) => dim.avg),
-          borderColor: "rgba(56, 88, 182, 0.9)",
-          backgroundColor: "rgba(56, 88, 182, 0.12)",
+          borderColor: theme().series[0],
+          backgroundColor: theme().alpha("chart-series-1", 0.12),
           borderWidth: 2.5,
           pointRadius: 4,
-          pointBackgroundColor: "rgba(56, 88, 182, 0.9)",
-          pointBorderColor: "rgba(247, 243, 235, 0.9)",
+          pointBackgroundColor: theme().series[0],
+          pointBorderColor: theme().background,
           pointBorderWidth: 1.5,
           fill: true,
         },
@@ -69,18 +71,18 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         ticks: {
           stepSize: 0.5,
           font: { size: 9 },
-          color: "rgba(128,128,128,0.5)",
+          color: theme().axis,
           backdropColor: "transparent",
           callback: (v: number | string) => {
             const n = typeof v === "string" ? parseFloat(v) : v
             return n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`
           },
         },
-        grid: { color: "rgba(128,128,128,0.1)" },
-        angleLines: { color: "rgba(128,128,128,0.1)" },
+        grid: { color: theme().grid },
+        angleLines: { color: theme().grid },
         pointLabels: {
           font: { size: 12, weight: "bold" as const },
-          color: "rgba(160,155,148,0.85)",
+          color: theme().axisStrong,
           padding: 14,
         },
       },
@@ -117,7 +119,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 1) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(39, 143, 116, 0.72)",
+          backgroundColor: theme().alpha("text-on-success-base", 0.72),
           borderRadius: 2,
         },
         {
@@ -126,7 +128,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 0) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(148, 148, 148, 0.45)",
+          backgroundColor: theme().alpha("text-weak", 0.45),
           borderRadius: 2,
         },
         {
@@ -135,7 +137,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, -1) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(196, 92, 68, 0.65)",
+          backgroundColor: theme().alpha("text-on-critical-base", 0.65),
           borderRadius: 2,
         },
       ],
@@ -150,10 +152,10 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
       x: {
         stacked: true,
         max: 100,
-        grid: { color: "rgba(128,128,128,0.08)" },
+        grid: { color: theme().grid },
         ticks: {
           font: { size: 9 },
-          color: "rgba(128,128,128,0.55)",
+          color: theme().axis,
           callback: (v: number | string) => `${v}%`,
         },
       },
@@ -162,7 +164,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         grid: { display: false },
         ticks: {
           font: { size: 10, weight: "bold" as const },
-          color: "rgba(160,155,148,0.85)",
+          color: theme().axisStrong,
         },
       },
     },
@@ -209,13 +211,13 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
                       {formatR(dim.avg)}
                     </span>
                     <div class="flex-1 flex items-center gap-1 text-9-regular tabular-nums text-text-weak">
-                      <span class="text-emerald-600 dark:text-emerald-400">
+                      <span class="text-text-on-success-base">
                         {total > 0 ? `${((pos / total) * 100).toFixed(0)}%` : "—"}
                       </span>
                       <span class="text-text-weaker">/</span>
                       <span>{total > 0 ? `${((neu / total) * 100).toFixed(0)}%` : "—"}</span>
                       <span class="text-text-weaker">/</span>
-                      <span class="text-rose-600 dark:text-rose-400">
+                      <span class="text-text-on-critical-base">
                         {total > 0 ? `${((neg / total) * 100).toFixed(0)}%` : "—"}
                       </span>
                     </div>
@@ -226,9 +228,9 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             </For>
             {/* Legend for percentages */}
             <div class="flex items-center gap-3 px-2.5 pt-1 text-8-regular text-text-weaker">
-              <span class="text-emerald-600/70 dark:text-emerald-400/70">■ +1</span>
+              <span class="text-text-on-success-base/70">■ +1</span>
               <span>■ 0</span>
-              <span class="text-rose-600/70 dark:text-rose-400/70">■ −1</span>
+              <span class="text-text-on-critical-base/70">■ −1</span>
             </div>
           </div>
         </div>
@@ -246,15 +248,15 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
           {/* Legend */}
           <div class="flex items-center gap-4 mt-2 text-9-regular text-text-weaker">
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(39,143,116,0.72)]" />
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-success-base" />
               <span>Positive (+1)</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(148,148,148,0.45)]" />
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-weak-base" />
               <span>Neutral (0)</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(196,92,68,0.65)]" />
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-critical-base" />
               <span>Negative (−1)</span>
             </div>
           </div>

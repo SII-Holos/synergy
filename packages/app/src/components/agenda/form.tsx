@@ -527,7 +527,7 @@ export function AgendaForm(props: {
             type="button"
             classList={{
               "h-9 rounded-lg px-4 text-12-medium transition-colors ring-1 ring-inset": true,
-              "bg-text-strong text-background-base hover:bg-text-base ring-white/12": canSubmit(),
+              "bg-text-strong text-background-base hover:bg-text-base ring-border-weaker-selected": canSubmit(),
               "bg-surface-raised-base text-text-weaker ring-border-base/35 cursor-not-allowed": !canSubmit(),
             }}
             onClick={save}
@@ -872,7 +872,7 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
       type="button"
       classList={{
         "px-2 py-0.5 rounded-full text-10-medium transition-colors": true,
-        "bg-text-strong text-background-base ring-1 ring-inset ring-white/12": props.active,
+        "bg-text-strong text-background-base ring-1 ring-inset ring-border-weaker-selected": props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
       onClick={props.onClick}

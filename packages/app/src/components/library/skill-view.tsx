@@ -438,7 +438,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
 
       <Show when={!skills.loading}>
         <Show when={diagnostics().length > 0}>
-          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-[rgba(196,132,36,0.08)] px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-surface-warning-weak px-4 py-3 ring-1 ring-inset ring-border-weaker-base">
             <button
               type="button"
               class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"

@@ -4,7 +4,7 @@ import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
-import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
+import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -21,21 +21,6 @@ type TerminalColors = {
   foreground: string
   cursor: string
   selectionBackground: string
-}
-
-const DEFAULT_TERMINAL_COLORS: Record<"light" | "dark", TerminalColors> = {
-  light: {
-    background: "#fcfcfc",
-    foreground: "#211e1e",
-    cursor: "#211e1e",
-    selectionBackground: withAlpha("#211e1e", 0.2),
-  },
-  dark: {
-    background: "#191515",
-    foreground: "#d4d4d4",
-    cursor: "#d4d4d4",
-    selectionBackground: withAlpha("#d4d4d4", 0.25),
-  },
 }
 
 export const Terminal = (props: TerminalProps) => {
@@ -60,17 +45,11 @@ export const Terminal = (props: TerminalProps) => {
 
   const getTerminalColors = (): TerminalColors => {
     const mode = theme.mode()
-    const fallback = DEFAULT_TERMINAL_COLORS[mode]
-    const currentTheme = theme.theme()
-    if (!currentTheme) return fallback
-    const variant = mode === "dark" ? currentTheme.dark : currentTheme.light
-    if (!variant?.seeds) return fallback
-    const resolved = resolveThemeVariant(variant, mode === "dark")
-    const text = resolved["text-stronger"] ?? fallback.foreground
-    const background = resolved["background-stronger"] ?? fallback.background
+    const tokens = theme.tokens()
+    const text = resolveThemeColor(tokens, "text-stronger")
+    const background = resolveThemeColor(tokens, "background-stronger")
     const alpha = mode === "dark" ? 0.25 : 0.2
-    const base = text.startsWith("#") ? (text as HexColor) : (fallback.foreground as HexColor)
-    const selectionBackground = withAlpha(base, alpha)
+    const selectionBackground = withAlpha(text, alpha)
     return {
       background,
       foreground: text,

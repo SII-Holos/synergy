@@ -627,8 +627,9 @@ describe("PluginThemeRegistry", () => {
     const theme = getPluginTheme("dup-theme")
     expect(theme!.label).toBe("Second")
     expect(listPluginThemes().filter((item) => item.id === "dup-theme").length).toBe(1)
-    disposeSecond()
     disposeFirst()
+    expect(getPluginTheme("dup-theme")?.label).toBe("Second")
+    disposeSecond()
   })
 })
 
@@ -680,9 +681,12 @@ describe("IconRegistry", () => {
   })
 
   test("duplicate registration replaces without crashing", () => {
-    registerIcon({ name: "dup-icon", svgContent: "<svg>A</svg>" })
-    registerIcon({ name: "dup-icon", svgContent: "<svg>B</svg>" })
+    const disposeFirst = registerIcon({ name: "dup-icon", svgContent: "<svg>A</svg>" })
+    const disposeSecond = registerIcon({ name: "dup-icon", svgContent: "<svg>B</svg>" })
     expect(getIcon("dup-icon")!.svgContent).toBe("<svg>B</svg>")
+    disposeFirst()
+    expect(getIcon("dup-icon")!.svgContent).toBe("<svg>B</svg>")
+    disposeSecond()
   })
 
   test("SVG content is stored (sanitization handled by source module)", () => {

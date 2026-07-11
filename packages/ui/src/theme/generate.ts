@@ -1,4 +1,5 @@
 import { resolveTheme, themeToCss } from "./resolve"
+import { HEX_COLOR_PATTERN, OPAQUE_HEX_COLOR_PATTERN, THEME_ID_PATTERN, THEME_SEED_NAMES } from "./schema-contract"
 import { THEME_TOKEN_NAMES } from "./tokens"
 import type { ResolvedTheme, Theme } from "./types"
 
@@ -41,11 +42,8 @@ ${mappings}
 }
 
 export function renderThemeSchemaJson(): string {
-  const hexPattern = "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
   const seedProperties = Object.fromEntries(
-    ["neutral", "primary", "success", "warning", "error", "info", "interactive", "diffAdd", "diffDelete"].map(
-      (name) => [name, { $ref: "#/definitions/HexColor" }],
-    ),
+    THEME_SEED_NAMES.map((name) => [name, { $ref: "#/definitions/OpaqueHexColor" }]),
   )
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -58,12 +56,13 @@ export function renderThemeSchemaJson(): string {
     properties: {
       $schema: { type: "string" },
       name: { type: "string", minLength: 1 },
-      id: { type: "string", pattern: "^[a-z0-9-]+$" },
+      id: { type: "string", pattern: THEME_ID_PATTERN },
       light: { $ref: "#/definitions/ThemeVariant" },
       dark: { $ref: "#/definitions/ThemeVariant" },
     },
     definitions: {
-      HexColor: { type: "string", pattern: hexPattern },
+      HexColor: { type: "string", pattern: HEX_COLOR_PATTERN },
+      OpaqueHexColor: { type: "string", pattern: OPAQUE_HEX_COLOR_PATTERN },
       ColorValue: {
         oneOf: [{ $ref: "#/definitions/HexColor" }, { enum: THEME_TOKEN_NAMES.map((name) => `var(--${name})`) }],
       },

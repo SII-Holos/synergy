@@ -1,26 +1,31 @@
 import z from "zod"
+import {
+  CSS_VAR_REF_PATTERN,
+  HEX_COLOR_PATTERN,
+  OPAQUE_HEX_COLOR_PATTERN,
+  THEME_ID_PATTERN,
+  THEME_SEED_NAMES,
+  type ThemeSeedName,
+} from "./schema-contract"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens"
 import type { Theme } from "./types"
+import { resolveTheme } from "./resolve"
 
-const HexColorSchema = z.string().regex(/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i)
+const HexColorSchema = z.string().regex(new RegExp(HEX_COLOR_PATTERN))
+const OpaqueHexColorSchema = z.string().regex(new RegExp(OPAQUE_HEX_COLOR_PATTERN))
 const CssVarRefSchema = z
   .string()
-  .regex(/^var\(--[a-z0-9-]+\)$/)
+  .regex(new RegExp(CSS_VAR_REF_PATTERN))
   .refine((value) => THEME_TOKEN_SET.has(value.slice(6, -1)), "CSS variable must reference a canonical theme token")
 const ColorValueSchema = z.union([HexColorSchema, CssVarRefSchema])
 const ThemeTokenSchema = z.enum(THEME_TOKEN_NAMES)
 const ThemeSeedsSchema = z
-  .object({
-    neutral: HexColorSchema,
-    primary: HexColorSchema,
-    success: HexColorSchema,
-    warning: HexColorSchema,
-    error: HexColorSchema,
-    info: HexColorSchema,
-    interactive: HexColorSchema,
-    diffAdd: HexColorSchema,
-    diffDelete: HexColorSchema,
-  })
+  .object(
+    Object.fromEntries(THEME_SEED_NAMES.map((name) => [name, OpaqueHexColorSchema])) as Record<
+      ThemeSeedName,
+      typeof OpaqueHexColorSchema
+    >,
+  )
   .strict()
 const ThemeVariantSchema = z
   .object({
@@ -33,12 +38,14 @@ export const ThemeSchema = z
   .object({
     $schema: z.string().optional(),
     name: z.string().min(1),
-    id: z.string().regex(/^[a-z0-9-]+$/),
+    id: z.string().regex(new RegExp(THEME_ID_PATTERN)),
     light: ThemeVariantSchema,
     dark: ThemeVariantSchema,
   })
   .strict()
 
 export function parseTheme(input: unknown): Theme {
-  return ThemeSchema.parse(input) as Theme
+  const theme = ThemeSchema.parse(input) as Theme
+  resolveTheme(theme)
+  return theme
 }

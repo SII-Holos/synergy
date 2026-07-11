@@ -245,12 +245,6 @@ describe("CSS Token Integrity", () => {
     }
   })
 
-  test("context.tsx uses 'synergy-theme' style ID, not 'oc-theme'", async () => {
-    const source = await readFileSafe("src/theme/context.tsx")
-    expect(source).toContain('"synergy-theme"')
-    expect(source).not.toContain('"oc-theme"')
-  })
-
   test("index.html uses synergy theme preload naming", async () => {
     const source = await readFileSafe("../app/index.html")
     expect(source).toContain('id="synergy-theme-preload-script"')

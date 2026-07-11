@@ -13,6 +13,7 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 - Preserve Markdown sanitization, streaming/terminal rendering bounds, attachment behavior, and theme polarity. Treat SVG and rendered HTML as untrusted input at their owning boundary.
 - Treat `src/theme/tokens.ts` as the complete color-token contract. Themes provide validated light/dark seeds plus typed overrides; `src/theme/resolve.ts` produces every token. Run `bun run generate:theme` after changing either source and do not hand-edit `styles/theme.generated.css`, `styles/tailwind/colors.css`, or `theme/theme.schema.json`.
 - Consumer color utilities must name canonical tokens. Add or change a semantic token at the theme boundary instead of inventing component-local aliases such as `*-soft`, `*-muted`, or unregistered foreground names. Keep status foreground/surface pairs at WCAG AA contrast.
+- Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New selectable themes belong in structured plugin contributions; `themes/synergy.json` owns only the built-in default.
 - Public exports are package contracts. Add exports deliberately and keep App-only components in `packages/app`.
 
 ## Verify

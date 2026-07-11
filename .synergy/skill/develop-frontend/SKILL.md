@@ -52,12 +52,15 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Change Themes and Color Tokens
 
+Read `docs/reference/frontend-theming.md` before changing the color contract, adding a semantic token, integrating an imperative renderer, or authoring a selectable theme.
+
 1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
 2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
 3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
 4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
 5. Plugin themes are complete structured JSON themes validated by the same schema and resolved by the same runtime. Do not add arbitrary plugin CSS theme overrides or theme-only token paths.
-6. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
+6. Imperative consumers such as Canvas, Monaco, terminals, and embedded documents must use the resolved theme tokens and react to the canonical theme-change event. Do not maintain component-local light/dark palettes or infer a theme change only from `data-color-scheme`.
+7. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts

@@ -895,19 +895,19 @@
   height: 9px;
   border-radius: 999px;
   border: 2px solid var(--surface-inset-base);
-  background: #8a8d95;
+  background: var(--icon-weak-base);
 }
 
 .sidebar-account-avatarWrap[data-tone="success"] .sidebar-account-avatarStatus {
-  background: #7ecf8b;
+  background: var(--icon-success-base);
 }
 
 .sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
-  background: #f4b65d;
+  background: var(--icon-warning-base);
 }
 
 .sidebar-account-avatarWrap[data-tone="danger"] .sidebar-account-avatarStatus {
-  background: #ef7a6b;
+  background: var(--icon-critical-base);
 }
 
 .sidebar-account-identity {
@@ -1137,12 +1137,12 @@
 }
 
 .sidebar-account-menuItem--danger {
-  color: #ff7474;
+  color: var(--text-on-critical-base);
 }
 
 .sidebar-account-menuItem--danger:hover:not(:disabled),
 .sidebar-account-menuItem--danger:focus-visible:not(:disabled) {
-  background: rgba(255, 116, 116, 0.1);
+  background: var(--surface-critical-weak);
 }
 
 .sidebar-account-menuTrailingIcon {
@@ -1422,11 +1422,11 @@
 }
 
 .sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="success"] {
-  color: #7ddf90;
+  color: var(--text-on-success-base);
 }
 
 .sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="danger"] {
-  color: #ff7474;
+  color: var(--text-on-critical-base);
 }
 
 .sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="muted"] {
@@ -1434,15 +1434,15 @@
 }
 
 .sidebar-holos-status-row .sidebar-account-menuStatus[data-tone="active"] {
-  color: #85beff;
+  color: var(--text-on-info-base);
 }
 
 .sidebar-holos-status-error {
   margin: 4px 9px;
   padding: 6px 9px;
   border-radius: 7px;
-  background: rgba(255, 116, 116, 0.08);
-  color: #ff7474;
+  background: var(--surface-critical-weak);
+  color: var(--text-on-critical-base);
   font-size: var(--font-size-x-small);
   line-height: 1.35;
   word-break: break-word;
@@ -1450,10 +1450,10 @@
 
 .sidebar-holos-reconnect-btn {
   margin-top: 4px;
-  color: #7ddf90;
+  color: var(--text-on-success-base);
 }
 
 .sidebar-holos-reconnect-btn:hover:not(:disabled),
 .sidebar-holos-reconnect-btn:focus-visible:not(:disabled) {
-  background: rgba(125, 223, 144, 0.08);
+  background: var(--surface-success-weak);
 }

@@ -1,9 +1,10 @@
 import { describe, test, expect } from "bun:test"
-import { resolveThemeVariant, resolveTheme, themeToCss } from "../src/theme/resolve"
+import { resolveThemeVariant, resolveTheme, resolveThemeColor, themeToCss } from "../src/theme/resolve"
 import { synergyTheme } from "../src/theme/default-themes"
 import { getSavedColorScheme, getSystemMode, isColorScheme, resolveColorSchemeMode } from "../src/theme/color-scheme"
 import { THEME_TOKEN_NAMES, type ThemeTokenName } from "../src/theme/tokens"
 import { parseTheme } from "../src/theme/schema"
+import { hexToRgb, withAlpha } from "../src/theme/color"
 import type { ResolvedTheme } from "../src/theme/types"
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -11,6 +12,11 @@ import type { ResolvedTheme } from "../src/theme/types"
 function allTokens(theme: ResolvedTheme): ThemeTokenName[] {
   return (Object.keys(theme) as ThemeTokenName[]).sort()
 }
+
+test("resolves CSS variable references for imperative consumers", () => {
+  const resolved = resolveTheme(synergyTheme).light
+  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
+})
 
 function luminance(value: string): number {
   const hex = value.trim()
@@ -244,15 +250,59 @@ describe("resolveTheme (synergy)", () => {
     ).toThrow()
   })
 
-  test("theme resolution rejects cyclic token references", () => {
+  test("theme parsing rejects cyclic token references before registration", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          overrides: { ...synergyTheme.light.overrides, "border-base": "var(--border-base)" },
+        },
+      }),
+    ).toThrow("Cyclic theme token reference")
+  })
+
+  test("theme parsing rejects translucent seed colors", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          seeds: { ...synergyTheme.light.seeds, primary: "#ff000080" },
+        },
+      }),
+    ).toThrow()
+  })
+
+  test("dark status foregrounds remain readable for dark author seeds", () => {
+    const seeds = {
+      ...synergyTheme.dark.seeds,
+      error: "#7f1d1d",
+    }
     const theme = parseTheme({
-      ...synergyTheme,
-      light: {
-        ...synergyTheme.light,
-        overrides: { ...synergyTheme.light.overrides, "border-base": "var(--border-base)" },
-      },
+      name: "Dark Red Test",
+      id: "dark-red-test",
+      light: { seeds: synergyTheme.light.seeds },
+      dark: { seeds },
     })
-    expect(() => resolveTheme(theme)).toThrow("Cyclic theme token reference")
+    const resolved = resolveTheme(theme)
+    expectReadablePair(resolved.dark, "text-on-critical-base", "surface-critical-weak")
+  })
+
+  test("theme parsing rejects overrides that break required contrast pairs", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        dark: {
+          ...synergyTheme.dark,
+          overrides: {
+            ...synergyTheme.dark.overrides,
+            "surface-critical-weak": "#111111",
+            "text-on-critical-base": "#121212",
+          },
+        },
+      }),
+    ).toThrow("Theme contrast requirement failed")
   })
 
   // ── Contract: every consumer-referenced token exists ────
@@ -272,7 +322,6 @@ describe("resolveTheme (synergy)", () => {
     for (const [key, value] of Object.entries(resolved.light)) {
       const valid =
         (typeof value === "string" && value.startsWith("#")) ||
-        (typeof value === "string" && value.startsWith("rgba(")) ||
         (typeof value === "string" && value.startsWith("var(--"))
       if (!valid) {
         throw new Error(`light token --${key} has non-conformant value: ${JSON.stringify(value)}`)
@@ -335,6 +384,17 @@ describe("resolveTheme (synergy)", () => {
     expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 
+  test("categorical chart series stay complete and visually distinct in both modes", () => {
+    const series = THEME_TOKEN_NAMES.filter((token) => token.startsWith("chart-series-"))
+    expect(series).toHaveLength(9)
+
+    const resolved = resolveTheme(synergyTheme)
+    for (const variant of [resolved.light, resolved.dark]) {
+      const colors = series.map((token) => resolveThemeColor(variant, token))
+      expect(new Set(colors).size).toBeGreaterThanOrEqual(7)
+    }
+  })
+
   test("semantic foreground and surface pairs meet WCAG AA contrast", () => {
     const resolved = resolveTheme(synergyTheme)
     for (const variant of [resolved.light, resolved.dark]) {
@@ -379,5 +439,15 @@ describe("resolveTheme (synergy)", () => {
 
   test("synergyTheme id is 'synergy'", () => {
     expect(synergyTheme.id).toBe("synergy")
+  })
+})
+
+describe("hex color helpers", () => {
+  test("reads RGB channels without shifting eight-digit alpha input", () => {
+    expect(hexToRgb("#ff000080")).toEqual({ r: 1, g: 0, b: 0 })
+  })
+
+  test("writes alpha as canonical eight-digit hex", () => {
+    expect(withAlpha("#ff0000", 0.5)).toBe("#ff000080")
   })
 })

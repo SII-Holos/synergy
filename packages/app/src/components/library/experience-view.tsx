@@ -621,8 +621,8 @@ export function ExperienceView(props: {
 
 function RewardDimensions(props: { rewards: RewardsInfo }) {
   const valueTone = (value: number) => {
-    if (value > 0) return "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]"
-    if (value < 0) return "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]"
+    if (value > 0) return "text-text-on-success-base"
+    if (value < 0) return "text-text-on-critical-base"
     return "text-text-weaker"
   }
   const discrete = createMemo(() => {
@@ -964,9 +964,9 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
                 <span
                   classList={{
                     "text-[10px] font-semibold leading-none tabular-nums": true,
-                    "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]": dim.value > 0.05,
+                    "text-text-on-success-base": dim.value > 0.05,
                     "text-text-weaker": dim.value >= -0.05 && dim.value <= 0.05,
-                    "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]": dim.value < -0.05,
+                    "text-text-on-critical-base": dim.value < -0.05,
                   }}
                 >
                   {dim.value >= 0 ? "+" : ""}

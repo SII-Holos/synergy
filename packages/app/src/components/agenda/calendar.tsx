@@ -119,7 +119,7 @@ function eventHeight(): number {
   return (EVENT_DURATION_MS / 3_600_000) * HOUR_HEIGHT
 }
 
-const TIME_EVENT_COLORS: Record<string, string> = {
+const TIME_EVENT_CLASSES: Record<string, string> = {
   active: "agenda-event-surface",
   paused: "agenda-event-surface agenda-event-paused",
   pending: "agenda-event-surface agenda-event-muted",
@@ -127,7 +127,7 @@ const TIME_EVENT_COLORS: Record<string, string> = {
   cancelled: "agenda-event-surface agenda-event-cancelled",
 }
 
-const MONTH_DOT_COLORS: Record<string, string> = {
+const MONTH_DOT_CLASSES: Record<string, string> = {
   active: "bg-icon-success-base",
   paused: "bg-icon-warning-base",
   pending: "bg-text-weaker",
@@ -343,7 +343,7 @@ function TimeGrid(props: {
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-text-strong text-background-base ring-1 ring-white/12": col.isToday,
+                    "bg-text-strong text-background-base ring-1 ring-border-weaker-selected": col.isToday,
                     "text-text-strong": !col.isToday,
                   }}
                 >
@@ -391,12 +391,12 @@ function TimeGrid(props: {
                     {(le) => {
                       const top = eventTop(le.event.time, col.ts)
                       const height = eventHeight()
-                      const colors = TIME_EVENT_COLORS[le.event.status] ?? TIME_EVENT_COLORS.active
+                      const classes = TIME_EVENT_CLASSES[le.event.status] ?? TIME_EVENT_CLASSES.active
                       const widthPct = 100 / le.totalCols
                       const leftPct = le.col * widthPct
                       return (
                         <div
-                          class={`absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${colors}`}
+                          class={`absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${classes}`}
                           style={{
                             top: `${top}px`,
                             height: `${Math.max(height, 18)}px`,
@@ -497,7 +497,7 @@ function MonthGrid(props: {
                     <span
                       classList={{
                         "mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-12-medium": true,
-                        "bg-text-strong text-background-base ring-1 ring-white/12": cell.isToday,
+                        "bg-text-strong text-background-base ring-1 ring-border-weaker-selected": cell.isToday,
                         "text-text-strong": !cell.isToday && cell.isCurrentMonth,
                         "text-text-weaker/40": !cell.isToday && !cell.isCurrentMonth,
                       }}
@@ -515,7 +515,7 @@ function MonthGrid(props: {
                             }}
                           >
                             <div
-                              class={`w-1 h-1 rounded-full shrink-0 ${MONTH_DOT_COLORS[event.status] ?? MONTH_DOT_COLORS.active}`}
+                              class={`w-1 h-1 rounded-full shrink-0 ${MONTH_DOT_CLASSES[event.status] ?? MONTH_DOT_CLASSES.active}`}
                             />
                             <span class="shrink-0 text-10-regular text-text-weaker">{formatEventTime(event.time)}</span>
                             <span class="truncate text-10-regular text-text-weak">{event.title}</span>

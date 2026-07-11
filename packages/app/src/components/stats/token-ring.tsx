@@ -3,6 +3,7 @@ import { Doughnut } from "solid-chartjs"
 import { Chart as ChartJS, ArcElement, Tooltip, DoughnutController } from "chart.js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { formatCompact } from "./use-stats"
+import { useChartTheme } from "../visualization/use-chart-theme"
 
 ChartJS.register(ArcElement, Tooltip, DoughnutController)
 
@@ -14,20 +15,18 @@ type Segment = {
   note?: string
 }
 
-const SEGMENTS: Segment[] = [
-  { key: "input", label: "Input", color: "rgba(56, 88, 182, 0.9)" },
-  { key: "output", label: "Output", color: "rgba(39, 143, 116, 0.9)" },
-  { key: "reasoning", label: "Reasoning", color: "rgba(196, 132, 36, 0.9)" },
+const SEGMENT_DEFINITIONS: Array<Omit<Segment, "color">> = [
+  { key: "input", label: "Input" },
+  { key: "output", label: "Output" },
+  { key: "reasoning", label: "Reasoning" },
   {
     key: "cacheRead",
     label: "Cache read",
-    color: "rgba(72, 118, 164, 0.88)",
     note: "Prompt tokens reused from cache",
   },
   {
     key: "cacheWrite",
     label: "Cache write",
-    color: "rgba(102, 147, 102, 0.88)",
     note: "Prompt tokens stored for reuse",
   },
 ]
@@ -79,8 +78,8 @@ function Connector(props: { color: string; side: "left" | "right" }) {
         style={{
           background:
             props.side === "left"
-              ? `linear-gradient(to right, rgba(198,186,170,0.08), ${props.color})`
-              : `linear-gradient(to left, rgba(198,186,170,0.08), ${props.color})`,
+              ? `linear-gradient(to right, var(--border-weaker-base), ${props.color})`
+              : `linear-gradient(to left, var(--border-weaker-base), ${props.color})`,
         }}
       />
       <span
@@ -98,7 +97,7 @@ function Callout(props: { align: "left" | "right"; segment: Segment & { value: n
     <div class={`flex items-center gap-3 ${isLeft() ? "justify-end" : "justify-start"}`}>
       {isLeft() ? null : <Connector color={props.segment.color} side="right" />}
       <div
-        class={`min-w-0 flex-1 rounded-2xl bg-surface-inset-base/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] ${
+        class={`min-w-0 flex-1 rounded-2xl bg-surface-inset-base/40 px-3 py-2.5 ring-1 ring-inset ring-border-weaker-base ${
           isLeft() ? "text-right" : "text-left"
         }`}
       >
@@ -118,10 +117,15 @@ function Callout(props: { align: "left" | "right"; segment: Segment & { value: n
 }
 
 export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"]; cacheHitRate: number }) {
+  const theme = useChartTheme()
+  const segments = createMemo<Segment[]>(() => {
+    const colors = theme().series
+    return SEGMENT_DEFINITIONS.map((segment, index) => ({ ...segment, color: colors[index]! }))
+  })
   const segmentData = createMemo(() => {
-    const total = SEGMENTS.reduce((sum, segment) => sum + tokenValue(props.tokens, segment.key), 0)
+    const total = segments().reduce((sum, segment) => sum + tokenValue(props.tokens, segment.key), 0)
 
-    return SEGMENTS.map((segment) => {
+    return segments().map((segment) => {
       const value = tokenValue(props.tokens, segment.key)
       return {
         ...segment,
@@ -143,8 +147,8 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
         data: segmentData().map((segment) => segment.value),
         backgroundColor: segmentData().map((segment) => segment.color),
         borderWidth: 3,
-        borderColor: "rgba(41, 49, 73, 0.3)",
-        hoverBorderColor: "rgba(214, 203, 189, 0.18)",
+        borderColor: theme().background,
+        hoverBorderColor: theme().grid,
         spacing: 4,
       },
     ],
@@ -188,7 +192,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
           </div>
 
           <div class="order-1 flex justify-center lg:order-2">
-            <div class="relative rounded-full bg-surface-inset-base/35 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_12px_30px_rgba(28,34,48,0.12)]">
+            <div class="relative rounded-full bg-surface-inset-base/35 p-3 ring-1 ring-inset ring-border-weaker-base">
               <div class="relative h-40 w-40 sm:h-44 sm:w-44">
                 <Doughnut data={chartData()} options={chartOptions()} />
                 <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7 text-center">

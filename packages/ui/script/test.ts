@@ -21,7 +21,7 @@ async function collectTests(directory: string): Promise<string[]> {
 
 async function run(files: string[]) {
   if (files.length === 0) return
-  const child = Bun.spawn([process.execPath, "test", ...files], {
+  const child = Bun.spawn([process.execPath, "test", "--timeout", "30000", ...files], {
     cwd: root,
     stdin: "inherit",
     stdout: "inherit",

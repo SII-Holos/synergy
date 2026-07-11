@@ -123,7 +123,7 @@ Slots should remain small and contextual. A surface that needs its own navigatio
 
 UI commands expose a label, optional description/icon, and named command export. They are registered in the host command registry under the plugin namespace.
 
-Themes are packaged JSON assets with complete light and dark seed palettes. The host validates the theme, generates every canonical color token through the shared resolver, namespaces the selected theme ID, and applies the same runtime path used by the built-in Synergy theme.
+Themes are packaged JSON assets with complete light and dark seed palettes. The host validates and resolves every asset before registration, requires its `id` to match the manifest, generates every canonical color token through the shared resolver, namespaces the selected theme ID, and applies the same runtime path used by the built-in Synergy theme.
 
 ```jsonc
 {
@@ -166,7 +166,7 @@ The referenced JSON uses this shape:
 }
 ```
 
-Each variant may add `overrides` keyed only by canonical theme token names. Hex values and `var(--token)` references are accepted; unknown keys and arbitrary CSS are rejected. Preserve the Web polarity rule and verify common text/surface pairs at WCAG AA contrast. Use the plugin-kit `theme-icon` template as the current schema example. CSS-based theme contributors should follow [the structured-theme migration](../migrations/plugin-theme-json.md).
+Seeds must be opaque three- or six-digit hex colors. Each variant may add `overrides` keyed only by canonical theme token names; overrides accept hex values and `var(--token)` references. The host rejects unknown keys, arbitrary CSS, cyclic references, and overrides that break required WCAG AA text/surface pairs. Use the plugin-kit `theme-icon` template as the current schema example. See [Frontend themes and color](../reference/frontend-theming.md) for seed selection, authoring workflow, and verification. CSS-based theme contributors should follow [the structured-theme migration](../migrations/plugin-theme-json.md).
 
 Icons are packaged SVG assets loaded into the plugin icon registry. Treat SVG as code-bearing input: ship static reviewed assets, avoid remote fetches, and keep names plugin-specific.
 
@@ -174,7 +174,7 @@ Icons are packaged SVG assets loaded into the plugin icon registry. Treat SVG as
 
 The server exposes enabled contributions and versioned asset URLs. The Web host fetches each JS bundle, verifies the UI API major, rejects embedded or unsupported Solid runtimes, imports the requested named export, and registers a disposer for every surface.
 
-One missing export or invalid surface is reported against that plugin. Reloading disposes the plugin's old registrations before adding the new set.
+One missing export or invalid surface is reported against that plugin. Reloading fetches and validates declarative theme and icon assets first, ignores stale reload results, then replaces the plugin's old registrations synchronously.
 
 ## Authoring Rules
 

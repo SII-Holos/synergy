@@ -282,14 +282,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       case "pending":
         return "text-text-interactive-base"
       case "running":
-        return "text-green-600"
+        return "text-text-on-success-base"
       case "auditing":
-        return "text-amber-600"
+        return "text-text-on-warning-base"
       case "completed":
-        return "text-green-700"
+        return "text-text-on-success-strong"
       case "failed":
       case "cancelled":
-        return "text-red-600"
+        return "text-text-on-critical-base"
       default:
         return "text-icon-base"
     }

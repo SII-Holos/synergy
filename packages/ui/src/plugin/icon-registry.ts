@@ -18,6 +18,7 @@ export function registerIcon(entry: IconEntry): () => void {
   const sanitized: IconEntry = { ...entry, svgContent: sanitizeSvg(entry.svgContent) }
   icons.set(entry.name, sanitized)
   return () => {
+    if (icons.get(entry.name) !== sanitized) return
     icons.delete(entry.name)
   }
 }

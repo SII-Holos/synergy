@@ -84,6 +84,8 @@ Theme source changes also regenerate the static boot fallback, Tailwind color ma
 bun run --cwd packages/ui generate:theme
 ```
 
+Frontend product colors must use the canonical semantic theme contract. Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. See [Frontend themes and color](frontend-theming.md) for consumer rules, imperative renderer integration, semantic token changes, and the recommended plugin workflow for creating a selectable theme.
+
 Write behavior tests around public invariants. Avoid source-text assertions that fail when an implementation is refactored without changing behavior.
 
 ## Quality Commands

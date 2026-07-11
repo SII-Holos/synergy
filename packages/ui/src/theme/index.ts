@@ -24,7 +24,9 @@ export {
   withAlpha,
 } from "./color"
 
-export { resolveThemeVariant, resolveTheme, themeToCss } from "./resolve"
+export { resolveThemeVariant, resolveTheme, resolveThemeColor, themeToCss } from "./resolve"
+export { applyThemeToDocument, THEME_CHANGE_EVENT } from "./application"
+export type { ThemeChangeDetail } from "./application"
 export { ThemeProvider, useTheme } from "./context"
 export type { ColorScheme } from "./color-scheme"
 export {

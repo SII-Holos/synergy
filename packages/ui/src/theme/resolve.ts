@@ -1,5 +1,13 @@
 import type { ColorValue, Theme, HexColor, ResolvedTheme, ThemeToken, ThemeVariant } from "./types"
-import { generateNeutralScale, generateScale, hexToOklch, oklchToHex, withAlpha } from "./color"
+import {
+  contrastRatio,
+  generateCategoricalPalette,
+  generateNeutralScale,
+  generateScale,
+  hexToOklch,
+  oklchToHex,
+  withAlpha,
+} from "./color"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens"
 
 export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): ResolvedTheme {
@@ -14,11 +22,21 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   const interactive = generateScale(seeds.interactive, isDark)
   const diffAdd = generateScale(seeds.diffAdd, isDark)
   const diffDelete = generateScale(seeds.diffDelete, isDark)
+  const chartSeries = generateCategoricalPalette(seeds.primary, isDark)
 
-  const neutralAlpha = generateNeutralAlphaScale(neutral, isDark)
+  const neutralAlpha = generateNeutralBlendScale(neutral, isDark)
   const layer = (lightIndex: number, darkIndex: number) => neutral[isDark ? darkIndex : lightIndex]
   const neutralSelectionBorder = (darkAlpha: number, lightAlpha: number) =>
-    withAlpha(neutral[11], isDark ? darkAlpha : lightAlpha) as ColorValue
+    withAlpha(neutral[11], isDark ? darkAlpha : lightAlpha)
+  const readableStatusText = (background: HexColor, scale: HexColor[], preferred: HexColor) =>
+    pickReadableColor(background, [
+      preferred,
+      scale[isDark ? 9 : 10],
+      scale[isDark ? 10 : 11],
+      scale[isDark ? 11 : 9],
+      neutral[isDark ? 10 : 11],
+      neutral[isDark ? 11 : 10],
+    ])
 
   const tokens = {} as ResolvedTheme
 
@@ -55,6 +73,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-focus"] = neutralSelectionBorder(0.08, 0.08)
   tokens["surface-hover"] = layer(4, 3)
   tokens["surface-hover-base"] = layer(3, 2)
+  tokens["surface-overlay"] = isDark ? "#0000007a" : "#00000057"
 
   tokens["surface-brand-base"] = primary[8]
   tokens["surface-brand-hover"] = primary[9]
@@ -107,7 +126,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["input-disabled"] = layer(5, 3)
 
   tokens["text-base"] = neutral[10]
-  tokens["text-weak"] = neutral[8]
+  tokens["text-weak"] = pickReadableColor(tokens["surface-base"] as HexColor, [
+    neutral[8],
+    neutral[isDark ? 9 : 10],
+    neutral[10],
+    neutral[11],
+  ])
   tokens["text-weaker"] = neutral[7]
   tokens["text-subtle"] = neutral[6]
   tokens["text-error"] = error[isDark ? 8 : 9]
@@ -119,14 +143,29 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-invert-strong"] = isDark ? neutral[11] : neutralAlpha[11]
   tokens["text-interactive-base"] = interactive[isDark ? 10 : 8]
   tokens["text-on-brand-base"] = neutralAlpha[10]
-  tokens["text-on-interactive-base"] = isDark ? neutral[11] : neutral[0]
+  tokens["text-on-interactive-base"] = pickReadableColor(tokens["surface-interactive-solid"] as HexColor, [
+    isDark ? neutral[11] : neutral[0],
+    isDark ? neutral[0] : neutral[11],
+  ])
   tokens["text-on-interactive-weak"] = neutralAlpha[10]
-  tokens["text-on-success-base"] = success[isDark ? 8 : 10]
-  tokens["text-on-critical-base"] = error[isDark ? 8 : 10]
+  tokens["text-on-success-base"] = readableStatusText(
+    tokens["surface-success-weak"] as HexColor,
+    success,
+    success[isDark ? 8 : 10],
+  )
+  tokens["text-on-critical-base"] = readableStatusText(
+    tokens["surface-critical-weak"] as HexColor,
+    error,
+    error[isDark ? 8 : 10],
+  )
   tokens["text-on-critical-weak"] = error[7]
   tokens["text-on-critical-strong"] = error[11]
-  tokens["text-on-warning-base"] = neutralAlpha[10]
-  tokens["text-on-info-base"] = neutralAlpha[10]
+  tokens["text-on-warning-base"] = readableStatusText(
+    tokens["surface-warning-weak"] as HexColor,
+    warning,
+    neutralAlpha[10],
+  )
+  tokens["text-on-info-base"] = readableStatusText(tokens["surface-info-weak"] as HexColor, info, neutralAlpha[10])
   tokens["text-diff-add-base"] = diffAdd[10]
   tokens["text-diff-delete-base"] = diffDelete[isDark ? 8 : 9]
   tokens["text-diff-delete-strong"] = diffDelete[11]
@@ -145,6 +184,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["button-secondary-hover"] = layer(5, 4)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
+
+  chartSeries.forEach((color, index) => {
+    tokens[`chart-series-${index + 1}` as ThemeToken] = color
+  })
 
   tokens["border-base"] = neutralAlpha[6]
   tokens["border-hover"] = neutralAlpha[7]
@@ -235,18 +278,18 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-agent-ask-base"] = interactive[8]
   tokens["icon-agent-build-base"] = interactive[isDark ? 10 : 8]
 
-  tokens["icon-on-success-base"] = withAlpha(success[8], 0.9) as ColorValue
-  tokens["icon-on-success-hover"] = withAlpha(success[9], 0.9) as ColorValue
-  tokens["icon-on-success-selected"] = withAlpha(success[10], 0.9) as ColorValue
-  tokens["icon-on-warning-base"] = withAlpha(warning[8], 0.9) as ColorValue
-  tokens["icon-on-warning-hover"] = withAlpha(warning[9], 0.9) as ColorValue
-  tokens["icon-on-warning-selected"] = withAlpha(warning[10], 0.9) as ColorValue
-  tokens["icon-on-critical-base"] = withAlpha(error[8], 0.9) as ColorValue
-  tokens["icon-on-critical-hover"] = withAlpha(error[9], 0.9) as ColorValue
-  tokens["icon-on-critical-selected"] = withAlpha(error[10], 0.9) as ColorValue
+  tokens["icon-on-success-base"] = withAlpha(success[8], 0.9)
+  tokens["icon-on-success-hover"] = withAlpha(success[9], 0.9)
+  tokens["icon-on-success-selected"] = withAlpha(success[10], 0.9)
+  tokens["icon-on-warning-base"] = withAlpha(warning[8], 0.9)
+  tokens["icon-on-warning-hover"] = withAlpha(warning[9], 0.9)
+  tokens["icon-on-warning-selected"] = withAlpha(warning[10], 0.9)
+  tokens["icon-on-critical-base"] = withAlpha(error[8], 0.9)
+  tokens["icon-on-critical-hover"] = withAlpha(error[9], 0.9)
+  tokens["icon-on-critical-selected"] = withAlpha(error[10], 0.9)
   tokens["icon-on-info-base"] = info[8]
-  tokens["icon-on-info-hover"] = withAlpha(info[9], 0.9) as ColorValue
-  tokens["icon-on-info-selected"] = withAlpha(info[10], 0.9) as ColorValue
+  tokens["icon-on-info-hover"] = withAlpha(info[9], 0.9)
+  tokens["icon-on-info-selected"] = withAlpha(info[10], 0.9)
 
   tokens["icon-diff-add-base"] = diffAdd[10]
   tokens["icon-diff-add-hover"] = diffAdd[isDark ? 9 : 11]
@@ -334,9 +377,54 @@ function assertResolvedTheme(tokens: ResolvedTheme) {
     visited.add(token)
   }
   for (const token of THEME_TOKEN_NAMES) visit(token, [])
+  assertThemeContrast(tokens)
 }
 
-function generateNeutralAlphaScale(neutralScale: HexColor[], isDark: boolean): HexColor[] {
+export function resolveThemeColor(tokens: ResolvedTheme, token: ThemeToken): HexColor {
+  const visited = new Set<ThemeToken>()
+  let current = token
+
+  while (true) {
+    if (visited.has(current)) throw new Error(`Cyclic theme token reference while resolving ${token}`)
+    visited.add(current)
+
+    const value = tokens[current]
+    const referenced = value.match(/^var\(--([a-z0-9-]+)\)$/)?.[1]
+    if (!referenced) return value as HexColor
+    if (!THEME_TOKEN_SET.has(referenced)) throw new Error(`Unknown theme token reference: ${referenced}`)
+    current = referenced as ThemeToken
+  }
+}
+
+function assertThemeContrast(tokens: ResolvedTheme) {
+  const pairs: Array<[ThemeToken, ThemeToken]> = [
+    ["text-base", "background-base"],
+    ["text-weak", "surface-base"],
+    ["text-on-interactive-base", "surface-interactive-solid"],
+    ["text-on-success-base", "surface-success-weak"],
+    ["text-on-warning-base", "surface-warning-weak"],
+    ["text-on-critical-base", "surface-critical-weak"],
+    ["text-on-info-base", "surface-info-weak"],
+  ]
+  for (const [foregroundToken, backgroundToken] of pairs) {
+    const foreground = resolveThemeColor(tokens, foregroundToken)
+    const background = resolveThemeColor(tokens, backgroundToken)
+    const ratio = contrastRatio(foreground, background)
+    if (ratio < 4.5) {
+      throw new Error(
+        `Theme contrast requirement failed: ${foregroundToken} on ${backgroundToken} is ${ratio.toFixed(2)}:1`,
+      )
+    }
+  }
+}
+
+function pickReadableColor(background: HexColor, candidates: HexColor[]): HexColor {
+  const readable = candidates.find((candidate) => contrastRatio(candidate, background) >= 4.5)
+  if (readable) return readable
+  return candidates.toSorted((a, b) => contrastRatio(b, background) - contrastRatio(a, background))[0]
+}
+
+function generateNeutralBlendScale(neutralScale: HexColor[], isDark: boolean): HexColor[] {
   const alphas = isDark
     ? [0.02, 0.04, 0.08, 0.12, 0.16, 0.2, 0.26, 0.36, 0.44, 0.52, 0.72, 0.94]
     : [0.01, 0.03, 0.06, 0.09, 0.12, 0.15, 0.2, 0.27, 0.46, 0.61, 0.5, 0.87]

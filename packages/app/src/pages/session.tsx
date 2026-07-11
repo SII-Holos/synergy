@@ -1097,7 +1097,7 @@ function SessionPageContent() {
                         <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
                           <span class="text-sm text-text-weak">No messages yet</span>
                           <Show when={conversationLoadView().type === "empty-error"}>
-                            <span class="max-w-md text-sm text-text-critical-base">{conversationLoadError()}</span>
+                            <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
                           </Show>
                           <button
                             type="button"

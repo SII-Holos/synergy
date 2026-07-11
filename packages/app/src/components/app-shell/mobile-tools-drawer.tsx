@@ -30,7 +30,7 @@ export function MobileToolsDrawer() {
       <div class="fixed inset-0 z-[100] flex md:hidden justify-end">
         {/* Backdrop */}
         <div
-          class="absolute inset-0 bg-black/40"
+          class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
           onClick={close}
         />

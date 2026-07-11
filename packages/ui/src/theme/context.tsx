@@ -1,10 +1,11 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
+import { applyThemeToDocument } from "./application"
 import { synergyTheme } from "./default-themes"
-import { resolveThemeVariant, themeToCss } from "./resolve"
+import { resolveThemeVariant } from "./resolve"
+import type { Theme } from "./types"
 import { createSimpleContext } from "../context/helper"
 import { getPluginTheme, listThemeChoices, subscribePluginThemes } from "./plugin-theme-registry"
-import type { Theme } from "./types"
 import {
   COLOR_SCHEME_STORAGE_KEY,
   getSavedColorScheme,
@@ -13,50 +14,30 @@ import {
   type ColorScheme,
 } from "./color-scheme"
 
-const THEME_STYLE_ID = "synergy-theme"
-
-function ensureThemeStyleElement(): HTMLStyleElement {
-  const existing = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null
-  if (existing) return existing
-  const element = document.createElement("style")
-  element.id = THEME_STYLE_ID
-  document.head.appendChild(element)
-  return element
-}
-
-function applyBootShellColorScheme(mode: "light" | "dark") {
-  document.documentElement.dataset.synergyColorScheme = mode
-}
-
-function applyThemeCss(theme: Theme, mode: "light" | "dark", themeId = theme.id) {
+function resolveThemeForMode(theme: Theme, mode: "light" | "dark") {
   const isDark = mode === "dark"
-  const variant = isDark ? theme.dark : theme.light
-  const tokens = resolveThemeVariant(variant, isDark)
-  const css = themeToCss(tokens)
-
-  const fullCss = `:root {
-  color-scheme: ${mode};
-  --text-mix-blend-mode: ${isDark ? "plus-lighter" : "multiply"};
-  ${css}
-}`
-
-  ensureThemeStyleElement().textContent = fullCss
-  document.documentElement.dataset.colorScheme = mode
-  document.documentElement.dataset.theme = themeId
-  applyBootShellColorScheme(mode)
+  return resolveThemeVariant(isDark ? theme.dark : theme.light, isDark)
 }
 
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: () => {
     const initialColorScheme = getSavedColorScheme() ?? "system"
+    const initialMode = resolveColorSchemeMode(initialColorScheme)
     const [store, setStore] = createStore({
       colorScheme: initialColorScheme,
-      mode: resolveColorSchemeMode(initialColorScheme),
+      mode: initialMode,
       themeId: synergyTheme.id,
     })
-    applyThemeCss(synergyTheme, resolveColorSchemeMode(initialColorScheme))
+    applyThemeToDocument(document, resolveThemeForMode(synergyTheme, initialMode), initialMode, synergyTheme.id)
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
+    const activeTheme = createMemo(() => {
+      themeRegistryVersion()
+      return getPluginTheme(store.themeId)?.theme ?? synergyTheme
+    })
+    const tokens = createMemo(() => {
+      return resolveThemeForMode(activeTheme(), store.mode)
+    })
 
     onMount(() => {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
@@ -73,14 +54,13 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     })
 
     createEffect(() => {
-      themeRegistryVersion()
       const activeId = store.themeId || synergyTheme.id
       const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
       if (activeId !== synergyTheme.id && !pluginTheme) {
         setStore("themeId", synergyTheme.id)
         return
       }
-      applyThemeCss(pluginTheme?.theme ?? synergyTheme, store.mode, activeId)
+      applyThemeToDocument(document, tokens(), store.mode, activeId)
     })
 
     const setColorScheme = (scheme: ColorScheme) => {
@@ -98,7 +78,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     return {
       colorScheme: () => store.colorScheme,
       mode: () => store.mode,
-      theme: () => getPluginTheme(store.themeId)?.theme ?? synergyTheme,
+      theme: activeTheme,
+      tokens,
       themeId: () => store.themeId,
       themes: () => {
         themeRegistryVersion()

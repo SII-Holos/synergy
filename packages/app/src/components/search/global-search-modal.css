@@ -1,7 +1,7 @@
 .gsm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--surface-overlay);
   z-index: 100;
   backdrop-filter: blur(2px);
 }
