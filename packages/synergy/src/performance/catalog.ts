@@ -16,7 +16,7 @@ export namespace PerformanceCatalog {
     module: PerformanceSchema.Module
     source: PerformanceSchema.Source
     labels: string[]
-    status: "emitted" | "derived" | "deprecated_alias" | "internal"
+    status: "emitted" | "derived" | "internal"
     aliases?: string[]
   }
 
@@ -282,11 +282,6 @@ export namespace PerformanceCatalog {
 
   export function resolveName(name: string) {
     return aliasToName.get(name) ?? name
-  }
-
-  export function storageNamesFor(name: string) {
-    const info = byName.get(name)
-    return [name, ...(info?.aliases ?? [])]
   }
 
   function metric(

@@ -70,6 +70,7 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
+import fs from "fs"
 import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
@@ -128,6 +129,7 @@ export namespace ToolRegistry {
     const glob = new Bun.Glob("tool/*.{js,ts}")
 
     for (const dir of await Config.directories()) {
+      if (!isDirectory(dir)) continue
       for await (const match of glob.scan({
         cwd: dir,
         absolute: true,
@@ -167,6 +169,14 @@ export namespace ToolRegistry {
 
     return { custom }
   })
+
+  function isDirectory(dir: string) {
+    try {
+      return fs.statSync(dir).isDirectory()
+    } catch {
+      return false
+    }
+  }
 
   export async function reload() {
     log.info("reloading tool registry state")

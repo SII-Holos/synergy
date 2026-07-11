@@ -13,7 +13,7 @@ export const StatusCommand = cmd({
     yargs.option("verbose", {
       type: "boolean",
       default: false,
-      describe: "show lock, health, trace, and local process details",
+      describe: "show lock, health, observability, and local process details",
     }),
   handler: async (args) => {
     const status = await Daemon.status()
@@ -55,6 +55,6 @@ async function printVerbose(healthUrl: string) {
   const recentErrors = (await Observability.query({ limit: 100 })).filter(
     (event) => event.level === "error" || event.type.endsWith(".error") || event.type.includes("error"),
   )
-  UI.println(`  Trace dir: ${Observability.dir()}`)
-  UI.println(`  Recent trace errors: ${recentErrors.length}`)
+  UI.println(`  Observability store: indexed local SQLite`)
+  UI.println(`  Recent observability errors: ${recentErrors.length}`)
 }

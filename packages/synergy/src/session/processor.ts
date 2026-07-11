@@ -21,8 +21,8 @@ import { Observability } from "@/observability"
 import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
-import { PerformanceMetrics } from "@/performance/metrics"
-import { PerformanceSpans } from "@/performance/spans"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilitySpans } from "@/observability/spans"
 import { SessionMemoryPressure } from "./memory-pressure"
 
 export namespace SessionProcessor {
@@ -703,7 +703,7 @@ export namespace SessionProcessor {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
               })
-              const llmSpan = PerformanceSpans.start({
+              const llmSpan = ObservabilitySpans.start({
                 name: "llm.request",
                 module: "llm",
                 sessionID: input.sessionID,
@@ -712,6 +712,34 @@ export namespace SessionProcessor {
               })
               const llmStartedAt = Date.now()
               let firstTokenSeen = false
+              let lastChunkAt: number | undefined
+              let outputChars = 0
+
+              function recordChunkMetrics(kind: "text" | "reasoning", chars: number) {
+                const now = Date.now()
+                if (lastChunkAt !== undefined) {
+                  ObservabilityMetrics.record({
+                    name: "llm.stream.chunk_gap",
+                    value: now - lastChunkAt,
+                    unit: "ms",
+                    module: "llm",
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    labels: { provider: input.model.providerID, model: input.model.id, kind },
+                  })
+                }
+                lastChunkAt = now
+                outputChars += chars
+                ObservabilityMetrics.record({
+                  name: "llm.stream.output_chars_per_second",
+                  value: outputChars / Math.max(0.001, (now - llmStartedAt) / 1000),
+                  unit: "count",
+                  module: "llm",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: { provider: input.model.providerID, model: input.model.id, kind },
+                })
+              }
 
               try {
                 for await (const value of stream.fullStream) {
@@ -719,7 +747,7 @@ export namespace SessionProcessor {
                   switch (value.type) {
                     case "start":
                       SessionManager.setStatus(input.sessionID, { type: "busy" })
-                      PerformanceMetrics.record({
+                      ObservabilityMetrics.record({
                         name: "llm.stream.start",
                         value: Date.now() - llmStartedAt,
                         unit: "ms",
@@ -750,7 +778,7 @@ export namespace SessionProcessor {
                     case "reasoning-delta":
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
-                        PerformanceMetrics.record({
+                        ObservabilityMetrics.record({
                           name: "llm.stream.first_token",
                           value: Date.now() - llmStartedAt,
                           unit: "ms",
@@ -761,7 +789,7 @@ export namespace SessionProcessor {
                         })
                       }
                       if (value.text) {
-                        PerformanceMetrics.record({
+                        ObservabilityMetrics.record({
                           name: "llm.stream.output_chars",
                           value: value.text.length,
                           unit: "count",
@@ -770,6 +798,7 @@ export namespace SessionProcessor {
                           messageID: input.assistantMessage.id,
                           labels: { kind: "reasoning" },
                         })
+                        recordChunkMetrics("reasoning", value.text.length)
                       }
                       if (value.id in reasoningMap) {
                         const part = reasoningMap[value.id]
@@ -986,7 +1015,7 @@ export namespace SessionProcessor {
                         usage: value.usage,
                         metadata: value.providerMetadata,
                       })
-                      PerformanceMetrics.record({
+                      ObservabilityMetrics.record({
                         name: "llm.tokens.input",
                         value: usage.tokens.input,
                         unit: "tokens",
@@ -995,7 +1024,7 @@ export namespace SessionProcessor {
                         messageID: input.assistantMessage.id,
                         labels: { provider: input.model.providerID, model: input.model.id },
                       })
-                      PerformanceMetrics.record({
+                      ObservabilityMetrics.record({
                         name: "llm.tokens.output",
                         value: usage.tokens.output,
                         unit: "tokens",
@@ -1004,7 +1033,7 @@ export namespace SessionProcessor {
                         messageID: input.assistantMessage.id,
                         labels: { provider: input.model.providerID, model: input.model.id },
                       })
-                      PerformanceMetrics.record({
+                      ObservabilityMetrics.record({
                         name: "llm.request.count",
                         value: 1,
                         unit: "count",
@@ -1068,7 +1097,7 @@ export namespace SessionProcessor {
                     case "text-delta":
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
-                        PerformanceMetrics.record({
+                        ObservabilityMetrics.record({
                           name: "llm.stream.first_token",
                           value: Date.now() - llmStartedAt,
                           unit: "ms",
@@ -1079,7 +1108,7 @@ export namespace SessionProcessor {
                         })
                       }
                       if (value.text) {
-                        PerformanceMetrics.record({
+                        ObservabilityMetrics.record({
                           name: "llm.stream.output_chars",
                           value: value.text.length,
                           unit: "count",
@@ -1088,6 +1117,7 @@ export namespace SessionProcessor {
                           messageID: input.assistantMessage.id,
                           labels: { kind: "text" },
                         })
+                        recordChunkMetrics("text", value.text.length)
                       }
                       if (currentText) {
                         currentText.text += value.text
@@ -1132,11 +1162,11 @@ export namespace SessionProcessor {
                       continue
                   }
                 }
-                PerformanceSpans.end(llmSpan, {
+                ObservabilitySpans.end(llmSpan, {
                   attributes: { provider: input.model.providerID, model: input.model.id },
                 })
               } catch (error) {
-                PerformanceSpans.end(llmSpan, { status: "error", error })
+                ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
                 currentText = undefined
@@ -1156,7 +1186,7 @@ export namespace SessionProcessor {
               if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
-                PerformanceMetrics.record({
+                ObservabilityMetrics.record({
                   name: "session.turn.retry",
                   value: 1,
                   unit: "count",
@@ -1187,7 +1217,7 @@ export namespace SessionProcessor {
                 continue
               }
               input.assistantMessage.error = error
-              PerformanceMetrics.record({
+              ObservabilityMetrics.record({
                 name: "session.turn.error",
                 value: 1,
                 unit: "count",

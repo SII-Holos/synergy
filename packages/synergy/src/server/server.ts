@@ -75,15 +75,16 @@ import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
 import { Observability } from "@/observability"
-import { PerformanceIssues } from "@/performance/issues"
+import { ObservabilityIssues } from "@/observability/issues"
 import { ServerSseMetrics } from "./sse-metrics"
-import { PerformanceMetrics } from "@/performance/metrics"
-import { PerformanceSpans } from "@/performance/spans"
-import { PerformanceRedaction } from "@/performance/redact"
-import { PerformanceConfig } from "@/performance/config"
-import { PerformanceResources } from "@/performance/resources"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityRedaction } from "@/observability/redaction"
+import { ObservabilityConfig } from "@/observability/config"
+import { ObservabilityResources } from "@/observability/resources"
 import { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, DEFAULT_SERVER_URL } from "./defaults"
-import { PerformanceRetention } from "@/performance/retention"
+import { ObservabilityStore } from "@/observability/store"
+import { ObservabilityContext } from "@/observability/context"
 import { UpdateRoute } from "./update-route"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -91,10 +92,10 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 RuntimeReload.startAutoReload()
 void Config.current()
-  .then((config) => PerformanceConfig.refresh(config))
-  .catch(() => PerformanceConfig.refresh())
-PerformanceResources.start()
-PerformanceRetention.schedule()
+  .then((config) => ObservabilityConfig.refresh(config))
+  .catch(() => ObservabilityConfig.refresh())
+ObservabilityResources.start()
+ObservabilityStore.open()
 
 export namespace Server {
   export const DEFAULT_PORT = DEFAULT_SERVER_PORT
@@ -248,6 +249,20 @@ export namespace Server {
     }
   }
 
+  function safeHeaderId(value: string | undefined) {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    if (!trimmed || trimmed.length > 128) {
+      log.debug("safeHeaderId rejected: value too long or empty", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(trimmed)) {
+      log.debug("safeHeaderId rejected: invalid characters", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    return trimmed
+  }
+
   function assertWorktreeSessionIdle(sessionID: string | undefined) {
     if (!sessionID) return
     if (!SessionManager.isRunning(sessionID)) return
@@ -333,7 +348,7 @@ export namespace Server {
         .onError((err, c) => {
           log.error("failed", {
             method: c.req.method,
-            path: c.req.path,
+            route: ObservabilityRedaction.routePath(c.req.path),
             error: err,
           })
           if (err instanceof NamedError) {
@@ -352,89 +367,117 @@ export namespace Server {
         })
         .use(async (c, next) => {
           const reqPath = c.req.path
-          const routePath = PerformanceRedaction.routePath(reqPath)
+          const routePath = ObservabilityRedaction.routePath(reqPath)
           const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
           const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
           const start = Date.now()
           const requestId = crypto.randomUUID().slice(0, 8)
-          const span = skipPerformance
-            ? undefined
-            : PerformanceSpans.start({
-                name: "http.request",
-                module: "server",
-                rid: requestId,
-                attributes: { method: c.req.method, route: routePath },
-              })
-          const requestLength = Number(c.req.header("content-length") ?? 0)
-          if (span && Number.isFinite(requestLength) && requestLength > 0) {
-            PerformanceMetrics.record({
-              name: "http.request.size",
-              value: requestLength,
-              unit: "bytes",
-              module: "server",
+          const incomingCorrelationId = safeHeaderId(c.req.header("x-synergy-correlation-id"))
+          const incomingTraceId = safeHeaderId(c.req.header("x-synergy-trace-id"))
+          const correlationId = incomingCorrelationId ?? `corr_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+          const rootTraceId = `http_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+
+          return ObservabilityContext.withContextAsync(
+            {
+              correlationId,
+              traceId: rootTraceId,
               rid: requestId,
-              labels: { method: c.req.method, route: routePath },
-            })
-          }
-          try {
-            await next()
-          } finally {
-            const duration = Date.now() - start
-            const status = c.res.status
-            if (span) {
-              PerformanceSpans.end(span, {
-                status: status >= 500 ? "error" : "ok",
-                attributes: { method: c.req.method, route: routePath, status },
-              })
-            }
-            const responseLength = Number(c.res.headers.get("content-length") ?? 0)
-            if (span && Number.isFinite(responseLength) && responseLength > 0) {
-              PerformanceMetrics.record({
-                name: "http.response.size",
-                value: responseLength,
-                unit: "bytes",
-                module: "server",
-                traceId: span.traceId,
-                spanId: span.spanId,
-                rid: requestId,
-                labels: { method: c.req.method, route: routePath, status },
-              })
-            }
-            if (span && (status >= 500 || duration >= 1000)) {
-              PerformanceIssues.raise({
-                code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
-                severity: status >= 500 ? "error" : "warning",
-                module: "server",
-                title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
-                message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
-                recommendation: "Open the trace detail to identify the owning server route or downstream module.",
-                traceId: span.traceId,
-                spanId: span.spanId,
-                rid: requestId,
-                evidence: { method: c.req.method, route: routePath, status, durationMs: duration },
-              })
-            }
-            if (!skipLogging) {
-              log.info("request", {
-                rid: requestId,
-                method: c.req.method,
-                path: reqPath,
-                status,
-                duration,
-              })
-              void Observability.emit("http.request", {
-                rid: requestId,
-                traceId: span?.traceId,
-                level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
-                data: {
-                  method: c.req.method,
-                  route: routePath,
-                  status,
-                  duration,
-                },
-              })
-            }
-          }
+              source: "backend",
+              module: "server",
+            },
+            async () => {
+              const span = skipPerformance
+                ? undefined
+                : ObservabilitySpans.start({
+                    name: "http.request",
+                    module: "server",
+                    rid: requestId,
+                    attributes: { method: c.req.method, route: routePath, externalTraceId: incomingTraceId },
+                  })
+              const traceId = span?.traceId ?? rootTraceId
+              c.header("x-synergy-correlation-id", correlationId)
+              c.header("x-synergy-trace-id", traceId)
+              c.header("x-synergy-request-id", requestId)
+
+              const requestLength = Number(c.req.header("content-length") ?? 0)
+              if (span && Number.isFinite(requestLength) && requestLength > 0) {
+                ObservabilityMetrics.record({
+                  name: "http.request.size",
+                  value: requestLength,
+                  unit: "bytes",
+                  module: "server",
+                  rid: requestId,
+                  labels: { method: c.req.method, route: routePath },
+                })
+              }
+              try {
+                await next()
+              } finally {
+                const duration = Date.now() - start
+                const status = c.res.status
+                if (span) {
+                  ObservabilitySpans.end(span, {
+                    status: status >= 500 ? "error" : "ok",
+                    attributes: { method: c.req.method, route: routePath, status, externalTraceId: incomingTraceId },
+                  })
+                }
+                const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+                if (span && Number.isFinite(responseLength) && responseLength > 0) {
+                  ObservabilityMetrics.record({
+                    name: "http.response.size",
+                    value: responseLength,
+                    unit: "bytes",
+                    module: "server",
+                    traceId: span.traceId,
+                    spanId: span.spanId,
+                    rid: requestId,
+                    labels: { method: c.req.method, route: routePath, status },
+                  })
+                }
+                if (span && (status >= 500 || duration >= 1000)) {
+                  ObservabilityIssues.raise({
+                    code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
+                    severity: status >= 500 ? "error" : "warning",
+                    module: "server",
+                    title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
+                    message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
+                    recommendation: "Open the trace detail to identify the owning server route or downstream module.",
+                    traceId: span.traceId,
+                    spanId: span.spanId,
+                    rid: requestId,
+                    evidence: {
+                      method: c.req.method,
+                      route: routePath,
+                      status,
+                      durationMs: duration,
+                      externalTraceId: incomingTraceId,
+                    },
+                  })
+                }
+                if (!skipLogging) {
+                  log.info("request", {
+                    rid: requestId,
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    duration,
+                  })
+                  void Observability.emit("http.request", {
+                    rid: requestId,
+                    traceId: span?.traceId,
+                    level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+                    data: {
+                      externalTraceId: incomingTraceId,
+                      method: c.req.method,
+                      route: routePath,
+                      status,
+                      duration,
+                    },
+                  })
+                }
+              }
+            },
+          )
         })
         .use(
           cors({

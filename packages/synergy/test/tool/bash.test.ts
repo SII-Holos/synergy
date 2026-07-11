@@ -115,7 +115,7 @@ describe("tool.bash", () => {
       const bash = await BashTool.init()
       const result = await bash.execute(
         {
-          command: sleepCommand(250),
+          command: sleepCommand(2000),
           description: "Sleep briefly",
           yieldSeconds: 0.05,
         },

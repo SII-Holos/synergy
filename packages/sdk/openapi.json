@@ -958,6 +958,65 @@
         ]
       }
     },
+    "/global/performance/inflight": {
+      "get": {
+        "operationId": "performance.inflight",
+        "summary": "List inflight performance spans",
+        "description": "List running spans and stale operations from the indexed observability store.",
+        "responses": {
+          "200": {
+            "description": "Inflight performance spans",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerfInflight"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "staleMs",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.inflight({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/performance/timeline": {
       "get": {
         "operationId": "performance.timeline",
@@ -18557,12 +18616,679 @@
           }
         }
       },
-      "DiagnosticsSummary": {
+      "TelemetryEventLevel": {
+        "type": "string",
+        "enum": ["debug", "info", "warn", "error"]
+      },
+      "TelemetrySource": {
+        "type": "string",
+        "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
+      },
+      "TelemetryModule": {
+        "type": "string",
+        "enum": [
+          "server",
+          "session",
+          "llm",
+          "tool",
+          "enforcement",
+          "storage",
+          "library",
+          "process",
+          "pty",
+          "browser",
+          "frontend",
+          "desktop",
+          "observability",
+          "mcp",
+          "plugin",
+          "channel"
+        ]
+      },
+      "TelemetryLabelValue": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 4096
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "TelemetryLabels": {
+        "default": {},
         "type": "object",
         "propertyNames": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 96
         },
-        "additionalProperties": {}
+        "additionalProperties": {
+          "$ref": "#/components/schemas/TelemetryLabelValue"
+        }
+      },
+      "TelemetryRedactionSummary": {
+        "default": {
+          "applied": true,
+          "omittedKeys": 0,
+          "truncatedValues": 0
+        },
+        "type": "object",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "omittedKeys": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "truncatedValues": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["applied", "omittedKeys", "truncatedValues"]
+      },
+      "TelemetryEvent": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "number"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/TelemetryEventLevel"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "parentSpanId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TelemetrySource"
+          },
+          "module": {
+            "$ref": "#/components/schemas/TelemetryModule"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TelemetryLabels"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/TelemetryRedactionSummary"
+          }
+        },
+        "required": ["eventId", "time", "iso", "type"]
+      },
+      "TelemetryIssueSeverity": {
+        "type": "string",
+        "enum": ["info", "warning", "error", "critical"]
+      },
+      "TelemetryIssueStatus": {
+        "default": "open",
+        "type": "string",
+        "enum": ["open", "resolved", "suppressed"]
+      },
+      "TelemetryIssue": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "number"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/TelemetryIssueSeverity"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TelemetryIssueStatus"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/TelemetryModule"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/TelemetryLabels"
+          },
+          "firstSeenTime": {
+            "type": "number"
+          },
+          "lastSeenTime": {
+            "type": "number"
+          },
+          "occurrenceCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/TelemetryRedactionSummary"
+          }
+        },
+        "required": [
+          "issueId",
+          "time",
+          "iso",
+          "severity",
+          "code",
+          "title",
+          "message",
+          "module",
+          "firstSeenTime",
+          "lastSeenTime",
+          "occurrenceCount",
+          "fingerprint"
+        ]
+      },
+      "TelemetrySpanKind": {
+        "type": "string",
+        "enum": [
+          "http",
+          "session",
+          "session_step",
+          "llm",
+          "tool",
+          "permission",
+          "storage",
+          "library",
+          "frontend",
+          "sse",
+          "process",
+          "plugin",
+          "mcp",
+          "channel",
+          "diagnostic",
+          "runtime"
+        ]
+      },
+      "TelemetrySpanStatus": {
+        "default": "running",
+        "type": "string",
+        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+      },
+      "TelemetryInflightSpan": {
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "parentSpanId": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TelemetrySpanKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/TelemetryModule"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TelemetrySource"
+          },
+          "startTime": {
+            "type": "number"
+          },
+          "endTime": {
+            "type": "number"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "lastActivityTime": {
+            "type": "number"
+          },
+          "heartbeatTime": {
+            "type": "number"
+          },
+          "heartbeatCount": {
+            "default": 0,
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "stalled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TelemetrySpanStatus"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tool": {
+            "type": "string"
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/TelemetryLabels"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/TelemetryRedactionSummary"
+          },
+          "ageMs": {
+            "type": "number"
+          },
+          "idleMs": {
+            "type": "number"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "traceId",
+          "spanId",
+          "kind",
+          "name",
+          "module",
+          "source",
+          "startTime",
+          "lastActivityTime",
+          "ageMs",
+          "idleMs",
+          "stale"
+        ]
+      },
+      "TelemetryResourceSample": {
+        "type": "object",
+        "properties": {
+          "sampleId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "number"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TelemetrySource"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "process": {
+            "type": "object",
+            "properties": {
+              "pid": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "processId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": ["server", "tool", "pty", "mcp", "plugin", "desktop", "browser", "unknown"]
+              }
+            },
+            "required": ["role"]
+          },
+          "cpu": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "userMicros": {
+                "type": "number"
+              },
+              "systemMicros": {
+                "type": "number"
+              },
+              "utilizationRatio": {
+                "type": "number"
+              }
+            }
+          },
+          "memory": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "rssBytes": {
+                "type": "number"
+              },
+              "heapTotalBytes": {
+                "type": "number"
+              },
+              "heapUsedBytes": {
+                "type": "number"
+              },
+              "externalBytes": {
+                "type": "number"
+              },
+              "arrayBuffersBytes": {
+                "type": "number"
+              }
+            }
+          },
+          "eventLoop": {
+            "type": "object",
+            "properties": {
+              "lagMs": {
+                "type": "number"
+              },
+              "sampleWindowMs": {
+                "type": "number"
+              }
+            },
+            "required": ["sampleWindowMs"]
+          },
+          "io": {
+            "default": {
+              "osAvailable": false
+            },
+            "type": "object",
+            "properties": {
+              "appReadBytes": {
+                "type": "number"
+              },
+              "appWrittenBytes": {
+                "type": "number"
+              },
+              "appReadOps": {
+                "type": "number"
+              },
+              "appWriteOps": {
+                "type": "number"
+              },
+              "osReadBytes": {
+                "type": "number"
+              },
+              "osWrittenBytes": {
+                "type": "number"
+              },
+              "osAvailable": {
+                "default": false,
+                "type": "boolean"
+              }
+            }
+          },
+          "labels": {
+            "$ref": "#/components/schemas/TelemetryLabels"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/TelemetryRedactionSummary"
+          }
+        },
+        "required": ["sampleId", "time", "iso", "source", "process", "eventLoop"]
+      },
+      "DiagnosticsSummary": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "logs": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "string"
+              },
+              "dev": {
+                "type": "string"
+              },
+              "daemon": {
+                "type": "string"
+              },
+              "devArchives": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["devArchives"]
+          },
+          "traces": {
+            "type": "object",
+            "properties": {
+              "directory": {
+                "type": "string"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "recentErrors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TelemetryEvent"
+                }
+              }
+            },
+            "required": ["directory", "files", "recentErrors"]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TelemetryIssue"
+            }
+          },
+          "inflight": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TelemetryInflightSpan"
+            }
+          },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "latest": {
+                "$ref": "#/components/schemas/TelemetryResourceSample"
+              },
+              "samples": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TelemetryResourceSample"
+                }
+              },
+              "pressure": {
+                "$ref": "#/components/schemas/TelemetryLabels"
+              }
+            },
+            "required": ["samples"]
+          },
+          "lock": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "lock": {},
+              "inspection": {}
+            },
+            "required": ["path"]
+          },
+          "processes": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "finished": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": ["active", "finished"]
+          },
+          "sessions": {
+            "type": "object",
+            "properties": {
+              "pendingReply": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sessionID": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "updated": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["sessionID", "path"]
+                }
+              }
+            },
+            "required": ["pendingReply"]
+          }
+        },
+        "required": ["generatedAt", "logs", "traces", "issues", "inflight", "resources", "processes", "sessions"]
       },
       "PerfTimelineQuality": {
         "type": "object",
@@ -18599,7 +19325,10 @@
           "browser",
           "frontend",
           "desktop",
-          "observability"
+          "observability",
+          "mcp",
+          "plugin",
+          "channel"
         ]
       },
       "PerfUnit": {
@@ -18656,32 +19385,15 @@
         "type": "string",
         "enum": ["open", "resolved", "suppressed"]
       },
-      "PerfLabelValue": {
-        "anyOf": [
-          {
-            "type": "string",
-            "maxLength": 512
-          },
-          {
-            "type": "number"
-          },
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
       "PerfLabels": {
         "default": {},
         "type": "object",
         "propertyNames": {
           "type": "string",
-          "maxLength": 64
+          "maxLength": 96
         },
         "additionalProperties": {
-          "$ref": "#/components/schemas/PerfLabelValue"
+          "$ref": "#/components/schemas/TelemetryLabelValue"
         }
       },
       "PerfIssue": {
@@ -18716,6 +19428,12 @@
           },
           "module": {
             "$ref": "#/components/schemas/PerfModule"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
           },
           "traceId": {
             "type": "string"
@@ -18950,6 +19668,11 @@
               "mode": {
                 "type": "string"
               },
+              "mirrorFiles": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
               "traceFiles": {
                 "type": "integer",
                 "minimum": -9007199254740991,
@@ -19075,7 +19798,7 @@
                 ]
               }
             },
-            "required": ["traceFiles", "recentErrors", "pendingSessions", "sessionRuntimes", "cortexTasks"]
+            "required": ["mirrorFiles", "recentErrors", "pendingSessions", "sessionRuntimes", "cortexTasks"]
           },
           "top": {
             "type": "object",
@@ -19160,6 +19883,130 @@
           "issues"
         ]
       },
+      "PerfSource": {
+        "type": "string",
+        "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
+      },
+      "PerfSpanStatus": {
+        "default": "ok",
+        "type": "string",
+        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+      },
+      "PerfInflightSpan": {
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "spanId": {
+            "type": "string"
+          },
+          "parentSpanId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "module": {
+            "$ref": "#/components/schemas/PerfModule"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PerfSource"
+          },
+          "startTime": {
+            "type": "number"
+          },
+          "endTime": {
+            "type": "number"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PerfSpanStatus"
+          },
+          "lastActivityTime": {
+            "type": "number"
+          },
+          "heartbeatTime": {
+            "type": "number"
+          },
+          "heartbeatCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "stalled": {
+            "type": "boolean"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tool": {
+            "type": "string"
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/PerfLabels"
+          },
+          "ageMs": {
+            "type": "number"
+          },
+          "idleMs": {
+            "type": "number"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": ["traceId", "spanId", "name", "module", "source", "startTime", "ageMs", "idleMs", "stale"]
+      },
+      "PerfInflight": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfInflightSpan"
+            }
+          }
+        },
+        "required": ["generatedAt", "spans"]
+      },
       "PerfMetricKind": {
         "type": "string",
         "enum": ["duration", "gauge", "counter", "rate", "size", "ratio"]
@@ -19167,10 +20014,6 @@
       "PerfTimelineStat": {
         "type": "string",
         "enum": ["avg", "latest", "sum", "rate", "p50", "p95", "p99", "max"]
-      },
-      "PerfSource": {
-        "type": "string",
-        "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
       },
       "PerfTimelinePoint": {
         "type": "object",
@@ -19264,15 +20107,13 @@
         },
         "required": ["generatedAt", "from", "to", "bucketMs", "series"]
       },
-      "PerfSpanStatus": {
-        "default": "ok",
-        "type": "string",
-        "enum": ["ok", "error", "cancelled", "timeout"]
-      },
       "PerfTraceListItem": {
         "type": "object",
         "properties": {
           "traceId": {
+            "type": "string"
+          },
+          "correlationId": {
             "type": "string"
           },
           "kind": {
@@ -19344,10 +20185,16 @@
           "traceId": {
             "type": "string"
           },
+          "correlationId": {
+            "type": "string"
+          },
           "spanId": {
             "type": "string"
           },
           "parentSpanId": {
+            "type": "string"
+          },
+          "kind": {
             "type": "string"
           },
           "name": {
@@ -19370,6 +20217,20 @@
           },
           "status": {
             "$ref": "#/components/schemas/PerfSpanStatus"
+          },
+          "lastActivityTime": {
+            "type": "number"
+          },
+          "heartbeatTime": {
+            "type": "number"
+          },
+          "heartbeatCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "stalled": {
+            "type": "boolean"
           },
           "errorCode": {
             "type": "string"
@@ -19425,6 +20286,9 @@
             "type": "string"
           },
           "traceId": {
+            "type": "string"
+          },
+          "correlationId": {
             "type": "string"
           },
           "sessionID": {
@@ -19784,7 +20648,8 @@
         "type": "object",
         "properties": {
           "batchId": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 128
           },
           "sentAt": {
             "type": "number"
@@ -19794,16 +20659,32 @@
             "type": "object",
             "properties": {
               "routeName": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 256
               },
               "pathTemplate": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 512
               },
               "sessionID": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               "scopeID": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
+              },
+              "correlationId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "navigationId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "sessionSwitchId": {
+                "type": "string",
+                "maxLength": 128
               }
             }
           },
@@ -22747,27 +23628,27 @@
         "additionalProperties": false
       },
       "ObservabilityConfig": {
-        "description": "Local logs, traces, and diagnostics settings",
+        "description": "Local logs, indexed telemetry, and diagnostics settings",
         "type": "object",
         "properties": {
           "enabled": {
-            "description": "Enable local observability trace JSONL events (default: true)",
+            "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
             "type": "boolean"
           },
           "retentionDays": {
-            "description": "Days to retain local trace files (default: 7)",
+            "description": "Days to retain optional observability mirror files (default: 7)",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "maxBytes": {
-            "description": "Maximum total trace storage in bytes (default: 250MB)",
+            "description": "Maximum total local observability storage in bytes (default: 250MB)",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "stalledToolMs": {
-            "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+            "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -22883,6 +23764,7 @@
                     "type": "boolean"
                   },
                   "jsonlMirrorEnabled": {
+                    "description": "Enable optional JSONL mirror files for debugging exports",
                     "type": "boolean"
                   },
                   "maxSqliteBytes": {

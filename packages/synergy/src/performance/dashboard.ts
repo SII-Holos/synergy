@@ -1,55 +1,62 @@
-import { Diagnostics } from "../observability/diagnostics"
-import { Cortex } from "../cortex"
-import { SessionManager } from "../session/manager"
-import { PerformanceMetrics } from "./metrics"
-import { PerformanceIssues } from "./issues"
+import { Cortex } from "@/cortex"
+import { Diagnostics } from "@/observability/diagnostics"
+import { ObservabilityIssues } from "@/observability/issues"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityStore } from "@/observability/store"
+import { SessionManager } from "@/session/manager"
+import { parseJson } from "@/util/json-parse"
+import { PerformanceProjection } from "./projection"
 import { PerformanceSchema } from "./schema"
-import { PerformanceStore } from "./store"
 
 export namespace PerformanceDashboard {
-  type MetricRow = PerformanceStore.StoredMetric & { labels: Record<string, unknown> }
+  type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
 
   export async function summary(
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
     const since = Date.now() - windowMs
-    const rows = PerformanceStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
+    const rows = ObservabilityStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
     const truncated = rows.length > 50_000
-    const metrics = (truncated ? rows.slice(-50_000) : rows).map((row) => ({
+    const metrics = (truncated ? rows.slice(0, 50_000) : rows).map((row) => ({
       ...row,
-      labels: parseLabels(row.labels_json),
+      labels: parseJson(row.labels_json),
     }))
-    const resources = PerformanceStore.latestResource({ scopeID: input.scopeID, processRole: "server" })
-    const resourceRows = PerformanceStore.resourceSince(since, { scopeID: input.scopeID })
+    const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
+    const resources = serverResourceRows.at(-1)
     const childProcesses = rankChildProcesses(resourceRows)
-    const issues = PerformanceIssues.list({ status: "open", scopeID: input.scopeID, limit: 20 })
+    const issues = ObservabilityIssues.list({
+      status: "open",
+      scopeID: input.scopeID,
+      limit: 20,
+    }).map(PerformanceProjection.issue)
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
     const cortexTasks = Cortex.list()
     const cortexStats = {
       totalCount: cortexTasks.length,
       byStatus: {
-        pending: cortexTasks.filter((t) => t.status === "pending").length,
-        queued: cortexTasks.filter((t) => t.status === "queued").length,
-        running: cortexTasks.filter((t) => t.status === "running").length,
-        completed: cortexTasks.filter((t) => t.status === "completed").length,
-        error: cortexTasks.filter((t) => t.status === "error").length,
-        cancelled: cortexTasks.filter((t) => t.status === "cancelled").length,
+        pending: cortexTasks.filter((task) => task.status === "pending").length,
+        queued: cortexTasks.filter((task) => task.status === "queued").length,
+        running: cortexTasks.filter((task) => task.status === "running").length,
+        completed: cortexTasks.filter((task) => task.status === "completed").length,
+        error: cortexTasks.filter((task) => task.status === "error").length,
+        cancelled: cortexTasks.filter((task) => task.status === "cancelled").length,
       },
-      retainedPromptChars: cortexTasks.reduce((sum, t) => sum + t.prompt.length, 0),
-      retainedOutputChars: cortexTasks.reduce((sum, t) => {
-        if (!t.output) return sum
-        if (t.output.mode === "summary" || t.output.mode === "final_response") return sum + t.output.value.length
+      retainedPromptChars: cortexTasks.reduce((sum, task) => sum + task.prompt.length, 0),
+      retainedOutputChars: cortexTasks.reduce((sum, task) => {
+        if (!task.output) return sum
+        if (task.output.mode === "summary" || task.output.mode === "final_response")
+          return sum + task.output.value.length
         try {
-          return sum + JSON.stringify(t.output.value).length
+          return sum + JSON.stringify(task.output.value).length
         } catch {
           return sum
         }
       }, 0),
-      retainedErrorChars: cortexTasks.reduce((sum, t) => sum + (t.error?.length ?? 0), 0),
-      retainedProgressToolCount: cortexTasks.reduce((sum, t) => sum + (t.progress?.recentTools?.length ?? 0), 0),
+      retainedErrorChars: cortexTasks.reduce((sum, task) => sum + (task.error?.length ?? 0), 0),
+      retainedProgressToolCount: cortexTasks.reduce((sum, task) => sum + (task.progress?.recentTools?.length ?? 0), 0),
     }
     const http = metrics.filter((row) => row.name === "http.request.duration")
     const httpDurations = http.map((row) => row.value)
@@ -75,14 +82,20 @@ export namespace PerformanceDashboard {
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
-      quality: truncated ? { truncated: true, partial: true } : undefined,
+      quality: truncated
+        ? {
+            truncated: true,
+            partial: true,
+            unavailableReason: "Dashboard summary reached the protected row cap for this window.",
+          }
+        : undefined,
       health: { status, score, openIssueCount: issues.length, criticalIssueCount },
       backend: {
         requestCount: http.length,
         errorRate: http.length ? httpErrors / http.length : 0,
-        p50RequestMs: PerformanceMetrics.percentile(httpDurations, 50),
-        p95RequestMs: PerformanceMetrics.percentile(httpDurations, 95),
-        p99RequestMs: PerformanceMetrics.percentile(httpDurations, 99),
+        p50RequestMs: ObservabilityMetrics.percentile(httpDurations, 50),
+        p95RequestMs: ObservabilityMetrics.percentile(httpDurations, 95),
+        p99RequestMs: ObservabilityMetrics.percentile(httpDurations, 99),
         activeSessions: activeSessionCount(metrics),
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
       },
@@ -91,7 +104,7 @@ export namespace PerformanceDashboard {
         heapUsedBytes: resources?.memory_heap_used_bytes ?? undefined,
         heapTotalBytes: resources?.memory_heap_total_bytes ?? undefined,
         cpuUtilizationRatio: resources?.cpu_utilization_ratio ?? undefined,
-        eventLoopLagP95Ms: PerformanceMetrics.percentile(
+        eventLoopLagP95Ms: ObservabilityMetrics.percentile(
           serverResourceRows.map((row) => row.event_loop_lag_ms ?? 0),
           95,
         ),
@@ -104,7 +117,7 @@ export namespace PerformanceDashboard {
       },
       sessions: {
         turnCount: turns.length,
-        p95TurnMs: PerformanceMetrics.percentile(
+        p95TurnMs: ObservabilityMetrics.percentile(
           turns.map((row) => row.value),
           95,
         ),
@@ -118,16 +131,29 @@ export namespace PerformanceDashboard {
         fcpMs: frontendVital("FCP"),
         ttfbMs: frontendVital("TTFB"),
         longTaskCount: frontendLongTasks.length,
-        resourceP95Ms: PerformanceMetrics.percentile(
+        resourceP95Ms: ObservabilityMetrics.percentile(
           frontendResources.map((row) => row.value),
           95,
         ),
       },
       runtime: {
-        alive: diagnostics?.lock?.inspection?.alive,
-        healthy: diagnostics?.lock?.inspection?.healthy,
-        pid: diagnostics?.lock?.lock?.pid,
-        mode: diagnostics?.lock?.lock?.mode,
+        alive:
+          diagnostics?.lock?.inspection && typeof diagnostics.lock.inspection === "object"
+            ? (diagnostics.lock.inspection as { alive?: boolean }).alive
+            : undefined,
+        healthy:
+          diagnostics?.lock?.inspection && typeof diagnostics.lock.inspection === "object"
+            ? (diagnostics.lock.inspection as { healthy?: boolean }).healthy
+            : undefined,
+        pid:
+          diagnostics?.lock?.lock && typeof diagnostics.lock.lock === "object"
+            ? (diagnostics.lock.lock as { pid?: number }).pid
+            : undefined,
+        mode:
+          diagnostics?.lock?.lock && typeof diagnostics.lock.lock === "object"
+            ? (diagnostics.lock.lock as { mode?: string }).mode
+            : undefined,
+        mirrorFiles: diagnostics?.traces.files.length ?? 0,
         traceFiles: diagnostics?.traces.files.length ?? 0,
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
@@ -176,9 +202,9 @@ export namespace PerformanceDashboard {
         return {
           id: `${row.metric_id}-${index}`,
           label,
-          module: row.module,
+          module: row.module as PerformanceSchema.Module,
           value: row.value,
-          unit: row.unit,
+          unit: row.unit as PerformanceSchema.Unit,
           traceId: row.trace_id ?? undefined,
           sessionID: row.session_id ?? undefined,
           tool: row.tool ?? undefined,
@@ -186,10 +212,10 @@ export namespace PerformanceDashboard {
       })
   }
 
-  function rankChildProcesses(rows: PerformanceStore.StoredResource[]): PerformanceSchema.RankedItem[] {
-    const latest = new Map<string, PerformanceStore.StoredResource>()
+  function rankChildProcesses(rows: ObservabilityStore.StoredResource[]): PerformanceSchema.RankedItem[] {
+    const latest = new Map<string, ObservabilityStore.StoredResource>()
     for (const row of rows) {
-      if (!row.process_role.startsWith("tool")) continue
+      if (!row.process_role?.startsWith("tool")) continue
       if (row.memory_rss_bytes === undefined || row.memory_rss_bytes === null) continue
       const id = row.process_id ?? (row.pid === undefined || row.pid === null ? undefined : `pid:${row.pid}`)
       if (!id) continue
@@ -200,7 +226,7 @@ export namespace PerformanceDashboard {
       .sort((a, b) => (b.memory_rss_bytes ?? 0) - (a.memory_rss_bytes ?? 0))
       .slice(0, 5)
       .map((row, index) => {
-        const labels = parseLabels(row.labels_json)
+        const labels = parseJson(row.labels_json)
         return {
           id: `${row.sample_id}-${index}`,
           label: String(labels.command ?? labels.description ?? row.process_id ?? row.pid ?? "tool child process"),
@@ -209,7 +235,7 @@ export namespace PerformanceDashboard {
           unit: "bytes" as const,
           processId: row.process_id ?? undefined,
           pid: row.pid ?? undefined,
-          status: row.process_role,
+          status: row.process_role ?? undefined,
         }
       })
   }
@@ -229,14 +255,6 @@ export namespace PerformanceDashboard {
       active.add(row.session_id)
     }
     return active.size
-  }
-
-  function parseLabels(text: string) {
-    try {
-      return JSON.parse(text) as Record<string, unknown>
-    } catch {
-      return {}
-    }
   }
 
   function last<T>(items: T[]) {

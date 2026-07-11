@@ -3,7 +3,8 @@ import { readFileSync } from "fs"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Observability } from "../observability"
-import { PerformanceMetrics } from "@/performance/metrics"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityRedaction } from "@/observability/redaction"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -110,13 +111,13 @@ export namespace ProcessRegistry {
     }
     running.set(id, proc)
     startSweeper()
-    log.info("process created", { id, command: opts.command })
+    log.info("process created", { id, commandFamily: ObservabilityRedaction.commandFamily(opts.command) })
     void Observability.emit("process.created", {
       processId: id,
       pid: proc.pid,
       cwd: opts.cwd,
       data: {
-        command: opts.command,
+        command: ObservabilityRedaction.commandSummary(opts.command),
         description: opts.description,
       },
     })
@@ -141,7 +142,7 @@ export namespace ProcessRegistry {
     }
     proc.tail = proc.output.slice(-TAIL_CHARS)
     proc.lastOutputAt = Date.now()
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name: "process.output.chars",
       value: chunk.length,
       unit: "count",
@@ -161,7 +162,7 @@ export namespace ProcessRegistry {
       pid: proc.pid,
       cwd: proc.cwd,
       data: {
-        command: proc.command,
+        command: ObservabilityRedaction.commandSummary(proc.command),
       },
     })
   }
@@ -194,7 +195,7 @@ export namespace ProcessRegistry {
       truncated: proc.truncated,
     })
 
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name: "process.duration",
       value: Date.now() - proc.startedAt,
       unit: "ms",
@@ -212,7 +213,7 @@ export namespace ProcessRegistry {
       level: status === "failed" ? "error" : "info",
       data: {
         status,
-        command: proc.command,
+        command: ObservabilityRedaction.commandSummary(proc.command),
         exitCode,
         exitSignal,
         outputChars: proc.output.length,
@@ -230,7 +231,7 @@ export namespace ProcessRegistry {
         pid: proc.pid,
         cwd: proc.cwd,
         data: {
-          command: proc.command,
+          command: ObservabilityRedaction.commandSummary(proc.command),
           outputChars: proc.output.length,
         },
       })
@@ -346,7 +347,7 @@ export namespace ProcessRegistry {
             pid: proc.pid,
             cwd: proc.cwd,
             data: {
-              command: proc.command,
+              command: ObservabilityRedaction.commandSummary(proc.command),
             },
           })
           await Shell.killTree(proc.child, { exited: () => proc.exited })
@@ -358,7 +359,7 @@ export namespace ProcessRegistry {
             cwd: proc.cwd,
             level: "error",
             data: {
-              error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+              error: ObservabilityRedaction.errorInfo(err),
             },
           })
         }
@@ -388,7 +389,7 @@ export namespace ProcessRegistry {
       cwd: proc.cwd,
       level: "warn",
       data: {
-        command: proc.command,
+        command: ObservabilityRedaction.commandSummary(proc.command),
         outputChars: proc.output.length,
       },
     })

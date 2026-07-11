@@ -1,8 +1,11 @@
+import { recordSessionSwitchTiming } from "@/components/performance/browser-metrics"
+
 type Nav = {
   id: string
   dir?: string
   from?: string
   to: string
+  scopeID?: string
   trigger?: string
   start: number
   marks: Record<string, number>
@@ -32,7 +35,6 @@ const required = [
 ]
 
 function flush(id: string, reason: "complete" | "timeout") {
-  if (!dev) return
   const nav = navs.get(id)
   if (!nav) return
   if (nav.logged) return
@@ -43,33 +45,50 @@ function flush(id: string, reason: "complete" | "timeout") {
   const baseName = nav.marks["navigate:start"] !== undefined ? "navigate:start" : "session:params"
   const base = nav.marks[baseName] ?? nav.start
 
-  const ms = Object.fromEntries(
-    Object.entries(nav.marks)
-      .slice()
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, t]) => [name, Math.round((t - base) * 100) / 100]),
-  )
+  recordSessionSwitchTiming({
+    sessionID: nav.to,
+    scopeID: nav.scopeID,
+    correlationId: nav.id,
+    navigationId: nav.id,
+    sessionSwitchId: nav.id,
+    startTime: base,
+    endTime: now(),
+    marks: nav.marks,
+    reason,
+    trigger: nav.trigger,
+  })
 
-  console.log(
-    "perf.session-nav " +
-      JSON.stringify({
-        type: "perf.session-nav.v0",
-        id: nav.id,
-        dir: nav.dir,
-        from: nav.from,
-        to: nav.to,
-        trigger: nav.trigger,
-        base: baseName,
-        reason,
-        ms,
-      }),
-  )
+  if (dev) {
+    const ms = Object.fromEntries(
+      Object.entries(nav.marks)
+        .slice()
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, t]) => [name, Math.round((t - base) * 100) / 100]),
+    )
+
+    console.log(
+      "perf.session-nav " +
+        JSON.stringify({
+          type: "perf.session-nav.v0",
+          id: nav.id,
+          dir: nav.dir,
+          from: nav.from,
+          to: nav.to,
+          scopeID: nav.scopeID,
+          trigger: nav.trigger,
+          base: baseName,
+          reason,
+          ms,
+        }),
+    )
+  }
 
   navs.delete(id)
+  const activeKey = key(nav.dir, nav.to)
+  if (active.get(activeKey) === id) active.delete(activeKey)
 }
 
 function maybeFlush(id: string) {
-  if (!dev) return
   const nav = navs.get(id)
   if (!nav) return
   if (nav.logged) return
@@ -91,9 +110,7 @@ function ensure(id: string, data: Omit<Nav, "marks" | "logged" | "timer">) {
   return nav
 }
 
-export function navStart(input: { dir?: string; from?: string; to: string; trigger?: string }) {
-  if (!dev) return
-
+export function navStart(input: { dir?: string; from?: string; to: string; scopeID?: string; trigger?: string }) {
   const id = uid()
   const start = now()
   const nav = ensure(id, { ...input, id, start })
@@ -103,9 +120,7 @@ export function navStart(input: { dir?: string; from?: string; to: string; trigg
   return id
 }
 
-export function navParams(input: { dir?: string; from?: string; to: string }) {
-  if (!dev) return
-
+export function navParams(input: { dir?: string; from?: string; to: string; scopeID?: string }) {
   const k = key(input.dir, input.to)
   const pendingId = pending.get(k)
   if (pendingId) pending.delete(k)
@@ -121,8 +136,6 @@ export function navParams(input: { dir?: string; from?: string; to: string }) {
 }
 
 export function navMark(input: { dir?: string; to: string; name: string }) {
-  if (!dev) return
-
   const id = active.get(key(input.dir, input.to))
   if (!id) return
 

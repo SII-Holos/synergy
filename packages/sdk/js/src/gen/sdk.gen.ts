@@ -299,6 +299,7 @@ import type {
   PerformanceBrowserMetricsIngestResponses,
   PerformanceConfigPatch,
   PerformanceEventsStreamResponses,
+  PerformanceInflightResponses,
   PerformanceIssuesListResponses,
   PerformancePerformanceConfigGetResponses,
   PerformancePerformanceConfigUpdateResponses,
@@ -2914,7 +2915,17 @@ export class Traces extends HeyApiClient {
       to?: string
       limit?: number
       cursor?: string
-      kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+      kind?:
+        | "request"
+        | "session"
+        | "tool"
+        | "provider"
+        | "runtime"
+        | "storage"
+        | "frontend"
+        | "mcp"
+        | "plugin"
+        | "channel"
       status?: PerfSpanStatus
       minDurationMs?: number
       scopeID?: string
@@ -3148,6 +3159,40 @@ export class Performance extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<PerformanceSummaryResponses, unknown, ThrowOnError>({
       url: "/global/performance/summary",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List inflight performance spans
+   *
+   * List running spans and stale operations from the indexed observability store.
+   */
+  public inflight<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      sessionID?: string
+      staleMs?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "staleMs" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PerformanceInflightResponses, unknown, ThrowOnError>({
+      url: "/global/performance/inflight",
       ...options,
       ...params,
     })

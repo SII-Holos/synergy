@@ -7,7 +7,7 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
   if (!runtime) {
     return [
       { label: "Runtime lock", value: "Unknown", tone: "warning" },
-      { label: "Trace files", value: "0 files", tone: "default" },
+      { label: "Mirror files", value: "0 files", tone: "default" },
       { label: "Recent errors", value: "0", tone: "default" },
       { label: "Pending sessions", value: "0", tone: "default" },
       { label: "Session runtimes", value: "0 total", tone: "default" },
@@ -25,7 +25,7 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
       value: `${processDetail || lockState} · ${healthState}`,
       tone: runtime.healthy === false || runtime.alive === false ? "warning" : runtime.healthy ? "success" : "default",
     },
-    { label: "Trace files", value: `${runtime.traceFiles} files`, tone: "default" },
+    { label: "Mirror files", value: `${runtime.mirrorFiles} files`, tone: "default" },
     {
       label: "Recent errors",
       value: String(runtime.recentErrors),

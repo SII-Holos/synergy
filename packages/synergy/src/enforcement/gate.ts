@@ -43,7 +43,7 @@ import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-pro
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
-import { PerformanceMetrics } from "@/performance/metrics"
+import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
 
 export interface Capability {
@@ -1222,7 +1222,7 @@ export namespace EnforcementGate {
         refusal,
         amendment,
       }
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "enforcement.gate.duration",
         value: performance.now() - perfStart,
         unit: "ms",

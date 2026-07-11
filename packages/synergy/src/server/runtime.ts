@@ -14,7 +14,7 @@ import { ServerProcessLock } from "../daemon/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
-import { Observability } from "../observability"
+import { Observability, ObservabilityResources, ObservabilityStore } from "../observability"
 import { Session } from "../session"
 
 const log = Log.create({ service: "server-runtime" })
@@ -407,6 +407,12 @@ function registerShutdown(
         })
       }
     }
+
+    ObservabilityResources.stop()
+    await Observability.flush().catch((error) => {
+      log.warn("failed to flush observability during shutdown", { error })
+    })
+    ObservabilityStore.close()
 
     clearTimeout(forceExitTimeout)
     Log.flush()

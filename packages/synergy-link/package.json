@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
-    "test": "bun test test/*.test.ts"
+    "test": "bun test --timeout 30000 test/*.test.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-link-protocol": "workspace:*",

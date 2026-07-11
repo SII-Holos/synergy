@@ -18,6 +18,7 @@ import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { ObservabilityRedaction } from "@/observability/redaction"
 import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
@@ -158,7 +159,7 @@ export const SessionRoute = new Hono()
     ),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      log.info("SEARCH", { url: c.req.url })
+      log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
       const session = await Session.get(sessionID)
       return c.json(session)
     },

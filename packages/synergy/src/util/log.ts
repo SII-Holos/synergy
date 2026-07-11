@@ -2,6 +2,9 @@ import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
 import z from "zod"
+import { ObservabilityEvents } from "@/observability/events"
+import { ObservabilityRedaction } from "@/observability/redaction"
+import { ObservabilitySchema } from "@/observability/schema"
 
 export namespace Log {
   export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
@@ -195,95 +198,9 @@ export namespace Log {
     await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => {})))
   }
 
-  const SENSITIVE_KEYS = new Set([
-    "token",
-    "secret",
-    "password",
-    "authorization",
-    "cookie",
-    "set-cookie",
-    "apikey",
-    "api_key",
-    "accesstoken",
-    "refreshtoken",
-    "agentsecret",
-  ])
-
-  const MAX_STRING_LENGTH = 4096
-  const MAX_DEPTH = 6
-  const MAX_ARRAY_LENGTH = 32
-  const MAX_OBJECT_KEYS = 32
-
-  function isSensitiveKey(key: string): boolean {
-    return SENSITIVE_KEYS.has(key.toLowerCase().replace(/[-_]/g, ""))
-  }
-
-  function sanitizeValue(value: any, depth: number, seen: Set<object>): any {
-    if (value === null || value === undefined) return value
-    if (typeof value === "bigint") return value.toString()
-    if (typeof value === "symbol") return value.toString()
-    if (typeof value === "function") return "[Function]"
-
-    if (typeof value === "string") {
-      if (value.length > MAX_STRING_LENGTH) {
-        return value.slice(0, MAX_STRING_LENGTH) + `...(truncated ${value.length - MAX_STRING_LENGTH} chars)`
-      }
-      return value
-    }
-
-    if (typeof value === "number" || typeof value === "boolean") return value
-
-    if (value instanceof Error) {
-      const result: Record<string, any> = {
-        name: value.name,
-        message: value.message,
-      }
-      // Only include stack traces at DEBUG level to avoid leaking
-      // internal file paths in production logs.
-      if (value.stack && level === "DEBUG") result.stack = value.stack
-      if ((value as any).code) result.code = (value as any).code
-      if (value.cause instanceof Error && depth < MAX_DEPTH) {
-        result.cause = sanitizeValue(value.cause, depth + 1, seen)
-      }
-      return result
-    }
-
-    if (depth >= MAX_DEPTH) return "[depth limit]"
-
-    if (seen.has(value)) return "[circular]"
-    seen.add(value)
-
-    if (Array.isArray(value)) {
-      const truncated = value.length > MAX_ARRAY_LENGTH
-      const items = value.slice(0, MAX_ARRAY_LENGTH).map((v) => sanitizeValue(v, depth + 1, seen))
-      if (truncated) items.push(`...(${value.length - MAX_ARRAY_LENGTH} more)`)
-      return items
-    }
-
-    if (typeof value === "object") {
-      const result: Record<string, any> = {}
-      const entries = Object.entries(value)
-      const limit = Math.min(entries.length, MAX_OBJECT_KEYS)
-      for (let i = 0; i < limit; i++) {
-        const [k, v] = entries[i]
-        if (isSensitiveKey(k)) {
-          result[k] = "[redacted]"
-        } else {
-          result[k] = sanitizeValue(v, depth + 1, seen)
-        }
-      }
-      if (entries.length > MAX_OBJECT_KEYS) {
-        result["..."] = `${entries.length - MAX_OBJECT_KEYS} more keys`
-      }
-      return result
-    }
-
-    return String(value)
-  }
-
   function safeSerialize(value: any): string {
     try {
-      const clean = sanitizeValue(value, 0, new Set())
+      const clean = ObservabilityRedaction.value(value).value
       return JSON.stringify(clean)
     } catch {
       return "[unserializable]"
@@ -291,8 +208,9 @@ export namespace Log {
   }
 
   function formatValue(key: string, value: any): string {
+    if (key === "mirror") return ""
     const prefix = `${key}=`
-    if (isSensitiveKey(key)) return prefix + "[redacted]"
+    if (ObservabilityRedaction.isSensitiveKey(key)) return prefix + "[redacted]"
     if (value instanceof Error) {
       const parts = [value.message]
       let cause = value.cause
@@ -302,22 +220,56 @@ export namespace Log {
         cause = cause.cause
         depth++
       }
-      return prefix + parts.join(" Caused by: ")
+      return prefix + ObservabilityRedaction.text(parts.join(" Caused by: "))
     }
     if (typeof value === "object" && value !== null) return prefix + safeSerialize(value)
     if (typeof value === "bigint") return prefix + value.toString()
     if (typeof value === "symbol") return prefix + value.toString()
     if (typeof value === "function") return prefix + "[Function]"
-    if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
-      return prefix + value.slice(0, MAX_STRING_LENGTH) + "..."
-    }
+    if (typeof value === "string") return prefix + ObservabilityRedaction.text(value)
     return prefix + value
   }
 
   function cleanMessage(msg: any): string {
     if (msg === undefined || msg === null) return ""
     const str = typeof msg === "string" ? msg : String(msg)
-    return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "").replace(/\n/g, "\\n")
+    return ObservabilityRedaction.text(str)
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
+      .replace(/\n/g, "\\n")
+  }
+
+  let mirroring = false
+
+  function moduleForService(service: unknown): ObservabilitySchema.Module {
+    if (typeof service !== "string") return "observability"
+    const root = service.split(".")[0]
+    const parsed = ObservabilitySchema.Module.safeParse(root)
+    if (parsed.success) return parsed.data
+    if (root === "client") return "frontend"
+    if (root === "config" || root === "file" || root === "patch" || root === "format" || root === "ripgrep")
+      return "storage"
+    if (root === "question" || root === "cortex" || root === "skill") return "session"
+    return "observability"
+  }
+
+  function mirror(level: Level, tags: Record<string, any>, message: any, extra?: Record<string, any>) {
+    if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
+    mirroring = true
+    try {
+      const record = ObservabilityRedaction.value({ ...tags, ...(extra ?? {}) }).value
+      const data =
+        record && typeof record === "object" && !Array.isArray(record) ? { ...(record as Record<string, unknown>) } : {}
+      delete data["mirror"]
+      data.message = cleanMessage(message)
+      void ObservabilityEvents.emit("log.record", {
+        level: level.toLowerCase() as "debug" | "info" | "warn" | "error",
+        module: moduleForService(data.service),
+        data,
+      })
+    } catch {
+    } finally {
+      mirroring = false
+    }
   }
 
   let last = Date.now()
@@ -337,8 +289,9 @@ export namespace Log {
         ...frozen,
         ...extra,
       })
-        .filter(([_, value]) => value !== undefined && value !== null)
+        .filter(([key, value]) => key !== "mirror" && value !== undefined && value !== null)
         .map(([key, value]) => formatValue(key, value))
+        .filter(Boolean)
         .join(" ")
       const next = new Date()
       const diff = next.getTime() - last
@@ -353,21 +306,25 @@ export namespace Log {
       debug(message?: any, extra?: Record<string, any>) {
         if (shouldLog("DEBUG")) {
           write("DEBUG " + build(message, extra))
+          mirror("DEBUG", frozen, message, extra)
         }
       },
       info(message?: any, extra?: Record<string, any>) {
         if (shouldLog("INFO")) {
           write("INFO  " + build(message, extra))
+          mirror("INFO", frozen, message, extra)
         }
       },
       error(message?: any, extra?: Record<string, any>) {
         if (shouldLog("ERROR")) {
           write("ERROR " + build(message, extra))
+          mirror("ERROR", frozen, message, extra)
         }
       },
       warn(message?: any, extra?: Record<string, any>) {
         if (shouldLog("WARN")) {
           write("WARN  " + build(message, extra))
+          mirror("WARN", frozen, message, extra)
         }
       },
       tag(key: string, value: string) {
