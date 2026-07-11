@@ -9,11 +9,11 @@ export const DiagnosticsCommand = cmd({
     yargs
       .option("session", {
         type: "string",
-        describe: "include trace events for a specific session",
+        describe: "include indexed observability events for a specific session",
       })
       .option("since", {
         type: "string",
-        describe: "include trace events since a duration like 30m, 2h, or 7d",
+        describe: "include indexed observability events since a duration like 30m, 2h, or 7d",
       })
       .option("output", {
         alias: "o",
@@ -35,8 +35,8 @@ export const DiagnosticsCommand = cmd({
     })
 
     UI.println(`Diagnostics package: ${result.output}`)
-    UI.println(`  Trace files: ${result.summary.traces.files.length}`)
-    UI.println(`  Recent errors: ${result.summary.traces.recentErrors.length}`)
+    UI.println(`  Indexed events: ${result.summary.traces.recentErrors.length} recent error(s)`)
+    UI.println(`  Mirror files: ${result.summary.traces.files.length}`)
     UI.println(`  Pending sessions: ${result.summary.sessions.pendingReply.length}`)
     UI.println(`  Active processes: ${result.summary.processes.active.length}`)
   },
