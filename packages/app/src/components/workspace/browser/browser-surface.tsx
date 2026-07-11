@@ -9,6 +9,9 @@ import { RemoteBrowserSurface } from "./remote-browser-surface"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
+const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
+const MAX_UPLOAD_REQUEST_BYTES = 50 * 1024 * 1024
+const MAX_UPLOAD_FILES = 20
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -20,7 +23,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
+export function BrowserSurface(props: { sessionID: string; routeDirectory?: string; ownerKey: string }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let pendingFitFrame: number | undefined
@@ -90,11 +93,25 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       browser.setFileChooserRequest(null)
       return
     }
+    const selected = Array.from(files)
+    const totalBytes = selected.reduce((total, file) => total + file.size, 0)
+    if (
+      selected.length > MAX_UPLOAD_FILES ||
+      selected.some((file) => file.size > MAX_UPLOAD_FILE_BYTES) ||
+      totalBytes > MAX_UPLOAD_REQUEST_BYTES
+    ) {
+      browser.setBrowserError({
+        severity: "error",
+        code: "browser_upload_too_large",
+        message: "Choose at most 20 files, no more than 25 MB each and 50 MB total.",
+      })
+      return
+    }
     const payload = await Promise.all(
-      Array.from(files).map(async (file) => ({
+      selected.map(async (file) => ({
         name: file.name,
         mimeType: file.type,
-        data: arrayBufferToBase64(await file.arrayBuffer()),
+        dataBase64: arrayBufferToBase64(await file.arrayBuffer()),
       })),
     )
     browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: payload })
@@ -109,7 +126,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   }
 
   function hasInteractiveSurface() {
-    return nativePresentation() || webrtcPresentation()
+    return browser.hostStatus() === "ready" && (nativePresentation() || webrtcPresentation())
   }
 
   return (
@@ -132,11 +149,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
         }
       >
         <Show when={nativePresentation()}>
-          <NativeBrowserSurface
-            sessionID={props.sessionID}
-            routeDirectory={props.routeDirectory}
-            container={container}
-          />
+          <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
         </Show>
         <Show when={webrtcPresentation()}>
           <RemoteBrowserSurface

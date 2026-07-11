@@ -13,6 +13,7 @@ export type AddressBarProps = {
   onHistory: (direction: "back" | "forward") => void
   onReload: () => void
   onStop: () => void
+  onRequestDiagnostics: (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => void
 }
 
 const VIEWPORT_PRESETS = [
@@ -21,7 +22,9 @@ const VIEWPORT_PRESETS = [
   { label: "Mobile", width: 375, height: 667 },
 ] as const
 
-const DEV_PANELS: { id: DevPanel; label: string; description: string }[] = [
+type DiagnosticPanel = Exclude<DevPanel, "closed">
+
+const DEV_PANELS: { id: DiagnosticPanel; label: string; description: string }[] = [
   { id: "console", label: "Console", description: "Page logs" },
   { id: "network", label: "Network", description: "Requests" },
   { id: "elements", label: "Elements", description: "Snapshot" },
@@ -89,14 +92,11 @@ export function AddressBar(props: AddressBarProps) {
     }
   }
 
-  function requestPanel(panel: DevPanel) {
+  function requestPanel(panel: DiagnosticPanel) {
     browser.toggleDevPanel(panel)
     const pageId = browser.pageId()
     if (!pageId) return
-    if (panel === "console") browser.send({ type: "requestConsole", pageId, maxEntries: 100 })
-    if (panel === "network") browser.send({ type: "requestNetwork", pageId, maxEntries: 200 })
-    if (panel === "elements") browser.send({ type: "requestSnapshot", pageId })
-    if (panel === "assets") browser.send({ type: "requestAssets", pageId, maxEntries: 200 })
+    props.onRequestDiagnostics(panel)
   }
 
   function toggleFollowAgent() {
@@ -269,11 +269,7 @@ export function AddressBar(props: AddressBarProps) {
                   </button>
                 )}
               </For>
-              <button
-                type="button"
-                class="browser-menu-row"
-                onClick={() => browser.send({ type: "clearLogs", pageId: browser.pageId() })}
-              >
+              <button type="button" class="browser-menu-row" onClick={() => props.onRequestDiagnostics("clear")}>
                 <span class="browser-menu-row-copy">
                   <span class="browser-menu-row-title">Clear diagnostics</span>
                   <span class="browser-menu-row-description">Captured logs</span>

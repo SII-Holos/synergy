@@ -333,8 +333,8 @@ export namespace Server {
         const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
         await next()
         if (stampSeq !== undefined && c.res) {
-          c.res.headers.set("x-synergy-seq", String(stampSeq))
-          if (stampEpoch) c.res.headers.set("x-synergy-epoch", stampEpoch)
+          if (!c.res.headers.has("x-synergy-seq")) c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch && !c.res.headers.has("x-synergy-epoch")) c.res.headers.set("x-synergy-epoch", stampEpoch)
         }
       },
     })

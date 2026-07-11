@@ -1,47 +1,48 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BrowserToolHelper } from "./browser-shared"
-import { formatSnapshotText } from "./browser-shared"
-import { BrowserOwner } from "../browser/owner"
+import { BrowserToolHelper, formatSnapshotText } from "./browser-shared"
 
 export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
   description:
-    "Capture the accessibility tree of the current browser page. Returns a structured text representation of interactive elements with @eN refs that can be used with browser_inspect and other interaction tools. Use this to understand page structure and discover actionable elements.",
-  parameters: z.object({
-    pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
-    interactiveOnly: z.boolean().default(false).describe("Only include interactive elements with refs. Default false."),
-    maxDepth: z
-      .number()
-      .int()
-      .min(1)
-      .optional()
-      .describe("Maximum depth of the accessibility tree to render. Default unlimited."),
-  }),
+    "Capture the current accessibility and interactive DOM snapshot. Returned opaque refs are valid only with the returned snapshotId and current document generation.",
+  parameters: z
+    .object({
+      query: z
+        .string()
+        .max(20_000)
+        .optional()
+        .describe("Bounded text query; matching nodes include their ancestor path."),
+      maxNodes: z.number().int().min(1).max(5000).default(500),
+      interactiveOnly: z.boolean().default(false),
+      maxDepth: z.number().int().min(0).max(100).optional(),
+    })
+    .strict(),
   async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.getPage(owner, params.pageId)
+    const page = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
+      page,
       "reading",
       "browser_snapshot",
       "Reading page structure",
       async () => {
-        const result = await BrowserToolHelper.executeControl(owner, { type: "snapshot", pageId: tab.id })
-        if (result.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
-        const text = formatSnapshotText(result.elements, {
-          interactiveOnly: params.interactiveOnly,
-          maxDepth: params.maxDepth,
+        const result = await BrowserToolHelper.execute(ctx, {
+          type: "snapshot",
+          query: params.query,
+          maxNodes: params.maxNodes,
         })
-
+        if (result.type !== "snapshot") throw new Error("Browser snapshot returned an unexpected result.")
+        const formatted = formatSnapshotText(result.elements, params)
         return {
-          title: `Snapshot of ${tab.url || tab.title || "page"}`,
-          output: text,
+          title: `Snapshot of ${page.url || page.title || "page"}`,
+          output: `snapshotId: ${result.snapshotId}\n${formatted.output}`,
           metadata: {
-            url: tab.url,
-            pageId: tab.id,
+            pageId: page.id,
+            url: page.url,
+            snapshotId: result.snapshotId,
             elementsCount: result.elements.length,
-            truncated: result.truncated,
+            truncated: result.truncated || formatted.truncated,
+            outputTruncated: formatted.truncated,
           },
         }
       },

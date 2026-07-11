@@ -946,43 +946,40 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       // Browser tools
-      if (toolName === "browser_navigate") {
-        caps.push({ class: "network_request", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (
-        toolName === "browser_click" ||
-        toolName === "browser_clipboard" ||
-        toolName === "browser_type" ||
-        toolName === "browser_scroll" ||
-        toolName === "browser_action"
-      ) {
+      if (toolName === "browser_action") {
         caps.push({ class: "browser_interact", nonBypassable: false })
+        const action = typeof args.action === "object" && args.action !== null ? args.action : {}
+        const targets = [action.target, action.from, action.to]
+        if (targets.some((target) => typeof target === "object" && target !== null && target.kind === "point")) {
+          caps.push({ class: "browser_coordinate", nonBypassable: false })
+        }
         return { capabilities: caps }
       }
-      if (toolName === "browser_viewport") {
-        caps.push({ class: "browser_viewport", nonBypassable: false })
+      if (toolName === "browser_emulate") {
+        caps.push({ class: "browser_emulation", nonBypassable: false })
         return { capabilities: caps }
       }
       if (
         toolName === "browser_snapshot" ||
         toolName === "browser_screenshot" ||
         toolName === "browser_inspect" ||
-        toolName === "browser_wait"
+        toolName === "browser_wait" ||
+        toolName === "browser_read" ||
+        toolName === "browser_console" ||
+        toolName === "browser_network" ||
+        toolName === "browser_audit"
       ) {
         caps.push({ class: "browser_inspect", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_console" || toolName === "browser_network") {
-        caps.push({ class: "browser_inspect", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_download") {
-        caps.push({ class: "network_request", nonBypassable: false })
+        if (toolName === "browser_network" && args.includeSensitive === true) {
+          caps.push({ class: "secrets", nonBypassable: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_downloads") {
         caps.push({ class: "browser_download", nonBypassable: false })
+        if (args.action === "export" && typeof args.path === "string") {
+          classifyPathCapability(caps, args.path, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_annotate") {
@@ -990,23 +987,47 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       if (toolName === "browser_navigation") {
-        caps.push({ class: "browser_interact", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_list") {
-        caps.push({ class: "session_state", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_read") {
-        caps.push({ class: "browser_inspect", nonBypassable: false })
+        caps.push({ class: args.action === "current" ? "browser_inspect" : "browser_interact", nonBypassable: false })
+        if (args.action === "goto") {
+          caps.push({ class: "network_request", nonBypassable: false })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_assets") {
         caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "export" && typeof args.outputDir === "string") {
+          caps.push({ class: "browser_download", nonBypassable: false })
+          classifyPathCapability(caps, args.outputDir, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_eval") {
-        caps.push({ class: "browser_eval_readonly", nonBypassable: false })
+        caps.push({
+          class: args.mode === "trusted" ? "browser_eval_trusted" : "browser_eval_readonly",
+          nonBypassable: args.mode === "trusted",
+        })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_clipboard") {
+        caps.push({ class: "browser_clipboard", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_upload") {
+        caps.push({ class: "browser_upload", nonBypassable: true })
+        for (const filePath of Array.isArray(args.paths) ? args.paths : []) {
+          if (typeof filePath === "string") classifyPathCapability(caps, filePath, pathOptions)
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_dialog") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_performance") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "stopTrace" && typeof args.exportPath === "string") {
+          classifyPathCapability(caps, args.exportPath, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_view") {

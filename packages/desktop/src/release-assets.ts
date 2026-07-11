@@ -35,6 +35,40 @@ export function desktopChecksumsName(version: string): string {
   return `Synergy-${version}-checksums.txt`
 }
 
+export function browserHostArtifactName(
+  version: string,
+  platform: DesktopReleasePlatform,
+  arch: DesktopReleaseArch,
+): string {
+  return `synergy-browser-host-${platform}-${arch}-${version}.zip`
+}
+
+export function browserHostManifestName(
+  version: string,
+  platform: DesktopReleasePlatform,
+  arch: DesktopReleaseArch,
+): string {
+  return `synergy-browser-host-${platform}-${arch}-${version}.manifest.json`
+}
+
+export function browserHostManifestSignatureName(
+  version: string,
+  platform: DesktopReleasePlatform,
+  arch: DesktopReleaseArch,
+): string {
+  return `${browserHostManifestName(version, platform, arch)}.sig`
+}
+
+export function expectedBrowserHostArtifacts(version: string): string[] {
+  return DESKTOP_RELEASE_PLATFORMS.flatMap((platform) =>
+    DESKTOP_RELEASE_ARCHES.flatMap((arch) => [
+      browserHostArtifactName(version, platform, arch),
+      browserHostManifestName(version, platform, arch),
+      browserHostManifestSignatureName(version, platform, arch),
+    ]),
+  )
+}
+
 export function isDesktopUpdateMetadata(name: string): boolean {
   return /^latest.*\.ya?ml$/.test(name)
 }

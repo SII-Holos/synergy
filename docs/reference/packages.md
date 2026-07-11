@@ -5,6 +5,7 @@ Synergy is a Bun monorepo. Package ownership is intentionally split between the 
 | Path                             | Package / responsibility                                                                                              |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `packages/synergy`               | `synergy`: core runtime, server, CLI, sessions, agents, tools, permissions, integrations, orchestration, persistence  |
+| `packages/browser`               | `@ericsanchezok/synergy-browser`: private Browser protocol, CDP controller, locators, errors, redaction, and safety   |
 | `packages/app`                   | `@ericsanchezok/synergy-app`: Solid/Vite Web workbench and product UI                                                 |
 | `packages/desktop`               | `@ericsanchezok/synergy-desktop`: Electron shell, managed local runtime, native Browser, packaging, signing, updating |
 | `packages/plugin`                | `@ericsanchezok/synergy-plugin`: public plugin SDK, manifest/contribution types, hooks, permissions, UI contracts     |

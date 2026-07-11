@@ -1,27 +1,26 @@
 import { createEffect, onCleanup, onMount } from "solid-js"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
 import { usePlatform } from "@/context/platform"
-import { useSDK } from "@/context/sdk"
 import { useBrowser } from "./browser-store"
+import { normalizeBrowserError } from "./browser-error"
 
-export function NativeBrowserSurface(props: {
-  sessionID: string
-  routeDirectory?: string
-  container: () => HTMLDivElement | undefined
-}) {
+export function nativeBounds(rect: Pick<DOMRect, "x" | "y" | "width" | "height">) {
+  if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return null
+  const width = Math.round(rect.width)
+  const height = Math.round(rect.height)
+  if (width < 1 || height < 1) return null
+  return { x: Math.round(rect.x), y: Math.round(rect.y), width, height }
+}
+
+export function NativeBrowserSurface(props: { container: () => HTMLDivElement | undefined; ownerKey: string }) {
   const browser = useBrowser()
   const platform = usePlatform()
-  const sdk = useSDK()
+  let attachedPageId: string | null = null
+  let disposed = false
 
   const bridge = () => {
     if (browser.presentation()?.kind !== "native") return null
     return platform.browserNative ?? null
-  }
-
-  function syncNativeNavigation(pageId: string, url?: string) {
-    if (!url || url === "about:blank") return
-    const page = browser.page()
-    if (page?.id !== pageId || page.url === url) return
-    browser.send({ type: "navigate", source: "user", pageId, url })
   }
 
   function syncBounds() {
@@ -29,14 +28,22 @@ export function NativeBrowserSurface(props: {
     const pageId = browser.pageId()
     const container = props.container()
     if (!native || !pageId || !container) return
-    const rect = container.getBoundingClientRect()
-    void native.resizeView({
-      pageId,
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-    })
+    const bounds = nativeBounds(container.getBoundingClientRect())
+    if (!bounds) return
+    void native
+      .resizeView({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: props.ownerKey,
+        pageId,
+        bounds,
+      })
+      .catch((error) => reportNativeError("resize", pageId, error))
+  }
+
+  function reportNativeError(action: "attach" | "resize", pageId: string, error: unknown) {
+    if (disposed || browser.pageId() !== pageId) return
+    const normalized = normalizeBrowserError(error, `Native Browser ${action} failed`)
+    browser.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
   }
 
   onMount(() => {
@@ -46,7 +53,6 @@ export function NativeBrowserSurface(props: {
         case "native.loading": {
           browser.setPageLoading(event.pageId, true)
           if (event.url) {
-            syncNativeNavigation(event.pageId, event.url)
             browser.setPageUrl(event.pageId, event.url)
           }
           break
@@ -58,7 +64,6 @@ export function NativeBrowserSurface(props: {
           break
         }
         case "native.navigated": {
-          syncNativeNavigation(event.pageId, event.url)
           browser.setPageUrl(event.pageId, event.url)
           break
         }
@@ -90,23 +95,21 @@ export function NativeBrowserSurface(props: {
     const container = props.container()
     if (!native || !page || !container) return
 
-    const rect = container.getBoundingClientRect()
-    void native.attachView({
-      serverUrl: sdk.url,
-      sessionID: props.sessionID,
-      routeDirectory: props.routeDirectory,
-      directory: sdk.directory,
-      scopeID: sdk.scopeID,
-      scopeKey: sdk.scopeKey,
-      pageId: page.id,
-      url: page.url || undefined,
-      bounds: {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-      },
-    })
+    const bounds = nativeBounds(container.getBoundingClientRect())
+    if (!bounds) return
+    void native
+      .attachView({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: props.ownerKey,
+        pageId: page.id,
+        bounds,
+      })
+      .then(
+        () => {
+          if (!disposed && browser.pageId() === page.id) attachedPageId = page.id
+        },
+        (error) => reportNativeError("attach", page.id, error),
+      )
   })
 
   createEffect(() => {
@@ -117,14 +120,26 @@ export function NativeBrowserSurface(props: {
   })
 
   onCleanup(() => {
-    const pageId = browser.pageId()
-    if (pageId) void platform.browserNative?.detachView({ pageId })
+    disposed = true
+    const pageId = attachedPageId
+    if (pageId)
+      void platform.browserNative
+        ?.detachView({
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          ownerKey: props.ownerKey,
+          pageId,
+        })
+        .catch(() => undefined)
   })
 
   function focusNativeView() {
     const pageId = browser.pageId()
     if (!pageId) return
-    void platform.browserNative?.focusView({ pageId })
+    void platform.browserNative?.focusView({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: props.ownerKey,
+      pageId,
+    })
   }
 
   return <div class="absolute inset-0" onPointerDown={focusNativeView} />

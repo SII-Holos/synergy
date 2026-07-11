@@ -5685,6 +5685,247 @@ export type HolosRetryResponse = {
 
 export type MailboxMessageList = Array<unknown>
 
+export type BrowserViewerTicketResponse = {
+  protocolVersion: 2
+  ticket: string
+  expiresAt: number
+  iceServers: Array<{
+    urls: string | Array<string>
+    username?: string
+    credential?: string
+  }>
+}
+
+export type BrowserApiError = {
+  type: "error"
+  code: string
+  message: string
+  retryable: boolean
+  pageId?: string
+  commandId?: string
+  url?: string
+  snapshotId?: string
+  obstruction?: {
+    tag?: string
+    role?: string | null
+    name?: string
+    id?: string
+    class?: string
+    candidates?: Array<{
+      tag?: string
+      role?: string | null
+      name?: string
+      id?: string
+      class?: string
+    }>
+  }
+  suggestedAction?: string
+  locator?: unknown
+}
+
+export type BrowserViewerTicketRequest = {
+  protocolVersion: 2
+  pageId: string
+}
+
+export type BrowserAnnotationResponse = {
+  protocolVersion: 2
+  annotation: {
+    id: string
+    pageURL: string
+    pageID: string
+    element?: string
+    comment: string
+    styleFeedback?: {
+      [key: string]: string
+    }
+    resolved: boolean
+    createdAt: number
+  }
+}
+
+export type BrowserAnnotationRequest = {
+  protocolVersion: 2
+  pageId: string
+  x: number
+  y: number
+  comment: string
+  styleFeedback?: {
+    [key: string]: string
+  }
+}
+
+export type BrowserDiagnosticsResponse = {
+  protocolVersion: 2
+  pageId: string
+  action: string
+  data: unknown
+}
+
+export type BrowserDiagnosticsRequest = {
+  protocolVersion: 2
+  pageId: string
+  commandId: string
+  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
+  limit?: number
+}
+
+export type BrowserApiSessionState = {
+  type: "session.state"
+  protocolVersion: 2
+  ownerKey: string
+  status: "empty" | "suspended" | "active" | "migrating" | "failed"
+  page: {
+    id: string
+    url: string
+    title: string
+    isLoading: boolean
+    lastActiveAt: number | null
+  } | null
+  presentation: {
+    protocolVersion: 2
+    kind: "native" | "webrtc"
+    capabilities: {
+      native: boolean
+      webrtc: boolean
+    }
+    reason: "desktop-local" | "remote-client" | "requested"
+  } | null
+  hostStatus:
+    | "unavailable"
+    | "installing"
+    | "starting"
+    | "pending"
+    | "ready"
+    | "detached"
+    | "restarting"
+    | "idle"
+    | "failed"
+  seq: number
+  epoch: string
+  error?: BrowserApiError
+}
+
+export type BrowserControlResponse = {
+  type: "control.result"
+  protocolVersion: 2
+  result:
+    | {
+        type: "void"
+      }
+    | {
+        type: "page"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "navigation"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "snapshot"
+        pageId: string
+        snapshotId: string
+        elements: Array<{
+          ref: string
+          role: string
+          name: string
+          value?: string
+          description?: string
+          depth: number
+        }>
+        truncated: boolean
+      }
+    | {
+        type: "action"
+        pageId: string
+        action: string
+        snapshot?: unknown
+      }
+    | {
+        type: "wait"
+        pageId: string
+        matched: boolean
+      }
+    | {
+        type: "evaluation"
+        pageId: string
+        value: unknown
+      }
+    | {
+        type: "screenshot"
+        pageId: string
+        dataUrl: string
+        width: number
+        height: number
+      }
+    | {
+        type: "data"
+        pageId: string
+        data: unknown
+      }
+}
+
+export type BrowserControlRequest = {
+  protocolVersion: 2
+  command:
+    | {
+        type: "navigate"
+        url: string
+        source?: "user"
+      }
+    | {
+        type: "history"
+        direction: "back" | "forward"
+      }
+    | {
+        type: "reload"
+        ignoreCache?: boolean
+      }
+    | {
+        type: "stop"
+      }
+    | {
+        type: "resume"
+      }
+    | {
+        type: "close"
+      }
+    | {
+        type: "setViewport"
+        width: number
+        height: number
+      }
+    | {
+        type: "dialog.respond"
+        requestId: string
+        accept: boolean
+        promptText?: string
+      }
+    | {
+        type: "filechooser.select"
+        requestId: string
+        files: Array<{
+          name: string
+          mimeType: string
+          dataBase64: string
+        }>
+      }
+  commandId: string
+  traceId?: string
+}
+
 export type PluginUiContribution = {
   pluginId: string
   name?: string
@@ -13584,6 +13825,212 @@ export type HolosThreadGetResponses = {
 }
 
 export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type BrowserCreateViewerTicketData = {
+  body?: BrowserViewerTicketRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/webrtc/ticket"
+}
+
+export type BrowserCreateViewerTicketErrors = {
+  /**
+   * Ticket request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
+
+export type BrowserCreateViewerTicketResponses = {
+  /**
+   * Browser viewer ticket
+   */
+  200: BrowserViewerTicketResponse
+}
+
+export type BrowserCreateViewerTicketResponse =
+  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
+
+export type BrowserCreateAnnotationData = {
+  body?: BrowserAnnotationRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/annotations"
+}
+
+export type BrowserCreateAnnotationErrors = {
+  /**
+   * Annotation request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
+
+export type BrowserCreateAnnotationResponses = {
+  /**
+   * Created Browser annotation
+   */
+  200: BrowserAnnotationResponse
+}
+
+export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
+
+export type BrowserDiagnosticsData = {
+  body?: BrowserDiagnosticsRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/diagnostics"
+}
+
+export type BrowserDiagnosticsErrors = {
+  /**
+   * Diagnostics request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
+
+export type BrowserDiagnosticsResponses = {
+  /**
+   * Browser diagnostics result
+   */
+  200: BrowserDiagnosticsResponse
+}
+
+export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
+
+export type BrowserSessionData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/session"
+}
+
+export type BrowserSessionErrors = {
+  /**
+   * Browser session error
+   */
+  500: BrowserApiError
+}
+
+export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
+
+export type BrowserSessionResponses = {
+  /**
+   * Browser session state
+   */
+  200: BrowserApiSessionState
+}
+
+export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
+
+export type BrowserControlData = {
+  body?: BrowserControlRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/control"
+}
+
+export type BrowserControlErrors = {
+  /**
+   * Invalid browser command
+   */
+  400: BrowserApiError
+  /**
+   * Retryable browser error
+   */
+  409: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
+
+export type BrowserControlResponses = {
+  /**
+   * Browser control result
+   */
+  200: BrowserControlResponse
+}
+
+export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
 
 export type PluginListUiContributionsData = {
   body?: never

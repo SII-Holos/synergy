@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser"
 import { createBrowserWebRTCSignalingUrl } from "./browser-webrtc"
-import { browserControlCommandFromMessage } from "./browser-command"
-import { createBrowserControlUrl, createBrowserEventsWebSocketUrl } from "./browser-ws"
+import { browserControlCommandFromMessage, shouldResumeBrowserSession } from "./browser-command"
+import { createBrowserEventsWebSocketUrl } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
   test("uses the route directory and scope id for home scope", () => {
@@ -20,7 +21,7 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_1")
     expect(parsed.searchParams.get("presentation")).toBe("auto")
-    expect(parsed.searchParams.get("client")).toBe("web")
+    expect(parsed.searchParams.has("client")).toBe(false)
     expect(parsed.searchParams.get("scopeID")).toBe("home")
     expect(parsed.searchParams.has("directory")).toBe(false)
   })
@@ -41,7 +42,7 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_2")
     expect(parsed.searchParams.get("presentation")).toBe("auto")
-    expect(parsed.searchParams.get("client")).toBe("web")
+    expect(parsed.searchParams.has("client")).toBe(false)
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
     expect(parsed.searchParams.has("scopeID")).toBe(false)
   })
@@ -53,15 +54,12 @@ describe("createBrowserWebSocketUrl", () => {
       routeDirectory: "aG9tZQ",
       scopeID: "home",
       presentation: "native",
-      client: "desktop",
-      sameHost: true,
     })
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.searchParams.get("presentation")).toBe("native")
-    expect(parsed.searchParams.get("client")).toBe("desktop")
-    expect(parsed.searchParams.get("sameHost")).toBe("1")
+    expect(parsed.searchParams.has("client")).toBe(false)
   })
 
   test("builds the events URL without using the frame stream route", () => {
@@ -70,34 +68,13 @@ describe("createBrowserWebSocketUrl", () => {
       sessionID: "ses_events",
       routeDirectory: "aG9tZQ",
       scopeID: "home",
-      client: "desktop",
-      sameHost: true,
     })
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.protocol).toBe("ws:")
     expect(parsed.pathname).toBe("/aG9tZQ/browser/events")
-    expect(parsed.searchParams.get("client")).toBe("desktop")
-    expect(parsed.searchParams.get("sameHost")).toBe("1")
-  })
-
-  test("builds the control URL as an HTTP endpoint", () => {
-    const url = createBrowserControlUrl({
-      serverUrl: "https://synergy.local",
-      sessionID: "ses_control",
-      routeDirectory: "project-route",
-      directory: "/Users/eric/project",
-      client: "desktop",
-      sameHost: true,
-    })
-
-    expect(url).not.toBeNull()
-    const parsed = new URL(url!)
-    expect(parsed.protocol).toBe("https:")
-    expect(parsed.pathname).toBe("/project-route/browser/control")
-    expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
-    expect(parsed.searchParams.get("client")).toBe("desktop")
+    expect(parsed.searchParams.has("client")).toBe(false)
   })
 
   test("builds the WebRTC signaling URL without using the frame stream route", () => {
@@ -161,54 +138,40 @@ describe("browserControlCommandFromMessage", () => {
     expect(browserControlCommandFromMessage({ type: "navigate", pageId: "page_1", url: "www.google.com" })).toEqual({
       type: "navigate",
       source: "user",
-      pageId: "page_1",
       url: "www.google.com",
     })
+    const fileChooser = browserControlCommandFromMessage({
+      type: "filechooser.select",
+      requestId: "chooser-1",
+      files: [{ name: "fixture.txt", mimeType: "text/plain", dataBase64: "Zml4dHVyZQ==" }],
+    })
+    expect(BrowserUserCommandSchema.safeParse(fileChooser).success).toBe(true)
   })
 
-  test("maps remote input messages to host control commands", () => {
-    expect(browserControlCommandFromMessage({ type: "input.text", pageId: "page_1", text: "中文搜索" })).toEqual({
-      type: "insertText",
-      pageId: "page_1",
-      text: "中文搜索",
-    })
-    expect(
-      browserControlCommandFromMessage({
-        type: "input.key",
-        pageId: "page_1",
-        action: "down",
-        key: "Enter",
-        code: "Enter",
-      }),
-    ).toEqual({
-      type: "key",
-      pageId: "page_1",
-      action: "down",
-      input: {
-        type: "input.key",
-        pageId: "page_1",
-        action: "down",
-        key: "Enter",
-        code: "Enter",
-      },
-    })
-    expect(
-      browserControlCommandFromMessage({
-        type: "input.mouse",
-        pageId: "page_1",
-        action: "wheel",
-        deltaY: 120,
-      }),
-    ).toEqual({
-      type: "mouse",
-      pageId: "page_1",
-      action: "wheel",
-      input: {
-        type: "input.mouse",
-        pageId: "page_1",
-        action: "wheel",
-        deltaY: 120,
-      },
-    })
+  test("keeps remote input off the HTTP control route", () => {
+    expect(browserControlCommandFromMessage({ type: "input.text", pageId: "page_1", text: "中文搜索" })).toBeNull()
+    expect(browserControlCommandFromMessage({ type: "input.key", pageId: "page_1", action: "down" })).toBeNull()
+    expect(browserControlCommandFromMessage({ type: "input.mouse", pageId: "page_1", action: "wheel" })).toBeNull()
+  })
+})
+
+describe("Browser session bootstrap", () => {
+  const state = {
+    type: "session.state" as const,
+    protocolVersion: 2 as const,
+    ownerKey: "owner-1",
+    status: "active" as const,
+    page: { id: "page-1", url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },
+    presentation: null,
+    hostStatus: "detached" as const,
+    seq: 0,
+    epoch: "epoch-1",
+  }
+
+  test("resumes only active pages that are not attached to a Host", () => {
+    expect(shouldResumeBrowserSession(state)).toBe(true)
+    expect(shouldResumeBrowserSession({ ...state, hostStatus: "ready" })).toBe(false)
+    expect(shouldResumeBrowserSession({ ...state, status: "suspended" })).toBe(false)
+    expect(shouldResumeBrowserSession({ ...state, status: "empty", page: null })).toBe(false)
   })
 })

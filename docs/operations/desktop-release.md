@@ -45,6 +45,14 @@ Portable and updater artifacts are still published but are not the full Desktop 
 - macOS `.dmg` is an app-bundle artifact and does not install the CLI link.
 - Linux `.AppImage` and `.tar.gz` are portable/debug artifacts and do not install global commands.
 
+The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
+
+- `synergy-browser-host-{darwin|win32|linux}-{x64|arm64}-${version}.zip`
+- the matching `.manifest.json`
+- the matching `.manifest.json.sig`
+
+Each manifest is Ed25519-signed and contains the exact Synergy version, Browser protocol version, SHA-256, byte size, release URL, and executable path. The standalone server downloads a Host only when WebRTC presentation is first required, verifies the embedded public key, signature, digest, version, and protocol, and atomically extracts it below `Global.Path.data/browser/host`. Desktop installations use their built-in broker and do not download this artifact for local native presentation.
+
 Updater metadata expected on stable releases:
 
 - `latest-mac.yml`
@@ -80,6 +88,11 @@ GitHub upload/update feed:
 
 - `GITHUB_TOKEN` or `GH_TOKEN`
 
+Browser Host artifact trust:
+
+- `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix
+- `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key embedded in product runtime binaries
+
 PR/package validation must work without signing secrets. Release workflows sign and notarize only when the relevant secrets are present.
 
 ## GitHub Actions Flow
@@ -87,8 +100,8 @@ PR/package validation must work without signing secrets. Release workflows sign 
 Product release keeps the existing candidate/finalize model:
 
 1. `stable_candidate` runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state.
-2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` artifacts in one `electron-builder` invocation and generates updater metadata per platform.
-3. Each desktop matrix job rewrites package versions to the candidate version, builds the matching Synergy runtimes via `SYNERGY_BUILD_TARGETS`, then packages the platform artifact set with `electron-builder`.
+2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` Desktop artifacts and minimal Browser Host zip artifacts.
+3. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key embedded, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
 4. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
 5. `stable_finalize` verifies npm candidates, runtime assets, recommended Desktop installer artifacts, portable artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
 
@@ -98,14 +111,18 @@ Product release keeps the existing candidate/finalize model:
 - If desktop upload fails, rerun `stable_desktop_publish`; it uses `gh release upload --clobber`.
 - If checksum generation is wrong, delete the checksum asset from the draft release, rerun `stable_desktop_publish`, then rerun finalize.
 - If notarization or code signing fails, verify the signing secrets and rerun only the affected platform matrix job before finalize.
+- If Browser Host manifest signing fails, verify that the private/public key pair matches, rerun every platform matrix job, and replace all Host zip/manifest/signature assets together. Never reuse a manifest for a rebuilt zip.
 - If finalize fails because desktop assets are missing, do not publish the draft release manually; restore the missing assets first, then rerun `stable_finalize`.
 
 ## Validation Checklist
 
 - `bun run --cwd packages/desktop desktop:test`
 - `bun run --cwd packages/desktop desktop:build`
+- `bun run --cwd packages/desktop test:runtime`
+- `bun run --cwd packages/desktop browser-host:dist`
 - `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
 - Confirm Windows does not expose internal runtime helper binaries through PATH
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
 - Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, checksum, and updater metadata before finalize
+- Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; tampered zip/signature tests pass before finalize

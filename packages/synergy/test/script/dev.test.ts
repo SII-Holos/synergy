@@ -23,7 +23,7 @@ describe("dev orchestrator planner", () => {
       { label: "server", port: 4096, host: "127.0.0.1" },
       { label: "app", port: 3000, host: "127.0.0.1" },
     ])
-    expect(plan.processes.map((process) => process.label)).toEqual(["server", "app"])
+    expect(plan.processes.map((process) => process.label)).toEqual(["server", "app", "browser-host"])
     expect(plan.processes[0]?.env).toMatchObject({
       SYNERGY_CWD: "/workspace",
     })
@@ -33,6 +33,11 @@ describe("dev orchestrator planner", () => {
       VITE_SYNERGY_CALLBACK_URL: "http://127.0.0.1:4096/holos/callback",
     })
     expect(plan.processes[1]?.command).toContain("--strictPort")
+    expect(plan.processes[2]?.command).toEqual(["/bun", "run", "browser-host:dev"])
+    expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_SERVER_URL).toBe("http://127.0.0.1:4096")
+    expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBe(
+      plan.processes[0]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET,
+    )
   })
 
   test("plans desktop development in external mode by default", () => {
@@ -45,7 +50,20 @@ describe("dev orchestrator planner", () => {
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "external",
       SYNERGY_DESKTOP_APP_URL: "http://127.0.0.1:3000",
+      SYNERGY_BROWSER_BROKER_SERVER_URL: "http://127.0.0.1:4096",
     })
+    expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBe(
+      plan.processes[0]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET,
+    )
+  })
+
+  test("does not register a native broker when Desktop attaches to a remote server", () => {
+    const plan = createDevPlan(["desktop", "--attach", "https://remote.example"], options)
+
+    expect(plan.processes.map((process) => process.label)).toEqual(["app", "desktop"])
+    expect(plan.requiredServers).toEqual(["https://remote.example"])
+    expect(plan.processes[1]?.env?.SYNERGY_BROWSER_BROKER_SERVER_URL).toBeUndefined()
+    expect(plan.processes[1]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBeUndefined()
   })
 
   test("plans managed desktop with install and app build when dependencies are missing", () => {

@@ -1,62 +1,40 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserEval } from "../browser/eval"
-import { BrowserOwner } from "../browser/owner"
 
 export const BrowserEvalTool = Tool.define("browser_eval", {
   description:
-    "Execute JavaScript in the browser page. Default readonly mode uses throwOnSideEffect to prevent DOM mutations. Trusted mode requires explicit permission.",
-  parameters: z.object({
-    expression: z.string().describe("JavaScript expression to evaluate in the page."),
-    mode: z
-      .enum(["readonly", "trusted"])
-      .default("readonly")
-      .describe("Eval mode: readonly=no side effects, trusted=allow mutations."),
-    maxBytes: z.number().int().default(64000).describe("Maximum output size in bytes."),
-    pageId: z.string().optional(),
-    throwOnSideEffect: z
-      .boolean()
-      .optional()
-      .describe("Enable CDP throwOnSideEffect. Set automatically by readonly mode."),
-  }),
+    "Evaluate JavaScript in the current page. readonly runs with CDP side-effect rejection; trusted permits mutations and requires its dedicated capability.",
+  parameters: z
+    .object({
+      expression: z.string().min(1).max(1_000_000),
+      mode: z.enum(["readonly", "trusted"]).default("readonly"),
+      timeoutMs: z.number().int().min(100).max(120_000).optional(),
+      maxChars: z.number().int().min(1).max(200_000).default(64_000),
+    })
+    .strict(),
   async execute(params, ctx) {
-    if (!BrowserEval.isEvalAllowed(params.mode)) {
-      throw new Error(`Eval mode '${params.mode}' is not allowed.`)
-    }
-
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
-    const activityKind = params.mode === "trusted" ? "acting" : "reading"
+    const page = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
-      activityKind,
+      page,
+      params.mode === "trusted" ? "acting" : "reading",
       "browser_eval",
       `Evaluating ${params.mode} script`,
       async () => {
-        const start = Date.now()
-
-        const isReadonly = params.mode === "readonly"
-        const evalPayload = isReadonly
-          ? BrowserEval.buildReadonlyEval(params.expression)
-          : BrowserEval.buildTrustedEval(params.expression)
-
-        const result = await BrowserToolHelper.executeControl(owner, {
+        const result = await BrowserToolHelper.execute(ctx, {
           type: "evaluate",
-          pageId: tab.id,
-          expression: evalPayload.expression,
-          throwOnSideEffect: isReadonly ? true : undefined,
+          mode: params.mode,
+          expression: params.expression,
+          timeoutMs: params.timeoutMs,
         })
-        if (result.type !== "evaluation") throw new Error("Browser evaluate command returned an unexpected result")
-        const raw = result.value
-        const duration = Date.now() - start
-        const output = BrowserEval.sanitizeEvalResult(raw, params.maxBytes)
-
+        if (result.type !== "evaluation") throw new Error("Browser eval returned an unexpected result.")
+        const raw = JSON.stringify(result.value, null, 2) ?? String(result.value)
+        const output = raw.length > params.maxChars ? `${raw.slice(0, params.maxChars)}\n…(truncated)` : raw
         return {
-          title: `Eval result (${params.mode}, ${duration}ms)`,
+          title: `Browser eval (${params.mode})`,
           output,
-          metadata: { mode: params.mode, duration },
+          metadata: { pageId: page.id, mode: params.mode, truncated: raw.length > params.maxChars },
         }
       },
     )

@@ -162,6 +162,7 @@ for (const item of targets) {
         SYNERGY_VERSION: `'${Script.version}'`,
         SYNERGY_CHANNEL: `'${Script.channel}'`,
         SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+        SYNERGY_BROWSER_HOST_PUBLIC_KEY: `'${process.env.SYNERGY_BROWSER_HOST_PUBLIC_KEY ?? ""}'`,
       },
     }),
   )

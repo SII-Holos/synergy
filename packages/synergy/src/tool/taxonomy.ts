@@ -53,7 +53,6 @@ export type ToolKind =
   | "browser.navigate"
   | "browser.interact"
   | "browser.inspect"
-  | "browser.tab"
   | "browser.download"
   | "browser.annotate"
 
@@ -208,28 +207,26 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
   // browser
-  browser_navigate: entry("browser.navigate", { externalIO: true, stateful: true }),
+  browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),
   browser_snapshot: entry("browser.inspect"),
   browser_screenshot: entry("browser.inspect", { stateful: true }),
   browser_inspect: entry("browser.inspect"),
   browser_wait: entry("browser.inspect"),
-  browser_click: entry("browser.interact", { stateful: true }),
-  browser_type: entry("browser.interact", { stateful: true }),
-  browser_scroll: entry("browser.interact", { stateful: true }),
   browser_action: entry("browser.interact", { stateful: true }),
   browser_console: entry("browser.inspect"),
   browser_network: entry("browser.inspect"),
-  browser_download: entry("browser.download", { externalIO: true }),
-  browser_downloads: entry("browser.download", { stateful: true }),
-  browser_viewport: entry("browser.inspect", { stateful: true }),
+  browser_downloads: entry("browser.download", { externalIO: true, stateful: true }),
   browser_annotate: entry("browser.annotate", { stateful: true }),
   browser_read: entry("browser.inspect"),
   browser_eval: entry("browser.inspect", { stateful: true }),
-  browser_clipboard: entry("browser.interact", { externalIO: true }),
-  browser_list: entry("browser.inspect"),
-  browser_assets: entry("browser.inspect"),
-  browser_view: entry("browser.inspect"),
-  browser_navigation: entry("browser.navigate", { stateful: true }),
+  browser_clipboard: entry("browser.interact", { externalIO: true, stateful: true }),
+  browser_assets: entry("browser.inspect", { externalIO: true, stateful: true }),
+  browser_view: entry("browser.inspect", { stateful: true }),
+  browser_performance: entry("browser.inspect", { externalIO: true, stateful: true }),
+  browser_audit: entry("browser.inspect"),
+  browser_emulate: entry("browser.inspect", { stateful: true }),
+  browser_dialog: entry("browser.interact", { stateful: true }),
+  browser_upload: entry("browser.interact", { externalIO: true, stateful: true }),
 }
 
 // ── Pattern fallbacks ────────────────────────────────────────────────
@@ -339,7 +336,6 @@ export namespace ToolTaxonomy {
     "browser.navigate": "Navigate",
     "browser.interact": "Interact",
     "browser.inspect": "Inspect",
-    "browser.tab": "Tabs",
     "browser.download": "Download",
     "browser.annotate": "Annotate",
   }

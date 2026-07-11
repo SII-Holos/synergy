@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
-import type { BrowserNativeAttachRequest, BrowserNativeBounds, BrowserNativeViewEvent } from "./browser-native-view.js"
+import {
+  BrowserNativeViewEventSchema,
+  type BrowserNativeAttachRequest,
+  type BrowserNativePageRequest,
+  type BrowserNativePresentationTicketRequest,
+  type BrowserNativeResizeRequest,
+  type BrowserNativeViewEvent,
+} from "@ericsanchezok/synergy-browser"
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
 import { mapSelectDirectoryDialogResponse, type SelectDirectoryDialogBridgeResponse } from "./directory-picker.js"
@@ -9,23 +16,23 @@ const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
     return ipcRenderer.invoke("browserNative.attach", input) as Promise<void>
   },
-  detachView(input: { pageId: string }) {
+  detachView(input: BrowserNativePageRequest) {
     return ipcRenderer.invoke("browserNative.detach", input) as Promise<void>
   },
-  focusView(input: { pageId: string }) {
+  focusView(input: BrowserNativePageRequest) {
     return ipcRenderer.invoke("browserNative.focus", input) as Promise<void>
   },
-  resizeView(input: { pageId: string; width: number; height: number; x?: number; y?: number }) {
-    const bounds: BrowserNativeBounds = {
-      x: input.x ?? 0,
-      y: input.y ?? 0,
-      width: input.width,
-      height: input.height,
-    }
-    return ipcRenderer.invoke("browserNative.resize", { pageId: input.pageId, bounds }) as Promise<void>
+  resizeView(input: BrowserNativeResizeRequest) {
+    return ipcRenderer.invoke("browserNative.resize", input) as Promise<void>
+  },
+  createPresentationTicket(input: BrowserNativePresentationTicketRequest) {
+    return ipcRenderer.invoke("browserNative.presentationTicket", input) as Promise<string>
   },
   onEvent(listener: (event: BrowserNativeViewEvent) => void) {
-    const wrapped = (_event: IpcRendererEvent, payload: BrowserNativeViewEvent) => listener(payload)
+    const wrapped = (_event: IpcRendererEvent, payload: unknown) => {
+      const event = BrowserNativeViewEventSchema.safeParse(payload)
+      if (event.success) listener(event.data)
+    }
     ipcRenderer.on("browser-native:event", wrapped)
     return () => ipcRenderer.off("browser-native:event", wrapped)
   },

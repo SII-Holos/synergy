@@ -1,15 +1,17 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BrowserOwner } from "../browser/owner"
-import { BrowserHostControl } from "../browser/host-control"
+import { BrowserBroker } from "../browser/broker"
+import { BrowserHostBrokerProcess } from "../browser/host-broker-process"
 
-const parameters = z.object({
-  action: z
-    .enum(["show", "hide", "focus", "status"])
-    .describe(
-      "show: open the Browser Side Workspace panel. hide: close the Side Workspace. focus: switch the Side Workspace to Browser. status: query current host connection state.",
-    ),
-})
+const parameters = z
+  .object({
+    action: z
+      .enum(["show", "hide", "focus", "status"])
+      .describe(
+        "show: open the Browser Side Workspace panel. hide: close the Side Workspace. focus: switch the Side Workspace to Browser. status: query current host connection state.",
+      ),
+  })
+  .strict()
 
 interface BrowserViewMetadata {
   action: string
@@ -23,9 +25,8 @@ export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadat
   description:
     "Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only the frontend view.",
   parameters,
-  async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const hostStatus = BrowserHostControl.has(owner) ? BrowserHostControl.status(owner) : "detached"
+  async execute(params) {
+    const hostStatus = BrowserBroker.ready() ? "ready" : BrowserHostBrokerProcess.status()
 
     switch (params.action) {
       case "show":

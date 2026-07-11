@@ -12,10 +12,14 @@ import {
   type BrowserWindowConstructorOptions,
 } from "electron"
 import { readFile } from "node:fs/promises"
+import { randomBytes } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
-import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
+import { BrowserHostBrokerClient } from "./browser-host-broker.js"
+import { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
+import { BrowserRegistrationSecretSchema } from "@ericsanchezok/synergy-browser"
 import { desktopErrorPage } from "./error-page.js"
 import {
   DESKTOP_PROTOCOL,
@@ -30,6 +34,7 @@ import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
   parseBrowserNativeResize,
+  parseBrowserNativePresentationTicket,
   parseClipboardWriteText,
   parseExternalUrl,
 } from "./ipc-contract.js"
@@ -61,12 +66,15 @@ import {
 } from "./window-chrome.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
-const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
+process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
+BrowserRegistrationSecretSchema.parse(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET)
 
 let mainWindow: BrowserWindow | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
-let browserHost: BrowserWebRTCHost | null = null
+let nativePagePool: BrowserNativePagePool | null = null
+let browserBroker: BrowserHostBrokerClient | null = null
+let browserBrokerOrigin: string | null = null
 let serverManager: DesktopServerManager | null = null
 let updater: DesktopUpdater | null = null
 let desktopTray: Tray | null = null
@@ -87,7 +95,7 @@ try {
   // AppUserModelId is only meaningful on Windows.
 }
 
-if (!isBrowserHostMode && !app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock()) {
   shouldStart = false
   app.quit()
 }
@@ -173,7 +181,8 @@ async function createWindow() {
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
   }
-  nativeViews = new BrowserNativeViewManager(mainWindow)
+  nativePagePool ??= new BrowserNativePagePool()
+  nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool)
   installWindowSecurity(mainWindow, () => currentAppURL)
   enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
@@ -212,6 +221,7 @@ async function createWindow() {
   })
 
   const targetURL = await resolveAppURL()
+  startLocalBrowserBroker()
   await setStartupStatus({
     title: currentAppURL ? "Loading workspace" : "Startup needs attention",
     detail: currentAppURL
@@ -246,7 +256,6 @@ function updateDesktopThemeSnapshot(
   nativeTheme.themeSource = snapshot.source
   if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
   startupOverlay?.setTheme(snapshot.effective)
-  browserHost?.setTheme(snapshot)
   if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
   return snapshot
 }
@@ -306,36 +315,16 @@ async function resolveAppURL(): Promise<string> {
   }
 }
 
-async function createBrowserHost() {
-  const serverUrl = process.env.SYNERGY_BROWSER_HOST_SERVER_URL
-  const sessionID = process.env.SYNERGY_BROWSER_HOST_SESSION_ID
-  const pageId = process.env.SYNERGY_BROWSER_HOST_PAGE_ID
-
-  if (!serverUrl || !sessionID || !pageId) {
-    throw new Error("Browser Host mode requires SYNERGY_BROWSER_HOST_SERVER_URL, SESSION_ID, and PAGE_ID")
-  }
-
-  runtimeLog("createBrowserHost", {
-    serverUrl,
-    sessionID,
-    pageId,
-    routeDirectory: process.env.SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY,
-  })
-  browserHost = new BrowserWebRTCHost({
-    serverUrl,
-    sessionID,
-    pageId,
-    routeDirectory: process.env.SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY,
-    directory: process.env.SYNERGY_BROWSER_HOST_DIRECTORY,
-    scopeID: process.env.SYNERGY_BROWSER_HOST_SCOPE_ID,
-    scopeKey: process.env.SYNERGY_BROWSER_HOST_SCOPE_KEY,
-    url: process.env.SYNERGY_BROWSER_HOST_URL,
-    width: Number(process.env.SYNERGY_BROWSER_HOST_WIDTH ?? 1280),
-    height: Number(process.env.SYNERGY_BROWSER_HOST_HEIGHT ?? 720),
-    traceId: process.env.SYNERGY_BROWSER_HOST_TRACE_ID,
-    theme: getDesktopThemeSnapshot(),
-  })
-  await browserHost.start()
+function startLocalBrowserBroker(): void {
+  if (browserBroker || !nativePagePool) return
+  const serverUrl =
+    process.env.SYNERGY_BROWSER_BROKER_SERVER_URL ??
+    (serverManager?.status().mode === "managed" ? serverManager.status().url : null)
+  const token = process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET
+  if (!serverUrl || !token) return
+  browserBrokerOrigin = new URL(serverUrl).origin
+  browserBroker = new BrowserHostBrokerClient({ serverUrl, token, nativePool: nativePagePool })
+  browserBroker.connect()
 }
 
 function registerIpcHandlers() {
@@ -343,16 +332,27 @@ function registerIpcHandlers() {
     await nativeViews?.attach(parseBrowserNativeAttach(input))
   })
   registerNativeViewHandlers("browserNative.detach", (input) => {
-    const { pageId } = parseBrowserNativePage(input)
-    nativeViews?.detach(pageId)
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    nativeViews?.detach(ownerKey, pageId)
   })
   registerNativeViewHandlers("browserNative.focus", (input) => {
-    const { pageId } = parseBrowserNativePage(input)
-    nativeViews?.focus(pageId)
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    nativeViews?.focus(ownerKey, pageId)
   })
   registerNativeViewHandlers("browserNative.resize", (input) => {
-    const { pageId, bounds } = parseBrowserNativeResize(input)
-    nativeViews?.resize(pageId, bounds)
+    const { ownerKey, pageId, bounds } = parseBrowserNativeResize(input)
+    nativeViews?.resize(ownerKey, pageId, bounds)
+  })
+  registerNativeViewHandlers("browserNative.presentationTicket", (input) => {
+    const request = parseBrowserNativePresentationTicket(input)
+    const origin = new URL(request.serverUrl).origin
+    if (!browserBrokerOrigin || origin !== browserBrokerOrigin) {
+      throw new Error("The connected server is not owned by this Desktop Browser Host.")
+    }
+    return BrowserNativeLease.issue(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET!, {
+      ownerKey: request.ownerKey,
+      serverOrigin: origin,
+    })
   })
 
   ipcMain.handle("desktop.server.status", () => serverManager?.status() ?? null)
@@ -417,12 +417,15 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.window.state", () => (mainWindow ? desktopWindowState(mainWindow) : null))
 }
 
-function registerNativeViewHandlers(channel: string, handler: (input: unknown) => void | Promise<void>) {
-  ipcMain.handle(channel, async (_event, input: unknown) => handler(input))
+function registerNativeViewHandlers(channel: string, handler: (input: unknown) => unknown | Promise<unknown>) {
+  ipcMain.handle(channel, async (event, input: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents)
+      throw new Error("Browser native IPC sender is not trusted.")
+    return handler(input)
+  })
 }
 
 function registerProtocolHandler() {
-  if (isBrowserHostMode) return
   if (!app.isPackaged && process.env.SYNERGY_DESKTOP_REGISTER_PROTOCOL !== "1") return
   if (app.isPackaged) {
     app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL)
@@ -527,12 +530,6 @@ function installDesktopWindowStateEvents(window: BrowserWindow): void {
   window.on("blur", emit)
 }
 
-function configureBrowserHostVisibility() {
-  if (process.platform !== "darwin") return
-  app.dock?.hide()
-  app.setActivationPolicy("accessory")
-}
-
 function desktopLogDir(): string {
   return process.env.SYNERGY_DESKTOP_LOG_DIR ?? path.join(app.getPath("logs"), "desktop")
 }
@@ -563,7 +560,6 @@ app.on("window-all-closed", () => {
 })
 
 app.on("activate", () => {
-  if (isBrowserHostMode) return
   if (!mainWindow) void createWindow()
 })
 
@@ -573,14 +569,26 @@ updateQuitApp.on("before-quit-for-update", () => {
 })
 
 app.on("before-quit", (event) => {
-  browserHost?.destroy()
-  browserHost = null
   if (isUpdateQuit) return
   if (isQuitting) return
   event.preventDefault()
   isQuitting = true
-  const shutdown = serverManager?.stop() ?? Promise.resolve()
-  void shutdown.finally(() => app.exit(0))
+  void (async () => {
+    const results = await Promise.allSettled([
+      browserBroker?.close() ?? Promise.resolve(),
+      serverManager?.stop() ?? Promise.resolve(),
+    ])
+    results.push(...(await Promise.allSettled([nativePagePool?.destroy() ?? Promise.resolve()])))
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length) {
+      runtimeLog("shutdownIncomplete", {
+        errors: failures.map((error) => (error instanceof Error ? error.message : String(error))),
+      })
+    }
+    browserBroker = null
+    browserBrokerOrigin = null
+    app.exit(failures.length ? 1 : 0)
+  })()
 })
 
 async function start() {
@@ -589,12 +597,6 @@ async function start() {
   await initializeDesktopTheme()
   installDesktopThemeNativeListener()
   runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })
-  if (isBrowserHostMode) {
-    configureBrowserHostVisibility()
-    await createBrowserHost()
-    return
-  }
-
   const dockIconPath = desktopDevDockIconPath({
     platform: process.platform,
     dirname,

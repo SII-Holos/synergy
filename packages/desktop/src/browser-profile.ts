@@ -1,13 +1,5 @@
-export interface BrowserProfileInput {
-  sessionID: string
-  routeDirectory?: string
-  directory?: string
-  scopeID?: string
-  scopeKey?: string
-}
+import { createHash } from "node:crypto"
 
-export function browserProfilePartition(input: BrowserProfileInput): string {
-  const ownerKey = input.scopeID ?? input.routeDirectory ?? input.directory ?? input.scopeKey ?? "default"
-  const raw = `${input.sessionID}:${ownerKey}`
-  return `persist:synergy-browser-${Buffer.from(raw).toString("base64url")}`
+export function browserProfilePartition(ownerKey: string): string {
+  return `persist:synergy-browser-${createHash("sha256").update(ownerKey).digest("hex")}`
 }

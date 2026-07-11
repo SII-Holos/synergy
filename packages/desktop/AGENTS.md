@@ -11,6 +11,7 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 - Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
 - Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
 - Native Browser uses `WebContentsView` and the shared Browser command/page contract. Remote Browser-host mode uses the shared WebRTC/data-channel path; neither creates alternate tabs or screenshot-stream presentation.
+- Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
 
 ## Verify

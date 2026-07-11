@@ -63,7 +63,7 @@ Do not move centralized checks into individual tools or treat an unavailable san
 
 ## Browser Runtime
 
-Preserve one session to one page. State reads, event connection, and WebRTC signaling do not create a page; first navigation does. Keep native Desktop and remote Web presentation separate from shared host/page ownership. Read [Browser runtime](../../docs/architecture/browser-runtime.md) before editing `browser/`, Browser routes/tools, or Desktop control contracts.
+`packages/browser` owns Protocol v2 and shared CDP semantics; `src/browser` owns sessions, persistence, Host brokering, authenticated network transport, and lifecycle. Preserve one session to one page. State reads, event connection, and WebRTC signaling do not create a page; first navigation does. Use the server-provided canonical owner key and keep native Desktop and remote Web presentation separate from shared host/page ownership. Read [Browser runtime](../../docs/architecture/browser-runtime.md) before editing these contracts.
 
 ## Tests and Commands
 

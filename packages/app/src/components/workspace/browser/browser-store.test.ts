@@ -12,7 +12,7 @@ describe("createBrowserStore activity", () => {
         pageId: "page-agent",
         url: "https://agent.test",
         kind: "acting",
-        tool: "browser_click",
+        tool: "browser_action",
         label: "Clicking",
       })
 
@@ -32,10 +32,7 @@ describe("createBrowserStore navigate", () => {
 
       store.navigate("www.google.com")
 
-      expect(sent).toEqual([
-        { type: "setFollowAgent", enabled: false },
-        { type: "navigate", source: "user", url: "www.google.com", pageId: undefined },
-      ])
+      expect(sent).toEqual([{ type: "navigate", source: "user", url: "www.google.com" }])
       dispose()
     })
   })
@@ -50,10 +47,7 @@ describe("createBrowserStore navigate", () => {
       store.navigate("www.google.com")
 
       expect(store.session.page?.isLoading).toBe(true)
-      expect(sent).toEqual([
-        { type: "setFollowAgent", enabled: false },
-        { type: "navigate", source: "user", url: "www.google.com", pageId: "page-1" },
-      ])
+      expect(sent).toEqual([{ type: "navigate", source: "user", url: "www.google.com" }])
       dispose()
     })
   })
@@ -90,7 +84,6 @@ describe("createBrowserStore viewport", () => {
       expect(store.viewportHeight()).toBe(640)
       expect(sent.at(-1)).toMatchObject({
         type: "input.resize",
-        pageId: "page-1",
         width: 900,
         height: 640,
       })
@@ -98,13 +91,13 @@ describe("createBrowserStore viewport", () => {
     })
   })
 
-  test("defers WebRTC viewport changes until the host is ready", () => {
+  test("sends WebRTC CSS viewport changes through the unified control route", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
       store.setPresentation({
-        protocolVersion: 1,
+        protocolVersion: 2,
         kind: "webrtc",
         capabilities: { native: true, webrtc: true },
         reason: "remote-client",
@@ -114,14 +107,9 @@ describe("createBrowserStore viewport", () => {
       store.setViewport(800, 600, { mode: "fit" })
       store.setViewport(1024, 768, { mode: "fit" })
 
-      expect(sent).toEqual([])
-
-      store.setHostStatus("page-1", "ready")
-
-      expect(sent).toHaveLength(1)
-      expect(sent[0]).toMatchObject({
+      expect(sent).toHaveLength(2)
+      expect(sent[1]).toMatchObject({
         type: "input.resize",
-        pageId: "page-1",
         width: 1024,
         height: 768,
       })

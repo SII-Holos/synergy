@@ -1,19 +1,25 @@
 import { onCleanup, onMount } from "solid-js"
-import type { BrowserPresentationPreference } from "@ericsanchezok/synergy-util/browser-protocol"
-import { usePlatform } from "@/context/platform"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserEventSchema,
+  type BrowserHostStatus,
+  type BrowserControlRequest,
+  type BrowserPresentationPreference,
+} from "@ericsanchezok/synergy-browser"
 import { useSDK } from "@/context/sdk"
-import type { BrowserHostStatus, BrowserStoreAPI } from "./browser-store"
+import { usePlatform } from "@/context/platform"
+import type { BrowserStoreAPI } from "./browser-store"
 import { applyBrowserControlResult, browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
+import { normalizeBrowserError } from "./browser-error"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
 
 type BrowserWebSocketOptions = {
   sessionID: string
+  ownerKey: string
   routeDirectory?: string
-  client?: "web" | "desktop"
-  sameHost?: boolean
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -24,24 +30,17 @@ type BrowserWebSocketUrlOptions = {
   scopeID?: string
   scopeKey?: string
   presentation?: BrowserPresentationPreference
-  client?: "web" | "desktop"
-  sameHost?: boolean
   traceId?: string
+  sinceSeq?: number
+  epoch?: string | null
+  nativeTicket?: string
 }
 
 export function createBrowserEventsWebSocketUrl(options: BrowserWebSocketUrlOptions) {
   return createBrowserRouteUrl(options, "events", "ws")
 }
 
-export function createBrowserControlUrl(options: BrowserWebSocketUrlOptions) {
-  return createBrowserRouteUrl(options, "control", "http")
-}
-
-function createBrowserRouteUrl(
-  options: BrowserWebSocketUrlOptions,
-  route: "events" | "control",
-  scheme: "ws" | "http",
-) {
+function createBrowserRouteUrl(options: BrowserWebSocketUrlOptions, route: "events", scheme: "ws") {
   const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
   if (!pathDirectory) return null
 
@@ -49,26 +48,37 @@ function createBrowserRouteUrl(
     mode: "session",
     sessionID: options.sessionID,
     presentation: options.presentation ?? "auto",
-    client: options.client ?? "web",
+    protocolVersion: String(BROWSER_PROTOCOL_VERSION),
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
-  if (options.sameHost) params.set("sameHost", "1")
   if (options.traceId) params.set("traceId", options.traceId)
+  if (options.sinceSeq !== undefined) params.set("sinceSeq", String(options.sinceSeq))
+  if (options.epoch) params.set("epoch", options.epoch)
+  if (options.nativeTicket) params.set("nativeTicket", options.nativeTicket)
 
-  const baseUrl = scheme === "ws" ? options.serverUrl.replace(/^http/, "ws") : options.serverUrl
+  const baseUrl = options.serverUrl.replace(/^http/, "ws")
   return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
 }
 
 function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
-  return (
-    value === "pending" || value === "ready" || value === "detached" || value === "restarting" || value === "failed"
-  )
+  return [
+    "unavailable",
+    "installing",
+    "starting",
+    "pending",
+    "ready",
+    "detached",
+    "restarting",
+    "idle",
+    "failed",
+  ].includes(String(value))
 }
 
 function createBrowserHttpControlSender(
   store: BrowserStoreAPI,
-  options: BrowserWebSocketUrlOptions & { fetch?: typeof fetch },
+  options: BrowserWebSocketUrlOptions & { client: ReturnType<typeof useSDK>["client"] },
+  createNativeTicket?: () => Promise<string | undefined>,
 ) {
   const send = (msg: Record<string, unknown>) => {
     const command = browserControlCommandFromMessage(msg)
@@ -76,86 +86,91 @@ function createBrowserHttpControlSender(
       if (shouldLogBrowserMessage(msg)) browserDebug("control.skip", summarizeBrowserMessage(msg))
       return
     }
-    const url = createBrowserControlUrl(options)
-    if (!url) {
+    const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
+    if (!pathDirectory) {
       browserDebug("control.dropped", { reason: "missing scope", type: msg.type })
       return
     }
     if (shouldLogBrowserMessage(msg)) browserDebug("control.send", summarizeBrowserMessage(msg))
-    const request = options.fetch ?? fetch
-    const traceId = options.traceId
-    const commandId = typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId()
-    void request(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(traceId ? { "x-synergy-browser-trace": traceId } : {}),
-      },
-      body: JSON.stringify({ command, commandId, traceId }),
+    void (async () => {
+      const nativeTicket = await createNativeTicket?.()
+      const traceId = options.traceId
+      const commandId = typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId()
+      const payload = await options.client.browser.control({
+        path_directory: pathDirectory,
+        query_directory: options.directory,
+        scopeID: options.scopeID,
+        mode: "session",
+        sessionID: options.sessionID,
+        presentation: nativeTicket ? "native" : (options.presentation ?? "auto"),
+        nativeTicket,
+        browserControlRequest: {
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          command,
+          commandId,
+          traceId,
+        } as BrowserControlRequest,
+      })
+      if (!payload.data) throw payload.error ?? new Error("Browser control failed")
+      store.clearTransientHostError()
+      applyBrowserControlResult(store, payload.data.result)
+    })().catch((error) => {
+      const normalized = normalizeBrowserError(error, "Browser control failed")
+      browserDebug("control.error", { type: msg.type, message: normalized.message, code: normalized.code })
+      store.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
     })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          if (response.status === 409 && payload?.code === "browser_host_pending") {
-            if (typeof payload.pageId === "string") store.setHostStatus(payload.pageId, "pending")
-            browserDebug("control.pending", {
-              type: msg.type,
-              pageId: payload?.pageId,
-              commandId: payload?.commandId,
-              traceId: payload?.traceId,
-            })
-            return
-          }
-          throw new Error(payload?.message ?? `Browser control failed: ${response.status}`)
-        }
-        if (payload?.hostStatus && "pageId" in command && typeof command.pageId === "string") {
-          store.setHostStatus(command.pageId, payload.hostStatus)
-        }
-        store.clearTransientHostError()
-        applyBrowserControlResult(store, payload?.result)
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error)
-        browserDebug("control.error", { type: msg.type, message })
-        store.setBrowserError({ severity: "error", message })
-      })
   }
 
   return { send }
 }
 
-export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions | string) {
+export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions) {
   const sdk = useSDK()
   const platform = usePlatform()
-  const sessionID = typeof options === "string" ? options : options.sessionID
-  const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
-  const client = typeof options === "string" ? "web" : (options.client ?? "web")
-  const sameHost = typeof options === "string" ? false : (options.sameHost ?? false)
+  const sessionID = options.sessionID
+  const routeDirectory = options.routeDirectory
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let reconnectAttempts = 0
-  const controlSender = createBrowserHttpControlSender(store, {
-    serverUrl: sdk.url,
-    sessionID,
-    routeDirectory,
-    directory: sdk.directory,
-    scopeID: sdk.scopeID,
-    scopeKey: sdk.scopeKey,
-    client,
-    sameHost,
-    traceId: store.browserTraceId(),
-    fetch: platform.fetch,
-  })
+  const createNativeTicket = async () => {
+    const bridge = platform.browserNative
+    if (!bridge) return undefined
+    try {
+      return await bridge.createPresentationTicket({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        serverUrl: sdk.url,
+        ownerKey: options.ownerKey,
+      })
+    } catch {
+      return undefined
+    }
+  }
+  const controlSender = createBrowserHttpControlSender(
+    store,
+    {
+      client: sdk.client,
+      serverUrl: sdk.url,
+      sessionID,
+      routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+      traceId: store.browserTraceId(),
+    },
+    createNativeTicket,
+  )
   const send = controlSender.send
 
   store._setSend(send)
 
-  const connect = () => {
+  const connect = async () => {
     if (disposed) {
       browserDebug("ws.connect.skipped", { reason: "disposed" })
       return
     }
+    const nativeTicket = await createNativeTicket()
+    if (disposed) return
     const wsUrl = createBrowserEventsWebSocketUrl({
       serverUrl: sdk.url,
       sessionID,
@@ -163,9 +178,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       directory: sdk.directory,
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
-      client,
-      sameHost,
       traceId: store.browserTraceId(),
+      sinceSeq: store.session.seq,
+      epoch: store.session.epoch,
+      presentation: nativeTicket ? "native" : "auto",
+      nativeTicket,
     })
     if (!wsUrl) {
       browserDebug("ws.connect.skipped", {
@@ -197,30 +214,56 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     })
 
     socket.addEventListener("message", (event) => {
-      let msg: any
+      let input: unknown
       try {
-        msg = JSON.parse(event.data)
+        input = JSON.parse(event.data)
       } catch (e) {
         console.warn("Invalid browser WS message", String(e))
         browserDebug("ws.message.invalid", { error: String(e), dataLength: String(event.data ?? "").length })
         return
       }
+      const parsed = BrowserEventSchema.safeParse(input)
+      if (!parsed.success) {
+        browserDebug("ws.message.invalid", { error: "Browser event failed Protocol v2 validation." })
+        socket.close(1003, "Invalid Browser Protocol v2 event")
+        return
+      }
+      const msg = parsed.data
 
       if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
+      if (!acceptSequencedMessage(msg, socket, store)) return
       switch (msg.type) {
         case "session.state": {
-          if (msg.presentation) store.setPresentation(msg.presentation)
-          if ("page" in msg) store.setSession("page", msg.page ?? null)
-          store.clearTransientHostError()
+          if (msg.ownerKey !== options.ownerKey) {
+            store.setBrowserError({
+              severity: "critical",
+              code: "browser_owner_mismatch",
+              message: "Browser session owner does not match the active workspace.",
+            })
+            socket.close(1008, "Browser session owner mismatch")
+            return
+          }
+          store.setPresentation(msg.presentation)
+          store.setSession("page", msg.page)
+          if (msg.page) store.setHostStatus(msg.page.id, msg.hostStatus)
+          if (msg.error) {
+            store.setSession("connectionStatus", "failed")
+            store.setBrowserError({ severity: "error", code: msg.error.code, message: msg.error.message })
+          } else {
+            store.clearTransientHostError()
+          }
           break
         }
-        case "browser.host.status": {
-          if (typeof msg.pageId === "string" && isBrowserHostStatus(msg.status)) {
-            store.setHostStatus(msg.pageId, msg.status)
+        case "host.status": {
+          const pageId = typeof msg.pageId === "string" ? msg.pageId : store.pageId()
+          if (pageId && isBrowserHostStatus(msg.status)) {
+            store.setHostStatus(pageId, msg.status)
           }
           break
         }
         case "page.created": {
+          store.setSession("connectionStatus", "connected")
+          store.setBrowserError(null)
           store.upsertPage(msg.page)
           break
         }
@@ -238,9 +281,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "page.loaded": {
-          store.setPageLoading(msg.pageId, false)
-          if (msg.url) store.setPageUrl(msg.pageId, msg.url)
-          if (msg.title !== undefined) store.setPageTitle(msg.pageId, msg.title)
+          if (msg.page) store.upsertPage(msg.page)
           break
         }
         case "page.error": {
@@ -248,45 +289,14 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
           break
         }
-        case "screenshot": {
-          store.setPageScreenshots(msg.pageId, {
-            url: msg.dataUrl,
-            width: msg.width ?? 0,
-            height: msg.height ?? 0,
-          })
-          break
-        }
-        case "console.entries": {
-          store.setConsoleEntries(msg.pageId, msg.entries ?? [])
-          break
-        }
-        case "network.entries": {
-          store.setNetworkRequests(msg.pageId, msg.requests ?? [])
-          break
-        }
-        case "snapshot.result": {
-          store.setElements(msg.pageId, msg.elements ?? [])
-          break
-        }
-        case "assets.entries": {
-          store.setPageAssets(msg.pageId, msg.assets ?? [])
-          break
-        }
-        case "diagnostics.cleared": {
-          store.setConsoleEntries(msg.pageId, [])
-          store.setNetworkRequests(msg.pageId, [])
-          store.setPageAssets(msg.pageId, [])
-          break
-        }
-        case "agent.action":
         case "agent.activity": {
           store.applyAgentActivity({
-            pageId: msg.pageId ?? null,
-            url: msg.url ?? null,
+            pageId: msg.pageId,
+            url: msg.url,
             title: msg.title,
-            kind: msg.kind ?? "acting",
+            kind: msg.kind,
             tool: msg.tool,
-            label: msg.label ?? msg.action ?? null,
+            label: msg.label,
           })
           break
         }
@@ -294,7 +304,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           store.setSession("controlMode", msg.mode)
           break
         }
-        case "downloads.updated": {
+        case "download.updated": {
           store.addDownload(msg.pageId, msg.entry)
           break
         }
@@ -324,7 +334,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
             break
           }
           store.setBrowserError({
-            severity: msg.severity ?? "error",
+            severity: "error",
             code: msg.code,
             message: msg.message ?? "Browser operation failed",
           })
@@ -363,13 +373,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         reconnectAttempts,
         delay: RECONNECT_DELAY * Math.min(4, reconnectAttempts),
       })
-      reconnectTimer = setTimeout(connect, RECONNECT_DELAY * Math.min(4, reconnectAttempts))
+      reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY * Math.min(4, reconnectAttempts))
     })
   }
 
   onMount(() => {
     browserDebug("ws.mount", { sessionID })
-    connect()
+    void connect()
   })
 
   onCleanup(() => {
@@ -381,4 +391,33 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   })
 
   return { send, connect }
+}
+
+function acceptSequencedMessage(
+  message: { type?: unknown; seq?: unknown; epoch?: unknown },
+  socket: WebSocket,
+  store: BrowserStoreAPI,
+): boolean {
+  if (typeof message.seq !== "number" || !Number.isInteger(message.seq) || typeof message.epoch !== "string") {
+    return true
+  }
+  const currentEpoch = store.session.epoch
+  const isSnapshot = message.type === "session.state"
+  if (!currentEpoch || isSnapshot) {
+    if (isSnapshot && currentEpoch === message.epoch && message.seq < store.session.seq) return false
+    store.setSession({ seq: message.seq, epoch: message.epoch })
+    return true
+  }
+  if (message.epoch !== currentEpoch || message.seq !== store.session.seq + 1) {
+    browserDebug("ws.sequence.gap", {
+      currentEpoch,
+      currentSeq: store.session.seq,
+      messageEpoch: message.epoch,
+      messageSeq: message.seq,
+    })
+    socket.close(4002, "Browser event sequence gap")
+    return false
+  }
+  store.setSession({ seq: message.seq, epoch: message.epoch })
+  return true
 }

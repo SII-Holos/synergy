@@ -75,7 +75,6 @@ describe("ToolTimeout", () => {
   test("uses operation timeout for browser, connect, and MCP waits", () => {
     expect(metadata("browser_wait").operationTimeoutMs).toBe(10_000)
     expect(metadata("browser_wait", { timeout: 45_000 }).operationTimeoutMs).toBe(45_000)
-    expect(metadata("browser_download").operationTimeoutMs).toBe(120_000)
     expect(metadata("browser_downloads", { action: "wait" }).operationTimeoutMs).toBe(30_000)
     expect(metadata("connect", { action: "open" }).operationTimeoutMs).toBe(30_000)
     expect(metadata("connect", { action: "list" }).operationTimeoutMs).toBeUndefined()
