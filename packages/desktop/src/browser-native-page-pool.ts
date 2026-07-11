@@ -37,6 +37,8 @@ interface Entry extends BrowserNativePageHandle {
   ) => void
 }
 
+const INITIAL_NATIVE_PAGE_BOUNDS = { x: 0, y: 0, width: 1280, height: 720 }
+
 export class BrowserNativePagePool {
   private entries = new Map<string, Entry>()
   private creating = new Set<string>()
@@ -56,6 +58,7 @@ export class BrowserNativePagePool {
           sandbox: true,
         },
       })
+      view.setBounds(INITIAL_NATIVE_PAGE_BOUNDS)
       const contents = view.webContents
       await contents.session.setProxy({ proxyRules: input.networkProxy.server })
     } catch (error) {
@@ -99,7 +102,10 @@ export class BrowserNativePagePool {
         contents: () => contents,
         diagnostics: () => diagnostics,
         pageState: state,
-        resize: (width, height) => view.setBounds({ x: 0, y: 0, width, height }),
+        resize: (width, height) => {
+          const { x, y } = view.getBounds()
+          view.setBounds({ x, y, width, height })
+        },
         onNavigationBlocked: (url, reason) =>
           input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
       })
