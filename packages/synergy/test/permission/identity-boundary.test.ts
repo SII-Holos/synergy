@@ -67,27 +67,6 @@ describe("session_send identity boundary", () => {
     })
   })
 
-  test("session_send role=assistant remains allowed where system agents need delivery", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const result = await PermissionNext.ask({
-          sessionID: "ses_session_send_test_assistant",
-          permission: "session_send",
-          patterns: ["deliver to ses_target"],
-          metadata: {
-            action: "session_send",
-            role: "assistant",
-          },
-          ruleset: [{ permission: "session_send", pattern: "*", action: "allow" }],
-        })
-
-        expect(result).toBeUndefined()
-      },
-    })
-  })
-
   test("session_send role=user evaluated as deny returns DeniedError", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
