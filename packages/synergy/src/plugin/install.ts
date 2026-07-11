@@ -12,7 +12,7 @@ import {
   type PluginApprovalRecord,
   verifyApproval,
 } from "./consent/approval-store"
-import { ensureRuntime, resolveSpecPluginDir, specToPluginId, state, type LoadedPlugin } from "./loader"
+import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
 import { reload } from "./lifecycle"
 import * as Lockfile from "./lockfile"
 import { PluginInstallationTransaction } from "./installation-transaction"
@@ -38,8 +38,6 @@ export class PluginApprovalRequiredError extends Error {
 }
 
 export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
-  const mapped = specToPluginId.get(spec)
-  if (mapped) return mapped
   try {
     return (await resolvePluginSpec(spec, { cwd: process.cwd(), install: false })).manifest.id
   } catch {
@@ -165,6 +163,9 @@ export async function add(
       resolvePluginId: resolveConfiguredPluginId,
     })
     stagingDir = undefined
+    for (const [registeredSpec, pluginId] of specToPluginId) {
+      if (pluginId === plugin.id) specToPluginId.delete(registeredSpec)
+    }
     specToPluginId.set(spec, plugin.id)
     if (prepared) await pluginRuntimeManager.activate(prepared.key)
     preparedKey = undefined
@@ -177,24 +178,25 @@ export async function add(
   }
 }
 
-export async function remove(pluginId: string, options: { autoReload?: boolean; force?: boolean } = {}): Promise<void> {
+export async function remove(pluginId: string, options: { force?: boolean } = {}): Promise<void> {
   const current = await state()
   const plugin = current.loaded.find((item) => item.id === pluginId)
   const disabled = current.disabled.find((item) => item.pluginId === pluginId)
   if (!plugin && !disabled) throw new Error(`Plugin not found: ${pluginId}`)
 
-  if (plugin) await runPluginUninstallLifecycle(plugin, Boolean(options.force))
+  await PluginInstallationTransaction.remove({
+    pluginId,
+    knownSpecs: [plugin?.spec, disabled?.spec].filter((spec): spec is string => Boolean(spec)),
+    reload,
+    resolvePluginId: resolveConfiguredPluginId,
+    beforeCommit: async () => {
+      if (plugin) await runPluginUninstallLifecycle(plugin, Boolean(options.force))
+    },
+  })
   await pluginRuntimeManager
     .stop(pluginId)
     .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
-  for (const [spec, id] of specToPluginId) if (id === pluginId) specToPluginId.delete(spec)
-  await PluginInstallationTransaction.remove({
-    pluginId,
-    pluginDir: plugin?.pluginDir ?? disabled?.pluginDir ?? "",
-    autoReload: options.autoReload,
-    reload,
-    resolveSpecPluginDir,
-  })
+  forgetPlugin(pluginId)
 }
 
 export async function runPluginUninstallLifecycle(

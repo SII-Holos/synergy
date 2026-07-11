@@ -18,6 +18,7 @@ export interface ConfirmOptions {
   cancelLabel?: string
   tone: ConfirmTone
   onConfirm: () => void | Promise<void>
+  onConfirmed?: () => void
 }
 
 function errorDescription(error: unknown) {
@@ -36,6 +37,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
     try {
       await props.onConfirm()
       dialog.close()
+      props.onConfirmed?.()
     } catch (error) {
       showToast({
         type: "error",

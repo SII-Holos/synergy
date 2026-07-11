@@ -8,6 +8,7 @@ import { Global } from "../global"
 import { computeManifestHash, type PluginApprovalRecord } from "./consent/approval-store"
 import type { PluginLockEntry, PluginLockfile } from "./lockfile-schema"
 import { sourceFromSpec } from "./source"
+import { IncompatiblePluginStore, type IncompatiblePluginRecord } from "./incompatible-store"
 
 async function readJson(file: string): Promise<unknown> {
   try {
@@ -47,7 +48,7 @@ export async function migratePluginCatalog(input: {
   const rawLock = record(await readJson(lockPath))
   const rawPlugins = record(rawLock.plugins)
   const next: PluginLockfile = { version: 2, plugins: {} }
-  const incompatible: Array<{ pluginId: string; spec?: string; reason: "reinstallRequired" }> = []
+  const incompatible: IncompatiblePluginRecord[] = []
   const entries = Object.entries(rawPlugins)
   let current = 0
   for (const [pluginId, value] of entries) {
@@ -80,8 +81,7 @@ export async function migratePluginCatalog(input: {
   }
   await fs.mkdir(path.dirname(lockPath), { recursive: true })
   await Bun.write(lockPath, `${JSON.stringify(next, null, 2)}\n`)
-  await fs.mkdir(input.data, { recursive: true })
-  await Bun.write(path.join(input.data, "plugin-incompatible.json"), `${JSON.stringify(incompatible, null, 2)}\n`)
+  await IncompatiblePluginStore.write(incompatible, input.data)
 
   const oldApprovalsValue = await readJson(path.join(input.data, "plugin-approvals.json"))
   const oldApprovals = Array.isArray(oldApprovalsValue) ? oldApprovalsValue : Object.values(record(oldApprovalsValue))

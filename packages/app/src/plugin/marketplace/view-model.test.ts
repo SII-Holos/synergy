@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import type { InstalledPlugin } from "./types"
-import { installationLabel, installedPluginsForView, isDevelopmentPlugin, MARKETPLACE_NAV_ITEMS } from "./view-model"
+import {
+  installationLabel,
+  installedPluginFromSnapshot,
+  installedPluginsForView,
+  isDevelopmentPlugin,
+  MARKETPLACE_NAV_ITEMS,
+} from "./view-model"
 
 function plugin(input: Partial<InstalledPlugin> & Pick<InstalledPlugin, "id" | "installation">): InstalledPlugin {
   const { id, installation, ...overrides } = input
@@ -51,5 +57,11 @@ describe("plugin marketplace views", () => {
     expect(installedPluginsForView([directory, official], "development", "focus\\dist")).toEqual([directory])
     expect(installationLabel(directory)).toBe("Local directory")
     expect(installationLabel(official)).toBe("Official registry")
+  })
+
+  test("uses the opening snapshot only until the authoritative installed list arrives", () => {
+    expect(installedPluginFromSnapshot("focus", undefined, directory)).toBe(directory)
+    expect(installedPluginFromSnapshot("focus", [], directory)).toBeUndefined()
+    expect(installedPluginFromSnapshot("focus", [official, directory], official)).toBe(directory)
   })
 })

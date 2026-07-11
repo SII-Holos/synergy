@@ -10,7 +10,7 @@ import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { InstallConsentDialog } from "../consent/InstallConsentDialog"
-import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
+import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import type { RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin, PluginDetail } from "./types"
@@ -21,7 +21,7 @@ import {
   registryPluginSummary,
   toTimestamp,
 } from "./plugin-detail-model"
-import { installationLabel } from "./view-model"
+import { installationLabel, installedPluginFromSnapshot } from "./view-model"
 import type { PermissionSeverity, PluginPermissionDiff } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
@@ -134,8 +134,8 @@ export function PluginDetailDialog(props: {
     },
   )
 
-  const installedInfo = createMemo(
-    () => props.installedPlugin ?? (installedPlugins() ?? []).find((plugin) => plugin.id === props.pluginId),
+  const installedInfo = createMemo(() =>
+    installedPluginFromSnapshot(props.pluginId, installedPlugins(), props.installedPlugin),
   )
   const developmentInstallation = createMemo(() => {
     const installation = installedInfo()?.installation
@@ -169,10 +169,8 @@ export function PluginDetailDialog(props: {
     return [...list].toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))[0]
   })
   const installedVersion = createMemo(() => {
-    const version = getInstalledVersion(installedPlugins() ?? [], props.pluginId)
-    if (version) return version
-    const propVersion = props.installedPlugin?.version
-    return propVersion && propVersion !== "0.0.0" ? propVersion : null
+    const version = installedInfo()?.version
+    return version && version !== "0.0.0" ? version : null
   })
   const updateAvailable = createMemo(() => checkUpdateAvailable(latestVersion()?.version, installedVersion()))
   const permissions = createMemo(() => {
@@ -273,6 +271,7 @@ export function PluginDetailDialog(props: {
     confirm.show({
       ...uninstallPluginConfirm(plugin()?.name ?? props.pluginId),
       onConfirm: performUninstall,
+      onConfirmed: () => dialog.close(),
     })
   }
 

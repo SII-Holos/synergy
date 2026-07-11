@@ -260,9 +260,11 @@ export const ApiPluginRoute = new Hono()
       responses: { 200: { description: "Plugin detail" }, ...errors(404) },
     }),
     async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      return context.json({ ...(await Plugin.getStatus(plugin.id)), manifest: plugin.manifest })
+      const pluginId = context.req.param("pluginId")
+      const status = await Plugin.getStatus(pluginId)
+      if (!status) return context.json({ message: "Plugin not found" }, 404)
+      const plugin = await Plugin.get(pluginId)
+      return context.json({ ...status, ...(plugin ? { manifest: plugin.manifest } : {}) })
     },
   )
   .delete(
@@ -273,7 +275,6 @@ export const ApiPluginRoute = new Hono()
     }),
     async (context) => {
       await Plugin.remove(context.req.param("pluginId"), {
-        autoReload: true,
         force: context.req.query("force") === "true",
       })
       return context.json({ removed: true })

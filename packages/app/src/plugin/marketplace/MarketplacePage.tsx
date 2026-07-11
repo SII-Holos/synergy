@@ -108,9 +108,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
           pluginId={pluginId}
           source={options.source}
           installedPlugin={options.installedPlugin}
-          onChanged={() => {
-            void refreshMarketplace()
-          }}
+          onChanged={refreshMarketplace}
         />
       ),
       () => {

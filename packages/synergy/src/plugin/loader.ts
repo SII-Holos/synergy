@@ -1,5 +1,4 @@
 import path from "path"
-import { fileURLToPath } from "url"
 import { pathToFileURL } from "url"
 import type {
   PluginAgent,
@@ -8,25 +7,19 @@ import type {
   PluginSkill,
 } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
-import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { BunProc } from "../util/bun"
 import { Log } from "../util/log"
 import { PluginSpec } from "../util/plugin-spec"
 import { pluginRuntimeManager } from "./runtime"
 import type { PluginSource } from "./trust"
-import {
-  archiveCacheDir,
-  findPackageRoot,
-  isArchivePath,
-  resolvePluginSpec,
-  type ResolvedPluginSpec,
-} from "./spec-resolver"
+import { resolvePluginSpec, type ResolvedPluginSpec } from "./spec-resolver"
 import * as Lockfile from "./lockfile"
 import { stopForPlugin } from "./mcp"
 import { pluginContributionAdapters } from "./contribution-registry"
-import { getApproval, verifyApproval } from "./consent/approval-store"
+import { getApproval, readApprovals, verifyApproval, type PluginApprovalRecord } from "./consent/approval-store"
+import { IncompatiblePluginStore, type IncompatiblePluginRecord } from "./incompatible-store"
+import type { PluginLockfile } from "./lockfile-schema"
 
 const log = Log.create({ service: "plugin.catalog" })
 
@@ -65,29 +58,7 @@ export interface LoaderState {
 const catalog = new Map<string, LoadedPlugin>()
 const specToPluginId = new Map<string, string>()
 
-export { findPackageRoot, specToPluginId }
-
-export function resolveSpecPluginDir(spec: string): string {
-  if (spec.startsWith("file://")) {
-    let filePath: string
-    try {
-      filePath = fileURLToPath(spec)
-    } catch {
-      filePath = spec.slice("file://".length)
-    }
-    const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
-    if (isArchivePath(absolute)) return archiveCacheDir(absolute)
-    const root = findPackageRoot(absolute)
-    return Bun.file(path.join(root, "dist", "plugin.json")).size > 0 ? path.join(root, "dist") : root
-  }
-  const { pkg } = PluginSpec.parse(spec)
-  const resolvedDir = path.join(
-    Global.Path.cache,
-    "node_modules",
-    PluginSpec.isNonRegistry(spec) ? BunProc.resolvePkgName(pkg) : pkg,
-  )
-  return findPackageRoot(resolvedDir)
-}
+export { specToPluginId }
 
 function registerResolved(spec: string, resolved: ResolvedPluginSpec): LoadedPlugin {
   const manifest = resolved.manifest
@@ -124,6 +95,25 @@ function disabled(input: Omit<DisabledPlugin, "disabledAt">): DisabledPlugin {
   return { ...input, disabledAt: Date.now() }
 }
 
+export function identifyFailedPluginRegistration(input: {
+  spec: string
+  lockfile: PluginLockfile
+  incompatible: IncompatiblePluginRecord[]
+  approvals: PluginApprovalRecord[]
+}) {
+  const locked = Object.entries(input.lockfile.plugins).find(([, entry]) => entry.spec === input.spec)
+  const rejected = input.incompatible.find((record) => record.spec === input.spec)
+  const pluginId = locked?.[1].approvalId ?? rejected?.pluginId ?? PluginSpec.displayName(input.spec)
+  const approval = input.approvals
+    .filter((record) => record.pluginId === pluginId)
+    .sort((left, right) => right.approvedAt - left.approvedAt)[0]
+  return {
+    pluginId,
+    source: locked?.[1].source ?? approval?.source,
+    incompatible: Boolean(rejected),
+  }
+}
+
 export const state = ScopedState.create(
   async (): Promise<LoaderState> => {
     const scopeId = ScopeContext.current.scope.id
@@ -131,6 +121,8 @@ export const state = ScopedState.create(
     const loaded: LoadedPlugin[] = []
     const failures: DisabledPlugin[] = []
     const lockfile = await Lockfile.read().catch(() => null)
+    const incompatible = await IncompatiblePluginStore.read()
+    const approvals = await readApprovals()
     const selected = new Map<string, { spec: string; resolved: ResolvedPluginSpec }>()
 
     for (const spec of config.plugin ?? []) {
@@ -152,14 +144,24 @@ export const state = ScopedState.create(
           selected.set(resolved.manifest.id, { spec, resolved: installed })
         }
       } catch (error) {
-        const locked = Object.entries(lockfile?.plugins ?? {}).find(([, entry]) => entry.spec === spec)
+        const identity = identifyFailedPluginRegistration({
+          spec,
+          lockfile: lockfile ?? { version: 2, plugins: {} },
+          incompatible,
+          approvals,
+        })
         failures.push(
           disabled({
-            pluginId: locked?.[0] ?? PluginSpec.displayName(spec),
+            pluginId: identity.pluginId,
+            name: identity.pluginId,
             spec,
-            source: locked?.[1].source,
-            phase: "resolve",
-            reason: error instanceof Error ? error.message : String(error),
+            source: identity.source,
+            phase: identity.incompatible ? "manifest" : "resolve",
+            reason: identity.incompatible
+              ? `Plugin ${identity.pluginId} uses an incompatible package format and must be reinstalled`
+              : error instanceof Error
+                ? error.message
+                : String(error),
           }),
         )
       }
@@ -344,4 +346,12 @@ export async function ensureRuntime(plugin: LoadedPlugin) {
 
 export async function resetAllPluginState() {
   await state.resetAll()
+}
+
+export function forgetPlugin(pluginId: string) {
+  catalog.delete(pluginId)
+  pluginContributionAdapters.unregisterPlugin(pluginId)
+  for (const [spec, id] of specToPluginId) {
+    if (id === pluginId) specToPluginId.delete(spec)
+  }
 }

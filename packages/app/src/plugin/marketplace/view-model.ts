@@ -48,3 +48,12 @@ export function installationLabel(plugin: InstalledPlugin): string {
   if (installation.kind === "package") return `${installation.source.toUpperCase()} package`
   return "Built in"
 }
+
+export function installedPluginFromSnapshot(
+  pluginId: string,
+  plugins: InstalledPlugin[] | undefined,
+  openingSnapshot?: InstalledPlugin,
+): InstalledPlugin | undefined {
+  if (!plugins) return openingSnapshot
+  return plugins.find((plugin) => plugin.id === pluginId)
+}
