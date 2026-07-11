@@ -1,187 +1,61 @@
 ---
 name: find-logs
-description: "Guide for finding and reading Synergy logs, observability traces, and diagnostics. Use when debugging runtime issues, finding error messages, tracing session execution, or packaging diagnostics. Triggers: 'log', 'logs', 'logging', 'debug log', 'where are logs', 'find error', 'trace', 'diagnostics', 'observability'."
+description: Diagnose Synergy runtime failures with managed-service logs, development logs, structured observability events, status inspection, and redacted diagnostics packages. Use for errors, crashes, stuck sessions, tool calls, traces, daemon startup, performance incidents, and requests to locate or filter Synergy logs.
 ---
 
-# Finding and Reading Synergy Logs
+# Diagnose with Logs and Traces
 
-## Log File Locations
+## Identify the Runtime
 
-| Scenario                       | Path                                       | Notes                               |
-| ------------------------------ | ------------------------------------------ | ----------------------------------- |
-| Development (`bun dev server`) | `~/.synergy/log/dev.log`                   | Single file, flushed on every write |
-| Production (daemon)            | `~/.synergy/log/{ISO8601}.log`             | e.g. `2026-07-10T160000.log`        |
-| Daemon service output          | `~/.synergy/state/daemon/logs/server.log`  | 10 MB rotation, keeps 5 archives    |
-| Dev archives                   | `~/.synergy/log/dev.{YYYYMMDD-HHMMSS}.log` | Max 10 files or 200 MB total        |
-
-**Rotation behavior**:
-
-- On dev restart, `dev.log` → archived to `dev.{YYYYMMDD-HHMMSS}.log`. Up to 10 kept.
-- On production startup, oldest timestamped logs are pruned, keeping newest 5.
-- Daemon log rotates at 10 MB (checked every 60 seconds).
-
-## Log Format
-
-```
-LEVEL YYYY-MM-DDTHH:mm:ss +NNNms service=name key=value message text
-```
-
-- **LEVEL**: `DEBUG`, `INFO`, `WARN`, `ERROR`
-- **Timestamp**: ISO 8601 to second precision
-- **`+NNNms`**: Milliseconds since previous log line (delta for performance spotting)
-- **Tag pairs**: `service=server`, `sessionID=ses_abc`, `callID=call_xyz`, etc.
-- **Message**: Control chars stripped, newlines escaped to `\n`
-- **Redaction**: Keys matching `token`, `secret`, `password`, `authorization`, `api_key`, `credential`, and similar patterns are replaced with `[redacted]`
-
-## How to Filter Logs
+1. Determine whether the target is the managed product runtime, a source `bun dev` runtime, or an isolated `SYNERGY_HOME`.
+2. Preserve that environment on every command. Do not accidentally query the active production home while diagnosing an isolated test.
+3. Start with supported commands rather than guessing file paths:
 
 ```bash
-# Only errors
-rg "^ERROR" ~/.synergy/log/dev.log
-
-# By session
-rg "sessionID=ses_abc" ~/.synergy/log/dev.log
-
-# Real-time tail
-tail -f ~/.synergy/log/dev.log
-
-# Last 100 lines
-tail -100 ~/.synergy/log/dev.log
-
-# Search for a module's logs
-rg "service=cortex" ~/.synergy/log/dev.log
-rg "service=agent" ~/.synergy/log/dev.log
-rg "service=server" ~/.synergy/log/dev.log
-
-# Time range (replace date as needed)
-rg "2026-07-10T16:" ~/.synergy/log/dev.log
+synergy status --verbose
+synergy logs --tail 200
+synergy logs --dev --tail 200
 ```
 
-## Log Levels
+## Narrow the Evidence
 
-Priority chain (highest wins):
-
-1. `--log-level` CLI flag (e.g., `bun dev server --log-level DEBUG`)
-2. `LOG_LEVEL` environment variable
-3. Config `general.logLevel` in `~/.synergy/config/synergy.d/00-general.jsonc`
-4. Default: `DEBUG` for local/dev builds, `INFO` for production
+Filter normal logs by level, service, or text:
 
 ```bash
-# Force DEBUG level
-LOG_LEVEL=DEBUG bun dev server
+synergy logs --level ERROR --tail 200
+synergy logs --service session --grep "compaction|timeout"
+synergy logs --dev --follow --service cortex
+synergy logs --archive 0 --tail 500
 ```
 
-## Log API (for coding)
-
-Code lives in `packages/synergy/src/util/log.ts`.
-
-```ts
-import { Log } from "@/util/log"
-
-// Create a logger for your domain
-const log = Log.create({ service: "my-feature" })
-
-log.debug("state changed", { key: value })
-log.info("operation complete", { count: 42 })
-log.warn("deprecated call", { caller: "foo" })
-log.error("unexpected condition", { error: err.message })
-
-// Auto-timed blocks (uses `using` dispose)
-{
-  using timer = log.time("expensive operation")
-  await doWork()
-  // "expensive operation took 123ms" auto-logged on scope exit
-}
-```
-
-Key API:
-
-- `Log.init({ print, dev, level })` — server startup, called once
-- `Log.create({ service: "name" })` — cached by service name
-- `Log.file()` — returns current log file path
-- `Log.Default` — singleton `service=default` logger
-
-## Observability Traces
-
-A separate **structured event tracing** system for performance analysis and call-chain tracking. Independent from the log subsystem.
-
-### Location
-
-```
-~/.synergy/state/observability/traces/{YYYY-MM-DD}.jsonl
-```
-
-One JSONL file per day. Each line is a JSON event object.
-
-### Querying
-
-The `Observability.query()` API filters by `traceId`, `sessionID`, `callID`, `since`, `level`, `limit`:
-
-```ts
-import { Observability } from "@/observability"
-
-const traces = await Observability.query({
-  sessionID: "ses_abc",
-  since: Date.now() - 3600_000, // last hour
-  limit: 100,
-})
-```
-
-From a shell, you can grep the JSONL directly:
+Filter structured observability events when a session, trace, or tool call is known:
 
 ```bash
-# Find all events for a session
-rg "ses_abc" ~/.synergy/state/observability/traces/2026-07-10.jsonl
-
-# Find all tool calls
-rg '"type":"tool_call"' ~/.synergy/state/observability/traces/2026-07-10.jsonl
+synergy logs --session <session-id> --since 2h
+synergy logs --trace-id <trace-id> --json
+synergy logs --tool-call <call-id> --since 30m --json
 ```
 
-### Retention
+Correlate by timestamp, session ID, call ID, trace ID, service, and terminal state. Trace the earliest causal error rather than reporting every downstream cancellation.
 
-- 7 days default, 250 MB max total
-- Cleanup runs on every `emit()`, throttled to once per 60 seconds
-- Code: `packages/synergy/src/observability/index.ts`
+## Read Files Only When Needed
 
-## Diagnostics Package
+Use [Storage and paths](../../../docs/reference/storage-and-paths.md) for the current root layout. Normal logs live under `Global.Path.log`; daemon output and structured traces live under `Global.Path.state`. Resolve the actual root from `SYNERGY_HOME` before using `rg`, `tail`, or JSONL tools directly.
 
-Create a comprehensive diagnostics bundle for sharing or filing issues:
+Do not edit, truncate, rotate, or delete live logs or runtime locks during diagnosis.
+
+## Package Diagnostics
+
+Create a redacted local bundle only when the user needs a shareable artifact:
 
 ```bash
-# CLI
-synergy diagnostics
-
-# HTTP
-curl http://localhost:{port}/observability/diagnostics
+synergy diagnostics --session <session-id> --since 2h --output <path>.tar.gz
 ```
 
-The `.tar.gz` includes:
+Inspect its `summary.json` and filtered trace before sharing. The bundle sanitizes text, but still review it for project names, commands, paths, and business data. Never attach credentials or raw config.
 
-- All log files (current, dev, daemon, dev archives)
-- Trace JSONL files (optionally filtered by `sessionID`)
-- `summary.json`: lock file state, running processes, pending reply sessions
-- Plugin runtime state
+For performance incidents, also read [Performance observability](../../../docs/operations/performance-observability.md) and query the performance API or panel rather than inferring resource behavior from log volume alone.
 
-Code: `packages/synergy/src/observability/diagnostics.ts`
+## Report
 
-## Key Environment Variables
-
-| Variable            | Effect                                        |
-| ------------------- | --------------------------------------------- |
-| `SYNERGY_HOME`      | Override home base (`$SYNERGY_HOME/.synergy`) |
-| `SYNERGY_TEST_HOME` | Test override (checked before `os.homedir()`) |
-| `LOG_LEVEL`         | Set `DEBUG` / `INFO` / `WARN` / `ERROR`       |
-| `SYNERGY_DAEMON=1`  | Daemon mode, different log path               |
-
-## Quick Reference: Important Paths
-
-| Path                                      | Purpose                                        |
-| ----------------------------------------- | ---------------------------------------------- |
-| `~/.synergy/`                             | Root of all Synergy data                       |
-| `~/.synergy/log/`                         | All log files                                  |
-| `~/.synergy/data/`                        | Session/message/permission/agenda JSON storage |
-| `~/.synergy/state/`                       | Daemon state, LSP PIDs, observability traces   |
-| `~/.synergy/state/observability/traces/`  | Daily JSONL trace files                        |
-| `~/.synergy/state/daemon/logs/server.log` | Daemon server log                              |
-| `~/.synergy/config/synergy.d/`            | Config domain files                            |
-| `~/.synergy/data/auth/`                   | API keys, provider OAuth, MCP credentials      |
+Return the target runtime, time window, filters, causal event sequence, likely owner module, confidence, and next verification step. Summarize or redact absolute paths, secrets, session content, and local identifiers in outbound text.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Develop Frontend"
+  short_description: "Implement Synergy Web and shared UI changes safely"
+  default_prompt: "Implement this Synergy frontend change using product, sync, SDK, semantic icon, and accessibility contracts."

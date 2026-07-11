@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Server API"
+  short_description: "Modify Synergy routes and generated SDK contracts"
+  default_prompt: "Implement this Synergy server API change and keep OpenAPI, SDK, scoping, events, and clients synchronized."

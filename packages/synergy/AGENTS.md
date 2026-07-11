@@ -1,143 +1,85 @@
-# Synergy Agent Guidelines
+# Core Runtime Rules
 
-## Build/Test Commands
+These rules apply under `packages/synergy`. Root [AGENTS.md](../../AGENTS.md) still applies.
 
-- **Install**: `bun install`
-- **Source dev**: from the repo root, use `bun dev server`, `bun dev web`, or `bun dev desktop`
-- **Product CLI smoke**: from this package, use `bun run --conditions=browser ./src/index.ts`
-- **Typecheck**: `bun run typecheck`
-- **Test**: `bun test` (runs all tests without coverage)
-- **Single test**: `bun test test/tool/tool.test.ts` (specific test file)
-- **Changed tests**: `bun run test:changed` (runs tests affected by changes against `origin/dev`)
-- **Coverage**: `bun run test:coverage` (full suite with coverage, matching CI)
-- **Profile tests**: `bun run test:profile` (writes JUnit timing to `coverage/test-profile-junit.xml`)
+Load `integrate-llm` for every new or changed model-backed operation, `change-server-api` for HTTP/OpenAPI/SDK contracts, and `change-persistence` for durable state or migrations.
 
-### Quality verification
+## Read the Owning Contract
 
-Before committing changes to core runtime code, run:
+Start from [Architecture](../../docs/architecture/README.md), then read the document for the subsystem being changed. Trace adjacent domains and tests before editing; `session/`, `server/`, `tool/`, `enforcement/`, `storage/`, and `bus/` frequently cross directory boundaries.
 
-```bash
-bun run typecheck         # type-check all packages via turbo
-bun run lint              # lint with oxlint (errors + warnings)
-cd packages/synergy
-bun test                  # full test suite without coverage
-bun run test:changed      # tests affected by changes against origin/dev
-./script/format.ts        # auto-format with prettier (from repo root)
-```
+## Runtime Invariants
 
-The default local PR preflight (`bun run quality:quick` from repo root) verifies formatting, lint, typecheck, monorepo deps, and package publishing validation. The pre-push hook runs the faster subset documented in the root quality guide. See [docs/open-source-quality.md](../../docs/open-source-quality.md) for the complete quality model.
+- Session/message fields are orthogonal: task grouping (`rootID` / `isRoot`), rendering (`visible`), model context (`includeInContext`), and provenance (`origin`). Use `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()`; do not restore retired booleans. See [Sessions and messages](../../docs/architecture/session-and-messages.md).
+- Bind every assistant message in one task to the root user message. Preserve serial root-task execution, inbox `mode`, compaction anchoring, and continuation semantics.
+- Preserve frontend sync contracts when changing server events or snapshots: scope-monotonic `seq`, runtime `epoch`, replay journal, snapshot watermark headers, unsequenced streaming deltas, immediate terminal events, and write-behind part persistence. See [Frontend data sync](../../docs/architecture/frontend-data-sync.md).
+- Cortex delegation creates durable child sessions with explicit lineage, visibility, tools, timeout, and output contract. Do not hide work in one message history or create a parallel in-memory mailbox. See [Cortex](../../docs/architecture/cortex.md).
+- Plan, BlueprintLoop, Light Loop, and Lattice are mutually exclusive session workflows with host-owned continuation/review rules. See [Workflows](../../docs/architecture/workflows.md).
 
-Do not bypass pre-push hooks. If a hook check fails, fix the root cause rather than skipping it.
+## Execution and Security
 
-## Code Style
+Keep ownership separate:
 
-- **Runtime**: Bun with TypeScript ESM modules
-- **Imports**: Use relative imports for local modules, named imports preferred
-- **Types**: Zod schemas for validation, TypeScript interfaces for structure
-- **Naming**: camelCase for variables/functions, PascalCase for classes/namespaces
-- **Error handling**: Use Result patterns, avoid throwing exceptions in tools
-- **File structure**: Namespace-based organization (e.g., `Tool.define()`, `Session.create()`)
+- `control-profile/` resolves user-facing profiles
+- `enforcement/` classifies capabilities and makes boundary decisions
+- `permission/` stores/evaluates permission rules and SmartAllow
+- `sandbox/` wraps OS process execution
+- `session/tool-resolver.ts` assembles and executes the active tool pipeline
 
-## Architecture
+`guarded` may ask; `autonomous` never asks; `full_access` silently allows permission capabilities. Ordinary external reads are allowed unless sensitive; worktree writes/modification/execution remain protected. Skill roots are trusted only while an operation stays inside the configured root. See [Execution boundaries](../../docs/architecture/execution-boundaries.md).
 
-- **Control profiles**: `src/control-profile/` owns user-facing access profile semantics; `src/enforcement/` owns capability classification and gate decisions; `src/permission/smart-allow.ts` owns high-confidence false-positive adjudication without raw secret disclosure; `src/sandbox/` owns OS enforcement only. Keep these layers separate and avoid reintroducing tool-local boundary checks. `full_access` must remain silent allow-all inside the permission system. `guarded` is the interactive profile and may ask. `autonomous` must never ask; anything outside its policy is denied with a clear diagnostic.
+Do not move centralized checks into individual tools or treat an unavailable sandbox as a permission grant. Keep OS helpers on the shared permission-profile contract and preserve platform-specific readiness/fallback diagnostics.
 
-- **Permission first principles**: ordinary external reads are allowed, including non-sensitive reads from a worktree session's original checkout. Sensitive paths such as credentials, secrets, auth stores, and explicit secret candidates remain protected. Worktree isolation blocks writes, modifications, and execution outside the active worktree unless the active profile explicitly allows them; under `autonomous`, a worktree session may read ordinary original-checkout files but must not write to, modify, or run commands from the original checkout. Configured skill/plugin skill roots are trusted runtime areas: read, write, and execution inside those roots are allowed, and only escapes from those roots should be treated as ordinary external access.
+## Persistence and Migrations
 
-- **Tools**: Implement `Tool.Info` interface with `execute()` method
-- **Context**: Pass `sessionID` in tool context, use `App.provide()` for DI
-- **Validation**: All inputs validated with Zod schemas
-- **Logging**: Use `Log.create({ service: "name" })` pattern
-- **Storage**: Use `Storage` namespace for persistence
-- **Migrations**: Put versioned schema/data upgrades in the dedicated migration modules and runner. Fresh-install table creation can live with database initialization, but upgrades, backfills, and data rewrites must not be scattered through runtime or request code.
-- **Message semantics**: A message is described by orthogonal fields — `rootID`/`isRoot`, `visible`, `includeInContext`, `origin` — derived once by `MessageV2.deriveSemantics`; use `MessageV2.isSystemPart` for the system-part test. Do not reintroduce the old overloaded booleans (`synthetic`, `noReply`, `guided`, `ignored`, `promptVisible`, `metadata.source`). See `docs/architecture/session-message-core.md`.
-- **Event sequencing**: `Bus.publish` stamps state events with a scope-monotonic `seq` + per-runtime `epoch` and journals them for `/event/replay`; mark high-frequency coalescible events (part deltas) `streaming` in `BusEvent.define` so they stay unsequenced. Scoped GET responses advertise the snapshot watermark via `x-synergy-seq`/`x-synergy-epoch`. See `docs/architecture/frontend-data-sync.md`.
-- **API Client**: When modifying server endpoints in `packages/synergy/src/server/server.ts`, run `./script/generate.ts` to regenerate the SDK.
-- **Provider framework**: Provider existence comes from the profile/catalog resolver, not directly from `models.dev`. Keep remote catalogs data-only and signature-verified; complex auth, transport, and usage behavior belongs in built-in strategies or explicitly installed plugins.
-- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the provider auth store at `~/.synergy/data/auth/provider-auth.json`; imported auth files are handled by migrations only. Real provider requests drive authentication recovery and health transitions; do not add startup or periodic third-party credential probes.
+- Build logical JSON keys through `StoragePath` and use `Storage` for locking and atomic writes.
+- Put versioned upgrades/backfills in the owning `*/migration.ts` and register them through `migration/`.
+- Test fresh data, representative old data, idempotence, dependency ordering, and startup execution.
+- Keep compatibility readers only where migration cannot make old records impossible.
+- Use [Storage and paths](../../docs/reference/storage-and-paths.md) as the layout reference; do not duplicate a storage tree here.
 
-### Sandbox Architecture
+## Providers, Config, and Plugins
 
-The sandbox system lives in `packages/synergy/src/sandbox/`:
+- Resolve provider existence and model roles through profiles/catalog/config. Keep remote catalog data declarative and verified.
+- Keep `openai-codex` device-code OAuth and Codex transport separate from the `openai` Platform API-key provider.
+- Let real model, usage, and discovery requests drive provider auth recovery and health transitions; do not add startup or periodic third-party credential probes.
+- Canonical config lives in domain files; add migrations rather than a monolithic runtime loader.
+- Plugins declare capability ceilings before import. Preserve ID consistency, approval hashes, trust decisions, effective runtime mode, host-bridge enforcement, and failure isolation. See [Plugin runtime and permissions](../../docs/plugins/runtime-and-permissions.md).
 
-```
-sandbox/
-  backend.ts       — Unified dispatch + shared execution/cleanup
-  macos.ts         — macOS Seatbelt backend
-  linux.ts         — Linux helper-backed backend; inline bwrap is debug-only
-  helper-linux/    — Linux Rust sandbox helper
-  helper/          — Windows Rust sandbox helper (`synergy-sandbox-windows.exe`)
-    src/config.rs  — Shared PermissionProfile JSON contract
-```
+## LLM-Backed Operations
 
-**Design principles:**
+- Keep metadata extraction, classification, and other non-durable derived work sessionless through the shared `LLM` layer.
+- Continue work in an existing session through `SessionInvoke`; launch inspectable delegated or reviewed child work through Cortex.
+- Do not treat the private `callAgent()` in Experience Encoder as a shared API or copy it into another domain. Follow `integrate-llm` when consolidating sessionless callers such as title, summary, or SmartAllow.
+- Reserve direct AI SDK calls for provider/bootstrap probes and the shared LLM implementation boundary.
 
-- `prepareWrapper()` for macOS wraps commands with `sandbox-exec -f <profile>` using a generated deny-default Seatbelt profile by default; `seatbelt-legacy-allow-default` is explicit opt-out.
-- Linux production dispatch uses `synergy-sandbox-linux`; inline bwrap is available only through `backend: "bwrap-inline-debug"`.
-- On Windows, `prepareWrapper()` dispatches to `synergy-sandbox-windows.exe` when a verified helper is present. The helper consumes the shared `SynergySandboxPermissionProfile` JSON shape.
+## Tools and APIs
 
-**Integration layers:**
+- Define tools with `Tool.define()` and match the nearest implementation. Use precise Zod parameters, honor cancellation, return structured metadata, and preserve permission expectations.
+- Register new first-party tools through the `add-tool` workflow, including taxonomy and Web registrations.
+- Add OpenAPI metadata to server routes and run `./script/generate.ts` from the repository root after route/schema changes.
+- Keep streams on their established WebSocket, SSE, or data-channel transports; use generated SDK contracts for ordinary HTTP APIs.
 
-| Layer            | File                                  | Role                                                                           |
-| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------ |
-| Config schema    | `src/config/schema.ts`                | Defines `SandboxConfig` (`enabled`, `fallbackPolicy`)                          |
-| Control profile  | `src/control-profile/profiles.ts`     | Resolves sandbox mode per profile (`workspace_write`, `none`, fallback)        |
-| Enforcement gate | `src/enforcement/gate.ts`             | Exposes resolved sandbox mode from the active profile                          |
-| Tool resolver    | `src/session/tool-resolver.ts`        | Defers wrapping until local Bash preprocessing; manages fallback policy        |
-| Sandbox detector | `src/enforcement/sandbox-detector.ts` | Scans command output for OS-level denial patterns (EACCES, read-only FS, etc.) |
-| API route        | `src/server/control-profile-route.ts` | Exposes `/sandbox/status` endpoint for platform availability                   |
+## Browser Runtime
 
-**Adding a new backend:**
+Preserve one session to one page. State reads, event connection, and WebRTC signaling do not create a page; first navigation does. Keep native Desktop and remote Web presentation separate from shared host/page ownership. Read [Browser runtime](../../docs/architecture/browser-runtime.md) before editing `browser/`, Browser routes/tools, or Desktop control contracts.
 
-1. Add or update the platform backend module under `src/sandbox/` and keep dispatch centralized in `backend.ts`.
-2. Wire it into `prepareWrapper()` dispatch and `platformInfo()` availability detection.
-3. Keep helper-backed platforms on the shared `SynergySandboxPermissionProfile` JSON contract.
-4. Add denial patterns to `enforcement/sandbox-detector.ts` if the new backend produces distinct error messages.
+## Tests and Commands
 
-**Windows helper binary (Rust):**
-
-The helper lives in `sandbox/helper/`, builds as `synergy-sandbox-windows.exe`,
-and consumes the shared `SynergySandboxPermissionProfile` JSON contract used by
-the Linux helper. The profile is passed with `--permission-profile <path>` and
-the child command follows `--`:
+Run core commands from this package:
 
 ```bash
-synergy-sandbox-windows.exe --permission-profile <profile.json> --cwd <workspace> -- <command> <args...>
+bun run typecheck
+bun test test/<domain>/<file>.test.ts
+bun run test:changed
+bun test
+bun run test:coverage
 ```
 
-The config shape is:
+Provider/model tests use `test/tool/fixtures/models-api.json`, never a live catalog. Use real temporary Scope/storage fixtures and test behavior rather than source text. Then run `bun run quality:quick` from the repository root.
 
-```rust
-pub struct PermissionProfile {
-    pub file_system: FileSystemPolicy, // serde rename: "fileSystem"
-    pub network: NetworkPolicy,
-}
-```
+Run source/manual tests in an isolated `SYNERGY_HOME`; never restart the active runtime. Load `develop-synergy` for the procedure.
 
-The TS backend passes process command/args through argv, not through the
-profile JSON. `SandboxConfig` stays focused on file-system and network policy.
+## Documentation Sync
 
-The helper uses `windows-sys` crate for native Win32 APIs. Cross-compile from non-Windows with:
-
-```bash
-rustup target add x86_64-pc-windows-msvc
-cargo install --locked cargo-xwin
-cargo xwin build --target x86_64-pc-windows-msvc --release
-```
-
-**Bundled bwrap binary:** The Linux sandbox helper can discover a bundled
-bwrap binary placed at `helper-linux/bwrap/bwrap` relative to the helper
-executable. In CI/release builds, the bwrap binary is placed here during
-the packaging step.
-
-To build with bundled bwrap:
-
-1. Obtain a static bwrap binary for the target architecture
-2. Place it at `src/sandbox/helper-linux/bwrap/bwrap`
-3. The Rust helper will discover it automatically via `bwrap_binary()`
-
-Discovery order (in `bwrap_binary()`):
-
-1. `SYNERGY_BWRAP` environment variable (if set and non-empty)
-2. Bundled `bwrap/bwrap` relative to the helper binary's directory
-3. `bwrap` from system `PATH` (fallback)
+Update the canonical docs and relevant `.synergy/skill` when changing routes, CLI, agents, tools, config, storage, logs, startup, migrations, workflows, execution boundaries, Browser behavior, providers, plugins, Channels, Holos, Agenda, Notes, or Library. When a reusable runtime-development rule emerges and no Skill owns it, update or create the focused Skill in the same change.

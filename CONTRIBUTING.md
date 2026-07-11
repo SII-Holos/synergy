@@ -21,7 +21,7 @@ For feature ideas or design discussions, open a [GitHub Issue](https://github.co
 
 ## Development Setup
 
-You'll need [Bun](https://bun.sh) ≥ 1.3 installed. Then:
+Use the Bun version pinned by the root `packageManager` field. Then:
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
@@ -49,7 +49,7 @@ bun dev build app       # rebuild the web app
 bun dev build desktop   # rebuild Electron main/preload
 ```
 
-See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.
+See the [development reference](docs/reference/development.md) for source modes, isolated-runtime testing, builds, tests, SDK generation, and quality checks.
 
 ## Pull Request Process
 
@@ -66,7 +66,7 @@ See the [Development section in README](README.md#development) for the full work
    bun run quality
    ```
 
-   CI runs the full matrix — see [docs/open-source-quality.md](docs/open-source-quality.md) for the complete model.
+   CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
 
 3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
 

@@ -1,146 +1,50 @@
 ---
 name: architecture
-description: "Synergy codebase architecture guide. Use when navigating the codebase, understanding module boundaries, finding where functionality lives, or planning cross-cutting changes. Triggers: 'architecture', 'codebase structure', 'where is', 'how does X work', 'module layout', 'find the code for'."
+description: Navigate and trace the Synergy codebase, identify subsystem ownership, explain a runtime flow, or plan a cross-cutting change from current implementation evidence. Use when locating code, mapping state and event flow, checking architecture boundaries, or assessing impact across runtime, Web, Desktop, SDK, plugins, and persistence.
 ---
 
-# Synergy Architecture Guide
+# Trace Synergy Architecture
 
-## Runtime Model
+## Orient
 
-Synergy is a **client-server** system:
+1. Read [Architecture overview](../../../docs/architecture/README.md) and [Package map](../../../docs/reference/packages.md).
+2. Select only the relevant canonical documents:
+   - runtime/Scope: `runtime-and-scope.md`
+   - workspace and files: `workspace-and-files.md`
+   - session/message/compaction: `session-and-messages.md`, `llm-loop.md`
+   - Web state: `frontend-data-sync.md`
+   - permissions/tools: `execution-boundaries.md`
+   - delegation: `cortex.md`
+   - Plan, BlueprintLoop, Light Loop, Lattice: `workflows.md`
+   - Browser: `browser-runtime.md`
+3. Read the nearest `AGENTS.md` before inspecting package code.
+4. Load the focused implementation workflow when the trace becomes a change:
+   - Web/shared UI: `develop-frontend`
+   - LLM-backed operation: `integrate-llm`
+   - HTTP/OpenAPI/SDK contract: `change-server-api`
+   - durable state or migration: `change-persistence`
 
-- **Server** (`packages/synergy`) — the core runtime, always running
-- **Clients** — Web UI (`packages/app`), CLI (`synergy send`), desktop shell (`packages/desktop`), external via SDK
+## Trace from Evidence
 
-Clients connect to the server and provide a working directory (scope). The server handles sessions, agents, tools, and all orchestration.
+1. Identify the user-facing entry point: CLI command, server route, Web action, Desktop IPC, tool, Agenda trigger, Channel event, plugin hook, or migration.
+2. Search with `rg` for the public name, schema, event, route operation ID, storage path, and error string.
+3. Follow the write path through ownership boundaries. Record the module that validates input, owns state, enforces capabilities, persists data, and emits events.
+4. Follow the read/sync path independently. For Web behavior, trace generated SDK calls, snapshot watermarks, bus events, replay, reconcile writes, and loading/eviction.
+5. Inspect adjacent domains before concluding that a directory boundary is the abstraction boundary.
+6. Verify tests and migrations that encode the behavior. Treat comments, docs, and old design files as supporting evidence only when code/tests agree.
 
-## Package Map
+## Produce the Result
 
-| Package                          | Role                                                                   |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| `packages/synergy`               | Core runtime: server, CLI, agents, tools, sessions, config, everything |
-| `packages/app`                   | SolidJS web client                                                     |
-| `packages/desktop`               | Electron desktop app, managed server host, signing, updates            |
-| `packages/plugin`                | Plugin SDK (`@ericsanchezok/synergy-plugin`)                           |
-| `packages/plugin-kit`            | Plugin development CLI (`@ericsanchezok/synergy-plugin-kit`)           |
-| `packages/sdk/js`                | TypeScript SDK (`@ericsanchezok/synergy-sdk`)                          |
-| `packages/ui`                    | Shared UI component library                                            |
-| `packages/util`                  | Shared utilities and error helpers                                     |
-| `packages/script`                | Build and release tooling                                              |
-| `packages/synergy-link`          | Synergy Link remote collaboration                                      |
-| `packages/synergy-link-protocol` | Link protocol definitions                                              |
-| `packages/config-ui`             | Config UI                                                              |
-| `packages/meta-protocol`         | Meta protocol                                                          |
-| `packages/meta-synergy`          | Meta Synergy                                                           |
+For an explanation, report:
 
-## Core Domains (`packages/synergy/src/`)
+- entry point and owner
+- state model and persistence
+- execution/permission boundary
+- events and downstream consumers
+- lifecycle, cancellation, retry, and failure behavior
+- tests or migrations that prove the invariants
+- uncertainties that still require runtime evidence
 
-### Request Flow
+For a change plan, name the smallest coherent set of owners and verification gates. Include SDK regeneration, config/help/docs sync, or persistence migration only when the change actually crosses those contracts.
 
-`cli/` or `server/` → `session/manager.ts` → `cortex/` (task orchestration) → `session/tool-resolver.ts` → `tool/`
-
-The flow is more nuanced than a simple pipe. The cortex layer manages DAGs, subagent delegation, and task loops between session and tool execution.
-
-### Key Domains (58 directories)
-
-| Directory          | What it does                                     | When you'd touch it                     |
-| ------------------ | ------------------------------------------------ | --------------------------------------- |
-| `access/`          | Access control                                   | Permission gating, authorization        |
-| `acp/`             | Anthropic Client Protocol                        | ACP server/client integration           |
-| `agenda/`          | Scheduled tasks and automation                   | Cron, triggers, background jobs         |
-| `agent/`           | Agent definitions and prompts                    | Adding/modifying agents                 |
-| `agora/`           | Agora feature                                    | Community features                      |
-| `asset/`           | Asset management                                 | File assets, uploads                    |
-| `attachment/`      | Attachment handling                              | File attachments in messages            |
-| `blueprint/`       | BlueprintLoop audit system                       | Blueprint execution, review             |
-| `browser/`         | Built-in Browser workspace                       | Browser automation, workspace           |
-| `bus/`             | Event system                                     | Adding new system events                |
-| `channel/`         | External messaging (Feishu, etc.)                | Adding new channel types                |
-| `cli/`             | CLI commands and startup                         | New commands, CLI UX                    |
-| `command/`         | Custom command system                            | Built-in and user-defined commands      |
-| `config/`          | Config loading and merging                       | Config schema changes                   |
-| `conflict/`        | Conflict resolution                              | Merge conflicts, edits                  |
-| `control-profile/` | Permission/sandbox profile compiler              | Profile resolution, sandbox config      |
-| `cortex/`          | Task orchestration (DAGs, subagents)             | Delegation and parallel execution       |
-| `daemon/`          | Daemon process management                        | Background server, lifecycle            |
-| `email/`           | Email integration                                | Sending/receiving emails                |
-| `enforcement/`     | Capability classification and tool boundary gate | Centralized tool permission enforcement |
-| `external-agent/`  | External agent integration                       | External agent discovery, bridge        |
-| `file/`            | File system operations, watchers                 | File watching, format detection         |
-| `flag/`            | Feature flags                                    | Conditional features                    |
-| `global/`          | Global paths, installation, updates              | Root paths (`~/.synergy/`), version     |
-| `hashline/`        | Hashline feature                                 | Comment hash lines                      |
-| `holos/`           | Holos identity flow                              | Holos contacts, mailbox                 |
-| `id/`              | Identifier system                                | ID generation                           |
-| `lattice/`         | Lattice workflow system                          | Lattice execution                       |
-| `library/`         | Memory/knowledge (embedding, recall)             | Memory features                         |
-| `lsp/`             | Language Server Protocol integration             | LSP clients, diagnostics                |
-| `mcp/`             | Model Context Protocol integration               | MCP server/client features              |
-| `migration/`       | Central migration runner                         | Persistence upgrades, data migration    |
-| `note/`            | Notes system                                     | Note CRUD, editing                      |
-| `observability/`   | Observability and tracing                        | Event traces, diagnostics               |
-| `performance/`     | Performance monitoring                           | Performance writer, metrics             |
-| `permission/`      | Permission model                                 | Access control rules                    |
-| `plugin/`          | Plugin system                                    | Plugin loading, registration            |
-| `plugin-runtime/`  | Dynamic plugin runtime                           | Worker/process plugin execution         |
-| `process/`         | Process management                               | Shell execution, PTY                    |
-| `project/`         | Project config, worktree, VCS                    | Project-level settings, git             |
-| `provider/`        | LLM provider integration                         | Adding providers, model resolution      |
-| `question/`        | Question/ask system                              | Interactive questions                   |
-| `remote/`          | Remote execution                                 | Remote tool execution                   |
-| `runtime/`         | Runtime orchestration                            | Server lifecycle                        |
-| `sandbox/`         | OS sandbox backend wrappers                      | Process sandboxing                      |
-| `scope/`           | Workspace/project scope resolution               | Scope and context logic                 |
-| `server/`          | HTTP server, API routes                          | New endpoints, CORS                     |
-| `session/`         | Session lifecycle, prompting, recall             | Session features                        |
-| `set-up/`          | Setup flow                                       | First-run setup                         |
-| `skill/`           | Skill loading and built-ins                      | Skill system                            |
-| `stats/`           | Usage statistics                                 | Stats collection                        |
-| `storage/`         | File-based JSON persistence                      | All session/message/permission data     |
-| `superplan/`       | SuperPlan eventing                               | SuperPlan workflow                      |
-| `tool/`            | All tool implementations                         | Adding/modifying tools                  |
-| `util/`            | Utilities                                        | Log, path, error helpers                |
-| `vector/`          | Vector storage                                   | Embedding storage                       |
-| `workspace/`       | Workspace management                             | Workspace sessions, discovery           |
-| `workspace-file/`  | Scope-authoritative stat/read/children/search    | File workbench server contracts         |
-
-### Cross-cutting Concerns
-
-The File workbench has one frontend data owner: `packages/app/src/context/file.tsx`. File tabs live in the Side Workspace; the temporary Session Context panel does not own files. Web and Desktop always use generated `workspace.files.*` SDK calls against the active Scope. The server `workspace-file/` domain owns containment, paged directory metadata, document reads, search, and watcher-fed updates.
-
-- **Config** touches everything — changes ripple through CLI, server, agents
-- **ScopedState** — `ScopedState.create()` in `scope/scoped-state.ts` is the scoped singleton pattern (wraps `State.create()` with scope-keyed isolation)
-- **Bus events** — `BusEvent.define()` in `bus/bus-event.ts` + `Bus.subscribe()` in `bus/index.ts` for loose coupling. Used 82+ times across the codebase
-- **Migrations** — schema changes go in `*/migration.ts`, run by `migration/index.ts`
-
-## Common Patterns
-
-- **Namespace exports**: `export namespace Foo { ... }` — the dominant pattern, used in 30+ files
-- **Zod schemas**: all validation, all API types. Import `z` from `"zod"`
-- **ScopedState**: `ScopedState.create(init, dispose)` for scope-keyed singletons (in `scope/scoped-state.ts`)
-- **Bus events**: `BusEvent.define({ name, schema })` + `Bus.subscribe(Event, callback)` for event-driven communication
-- **NamedError**: `NamedError.create()` for typed, structured errors (in `util/named-error.ts`) — used in provider, session, config, storage, etc. but NOT in tool files (tools use `throw new Error(...)`)
-
-## Testing
-
-### Quality verification
-
-```bash
-bun run quality:quick      # format:check + lint + typecheck + monorepo:check + package:check
-bun run quality            # quality:quick + all tests (turbo test)
-cd packages/synergy
-bun test                   # all tests
-bun test test/tool/read.test.ts  # specific test
-bun test --watch           # watch mode
-```
-
-See [docs/open-source-quality.md](../../docs/open-source-quality.md) for the full quality model.
-
-Tests live in `packages/synergy/test/` mirroring the `src/` structure. Shared fixtures in `test/fixture/`.
-
-### Test philosophy
-
-- **Test invariants, not implementations** — behavioral contracts that survive refactoring
-- **Write tests first** (TDD) for new behavior and bug fixes
-- **Avoid source text assertions** — call the function, check the result
-- **Minimal mocking** — use temp directories (`tmpdir()`) + context overrides instead of mock frameworks
+Do not reproduce a static directory inventory. Link canonical docs and cite current files or symbols so the analysis survives repository growth.

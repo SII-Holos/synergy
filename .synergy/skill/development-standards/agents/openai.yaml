@@ -1,0 +1,4 @@
+interface:
+  display_name: "Development Standards"
+  short_description: "Route Synergy changes through current development workflows"
+  default_prompt: "Apply Synergy development standards, select the owning workflow, and keep repository Skills synchronized."
