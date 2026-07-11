@@ -123,7 +123,7 @@ describe("PluginRuntimeManager", () => {
     const pending = manager.invoke({
       pluginId: firstManifest.id,
       handlerId: "operation:delay.get",
-      value: { delayMs: 100 },
+      value: { delayMs: 1_000 },
       context: { scopeId: "scope-one", directory: import.meta.dir, actor: { type: "sdk" } },
       pluginDir: path.dirname(entryPath),
       manifest: firstManifest,

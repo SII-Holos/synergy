@@ -135,7 +135,10 @@ const SettingsContribution = UIBase.extend({
 const ThemeContribution = ContributionBase.extend({
   kind: z.literal("ui.theme"),
   label: z.string().min(1),
-  path: z.string().min(1),
+  path: z
+    .string()
+    .min(1)
+    .regex(/\.json$/),
 }).strict()
 
 const IconContribution = ContributionBase.extend({

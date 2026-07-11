@@ -11,7 +11,7 @@ Synergy supports two UI paths: host-rendered declarations and user-approved trus
 | `ui.messageRenderer` | renderer for a declared message type                 |
 | `ui.composerAction`  | component in a declared composer slot                |
 | `ui.settings`        | schema-driven settings and optional custom component |
-| `ui.theme`           | packaged CSS theme                                   |
+| `ui.theme`           | packaged structured JSON theme                       |
 | `ui.icon`            | packaged SVG icon                                    |
 
 The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
@@ -69,6 +69,28 @@ With approved `ui.hostActions`, trusted UI may call:
 - `confirm(options)`
 
 Without that capability these calls fail. Prefer host actions over constructing Synergy routes or reaching into private app contexts.
+
+## Themes and Icons
+
+Themes and icons are host-rendered data contributions. They do not execute plugin UI code:
+
+```ts
+import { definePlugin, icon, theme } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  id: "ocean-theme",
+  version: "1.0.0",
+  description: "Ocean theme",
+  contributions: [
+    theme({ id: "ocean", label: "Ocean", path: "themes/ocean.json" }),
+    icon({ id: "logo", path: "icons/logo.svg" }),
+  ],
+})
+```
+
+Theme JSON contains `name`, an `id` equal to the contribution ID, and complete `light.seeds` and `dark.seeds`. Each seed set defines `neutral`, `primary`, `success`, `warning`, `error`, `info`, `interactive`, `diffAdd`, and `diffDelete` as opaque hex colors. Optional `overrides` may address only canonical theme tokens. The host validates and resolves both variants before registration; arbitrary CSS, unknown tokens, cyclic references, and invalid contrast are rejected.
+
+The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surface `icon` fields continue to use the plugin-local contribution ID; the host resolves it to the namespaced registered icon. Assets are fetched and validated before an atomic reload replaces the previous generation.
 
 ## Scope and Reload
 

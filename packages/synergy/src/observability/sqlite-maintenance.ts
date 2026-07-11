@@ -57,7 +57,7 @@ export namespace ObservabilitySqliteMaintenance {
     let selected: { table: Table; time: number } | undefined
     for (const table of tables) {
       const where = table.where ? `WHERE ${table.where}` : ""
-      const row = db.prepare(`SELECT MIN(${table.orderBy}) AS time FROM ${table.table} ${where}`).get() as
+      const row = getRow(db, `SELECT MIN(${table.orderBy}) AS time FROM ${table.table} ${where}`) as
         | { time?: number | null }
         | undefined
       if (row?.time === null || row?.time === undefined) continue
@@ -68,13 +68,13 @@ export namespace ObservabilitySqliteMaintenance {
 
   function deleteOldestRows(db: Database, table: Table) {
     const where = table.where ? `WHERE ${table.where}` : ""
-    const countRow = db.prepare(`SELECT COUNT(*) AS count FROM ${table.table} ${where}`).get() as { count: number }
+    const countRow = getRow(db, `SELECT COUNT(*) AS count FROM ${table.table} ${where}`) as { count: number }
     const limit = Math.min(DELETE_CHUNK, Math.max(1, Math.floor(countRow.count / 10)))
-    return db
-      .prepare(
-        `DELETE FROM ${table.table} WHERE rowid IN (SELECT rowid FROM ${table.table} ${where} ORDER BY ${table.orderBy} ASC LIMIT ?)`,
-      )
-      .run(limit).changes
+    return runStatement(
+      db,
+      `DELETE FROM ${table.table} WHERE rowid IN (SELECT rowid FROM ${table.table} ${where} ORDER BY ${table.orderBy} ASC LIMIT ?)`,
+      limit,
+    ).changes
   }
 
   function reclaimFreePages(db: Database, path: string, maxBytes: number) {
@@ -97,7 +97,7 @@ export namespace ObservabilitySqliteMaintenance {
   }
 
   function pragmaNumber(db: Database, key: string) {
-    const row = db.prepare(`PRAGMA ${key}`).get() as Record<string, number> | undefined
+    const row = getRow(db, `PRAGMA ${key}`) as Record<string, number> | undefined
     return Number(Object.values(row ?? {})[0] ?? 0)
   }
 
@@ -110,6 +110,24 @@ export namespace ObservabilitySqliteMaintenance {
       return fs.statSync(path).size
     } catch {
       return 0
+    }
+  }
+
+  function getRow(db: Database, sql: string) {
+    const statement = db.prepare(sql)
+    try {
+      return statement.get()
+    } finally {
+      statement.finalize()
+    }
+  }
+
+  function runStatement(db: Database, sql: string, value: number) {
+    const statement = db.prepare(sql)
+    try {
+      return statement.run(value)
+    } finally {
+      statement.finalize()
     }
   }
 }

@@ -41,7 +41,7 @@ Identity and descriptive fields come from `definePlugin()`. `capabilities` is th
 | `ui.messageRenderer`  | no         | message type and optional trusted component                  |
 | `ui.composerAction`   | no         | slot and optional trusted component                          |
 | `ui.settings`         | no         | group, form schema, visibility, optional trusted component   |
-| `ui.theme`            | no         | label and packaged CSS path                                  |
+| `ui.theme`            | no         | label and packaged structured-theme JSON path                |
 | `ui.icon`             | no         | packaged SVG path                                            |
 | `lifecycle.upgrade`   | yes        | handler identity                                             |
 | `lifecycle.uninstall` | yes        | handler identity                                             |
@@ -55,5 +55,7 @@ Source contributions may use Zod or JSON Schema. Build converts Zod to JSON Sche
 ## Integrity
 
 Every runtime and UI artifact has a SHA-256 hash in the manifest. `integrity.json` covers the generated manifest and packaged files. Synergy validates metadata, paths, and hashes before importing runtime code. Absolute paths, escaping `..` paths, missing declared assets, and tampered artifacts are rejected.
+
+`ui.theme.path` must reference a packaged `.json` file accepted by the shared Synergy theme schema. `ui.icon.path` references a packaged SVG. Both are data contributions: they do not require a trusted component bundle.
 
 The generated manifest does not contain dependency-install instructions, a duplicate permission tree, a runtime descriptor, or a hand-maintained contribution map.

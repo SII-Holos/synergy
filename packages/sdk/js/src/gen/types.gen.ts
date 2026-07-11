@@ -6227,15 +6227,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
@@ -6325,6 +6316,15 @@ export type EventSessionIdle = {
   type: "session.idle"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -6755,7 +6755,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -6768,6 +6767,7 @@ export type Event =
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventRuntimeReloaded
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated

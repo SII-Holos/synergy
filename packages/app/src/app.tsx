@@ -24,9 +24,6 @@ import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
 import {
-  PluginToolBridge,
-  PluginCommandBridge,
-  PluginMessageSlotBridge,
   PluginComposerSlotBridge,
   PluginThemeConfigBridge,
   PluginHostProvider,
@@ -213,8 +210,6 @@ function ConnectedApp() {
                 </Show>
                 <PluginHostProvider>
                   <GlobalSyncProvider>
-                    <PluginToolBridge />
-                    <PluginMessageSlotBridge />
                     <PluginComposerSlotBridge />
                     <PluginThemeConfigBridge />
                     <Router
@@ -223,7 +218,6 @@ function ConnectedApp() {
                         <LayoutProvider>
                           <NotificationProvider>
                             <CommandProvider>
-                              <PluginCommandBridge />
                               <Layout>{props.children}</Layout>
                             </CommandProvider>
                           </NotificationProvider>

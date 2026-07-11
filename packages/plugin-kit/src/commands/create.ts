@@ -146,7 +146,7 @@ export default definePlugin({
   version: "0.1.0",
   description: "${name} plugin",
   contributions: [
-    theme({ id: "default", label: "${name}", path: "themes/default.css" }),
+    theme({ id: "default", label: "${name}", path: "themes/default.json" }),
     icon({ id: "logo", path: "icons/logo.svg" }),
   ],
 })
@@ -178,7 +178,43 @@ export function scaffoldPluginProject(name: string, template: TemplateName, targ
   const uiSource = ui(template)
   if (uiSource) files.set("src/ui.tsx", uiSource)
   if (template === "theme-icon") {
-    files.set("themes/default.css", ":root { --plugin-accent: #2563eb; }\n")
+    files.set(
+      "themes/default.json",
+      JSON.stringify(
+        {
+          name,
+          id: "default",
+          light: {
+            seeds: {
+              neutral: "#6B7280",
+              primary: "#2563EB",
+              success: "#16A34A",
+              warning: "#D97706",
+              error: "#DC2626",
+              info: "#0284C7",
+              interactive: "#2563EB",
+              diffAdd: "#16A34A",
+              diffDelete: "#DC2626",
+            },
+          },
+          dark: {
+            seeds: {
+              neutral: "#9CA3AF",
+              primary: "#60A5FA",
+              success: "#4ADE80",
+              warning: "#FBBF24",
+              error: "#F87171",
+              info: "#38BDF8",
+              interactive: "#60A5FA",
+              diffAdd: "#4ADE80",
+              diffDelete: "#F87171",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
     files.set(
       "icons/logo.svg",
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/></svg>\n',

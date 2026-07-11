@@ -111,7 +111,7 @@ export namespace ObservabilityStore {
     flush()
     if (db) checkpointConnectionSafely(db)
     clearTimers()
-    db?.close(false)
+    db?.close(true)
     db = undefined
     openFailed = false
   }
@@ -211,11 +211,11 @@ export namespace ObservabilityStore {
       params.push(input.type)
     }
     params.push(Math.max(1, Math.min(input.limit ?? 500, 5000)))
-    return conn
-      .prepare(
-        `SELECT * FROM obs_events ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY time DESC,event_id DESC LIMIT ?`,
-      )
-      .all(...params) as StoredEvent[]
+    return allRows<StoredEvent>(
+      conn,
+      `SELECT * FROM obs_events ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY time DESC,event_id DESC LIMIT ?`,
+      ...params,
+    )
   }
 
   export function queryMetrics(opts: {
@@ -275,9 +275,11 @@ export namespace ObservabilityStore {
     }
     params.push(opts.limit ?? 10_000)
     const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
-    return conn
-      .prepare(`SELECT * FROM obs_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`)
-      .all(...params) as StoredMetric[]
+    return allRows<StoredMetric>(
+      conn,
+      `SELECT * FROM obs_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`,
+      ...params,
+    )
   }
 
   export function queryMetricSeries(
@@ -355,20 +357,20 @@ export namespace ObservabilityStore {
     }
     params.push(opts.limit ?? 1000)
     if (opts.distinctTrace) {
-      return conn
-        .prepare(
-          `SELECT * FROM (
+      return allRows<StoredSpan>(
+        conn,
+        `SELECT * FROM (
              SELECT *, ROW_NUMBER() OVER (PARTITION BY trace_id ORDER BY start_time ASC,span_id ASC) AS trace_rank
              FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
            ) WHERE trace_rank = 1 ORDER BY start_time DESC LIMIT ?`,
-        )
-        .all(...params) as StoredSpan[]
-    }
-    return conn
-      .prepare(
-        `SELECT * FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY start_time DESC LIMIT ?`,
+        ...params,
       )
-      .all(...params) as StoredSpan[]
+    }
+    return allRows<StoredSpan>(
+      conn,
+      `SELECT * FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY start_time DESC LIMIT ?`,
+      ...params,
+    )
   }
 
   export function queryInflight(opts: { limit?: number; staleMs?: number; scopeID?: string; sessionID?: string } = {}) {
@@ -413,39 +415,46 @@ export namespace ObservabilityStore {
       params.push(opts.scopeID, opts.scopeID)
     }
     params.push(opts.limit ?? 50)
-    return conn
-      .prepare(
-        `SELECT * FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY last_seen_time DESC LIMIT ?`,
-      )
-      .all(...params) as StoredIssue[]
+    return allRows<StoredIssue>(
+      conn,
+      `SELECT * FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY last_seen_time DESC LIMIT ?`,
+      ...params,
+    )
   }
 
   export function latestResource(opts: { scopeID?: string } = {}) {
     flush()
+    const conn = open()
+    if (!conn) return undefined
     if (opts.scopeID) {
-      return open()
-        ?.prepare("SELECT * FROM obs_resource_samples WHERE scope_id = ? ORDER BY time DESC LIMIT 1")
-        .get(opts.scopeID) as StoredResource | undefined
+      return getRow<StoredResource>(
+        conn,
+        "SELECT * FROM obs_resource_samples WHERE scope_id = ? ORDER BY time DESC LIMIT 1",
+        opts.scopeID,
+      )
     }
-    return open()?.prepare("SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1").get() as
-      | StoredResource
-      | undefined
+    return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
   }
 
   export function resourceSince(since: number, opts: { scopeID?: string; limit?: number } = {}) {
     flush()
     const limit = opts.limit ?? 10_000
+    const conn = open()
+    if (!conn) return []
     if (opts.scopeID) {
-      return (
-        (open()
-          ?.prepare("SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ASC LIMIT ?")
-          .all(since, opts.scopeID, limit) as StoredResource[] | undefined) ?? []
+      return allRows<StoredResource>(
+        conn,
+        "SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ASC LIMIT ?",
+        since,
+        opts.scopeID,
+        limit,
       )
     }
-    return (
-      (open()
-        ?.prepare("SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ASC LIMIT ?")
-        .all(since, limit) as StoredResource[] | undefined) ?? []
+    return allRows<StoredResource>(
+      conn,
+      "SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ASC LIMIT ?",
+      since,
+      limit,
     )
   }
 
@@ -455,13 +464,13 @@ export namespace ObservabilityStore {
     const config = ObservabilityConfig.current()
     const metricCutoff = now - config.metricRetentionMs
     const traceCutoff = now - config.traceRetentionMs
-    conn.prepare("DELETE FROM obs_metrics WHERE time < ?").run(metricCutoff)
-    conn.prepare("DELETE FROM obs_events WHERE time < ?").run(traceCutoff)
-    conn.prepare("DELETE FROM obs_resource_samples WHERE time < ?").run(metricCutoff)
-    conn.prepare("DELETE FROM obs_spans WHERE start_time < ? AND status != 'running'").run(traceCutoff)
-    conn.prepare("DELETE FROM obs_browser_batches WHERE received_time < ?").run(metricCutoff)
-    conn.prepare("DELETE FROM obs_issues WHERE status != 'open' AND time < ?").run(traceCutoff)
-    conn.prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
+    conn.query("DELETE FROM obs_metrics WHERE time < ?").run(metricCutoff)
+    conn.query("DELETE FROM obs_events WHERE time < ?").run(traceCutoff)
+    conn.query("DELETE FROM obs_resource_samples WHERE time < ?").run(metricCutoff)
+    conn.query("DELETE FROM obs_spans WHERE start_time < ? AND status != 'running'").run(traceCutoff)
+    conn.query("DELETE FROM obs_browser_batches WHERE received_time < ?").run(metricCutoff)
+    conn.query("DELETE FROM obs_issues WHERE status != 'open' AND time < ?").run(traceCutoff)
+    conn.query("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
     enforceMaxSize(conn, config.storage.maxSqliteBytes)
   }
 
@@ -494,11 +503,8 @@ export namespace ObservabilityStore {
   }
 
   export function meta() {
-    return (
-      (open()?.prepare("SELECT key,value FROM obs_meta ORDER BY key ASC").all() as
-        | ObservabilityMetaRow[]
-        | undefined) ?? []
-    )
+    const conn = open()
+    return conn ? allRows<ObservabilityMetaRow>(conn, "SELECT key,value FROM obs_meta ORDER BY key ASC") : []
   }
 
   export function initializeForMigration() {
@@ -546,9 +552,7 @@ export namespace ObservabilityStore {
   }
 
   function checkpointConnection(conn: Database) {
-    conn
-      .prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)")
-      .run(String(Date.now()))
+    conn.query("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(Date.now()))
     conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
   }
 
@@ -782,10 +786,30 @@ export namespace ObservabilityStore {
   function initialize(conn: Database) {
     const now = Date.now()
     conn.exec(SQL)
-    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(String(schemaVersion))
-    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
-    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
-    conn.prepare("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))
+    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(String(schemaVersion))
+    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
+    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
+    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))
+  }
+
+  type SqlBinding = string | number | bigint | boolean | null | Uint8Array
+
+  function allRows<Row>(conn: Database, sql: string, ...params: SqlBinding[]): Row[] {
+    const statement = conn.prepare(sql)
+    try {
+      return statement.all(...params) as Row[]
+    } finally {
+      statement.finalize()
+    }
+  }
+
+  function getRow<Row>(conn: Database, sql: string, ...params: SqlBinding[]): Row | undefined {
+    const statement = conn.prepare(sql)
+    try {
+      return statement.get(...params) as Row | undefined
+    } finally {
+      statement.finalize()
+    }
   }
 
   export interface StoredMetric {

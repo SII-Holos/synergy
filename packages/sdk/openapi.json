@@ -33185,40 +33185,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.message.updated": {
         "type": "object",
         "properties": {
@@ -33468,6 +33434,40 @@
               }
             },
             "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -34683,9 +34683,6 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
             "$ref": "#/components/schemas/Event.message.updated"
           },
           {
@@ -34720,6 +34717,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.session.inbox.updated"

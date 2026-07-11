@@ -23,7 +23,7 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 7. Expose Synergy internals only through capability-gated Host Services. Do not pass a raw SDK client, server URL, token, or mutable current Scope into plugin code.
 8. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
 9. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
-10. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration.
+10. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
 11. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
 
 ## Verify

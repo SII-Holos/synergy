@@ -80,12 +80,12 @@ describe("ObservabilityMigration", () => {
     seedLegacyPerformanceStore()
     const legacy = new Database(ObservabilityStore.legacyPerformancePath())
     legacy.exec("ALTER TABLE perf_spans DROP COLUMN source")
-    legacy.close(false)
+    legacy.close(true)
 
     await expect(ObservabilityMigration.migrateLegacyPerformance()).rejects.toThrow("source")
 
     const target = ObservabilityStore.initializeForMigration()
-    const row = target.prepare("SELECT COUNT(*) AS count FROM obs_metrics").get() as { count: number }
+    const row = getRow<{ count: number }>(target, "SELECT COUNT(*) AS count FROM obs_metrics")
     expect(row.count).toBe(0)
   })
 
@@ -109,24 +109,24 @@ describe("ObservabilityMigration", () => {
     const legacy = new Database(ObservabilityStore.pathName(), { create: true })
     legacy.exec("PRAGMA auto_vacuum=NONE")
     legacy.exec("CREATE TABLE existing_state (id INTEGER PRIMARY KEY)")
-    legacy.close(false)
+    legacy.close(true)
 
     await ObservabilityMigration.enableIncrementalVacuum()
     await ObservabilityMigration.enableIncrementalVacuum()
 
     const db = ObservabilityStore.initializeForMigration()
-    const row = db.prepare("PRAGMA auto_vacuum").get() as { auto_vacuum: number }
+    const row = getRow<{ auto_vacuum: number }>(db, "PRAGMA auto_vacuum")
     expect(row.auto_vacuum).toBe(2)
   })
 
   test("synchronizes schema metadata for an existing observability database", async () => {
     const db = ObservabilityStore.initializeForMigration()
-    db.prepare("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '2')").run()
+    runStatement(db, "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '2')")
 
     await ObservabilityMigration.synchronizeSchemaMetadata()
     await ObservabilityMigration.synchronizeSchemaMetadata()
 
-    const row = db.prepare("SELECT value FROM obs_meta WHERE key = 'schemaVersion'").get() as { value: string }
+    const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
     expect(row.value).toBe(String(ObservabilityStore.schemaVersion))
   })
 
@@ -134,38 +134,49 @@ describe("ObservabilityMigration", () => {
     seedLegacyPerformanceStore()
     await ObservabilityMigration.migrateLegacyPerformance()
     const db = ObservabilityStore.initializeForMigration()
-    db.prepare("UPDATE obs_metrics SET labels_json = ?, redaction_json = '{}' WHERE metric_id = 'legacy_metric_1'").run(
+    runStatement(
+      db,
+      "UPDATE obs_metrics SET labels_json = ?, redaction_json = '{}' WHERE metric_id = 'legacy_metric_1'",
       '{"authorization":"Bearer canonical-secret","path":"/?token=tok_canonical_metric_secret"}',
     )
-    db.prepare("UPDATE obs_spans SET error_message = ?, attributes_json = ? WHERE span_id = 'legacy_span_1'").run(
+    runStatement(
+      db,
+      "UPDATE obs_spans SET error_message = ?, attributes_json = ? WHERE span_id = 'legacy_span_1'",
       "failed ghp_canonicalspansecret",
       '{"password":"canonical-password"}',
     )
-    db.prepare("UPDATE obs_resource_samples SET labels_json = ? WHERE sample_id = 'legacy_resource_1'").run(
+    runStatement(
+      db,
+      "UPDATE obs_resource_samples SET labels_json = ? WHERE sample_id = 'legacy_resource_1'",
       '{"command":"curl --token=tok_canonical_resource_secret"}',
     )
-    db.prepare("UPDATE obs_issues SET title = ?, evidence_json = ? WHERE issue_id = 'legacy_issue_1'").run(
+    runStatement(
+      db,
+      "UPDATE obs_issues SET title = ?, evidence_json = ? WHERE issue_id = 'legacy_issue_1'",
       "issue sk-canonical-secret",
       '{"authorization":"Bearer canonical-secret","stack":"private stack","scopeID":"sc_legacy"}',
     )
-    db.prepare("UPDATE obs_browser_batches SET page_json = ? WHERE batch_id = 'legacy_batch_1'").run(
+    runStatement(
+      db,
+      "UPDATE obs_browser_batches SET page_json = ? WHERE batch_id = 'legacy_batch_1'",
       '{"url":"https://example.test/?token=tok_canonical_browser_secret"}',
     )
-    db.prepare(
+    runStatement(
+      db,
       `INSERT INTO obs_events (event_id,time,iso,type,cwd,source,module,data_json,redaction_json)
        VALUES ('legacy_event_1',1,'1970-01-01T00:00:00.001Z','legacy','/Users/private/project','backend','observability','{"cookie":"canonical-cookie"}','{}')`,
-    ).run()
+    )
 
     await ObservabilityMigration.redactCanonicalTelemetry()
     await ObservabilityMigration.redactCanonicalTelemetry()
 
     const canonical = JSON.stringify({
-      metrics: db.prepare("SELECT labels_json,redaction_json FROM obs_metrics").all(),
-      spans: db.prepare("SELECT error_message,attributes_json,redaction_json FROM obs_spans").all(),
-      resources: db.prepare("SELECT labels_json,redaction_json FROM obs_resource_samples").all(),
-      issues: db.prepare("SELECT title,evidence_json,redaction_json FROM obs_issues").all(),
-      batches: db.prepare("SELECT page_json FROM obs_browser_batches").all(),
-      events: db.prepare("SELECT cwd,data_json,redaction_json FROM obs_events").all(),
+      metrics: allRows(db, "SELECT labels_json,redaction_json FROM obs_metrics"),
+      spans: allRows(db, "SELECT error_message,attributes_json,redaction_json FROM obs_spans"),
+      resources: allRows(db, "SELECT labels_json,redaction_json FROM obs_resource_samples"),
+      issues: allRows(db, "SELECT title,evidence_json,redaction_json FROM obs_issues"),
+      batches: allRows(db, "SELECT page_json FROM obs_browser_batches"),
+      events: allRows(db, "SELECT cwd,data_json,redaction_json FROM obs_events"),
     })
     expect(canonical).not.toContain("canonical-secret")
     expect(canonical).not.toContain("canonical-password")
@@ -181,17 +192,22 @@ describe("ObservabilityMigration", () => {
       `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,module,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
        VALUES (?1,1,'1970-01-01T00:00:00.001Z','warning','open','BATCH','Batch issue','Batch message','test',?2,1,1,1,?3,'{}')`,
     )
-    db.transaction(() => {
-      for (let index = 0; index < 1_001; index++) {
-        insert.run(`batch-issue-${index}`, '{"authorization":"Bearer batch-secret"}', `batch-fingerprint-${index}`)
-      }
-    })()
+    try {
+      db.transaction(() => {
+        for (let index = 0; index < 1_001; index++) {
+          insert.run(`batch-issue-${index}`, '{"authorization":"Bearer batch-secret"}', `batch-fingerprint-${index}`)
+        }
+      })()
+    } finally {
+      insert.finalize()
+    }
 
     await ObservabilityMigration.redactCanonicalTelemetry()
 
-    const row = db
-      .prepare("SELECT COUNT(*) AS count FROM obs_issues WHERE evidence_json LIKE '%batch-secret%'")
-      .get() as { count: number }
+    const row = getRow<{ count: number }>(
+      db,
+      "SELECT COUNT(*) AS count FROM obs_issues WHERE evidence_json LIKE '%batch-secret%'",
+    )
     expect(row.count).toBe(0)
   })
 })
@@ -212,34 +228,80 @@ function seedLegacyPerformanceStore(traceShape: "snake" | "camel" | "both" = "sn
       CREATE TABLE perf_browser_batches (batch_id TEXT PRIMARY KEY,received_time INTEGER NOT NULL,sent_at INTEGER NOT NULL,source TEXT NOT NULL,accepted INTEGER NOT NULL,rejected INTEGER NOT NULL,page_json TEXT NOT NULL DEFAULT '{}');
     `)
     if (traceShape === "both") {
-      db.prepare(
+      runStatement(
+        db,
         `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,traceId,trace_id,labels_json,sample_rate)
          VALUES ('legacy_metric_1',?1,?2,'http.request.duration',42,'ms','backend','server','trace_camel_fallback','trace_legacy','{"path":"/legacy?token=tok_legacy_metric_secret","authorization":"Bearer legacy-authorization-secret"}',1)`,
-      ).run(now, new Date(now).toISOString())
+        now,
+        new Date(now).toISOString(),
+      )
     } else {
       const traceColumn = traceShape === "camel" ? "traceId" : "trace_id"
-      db.prepare(
+      runStatement(
+        db,
         `INSERT INTO perf_metrics (metric_id,time,iso,name,value,unit,source,module,${traceColumn},labels_json,sample_rate)
          VALUES ('legacy_metric_1',?1,?2,'http.request.duration',42,'ms','backend','server','trace_legacy','{"path":"/legacy?token=tok_legacy_metric_secret","authorization":"Bearer legacy-authorization-secret"}',1)`,
-      ).run(now, new Date(now).toISOString())
+        now,
+        new Date(now).toISOString(),
+      )
     }
-    db.prepare(
+    runStatement(
+      db,
       `INSERT INTO perf_spans (trace_id,span_id,name,module,source,start_time,end_time,duration_ms,status,error_code,error_message,attributes_json)
        VALUES ('trace_legacy','legacy_span_1','http.request','server','backend',?1,?2,42,'ok','LEGACY_FAILURE','legacy failed with sk-legacy-secret','{}')`,
-    ).run(now - 42, now)
-    db.prepare(
+      now - 42,
+      now,
+    )
+    runStatement(
+      db,
       `INSERT INTO perf_resource_samples (sample_id,time,iso,source,trace_id,process_role,cpu_utilization_ratio,memory_rss_bytes,event_loop_sample_window_ms,labels_json)
        VALUES ('legacy_resource_1',?1,?2,'process','trace_legacy','server',0.1,1024,5000,'{"command":"curl --token=tok_legacy_resource_secret"}')`,
-    ).run(now, new Date(now).toISOString())
-    db.prepare(
+      now,
+      new Date(now).toISOString(),
+    )
+    runStatement(
+      db,
       `INSERT INTO perf_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,trace_id,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint)
        VALUES ('legacy_issue_1',?1,?2,'warning','open','PERF_LEGACY','Legacy issue sk-legacy-secret','Legacy issue ghp_legacysecret','Inspect tok_legacy_secret','server','trace_legacy','{"stack":"Error: test\\n  at file.ts:1","scopeID":"sc_legacy","authorization":"Bearer legacy-authorization-secret","note":"ghp_legacysecret"}',?1,?1,1,'sk-legacy-secret')`,
-    ).run(now, new Date(now).toISOString())
-    db.prepare(
+      now,
+      new Date(now).toISOString(),
+    )
+    runStatement(
+      db,
       `INSERT INTO perf_browser_batches (batch_id,received_time,sent_at,source,accepted,rejected,page_json)
        VALUES ('legacy_batch_1',?1,?1,'browser',1,0,'{"url":"https://example.test/?token=tok_legacy_browser_secret"}')`,
-    ).run(now)
+      now,
+    )
   } finally {
-    db.close(false)
+    db.close(true)
+  }
+}
+
+type SqlBinding = string | number | bigint | boolean | null | Uint8Array
+
+function allRows<Row = Record<string, unknown>>(db: Database, sql: string, ...params: SqlBinding[]): Row[] {
+  const statement = db.prepare(sql)
+  try {
+    return statement.all(...params) as Row[]
+  } finally {
+    statement.finalize()
+  }
+}
+
+function getRow<Row>(db: Database, sql: string, ...params: SqlBinding[]): Row {
+  const statement = db.prepare(sql)
+  try {
+    return statement.get(...params) as Row
+  } finally {
+    statement.finalize()
+  }
+}
+
+function runStatement(db: Database, sql: string, ...params: SqlBinding[]) {
+  const statement = db.prepare(sql)
+  try {
+    return statement.run(...params)
+  } finally {
+    statement.finalize()
   }
 }
