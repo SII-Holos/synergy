@@ -32,8 +32,8 @@ export function ConnectionBanner() {
           aria-live="polite"
           classList={{
             "flex items-center justify-center gap-2 rounded-full border px-3 py-1.5 text-12-medium shadow-sm backdrop-blur transition-colors": true,
-            "border-border-warning-base/40 bg-surface-warning-soft/95 text-text-warning": !prolonged(),
-            "border-border-critical-base/40 bg-surface-critical-soft/95 text-text-critical": prolonged(),
+            "border-border-warning-base/40 bg-surface-warning-weak/95 text-text-on-warning-base": !prolonged(),
+            "border-border-critical-base/40 bg-surface-critical-weak/95 text-text-on-critical-base": prolonged(),
           }}
         >
           <div

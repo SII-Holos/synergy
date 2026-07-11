@@ -229,7 +229,7 @@ export function ArchivedSessionsPanel() {
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div class="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-weaker-base bg-surface-raised-base px-3 py-2">
-              <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak" />
+              <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base" />
               <input
                 type="search"
                 class="settings-archive-control-text min-w-0 flex-1 bg-transparent text-text-base outline-none placeholder:text-text-weaker"
@@ -332,7 +332,7 @@ export function ArchivedSessionsPanel() {
                         >
                           <SelectionCheckbox selected={selected()} />
                         </button>
-                        <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-base text-icon-weak">
+                        <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-base text-icon-weak-base">
                           <Icon name={getSemanticIcon("session.archive")} size="small" />
                         </div>
                         <div class="min-w-0">

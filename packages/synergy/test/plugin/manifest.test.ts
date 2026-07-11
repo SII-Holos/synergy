@@ -161,6 +161,34 @@ describe("PluginManifest schema", () => {
     expect(result.success).toBe(false)
   })
 
+  test("UI themes use structured JSON assets", () => {
+    const valid = PluginManifest.safeParse({
+      name: "theme-plugin",
+      version: "1.0.0",
+      description: "Contributes a complete visual theme",
+      permissions: { ui: true },
+      contributes: {
+        ui: {
+          themes: [{ id: "ocean", label: "Ocean", path: "./themes/ocean.json" }],
+        },
+      },
+    })
+    expect(valid.success).toBe(true)
+
+    const cssAsset = PluginManifest.safeParse({
+      name: "legacy-theme-plugin",
+      version: "1.0.0",
+      description: "Uses an unvalidated CSS theme",
+      permissions: { ui: true },
+      contributes: {
+        ui: {
+          themes: [{ id: "legacy", label: "Legacy", path: "./themes/legacy.css" }],
+        },
+      },
+    })
+    expect(cssAsset.success).toBe(false)
+  })
+
   test("minSynergyVersion is rejected", () => {
     const result = PluginManifest.safeParse({
       name: "old-version-field-plugin",

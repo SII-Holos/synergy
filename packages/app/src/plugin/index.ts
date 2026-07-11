@@ -101,6 +101,3 @@ export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 // Consent UI components
 export { PermissionDiffList, PermissionRiskBadge, InstallConsentDialog } from "./consent"
 export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./consent"
-
-// Marketplace components
-export { VerifiedBadge, MarketplacePage, PluginDetailPage } from "./marketplace"

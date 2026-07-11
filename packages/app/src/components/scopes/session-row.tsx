@@ -49,7 +49,7 @@ function StatusDot(props: SessionRowProps) {
         <div class="size-1.5 rounded-full bg-text-interactive-base" />
       </Show>
       <Show when={!props.isWorking && !props.hasPermission && !props.hasError && !props.hasNotification && isPinned()}>
-        <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak-base" />
       </Show>
     </div>
   )
@@ -72,7 +72,7 @@ function ActionMenu(props: {
     <div class="relative" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
-        class="flex items-center justify-center size-6 rounded-md text-icon-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
+        class="flex items-center justify-center size-6 rounded-md text-icon-weak-base hover:text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
         onClick={() => setOpen(!open())}
       >
         <Icon name={getSemanticIcon("action.more")} size="small" />
@@ -87,7 +87,7 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onTogglePin)}
           >
-            <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak" />
+            <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak-base" />
             {props.isPinned ? "Unpin" : "Pin"}
           </button>
           <button
@@ -95,7 +95,7 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onRename)}
           >
-            <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak" />
+            <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak-base" />
             Rename
           </button>
           <button

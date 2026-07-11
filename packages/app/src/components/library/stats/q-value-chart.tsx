@@ -10,6 +10,7 @@ import {
   Filler,
   Tooltip,
 } from "chart.js"
+import { useChartTheme } from "../../visualization/use-chart-theme"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Tooltip)
 
@@ -32,6 +33,7 @@ export function QValueChart(props: {
     frequentlyRetrieved: number
   }
 }) {
+  const theme = useChartTheme()
   const dist = () => props.distribution
   const total = () => dist().histogram.reduce((sum, b) => sum + b.count, 0)
 
@@ -44,10 +46,10 @@ export function QValueChart(props: {
           data: bins.map((b) => b.count),
           backgroundColor: bins.map((b) => {
             const center = parseFloat(b.bin)
-            if (center < -0.3) return "rgba(196, 92, 68, 0.72)"
-            if (center < 0) return "rgba(196, 132, 36, 0.62)"
-            if (center < 0.3) return "rgba(148, 148, 148, 0.38)"
-            return "rgba(39, 143, 116, 0.72)"
+            if (center < -0.3) return theme().alpha("text-on-critical-base", 0.72)
+            if (center < 0) return theme().alpha("text-on-warning-base", 0.62)
+            if (center < 0.3) return theme().alpha("text-weak", 0.38)
+            return theme().alpha("text-on-success-base", 0.72)
           }),
           borderRadius: 2,
           barPercentage: 1.0,
@@ -65,7 +67,7 @@ export function QValueChart(props: {
         grid: { display: false },
         ticks: {
           font: { size: 8 },
-          color: "rgba(128,128,128,0.55)",
+          color: theme().axis,
           maxRotation: 0,
           callback: function (this: any, _val: any, index: number) {
             return index % 5 === 0 ? this.getLabelForValue(index) : ""
@@ -73,8 +75,8 @@ export function QValueChart(props: {
         },
       },
       y: {
-        grid: { color: "rgba(128,128,128,0.08)" },
-        ticks: { font: { size: 8 }, color: "rgba(128,128,128,0.55)" },
+        grid: { color: theme().grid },
+        ticks: { font: { size: 8 }, color: theme().axis },
       },
     },
     plugins: {
@@ -97,12 +99,12 @@ export function QValueChart(props: {
     datasets: [
       {
         data: dist().trend.map((t) => t.medianQ),
-        borderColor: "rgba(56, 88, 182, 0.85)",
-        backgroundColor: "rgba(56, 88, 182, 0.08)",
+        borderColor: theme().series[0],
+        backgroundColor: theme().alpha("chart-series-1", 0.08),
         fill: true,
         tension: 0.3,
         pointRadius: 3,
-        pointBackgroundColor: "rgba(56, 88, 182, 0.85)",
+        pointBackgroundColor: theme().series[0],
         borderWidth: 2,
       },
     ],
@@ -114,15 +116,15 @@ export function QValueChart(props: {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { font: { size: 8 }, color: "rgba(128,128,128,0.55)" },
+        ticks: { font: { size: 8 }, color: theme().axis },
       },
       y: {
         min: -1,
         max: 1,
-        grid: { color: "rgba(128,128,128,0.08)" },
+        grid: { color: theme().grid },
         ticks: {
           font: { size: 8 },
-          color: "rgba(128,128,128,0.55)",
+          color: theme().axis,
           stepSize: 0.5,
           callback: (v: number | string) => {
             const n = typeof v === "string" ? parseFloat(v) : v

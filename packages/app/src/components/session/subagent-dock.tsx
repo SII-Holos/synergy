@@ -165,12 +165,12 @@ function SubagentAvatar(props: SubagentAvatarProps) {
             const s = status() as RetrySessionStatus
             return (
               <div class="flex flex-col gap-0.5">
-                <div class="flex items-center gap-1.5 text-11-medium text-text-critical-base">
+                <div class="flex items-center gap-1.5 text-11-medium text-text-on-critical-base">
                   <Icon name={state.icon} size="small" />
                   <span>Retry #{s.attempt}</span>
                 </div>
                 <Show when={s.message}>
-                  <span class="text-11-regular text-text-critical-base leading-relaxed break-words line-clamp-3">
+                  <span class="text-11-regular text-text-on-critical-base leading-relaxed break-words line-clamp-3">
                     {s.message}
                   </span>
                 </Show>
@@ -209,7 +209,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
             "workbench-control-surface subagent-avatar group relative flex items-center justify-center size-9 rounded-full border transition-all duration-200": true,
             [`subagent-avatar-${props.task.agent}`]: true,
             "subagent-avatar-queued opacity-50 cursor-default": isQueued(),
-            "cursor-pointer hover:scale-105 hover:border-border-strong active:scale-95": !isQueued(),
+            "cursor-pointer hover:scale-105 hover:border-border-strong-base active:scale-95": !isQueued(),
             "subagent-avatar-holding": isHolding(),
             "subagent-avatar-retrying": isRetrying(),
             "border-border-base": !isRetrying(),

@@ -5,7 +5,11 @@ import { synergyTheme } from "../src/theme/default-themes"
 // ── Helpers ──────────────────────────────────────────────────
 
 async function readThemeCss(): Promise<string> {
-  return Bun.file("src/styles/theme.css").text()
+  const [foundation, generated] = await Promise.all([
+    Bun.file("src/styles/theme.css").text(),
+    Bun.file("src/styles/theme.generated.css").text(),
+  ])
+  return `${foundation}\n${generated}`
 }
 
 async function readFileSafe(path: string): Promise<string> {

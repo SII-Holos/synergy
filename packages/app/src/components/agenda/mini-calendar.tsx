@@ -74,7 +74,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
     const inWeek = isInAnchorWeek(ts)
 
     if (isToday) {
-      return "bg-text-strong text-background-base ring-1 ring-white/12"
+      return "bg-text-strong text-background-base ring-1 ring-border-weaker-selected"
     }
     if (isAnchorDay) {
       return "workbench-selected-surface text-text-strong"

@@ -127,6 +127,13 @@ cd packages/synergy
 bun test
 ```
 
+Frontend package suites run through their standard scripts and are included in `bun run quality`:
+
+```bash
+bun run --cwd packages/app test
+bun run --cwd packages/ui test
+```
+
 When developing Synergy while using Synergy itself, start an isolated second instance with a separate `SYNERGY_HOME` and explicit ports. Never stop or replace the instance hosting your active session. The [development reference](docs/reference/development.md) contains the complete workflow.
 
 ## Develop Plugins

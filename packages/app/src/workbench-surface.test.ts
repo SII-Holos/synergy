@@ -164,8 +164,8 @@ describe("workbench surface polarity", () => {
   })
 
   test("agenda time grid uses centered labels and scoped line tokens", () => {
-    expect(agendaCss).toContain("--agenda-grid-line: light-dark(")
-    expect(agendaCss).toContain("--agenda-grid-line-strong: light-dark(")
+    expect(agendaCss).toContain("--agenda-grid-line: var(--border-weak-base)")
+    expect(agendaCss).toContain("--agenda-grid-line-strong: var(--border-base)")
     expect(agendaCss).toContain(".agenda-time-label")
     expect(agendaCss).toContain("text-align: center;")
     expect(agendaCss).toContain("border-left: 1px solid var(--agenda-grid-line);")
@@ -231,7 +231,7 @@ describe("workbench surface polarity", () => {
     const sourceFiles = [...walkSourceFiles(appSrc), ...walkSourceFiles(uiSrc)]
     const genericBgClass = /(?:^|[\s"'`])((?:hover:)?bg-(?:surface|background|input|button)-[A-Za-z0-9\-/]+)/g
     const semanticState =
-      /success|warning|critical|info|diff|action|brand|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
+      /success|warning|critical|info|diff|action|brand|overlay|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
     const missing = new Set<string>()
 
     for (const filepath of sourceFiles) {

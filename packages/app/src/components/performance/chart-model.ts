@@ -1,8 +1,6 @@
 import type { ChartData, ChartOptions, TooltipItem } from "chart.js"
+import { withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
 import type { BrowserMetricSample, PerformanceMetricPoint, PerformanceSummary, PerformanceTimeline } from "./types"
-
-const AXIS_TEXT = "rgba(125,122,118,.84)"
-const GRID_COLOR = "rgba(124,118,110,.14)"
 
 export const CHART_METRICS = [
   "process.cpu.utilization",
@@ -28,7 +26,7 @@ export type ChartDatasetSpec = {
   stat?: string
   axisId: string
   axisTitle: string
-  color: string
+  color: HexColor
   formatter?: (value: number) => string
   source?: string
 }
@@ -41,6 +39,7 @@ export type PerformanceLineChartModel = {
 export function buildLineChartModel(input: {
   points: PerformanceMetricPoint[]
   datasets: ChartDatasetSpec[]
+  theme: { axisText: string; gridColor: string }
 }): PerformanceLineChartModel {
   const axisSpecs = uniqueAxes(input.datasets)
   const timestamps = input.points.map((point) => pointTimestamp(point))
@@ -53,7 +52,7 @@ export function buildLineChartModel(input: {
           y: numberValue(point[dataset.field]),
         })),
         borderColor: dataset.color,
-        backgroundColor: dataset.color.replace(/0\.(?:8[68]|9[02])/, "0.12"),
+        backgroundColor: withAlpha(dataset.color, 0.12),
         fill: true,
         tension: 0.35,
         borderWidth: 2,
@@ -68,7 +67,7 @@ export function buildLineChartModel(input: {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: AXIS_TEXT, boxWidth: 8, boxHeight: 8 } },
+        legend: { labels: { color: input.theme.axisText, boxWidth: 8, boxHeight: 8 } },
         tooltip: {
           mode: "index",
           intersect: false,
@@ -85,9 +84,15 @@ export function buildLineChartModel(input: {
         x: {
           type: "linear",
           grid: { display: false },
-          ticks: { color: AXIS_TEXT, maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: formatTimeTick },
+          ticks: {
+            color: input.theme.axisText,
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6,
+            callback: formatTimeTick,
+          },
         },
-        ...Object.fromEntries(axisSpecs.map((axis, index) => [axis.axisId, axisOptions(axis, index)])),
+        ...Object.fromEntries(axisSpecs.map((axis, index) => [axis.axisId, axisOptions(axis, index, input.theme)])),
       },
       animation: { duration: 500, easing: "easeOutQuart" },
     },
@@ -247,14 +252,21 @@ function tooltipLabel(context: TooltipItem<"line">, datasets: ChartDatasetSpec[]
   return `${spec?.label ?? context.dataset.label}${stat}: ${value === undefined ? "—" : formatter(value)}`
 }
 
-function axisOptions(axis: Pick<ChartDatasetSpec, "axisId" | "axisTitle" | "formatter">, index: number) {
+function axisOptions(
+  axis: Pick<ChartDatasetSpec, "axisId" | "axisTitle" | "formatter">,
+  index: number,
+  theme: { axisText: string; gridColor: string },
+) {
   return {
     type: "linear",
     position: index === 0 ? "left" : "right",
     border: { display: false },
-    grid: { color: GRID_COLOR, drawOnChartArea: index === 0 },
-    ticks: { color: AXIS_TEXT, callback: (value: string | number) => axis.formatter?.(Number(value)) ?? String(value) },
-    title: { display: true, color: AXIS_TEXT, text: axis.axisTitle },
+    grid: { color: theme.gridColor, drawOnChartArea: index === 0 },
+    ticks: {
+      color: theme.axisText,
+      callback: (value: string | number) => axis.formatter?.(Number(value)) ?? String(value),
+    },
+    title: { display: true, color: theme.axisText, text: axis.axisTitle },
   }
 }
 

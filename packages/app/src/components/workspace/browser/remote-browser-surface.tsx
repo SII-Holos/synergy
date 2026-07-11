@@ -419,7 +419,7 @@ export function RemoteBrowserSurface(props: {
       />
       <Show when={!streamReady()}>
         <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background-strong/80 text-center text-text-weak">
-          <Icon name={getSemanticIcon("browser.main")} class="size-10 text-icon-weaker" />
+          <Icon name={getSemanticIcon("browser.main")} class="size-10 text-icon-weak-base" />
           <span class="text-13-medium text-text-base">{statusMessage()}</span>
           <span class="text-11 text-text-weaker">{webrtcStatus()}</span>
         </div>

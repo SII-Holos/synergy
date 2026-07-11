@@ -1,3 +1,6 @@
+import type { ThemeTokenName } from "./tokens"
+import type { ThemeSeedName } from "./schema-contract"
+
 export type HexColor = `#${string}`
 
 export interface OklchColor {
@@ -6,21 +9,11 @@ export interface OklchColor {
   h: number // Hue 0-360
 }
 
-export interface ThemeSeedColors {
-  neutral: HexColor
-  primary: HexColor
-  success: HexColor
-  warning: HexColor
-  error: HexColor
-  info: HexColor
-  interactive: HexColor
-  diffAdd: HexColor
-  diffDelete: HexColor
-}
+export type ThemeSeedColors = Record<ThemeSeedName, HexColor>
 
 export interface ThemeVariant {
   seeds: ThemeSeedColors
-  overrides?: Record<string, ColorValue>
+  overrides?: Partial<Record<ThemeTokenName, ColorValue>>
 }
 
 export interface Theme {
@@ -31,23 +24,10 @@ export interface Theme {
   dark: ThemeVariant
 }
 
-export type TokenCategory =
-  | "background"
-  | "surface"
-  | "text"
-  | "border"
-  | "icon"
-  | "input"
-  | "button"
-  | "syntax"
-  | "markdown"
-  | "diff"
-  | "avatar"
-
-export type ThemeToken = string
+export type ThemeToken = ThemeTokenName
 
 export type CssVarRef = `var(--${string})`
 
 export type ColorValue = HexColor | CssVarRef
 
-export type ResolvedTheme = Record<ThemeToken, ColorValue>
+export type ResolvedTheme = Record<ThemeTokenName, ColorValue>

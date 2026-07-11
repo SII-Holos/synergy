@@ -97,7 +97,10 @@ const ThemeDef = z
   .object({
     id: z.string().min(1).max(64),
     label: z.string().min(1).max(64),
-    path: z.string().min(1),
+    path: z
+      .string()
+      .min(1)
+      .regex(/\.json$/),
   })
   .strict()
 

@@ -42,6 +42,31 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 4. Keep controls labeled, keyboard reachable, focus-visible, WCAG AA, reduced-motion safe, and usable at narrow widths.
 5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
+7. For imperative renderers, use the dependency's typed live-update API and cover it with a boundary test. Do not hide an unsupported method behind a cast; same-mode theme changes must repaint already-mounted renderers.
+
+## Preserve Loading Boundaries
+
+1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
+2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
+3. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
+4. Preserve `packages/app/src/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+
+## Change Themes and Color Tokens
+
+Read `docs/reference/frontend-theming.md` before changing the color contract, adding a semantic token, integrating an imperative renderer, or authoring a selectable theme.
+
+1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
+2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
+3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
+4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
+5. Plugin themes are complete structured JSON themes validated by the same schema and resolved by the same runtime. Do not add arbitrary plugin CSS theme overrides or theme-only token paths.
+6. Imperative consumers such as Canvas, Monaco, terminals, and embedded documents must use the resolved theme tokens and react to the canonical theme-change event. Do not maintain component-local light/dark palettes or infer a theme change only from `data-color-scheme`.
+7. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
+
+```bash
+bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
+bun test --cwd packages/app src/testing/color-token-contract.test.ts
+```
 
 ## Verify
 
@@ -49,14 +74,16 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 2. Run:
 
 ```bash
+bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/app build
 ```
 
 3. Inspect both themes, keyboard/focus, narrow layout, and loading/error behavior in an existing app or isolated second runtime.
-4. Exercise Desktop when native Browser, window chrome, protocol, or Electron behavior changed.
-5. Finish with `bun run quality:quick` when the change is ready for repository review.
+4. At 375 px, check that overlay surfaces are named and keyboard-contained and that every interactive control remains inside the viewport. Open each changed lazy panel once to prove its implementation and resources still load.
+5. Exercise Desktop when native Browser, window chrome, protocol, or Electron behavior changed.
+6. Finish with `bun run quality:quick` when the change is ready for repository review.
 
 ## Handoff
 

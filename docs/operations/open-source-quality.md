@@ -196,9 +196,22 @@ bun run quality:quick
 ### I changed frontend or UI package behavior
 
 ```bash
+bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
+bun run --cwd packages/ui test
+bun run --cwd packages/app build
 bun turbo test
 bun run quality:quick
+```
+
+The App and shared UI packages both expose standard `test` scripts, so `bun turbo test` includes their co-located suites. The App runner isolates its production CSS build contract from the unit-test process; the UI runner isolates the session-turn timeline suite because its process-wide module mocks must not leak into other shared UI tests.
+
+For theme or color-token work, regenerate and verify the checked-in artifacts before the package suites:
+
+```bash
+bun run --cwd packages/ui generate:theme
+bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
+bun test --cwd packages/app src/testing/color-token-contract.test.ts
 ```
 
 ## Documentation Sync Rules

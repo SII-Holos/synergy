@@ -41,7 +41,7 @@ The build must externalize `solid-js`, `solid-js/web`, `solid-js/store`, and sup
 | `messageSlots`    | Add content at a named message slot  | Yes                                              |
 | `composerSlots`   | Add content around the composer      | Yes                                              |
 | `commands`        | Register a Web UI command            | Yes                                              |
-| `themes`          | Register packaged theme CSS          | No                                               |
+| `themes`          | Register a structured JSON theme     | No                                               |
 | `icons`           | Register packaged SVG icons          | No                                               |
 
 Surface IDs are namespaced by the host as `<plugin-id>:<surface-id>`. Navigation routes are generated under `/plugins/<plugin-id>/<navigation-id>`.
@@ -123,15 +123,60 @@ Slots should remain small and contextual. A surface that needs its own navigatio
 
 UI commands expose a label, optional description/icon, and named command export. They are registered in the host command registry under the plugin namespace.
 
-Themes are packaged CSS assets. Preserve the Web product polarity rule: in dark mode, content and selected surfaces step brighter than their container; in light mode, they step darker. Use host tokens where available and scope plugin selectors to avoid global overrides.
+Themes are packaged JSON assets with complete light and dark seed palettes. The host validates and resolves every asset before registration, requires its `id` to match the manifest, generates every canonical color token through the shared resolver, namespaces the selected theme ID, and applies the same runtime path used by the built-in Synergy theme.
 
-Icons are packaged SVG assets loaded into the plugin icon registry. Treat SVG as code-bearing input: ship static reviewed assets, avoid remote fetches, and keep names plugin-specific.
+Structured JSON theme contributions require `engines.synergy` to include Synergy 2.4.4 or later. Earlier hosts interpret theme assets as CSS and cannot apply this contract.
+
+```jsonc
+{
+  "themes": [{ "id": "ocean", "label": "Ocean", "path": "./themes/ocean.json" }],
+}
+```
+
+The referenced JSON uses this shape:
+
+```jsonc
+{
+  "name": "Ocean",
+  "id": "ocean",
+  "light": {
+    "seeds": {
+      "neutral": "#64748B",
+      "primary": "#0284C7",
+      "success": "#16A34A",
+      "warning": "#D97706",
+      "error": "#DC2626",
+      "info": "#0EA5E9",
+      "interactive": "#0284C7",
+      "diffAdd": "#16A34A",
+      "diffDelete": "#DC2626",
+    },
+  },
+  "dark": {
+    "seeds": {
+      "neutral": "#94A3B8",
+      "primary": "#38BDF8",
+      "success": "#4ADE80",
+      "warning": "#FBBF24",
+      "error": "#F87171",
+      "info": "#38BDF8",
+      "interactive": "#38BDF8",
+      "diffAdd": "#4ADE80",
+      "diffDelete": "#F87171",
+    },
+  },
+}
+```
+
+Seeds must be opaque three- or six-digit hex colors. Each variant may add `overrides` keyed only by canonical theme token names; overrides accept hex values and `var(--token)` references. The host rejects unknown keys, arbitrary CSS, cyclic references, and overrides that break required WCAG AA text/surface pairs. Use the plugin-kit `theme-icon` template as the current schema example. See [Frontend themes and color](../reference/frontend-theming.md) for seed selection, authoring workflow, and verification. CSS-based theme contributors should follow [the structured-theme migration](../migrations/plugin-theme-json.md).
+
+Icons are packaged SVG assets loaded into the plugin icon registry. Manifest references use the plugin-local icon name; the host namespaces the registered icon as `<plugin-id>:<icon-name>` so unrelated plugins cannot collide. Treat SVG as code-bearing input: ship static reviewed assets and avoid remote fetches.
 
 ## Loading and Failure Behavior
 
 The server exposes enabled contributions and versioned asset URLs. The Web host fetches each JS bundle, verifies the UI API major, rejects embedded or unsupported Solid runtimes, imports the requested named export, and registers a disposer for every surface.
 
-One missing export or invalid surface is reported against that plugin. Reloading disposes the plugin's old registrations before adding the new set.
+One missing export or invalid surface is reported against that plugin. Reloading fetches and validates declarative theme and icon assets first, ignores stale reload results, then replaces the plugin's old registrations synchronously.
 
 ## Authoring Rules
 
@@ -141,5 +186,5 @@ One missing export or invalid surface is reported against that plugin. Reloading
 - Keep tool results meaningful without custom UI.
 - Use host navigation and workbench contracts instead of recreating them.
 - Keep keyboard, focus, loading, empty, error, and narrow-layout states usable.
-- Package every referenced JS, CSS, and SVG asset; never rely on source paths after build.
+- Package every referenced JS, JSON, CSS, and SVG asset; never rely on source paths after build.
 - Validate exports and build output before installation.

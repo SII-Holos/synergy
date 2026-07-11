@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show, onCleanup, onMount } from "solid-js"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -28,6 +28,8 @@ export function MobileDrawer() {
   const theme = useTheme()
 
   const [drilldown, setDrilldown] = createSignal<LocalScope | null>(null)
+  let drawerRef!: HTMLDivElement
+  let closeButtonRef!: HTMLButtonElement
 
   const currentDir = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
 
@@ -41,17 +43,56 @@ export function MobileDrawer() {
     close()
   }
 
+  createEffect(() => {
+    if (!layout.mobileSidebar.opened()) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    queueMicrotask(() => closeButtonRef?.focus())
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        close()
+        return
+      }
+      if (event.key !== "Tab") return
+
+      const focusable = Array.from(
+        drawerRef.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable.at(-1)!
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    onCleanup(() => {
+      document.removeEventListener("keydown", handleKeyDown)
+      previousFocus?.focus()
+    })
+  })
+
   return (
     <Show when={layout.mobileSidebar.opened()}>
       <div class="fixed inset-0 z-[100] flex md:hidden">
         {/* Backdrop */}
         <div
-          class="absolute inset-0 bg-black/40"
+          class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
           onClick={close}
         />
         {/* Drawer panel */}
         <div
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
@@ -62,8 +103,10 @@ export function MobileDrawer() {
               <span class="text-14-medium text-text-strong">Synergy</span>
             </A>
             <button
+              ref={closeButtonRef}
               type="button"
-              class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+              aria-label="Close navigation"
+              class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
               <Icon name={getSemanticIcon("action.close")} size="normal" />
@@ -199,7 +242,11 @@ function ScopeListView(props: {
               >
                 {getScopeLabel(scope)}
               </span>
-              <Icon name={getSemanticIcon("navigation.expand")} size="small" class="ml-auto shrink-0 text-icon-weak" />
+              <Icon
+                name={getSemanticIcon("navigation.expand")}
+                size="small"
+                class="ml-auto shrink-0 text-icon-weak-base"
+              />
             </button>
           )
         }}

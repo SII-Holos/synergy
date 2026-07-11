@@ -1,4 +1,8 @@
 import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { THEME_CHANGE_EVENT } from "../theme/application"
+import { synergyTheme } from "../theme/default-themes"
+import { resolveTheme, resolveThemeColor } from "../theme/resolve"
+import type { ResolvedTheme } from "../theme/types"
 
 const MIN_HEIGHT = 120
 const DEFAULT_HEIGHT = 280
@@ -38,26 +42,18 @@ const THEME_VARIABLES = [
   "border-strong-base",
 ] as const
 
-const FALLBACK_THEME: Record<(typeof THEME_VARIABLES)[number], string> = {
-  "background-base": "#f6f7f8",
-  "surface-base": "#e9ecef",
-  "surface-raised-base": "#e9ecef",
-  "surface-raised-stronger-non-alpha": "#dce2ea",
-  "surface-inset-base": "#e4e8ee",
-  "surface-brand-base": "#b98522",
-  "surface-interactive-base": "#4f67c8",
-  "surface-success-strong": "#218a62",
-  "surface-warning-strong": "#9b671a",
-  "surface-critical-strong": "#914f39",
-  "text-base": "#332e2b",
-  "text-weak": "#6f6761",
-  "text-weaker": "#8b817a",
-  "text-strong": "#1f1a17",
-  "text-interactive-base": "#4f67c8",
-  "border-base": "rgba(31, 0, 0, 0.16)",
-  "border-weak-base": "rgba(31, 0, 0, 0.1)",
-  "border-strong-base": "rgba(31, 0, 0, 0.22)",
+function selectRenderThemeColors(tokens: ResolvedTheme) {
+  return Object.fromEntries(THEME_VARIABLES.map((name) => [name, resolveThemeColor(tokens, name)])) as Record<
+    (typeof THEME_VARIABLES)[number],
+    string
+  >
 }
+
+const DEFAULT_THEME = resolveTheme(synergyTheme)
+const RENDER_FALLBACK_THEMES = {
+  light: selectRenderThemeColors(DEFAULT_THEME.light),
+  dark: selectRenderThemeColors(DEFAULT_THEME.dark),
+} as const
 
 const BASE_STYLE = `
   * { box-sizing: border-box; }
@@ -191,10 +187,11 @@ function readThemeCss() {
   const root = document.documentElement
   const computed = window.getComputedStyle(root)
   const mode = root.dataset.colorScheme === "dark" ? "dark" : "light"
+  const fallback = RENDER_FALLBACK_THEMES[mode]
   const lines = [`--render-color-scheme: ${mode};`]
 
   for (const name of THEME_VARIABLES) {
-    const value = computed.getPropertyValue(`--${name}`).trim() || FALLBACK_THEME[name]
+    const value = computed.getPropertyValue(`--${name}`).trim() || fallback[name]
     lines.push(`--render-${name}: ${value};`)
   }
 
@@ -202,8 +199,9 @@ function readThemeCss() {
 }
 
 function fallbackThemeCss(mode: "light" | "dark") {
+  const fallback = RENDER_FALLBACK_THEMES[mode]
   const lines = [`--render-color-scheme: ${mode};`]
-  for (const name of THEME_VARIABLES) lines.push(`--render-${name}: ${FALLBACK_THEME[name]};`)
+  for (const name of THEME_VARIABLES) lines.push(`--render-${name}: ${fallback[name]};`)
   return `:root {\n${lines.map((line) => `  ${line}`).join("\n")}\n}`
 }
 
@@ -240,7 +238,6 @@ export function RenderHtml(props: { html: string }) {
   })
   let iframeRef: HTMLIFrameElement | undefined
   let observer: ResizeObserver | undefined
-  let rootObserver: MutationObserver | undefined
   let timers: number[] = []
 
   const measure = () => {
@@ -275,16 +272,13 @@ export function RenderHtml(props: { html: string }) {
   }
 
   onMount(() => {
-    rootObserver = new MutationObserver(() => setThemeVersion((version) => version + 1))
-    rootObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-color-scheme", "class", "style"],
-    })
+    const handleThemeChange = () => setThemeVersion((version) => version + 1)
+    document.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+    onCleanup(() => document.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange))
   })
 
   onCleanup(() => {
     observer?.disconnect()
-    rootObserver?.disconnect()
     clearTimers()
   })
 

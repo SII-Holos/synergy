@@ -160,9 +160,10 @@ export function AddressBar(props: AddressBarProps) {
       <span
         class="browser-connection-dot size-2 shrink-0 rounded-full"
         classList={{
-          "bg-green-500": browser.session.connectionStatus === "connected",
-          "bg-amber-500": browser.session.connectionStatus === "connecting",
-          "bg-red-500": browser.session.connectionStatus === "failed" || browser.session.connectionStatus === "error",
+          "bg-icon-success-base": browser.session.connectionStatus === "connected",
+          "bg-icon-warning-base": browser.session.connectionStatus === "connecting",
+          "bg-icon-critical-base":
+            browser.session.connectionStatus === "failed" || browser.session.connectionStatus === "error",
           "bg-text-weaker": browser.session.connectionStatus === "disconnected",
         }}
         title={browser.session.connectionStatus}

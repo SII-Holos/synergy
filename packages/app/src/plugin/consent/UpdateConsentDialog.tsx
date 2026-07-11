@@ -47,7 +47,7 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
   const riskArrowColor = () => {
     switch (direction()) {
       case "increased":
-        return "text-text-critical"
+        return "text-text-on-critical-base"
       case "decreased":
         return "text-icon-success-base"
       default:
@@ -91,12 +91,12 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
               <PermissionRiskBadge risk={props.diff.riskAfter!} />
             </div>
             <Show when={isRiskIncreased()}>
-              <span class="rounded-full bg-surface-critical-soft px-2 py-0.5 text-11-medium text-text-critical">
+              <span class="rounded-full bg-surface-critical-weak px-2 py-0.5 text-11-medium text-text-on-critical-base">
                 Risk increased
               </span>
             </Show>
             <Show when={direction() === "decreased"}>
-              <span class="rounded-full bg-surface-success-soft px-2 py-0.5 text-11-medium text-text-success">
+              <span class="rounded-full bg-surface-success-weak px-2 py-0.5 text-11-medium text-text-on-success-base">
                 Risk decreased
               </span>
             </Show>
@@ -108,8 +108,8 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
           <div class="flex flex-col gap-4">
             {/* Added permissions */}
             <Show when={props.diff.added.length > 0}>
-              <div class="rounded-lg border border-border-warning-base bg-surface-warning-soft p-3">
-                <p class="text-13-medium text-text-warning mb-2">
+              <div class="rounded-lg border border-border-warning-base bg-surface-warning-weak p-3">
+                <p class="text-13-medium text-text-on-warning-base mb-2">
                   New permissions requested
                   <span class="ml-1 text-text-weaker text-12-regular">({props.diff.added.length})</span>
                 </p>
@@ -119,8 +119,8 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
 
             {/* Changed permissions */}
             <Show when={props.diff.changed.length > 0}>
-              <div class="rounded-lg border border-border-warning-base bg-surface-warning-soft p-3">
-                <p class="text-13-medium text-text-warning mb-2">
+              <div class="rounded-lg border border-border-warning-base bg-surface-warning-weak p-3">
+                <p class="text-13-medium text-text-on-warning-base mb-2">
                   Modified permissions
                   <span class="ml-1 text-text-weaker text-12-regular">({props.diff.changed.length})</span>
                 </p>
@@ -151,7 +151,7 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
                   <Icon
                     name={getSemanticIcon("navigation.expand")}
                     size="small"
-                    class="text-icon-weak summary-marker"
+                    class="text-icon-weak-base summary-marker"
                   />
                   <p class="text-13-medium text-text-base">
                     Unchanged permissions
@@ -166,8 +166,8 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
 
             {/* Removed permissions */}
             <Show when={props.diff.removed.length > 0}>
-              <div class="rounded-lg border border-border-success-base bg-surface-success-soft p-3">
-                <p class="text-13-medium text-text-success mb-2">
+              <div class="rounded-lg border border-border-success-base bg-surface-success-weak p-3">
+                <p class="text-13-medium text-text-on-success-base mb-2">
                   No longer required
                   <span class="ml-1 text-text-weaker text-12-regular">({props.diff.removed.length})</span>
                 </p>
@@ -194,7 +194,7 @@ export function UpdateConsentDialog(props: UpdateConsentDialogProps) {
               class="mt-0.5 text-icon-critical-base shrink-0"
             />
             <div class="min-w-0">
-              <p class="text-13-medium text-text-critical">This update increases the risk level</p>
+              <p class="text-13-medium text-text-on-critical-base">This update increases the risk level</p>
               <p class="text-12-regular text-text-weak mt-0.5">
                 The new version requires higher-risk permissions. Review the changes carefully before approving.
               </p>

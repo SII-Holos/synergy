@@ -112,7 +112,7 @@ export function LibraryPanel() {
               <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
               <Show when={showSearch()}>
                 <div class="library-search-field">
-                  <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak shrink-0" />
+                  <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                   <input
                     type="text"
                     placeholder={

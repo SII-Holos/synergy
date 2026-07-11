@@ -1,12 +1,12 @@
 import { For, Show, createEffect, on } from "solid-js"
 import { useBrowser, type ConsoleEntry } from "./browser-store"
 
-const LEVEL_COLORS: Record<string, string> = {
+const LEVEL_CLASSES: Record<string, string> = {
   log: "text-text-subtle bg-surface-base",
-  info: "text-blue-400 bg-blue-500/10",
-  warn: "text-amber-400 bg-amber-500/10",
-  error: "text-red-400 bg-red-500/10",
-  debug: "text-purple-400 bg-purple-500/10",
+  info: "text-text-on-info-base bg-surface-info-weak",
+  warn: "text-text-on-warning-base bg-surface-warning-weak",
+  error: "text-text-on-critical-base bg-surface-critical-weak",
+  debug: "text-text-interactive-base bg-surface-interactive-weak",
 }
 
 function formatTime(ts: number): string {
@@ -54,12 +54,12 @@ export function ConsolePanel() {
           <For each={entries()}>
             {(entry) => {
               const level = entry.level
-              const colorClass = LEVEL_COLORS[level] ?? LEVEL_COLORS.log
+              const levelClasses = LEVEL_CLASSES[level] ?? LEVEL_CLASSES.log
 
               return (
                 <div class="flex gap-2 px-3 py-1 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
                   <span
-                    class={`shrink-0 inline-flex items-center justify-center h-5 px-1.5 rounded text-10-medium uppercase ${colorClass}`}
+                    class={`shrink-0 inline-flex items-center justify-center h-5 px-1.5 rounded text-10-medium uppercase ${levelClasses}`}
                   >
                     {level}
                   </span>

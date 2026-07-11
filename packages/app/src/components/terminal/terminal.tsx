@@ -4,7 +4,8 @@ import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
-import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
+import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
+import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -15,28 +16,6 @@ export interface TerminalProps extends ComponentProps<"div"> {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
-
-type TerminalColors = {
-  background: string
-  foreground: string
-  cursor: string
-  selectionBackground: string
-}
-
-const DEFAULT_TERMINAL_COLORS: Record<"light" | "dark", TerminalColors> = {
-  light: {
-    background: "#fcfcfc",
-    foreground: "#211e1e",
-    cursor: "#211e1e",
-    selectionBackground: withAlpha("#211e1e", 0.2),
-  },
-  dark: {
-    background: "#191515",
-    foreground: "#d4d4d4",
-    cursor: "#d4d4d4",
-    selectionBackground: withAlpha("#d4d4d4", 0.25),
-  },
-}
 
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
@@ -58,19 +37,13 @@ export const Terminal = (props: TerminalProps) => {
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
 
-  const getTerminalColors = (): TerminalColors => {
+  const getTerminalColors = (): TerminalTheme => {
     const mode = theme.mode()
-    const fallback = DEFAULT_TERMINAL_COLORS[mode]
-    const currentTheme = theme.theme()
-    if (!currentTheme) return fallback
-    const variant = mode === "dark" ? currentTheme.dark : currentTheme.light
-    if (!variant?.seeds) return fallback
-    const resolved = resolveThemeVariant(variant, mode === "dark")
-    const text = resolved["text-stronger"] ?? fallback.foreground
-    const background = resolved["background-stronger"] ?? fallback.background
+    const tokens = theme.tokens()
+    const text = resolveThemeColor(tokens, "text-stronger")
+    const background = resolveThemeColor(tokens, "background-stronger")
     const alpha = mode === "dark" ? 0.25 : 0.2
-    const base = text.startsWith("#") ? (text as HexColor) : (fallback.foreground as HexColor)
-    const selectionBackground = withAlpha(base, alpha)
+    const selectionBackground = withAlpha(text, alpha)
     return {
       background,
       foreground: text,
@@ -79,15 +52,13 @@ export const Terminal = (props: TerminalProps) => {
     }
   }
 
-  const [terminalColors, setTerminalColors] = createSignal<TerminalColors>(getTerminalColors())
+  const [terminalColors, setTerminalColors] = createSignal<TerminalTheme>(getTerminalColors())
 
   createEffect(() => {
     const colors = getTerminalColors()
     setTerminalColors(colors)
     if (!term) return
-    const setOption = (term as unknown as { setOption?: (key: string, value: TerminalColors) => void }).setOption
-    if (!setOption) return
-    setOption("theme", colors)
+    applyTerminalTheme(term, colors)
   })
 
   const focusTerminal = () => {
@@ -318,7 +289,7 @@ export const Terminal = (props: TerminalProps) => {
     >
       <div ref={container} class="size-full px-6 py-3" />
       <Show when={!connected()}>
-        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background/80 pointer-events-none">
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background-base/80 pointer-events-none">
           <span class="text-muted-foreground text-sm">{gone() ? "Session lost" : "Reconnecting..."}</span>
         </div>
       </Show>

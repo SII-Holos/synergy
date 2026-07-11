@@ -194,18 +194,18 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
                       <Icon name={getSemanticIcon(item.icon)} size="small" class="shrink-0 text-text-weak" />
                       <span>{item.label}</span>
                       <Show when={item.warning}>
-                        <span class="inline-flex items-center gap-1 rounded-full bg-surface-warning-soft px-2 py-0.5 text-11-medium text-text-warning">
+                        <span class="inline-flex items-center gap-1 rounded-full bg-surface-warning-weak px-2 py-0.5 text-11-medium text-text-on-warning-base">
                           <Icon name={getSemanticIcon("state.warning")} size="small" />
                           Elevated access
                         </span>
                       </Show>
                       <Show when={item.changed === "new"}>
-                        <span class="rounded-full bg-surface-success-soft px-2 py-0.5 text-11-medium text-text-success">
+                        <span class="rounded-full bg-surface-success-weak px-2 py-0.5 text-11-medium text-text-on-success-base">
                           New
                         </span>
                       </Show>
                       <Show when={item.changed === "removed"}>
-                        <span class="rounded-full bg-surface-muted px-2 py-0.5 text-11-medium text-text-weak line-through">
+                        <span class="rounded-full bg-surface-weak px-2 py-0.5 text-11-medium text-text-weak line-through">
                           Removed
                         </span>
                       </Show>
@@ -225,7 +225,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
 
       {/* UI execution indicator */}
       <div class="flex items-center gap-3 rounded-lg border border-border-base bg-surface-base p-3">
-        <Icon name={getSemanticIcon("plugins.permission.hostUi")} size="small" class="text-text-success" />
+        <Icon name={getSemanticIcon("plugins.permission.hostUi")} size="small" class="text-text-on-success-base" />
         <div>
           <p class="text-13-medium text-text-base">Host-rendered UI</p>
           <p class="text-12-regular text-text-weak">Can render declared surfaces in Synergy after approval.</p>
@@ -234,10 +234,14 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
 
       {/* Risky permissions warning */}
       <Show when={hasRiskyPermissions()}>
-        <div class="flex items-start gap-2 rounded-lg border border-border-warning bg-surface-warning-soft p-3">
-          <Icon name={getSemanticIcon("state.warning")} size="small" class="mt-0.5 text-text-warning shrink-0" />
+        <div class="flex items-start gap-2 rounded-lg border border-border-warning-base bg-surface-warning-weak p-3">
+          <Icon
+            name={getSemanticIcon("state.warning")}
+            size="small"
+            class="mt-0.5 text-text-on-warning-base shrink-0"
+          />
           <div>
-            <p class="text-13-medium text-text-warning">Elevated permissions requested</p>
+            <p class="text-13-medium text-text-on-warning-base">Elevated permissions requested</p>
             <p class="text-12-regular text-text-weak mt-0.5">
               This plugin requests access beyond the UI surface. Review carefully before installing.
             </p>

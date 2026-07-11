@@ -24,6 +24,8 @@ import { registerSettingsSection } from "./registries/settings-registry"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
 import { registerUICommand, type PluginUICommand } from "./registries/ui-command-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
+import { pluginSurfaceId } from "./surface-id"
+import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
 
 export type PluginUIStatus = PluginLifecycleState
 
@@ -43,17 +45,13 @@ interface PluginHostValue {
 
 const PluginHostContext = createContext<PluginHostValue>()
 
-function pluginSurfaceId(pluginId: string, surfaceId: string) {
-  return `${pluginId}:${surfaceId}`
-}
-
 function pluginNavigationPath(pluginId: string, navigationId: string) {
   return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(navigationId)}`
 }
 
-function registerPluginSurfaces(contributions: PluginContribution[]) {
-  const disposersByPlugin = new Map<string, Array<() => void>>()
-  const uiErrors: PluginUIError[] = []
+function registerPluginSurfaces(contributions: PluginContribution[], assets: PluginUIAssets) {
+  const disposers: Array<() => void> = []
+  const uiErrors: PluginUIError[] = assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
 
   const addError = (pluginId: string, message: string) => {
     uiErrors.push({ pluginId, message, timestamp: Date.now() })
@@ -99,9 +97,6 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
     const ui = contribution.ui
     if (!ui) continue
 
-    disposersByPlugin.set(contribution.pluginId, [])
-    const disposers = disposersByPlugin.get(contribution.pluginId)!
-
     if (contribution.permissions?.ui !== true) {
       addError(
         contribution.pluginId,
@@ -132,7 +127,12 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
       disposers.push(
         toolRendererRegistry.register(toolId, {
           loader,
-          fallback: renderer.fallback,
+          fallback: renderer.fallback
+            ? {
+                ...renderer.fallback,
+                icon: resolvePluginIconReference(contribution, renderer.fallback.icon),
+              }
+            : undefined,
         }),
       )
     }
@@ -164,7 +164,7 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
         registerWorkbenchPanel({
           id: pluginSurfaceId(contribution.pluginId, panel.id),
           label: panel.label,
-          icon: panel.icon,
+          icon: resolvePluginIconReference(contribution, panel.icon),
           surface: panel.surface,
           cardinality: panel.cardinality,
           requiresSession: panel.requiresSession,
@@ -187,7 +187,7 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
           id: pluginSurfaceId(contribution.pluginId, navigation.id),
           navigationId: navigation.id,
           label: navigation.label,
-          icon: navigation.icon,
+          icon: resolvePluginIconReference(contribution, navigation.icon),
           placement: navigation.placement,
           path: pluginNavigationPath(contribution.pluginId, navigation.id),
           order: navigation.order,
@@ -208,7 +208,7 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
         registerSettingsSection({
           id: pluginSurfaceId(contribution.pluginId, section.id),
           label: section.label,
-          icon: section.icon,
+          icon: resolvePluginIconReference(contribution, section.icon),
           group: section.group,
           formSchema: section.formSchema,
           order: section.order,
@@ -264,36 +264,13 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
     }
 
     for (const theme of ui.themes ?? []) {
-      disposers.push(
-        registerPluginTheme({
-          id: pluginSurfaceId(contribution.pluginId, theme.id),
-          label: theme.label,
-          cssUrl: assetUrl(contribution, theme.path),
-          pluginId: contribution.pluginId,
-        }),
-      )
+      const loaded = assets.themes.get(pluginSurfaceId(contribution.pluginId, theme.id))
+      if (loaded) disposers.push(registerPluginTheme(loaded))
     }
 
     for (const icon of ui.icons ?? []) {
-      let disposed = false
-      let disposeIcon: (() => void) | undefined
-      disposers.push(() => {
-        disposed = true
-        disposeIcon?.()
-      })
-      fetch(assetUrl(contribution, icon.path))
-        .then((response) => (response.ok ? response.text() : ""))
-        .then((svgContent) => {
-          if (disposed || !svgContent) return
-          disposeIcon = registerIcon({ name: icon.name, svgContent, pluginId: contribution.pluginId })
-        })
-        .catch((error) => {
-          if (disposed) return
-          addError(
-            contribution.pluginId,
-            `Icon "${icon.name}" failed to load: ${error instanceof Error ? error.message : String(error)}`,
-          )
-        })
+      const loaded = assets.icons.get(pluginSurfaceId(contribution.pluginId, icon.name))
+      if (loaded) disposers.push(registerIcon(loaded))
     }
 
     for (const command of ui.commands ?? []) {
@@ -308,7 +285,7 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
           commandId: command.id,
           label: command.label,
           description: command.description,
-          icon: command.icon,
+          icon: resolvePluginIconReference(contribution, command.icon),
           pluginId: contribution.pluginId,
           loader,
         }),
@@ -316,31 +293,40 @@ function registerPluginSurfaces(contributions: PluginContribution[]) {
     }
   }
 
-  return { disposersByPlugin, uiErrors }
+  return { disposers, uiErrors }
 }
 
 export function PluginHostProvider(props: ParentProps) {
   const server = useServer()
   let disposePluginSurfaces: Array<() => void> = []
+  let reloadGeneration = 0
+  let reloadController: AbortController | undefined
+  let disposed = false
 
   const [pluginContributions, setPluginContributions] = createSignal<PluginContribution[]>([])
   const [statusMap, setStatusMap] = createSignal<Map<string, PluginUIStatus>>(new Map())
   const [errors, setErrors] = createSignal<PluginUIError[]>([])
 
   function disposeRegisteredSurfaces() {
-    for (const dispose of disposePluginSurfaces) dispose()
+    for (let index = disposePluginSurfaces.length - 1; index >= 0; index--) disposePluginSurfaces[index]()
     disposePluginSurfaces = []
   }
 
   async function reload() {
     const url = server.url
     if (!url) return
+    const generation = ++reloadGeneration
+    reloadController?.abort()
+    const controller = new AbortController()
+    reloadController = controller
 
     try {
       const contributions = await fetchUIContributions(url)
+      const assets = await loadPluginUIAssets(contributions, { signal: controller.signal })
+      if (disposed || generation !== reloadGeneration) return
       disposeRegisteredSurfaces()
-      const registered = registerPluginSurfaces(contributions)
-      disposePluginSurfaces = Array.from(registered.disposersByPlugin.values()).flat()
+      const registered = registerPluginSurfaces(contributions, assets)
+      disposePluginSurfaces = registered.disposers
 
       batch(() => {
         setPluginContributions(contributions)
@@ -352,6 +338,7 @@ export function PluginHostProvider(props: ParentProps) {
         setErrors(registered.uiErrors)
       })
     } catch (error) {
+      if (controller.signal.aborted || disposed || generation !== reloadGeneration) return
       setErrors([
         {
           pluginId: "",
@@ -359,6 +346,8 @@ export function PluginHostProvider(props: ParentProps) {
           timestamp: Date.now(),
         },
       ])
+    } finally {
+      if (reloadController === controller) reloadController = undefined
     }
   }
 
@@ -367,7 +356,12 @@ export function PluginHostProvider(props: ParentProps) {
     if (url) void reload()
   })
 
-  onCleanup(disposeRegisteredSurfaces)
+  onCleanup(() => {
+    disposed = true
+    reloadGeneration++
+    reloadController?.abort()
+    disposeRegisteredSurfaces()
+  })
 
   const value: PluginHostValue = {
     plugins: pluginContributions,

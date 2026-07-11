@@ -36,7 +36,7 @@ export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null |
       <Show
         when={visibleImageIcon()}
         fallback={
-          <Icon name={lucideName() as Parameters<typeof Icon>[0]["name"]} size="normal" class="text-icon-weak" />
+          <Icon name={lucideName() as Parameters<typeof Icon>[0]["name"]} size="normal" class="text-icon-weak-base" />
         }
       >
         {(current) => (

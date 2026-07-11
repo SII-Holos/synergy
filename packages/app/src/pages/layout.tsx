@@ -30,6 +30,7 @@ import {
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
+import { WorkbenchPanelsProvider } from "@/context/workbench"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -435,13 +436,15 @@ export default function Layout(props: ParentProps) {
   })
 
   return (
-    <LayoutContent
-      searchOpen={searchOpen()}
-      onSearchClose={() => setSearchOpen(false)}
-      onSearchOpen={() => setSearchOpen(true)}
-    >
-      {props.children}
-    </LayoutContent>
+    <WorkbenchPanelsProvider>
+      <LayoutContent
+        searchOpen={searchOpen()}
+        onSearchClose={() => setSearchOpen(false)}
+        onSearchOpen={() => setSearchOpen(true)}
+      >
+        {props.children}
+      </LayoutContent>
+    </WorkbenchPanelsProvider>
   )
 }
 

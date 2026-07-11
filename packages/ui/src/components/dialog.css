@@ -2,7 +2,7 @@
 [data-slot="dialog-overlay"] {
   position: fixed;
   inset: 0;
-  background-color: light-dark(rgba(11, 13, 18, 0.34), rgba(0, 0, 0, 0.48));
+  background-color: var(--surface-overlay);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   z-index: 50;

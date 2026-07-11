@@ -16,7 +16,7 @@ Current templates are:
 - `workbench-panel`
 - `navigation`
 - `api-connector`
-- `theme-icon`
+- `theme-icon` — structured theme and optional SVG icon assets without a JavaScript UI entry
 
 The generated project pins compatible plugin SDK and kit packages and provides scripts for development, validation, build, test, pack, signing, and marketplace publishing.
 

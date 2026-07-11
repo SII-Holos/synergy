@@ -80,7 +80,7 @@ export function ActivityView(props: {
             when={grouped().length > 0}
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
-                <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak" />
+                <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak-base" />
                 <span class="text-12-regular text-text-weaker">{props.error ?? "No history found"}</span>
               </div>
             }
@@ -135,7 +135,7 @@ function ActivityGroupCard(props: {
         <Icon
           name={getSemanticIcon("navigation.expand")}
           size="small"
-          class={`shrink-0 text-icon-weak transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
+          class={`shrink-0 text-icon-weak-base transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
         />
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 min-w-0">

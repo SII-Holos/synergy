@@ -5,6 +5,8 @@ import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { HexColor } from "@ericsanchezok/synergy-ui/theme"
+import { useChartTheme } from "../visualization/use-chart-theme"
 import {
   browserMetricPoints,
   buildLineChartModel,
@@ -35,12 +37,6 @@ import type {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
-const CPU_COLOR = "rgba(56, 88, 182, 0.92)"
-const MEMORY_COLOR = "rgba(39, 143, 116, 0.92)"
-const REQUEST_COLOR = "rgba(196, 132, 36, 0.88)"
-const BROWSER_COLOR = "rgba(112, 92, 196, 0.86)"
-const DISK_COLOR = "rgba(172, 92, 48, 0.88)"
-
 const TIME_RANGES = [
   { label: "15m", value: 15 * 60_000 },
   { label: "1h", value: 60 * 60_000 },
@@ -52,6 +48,17 @@ type RankedItem = PerformanceSummary["top"]["slowRoutes"][number]
 
 export function PerformanceDashboard() {
   const perf = usePerformance()
+  const chartTheme = useChartTheme()
+  const chartColors = createMemo(() => {
+    const colors = chartTheme()
+    return {
+      cpu: colors.color("text-interactive-base"),
+      memory: colors.color("text-on-success-base"),
+      request: colors.color("text-on-warning-base"),
+      browser: colors.color("syntax-type"),
+      disk: colors.color("text-on-critical-base"),
+    }
+  })
   const [selectedTrace, setSelectedTrace] = createSignal<PerformanceTraceSpan | null>(null)
   const [selectedTraceDetail, setSelectedTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
   const summary = () => perf.summary()
@@ -139,8 +146,14 @@ export function PerformanceDashboard() {
           description="CPU average percent and event-loop p95 latency from runtime timeline buckets"
           points={resourcePressurePoints(perf.timeline())}
           datasets={[
-            percentDataset("CPU", "cpu", CPU_COLOR, "Timeline process.cpu.utilization"),
-            durationDataset("Event loop", "eventLoopLag", REQUEST_COLOR, "Timeline process.event_loop.lag", "p95"),
+            percentDataset("CPU", "cpu", chartColors().cpu, "Timeline process.cpu.utilization"),
+            durationDataset(
+              "Event loop",
+              "eventLoopLag",
+              chartColors().request,
+              "Timeline process.event_loop.lag",
+              "p95",
+            ),
           ]}
           quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
           onVisible={() => void perf.loadTimeline(perf.windowMs())}
@@ -150,9 +163,9 @@ export function PerformanceDashboard() {
           description="RSS, heap used, and heap total as memory gauges in MB"
           points={memoryPoints(perf.timeline(), summary())}
           datasets={[
-            megabytesDataset("RSS", "memory", MEMORY_COLOR, "Timeline process.memory.rss"),
-            megabytesDataset("Heap used", "heapUsed", BROWSER_COLOR, "Timeline process.memory.heap_used"),
-            megabytesDataset("Heap total", "heapTotal", DISK_COLOR, "Timeline process.memory.heap_total"),
+            megabytesDataset("RSS", "memory", chartColors().memory, "Timeline process.memory.rss"),
+            megabytesDataset("Heap used", "heapUsed", chartColors().browser, "Timeline process.memory.heap_used"),
+            megabytesDataset("Heap total", "heapTotal", chartColors().disk, "Timeline process.memory.heap_total"),
           ]}
           quality={timelineQuality(perf.timeline(), [
             "process.memory.rss",
@@ -166,11 +179,11 @@ export function PerformanceDashboard() {
           description="HTTP request p95 latency with request sample count per bucket"
           points={requestTimelinePoints(perf.timeline())}
           datasets={[
-            durationDataset("Request", "latency", CPU_COLOR, "Timeline http.request.duration", "p95"),
+            durationDataset("Request", "latency", chartColors().cpu, "Timeline http.request.duration", "p95"),
             countDataset(
               "Requests / bucket",
               "requests",
-              REQUEST_COLOR,
+              chartColors().request,
               "Bucket sample count for http.request.duration",
             ),
           ]}
@@ -182,8 +195,8 @@ export function PerformanceDashboard() {
           description="Only real session timeline metrics are shown; current active sessions remain in summary cards"
           points={sessionPoints(perf.timeline())}
           datasets={[
-            countDataset("Active turns", "activeSessions", MEMORY_COLOR, "Timeline session.turn.active"),
-            durationDataset("Turn", "latency", BROWSER_COLOR, "Timeline session.turn.duration", "p95"),
+            countDataset("Active turns", "activeSessions", chartColors().memory, "Timeline session.turn.active"),
+            durationDataset("Turn", "latency", chartColors().browser, "Timeline session.turn.duration", "p95"),
           ]}
           quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
           emptyLabel="No historical session samples for this range"
@@ -194,10 +207,16 @@ export function PerformanceDashboard() {
           description="Storage operation counts and p95 latency from emitted storage metrics"
           points={storagePoints(perf.timeline())}
           datasets={[
-            countDataset("Operations / bucket", "diskOps", DISK_COLOR, "Timeline storage.operation.count"),
-            durationDataset("Operation", "latency", REQUEST_COLOR, "Timeline storage.operation.duration", "p95"),
-            bytesDataset("Read bytes / bucket", "readBytes", MEMORY_COLOR, "Timeline storage.read.bytes"),
-            bytesDataset("Write bytes / bucket", "writeBytes", BROWSER_COLOR, "Timeline storage.write.bytes"),
+            countDataset("Operations / bucket", "diskOps", chartColors().disk, "Timeline storage.operation.count"),
+            durationDataset(
+              "Operation",
+              "latency",
+              chartColors().request,
+              "Timeline storage.operation.duration",
+              "p95",
+            ),
+            bytesDataset("Read bytes / bucket", "readBytes", chartColors().memory, "Timeline storage.read.bytes"),
+            bytesDataset("Write bytes / bucket", "writeBytes", chartColors().browser, "Timeline storage.write.bytes"),
           ]}
           quality={timelineQuality(perf.timeline(), [
             "storage.operation.count",
@@ -338,7 +357,10 @@ function MetricCard(props: {
         <Icon
           name={getSemanticIcon(props.icon)}
           size="small"
-          classList={{ "text-icon-weak": props.tone !== "warning", "text-icon-warning-base": props.tone === "warning" }}
+          classList={{
+            "text-icon-weak-base": props.tone !== "warning",
+            "text-icon-warning-base": props.tone === "warning",
+          }}
         />
       </div>
       <div class="mt-2 truncate text-20-semibold text-text-strong tabular-nums">{props.value}</div>
@@ -350,7 +372,7 @@ function RuntimeSupport(props: { summary: PerformanceSummary | null | undefined 
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak-base" />
         <div>
           <h3 class="text-14-semibold text-text-strong">Runtime health and support</h3>
           <p class="mt-1 text-11-regular text-text-weak">
@@ -389,6 +411,7 @@ function PerformanceLineChart(props: {
   emptyLabel?: string
   onVisible?: () => void
 }) {
+  const chartTheme = useChartTheme()
   let element: HTMLDivElement | undefined
   let visible = false
   if (typeof IntersectionObserver !== "undefined") {
@@ -403,7 +426,13 @@ function PerformanceLineChart(props: {
   } else {
     queueMicrotask(() => props.onVisible?.())
   }
-  const model = createMemo(() => buildLineChartModel({ points: props.points, datasets: props.datasets }))
+  const model = createMemo(() => {
+    return buildLineChartModel({
+      points: props.points,
+      datasets: props.datasets,
+      theme: { axisText: chartTheme().axis, gridColor: chartTheme().grid },
+    })
+  })
 
   return (
     <div ref={element} class="performance-card rounded-xl p-4">
@@ -430,7 +459,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak-base" />
         <h3 class="text-14-semibold text-text-strong">Trace timeline</h3>
       </div>
       <Show when={props.traces.length > 0} fallback={<EmptyState label="No trace spans reported" />}>
@@ -442,7 +471,7 @@ function Timeline(props: { traces: PerformanceTraceSpan[]; onSelect: (trace: Per
                 class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-hover-base"
                 onClick={() => props.onSelect(trace)}
               >
-                <div class="h-2 w-2 shrink-0 rounded-full bg-icon-accent-base" />
+                <div class="h-2 w-2 shrink-0 rounded-full bg-icon-interactive-base" />
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-12-medium text-text-strong">{trace.name}</div>
                   <div class="truncate text-11-regular text-text-weaker">
@@ -463,7 +492,7 @@ function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: Perform
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak-base" />
         <h3 class="text-14-semibold text-text-strong">Performance issues</h3>
       </div>
       <Show when={props.issues.length > 0} fallback={<EmptyState label="No active performance issues" />}>
@@ -524,7 +553,7 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
         {(group) => (
           <div class="performance-card rounded-xl p-4">
             <div class="mb-3 flex items-center gap-2">
-              <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak" />
+              <Icon name={getSemanticIcon(group.icon)} size="small" class="text-icon-weak-base" />
               <h3 class="text-14-semibold text-text-strong">{group.title}</h3>
             </div>
             <Show when={group.items.length > 0} fallback={<EmptyState label="No slow items in this range" />}>
@@ -559,6 +588,15 @@ function TopRankings(props: { summary: PerformanceSummary | null | undefined; on
 }
 
 function BrowserMetricsChart(props: { samples: BrowserMetricSample[] }) {
+  const chartTheme = useChartTheme()
+  const colors = createMemo(() => {
+    const colors = chartTheme()
+    return {
+      browser: colors.color("syntax-type"),
+      memory: colors.color("text-on-success-base"),
+      request: colors.color("text-on-warning-base"),
+    }
+  })
   const points = createMemo(() => browserMetricPoints(props.samples))
   const memoryUnsupported = createMemo(
     () => props.samples.length > 0 && props.samples.every((sample) => sample.memory === undefined),
@@ -569,9 +607,9 @@ function BrowserMetricsChart(props: { samples: BrowserMetricSample[] }) {
       description="Local DOM, navigation, and heap samples collected by this Performance view, separate from stored frontend telemetry"
       points={points()}
       datasets={[
-        megabytesDataset("Heap used", "memory", BROWSER_COLOR, "Local performance.memory sample"),
-        countDataset("DOM nodes", "domNodes", MEMORY_COLOR, "Local DOM sample"),
-        durationDataset("Navigation duration", "latency", REQUEST_COLOR, "Local navigation timing sample"),
+        megabytesDataset("Heap used", "memory", colors().browser, "Local performance.memory sample"),
+        countDataset("DOM nodes", "domNodes", colors().memory, "Local DOM sample"),
+        durationDataset("Navigation duration", "latency", colors().request, "Local navigation timing sample"),
       ]}
       quality={memoryUnsupported() ? "Browser memory API is unavailable in this browser." : undefined}
     />
@@ -585,7 +623,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
     <div class="performance-frontend-grid">
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak-base" />
           <h3 class="text-14-semibold text-text-strong">Slow frontend</h3>
         </div>
         <Show when={slow().length > 0} fallback={<EmptyState label="No slow frontend routes in this range" />}>
@@ -608,7 +646,7 @@ function FrontendSection(props: { summary: PerformanceSummary | null | undefined
       </div>
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
-          <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak" />
+          <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak-base" />
           <h3 class="text-14-semibold text-text-strong">Frontend vitals</h3>
         </div>
         <div class="grid grid-cols-2 gap-2 text-12-regular">
@@ -749,7 +787,7 @@ function EmptyState(props: { label: string }) {
 function percentDataset(
   label: string,
   field: keyof PerformanceMetricPoint,
-  color: string,
+  color: HexColor,
   source: string,
 ): ChartDatasetSpec {
   return {
@@ -768,7 +806,7 @@ function percentDataset(
 function durationDataset(
   label: string,
   field: keyof PerformanceMetricPoint,
-  color: string,
+  color: HexColor,
   source: string,
   stat?: string,
 ): ChartDatasetSpec {
@@ -788,7 +826,7 @@ function durationDataset(
 function megabytesDataset(
   label: string,
   field: keyof PerformanceMetricPoint,
-  color: string,
+  color: HexColor,
   source: string,
 ): ChartDatasetSpec {
   return {
@@ -807,7 +845,7 @@ function megabytesDataset(
 function countDataset(
   label: string,
   field: keyof PerformanceMetricPoint,
-  color: string,
+  color: HexColor,
   source: string,
 ): ChartDatasetSpec {
   return {
@@ -826,7 +864,7 @@ function countDataset(
 function bytesDataset(
   label: string,
   field: keyof PerformanceMetricPoint,
-  color: string,
+  color: HexColor,
   source: string,
 ): ChartDatasetSpec {
   return {

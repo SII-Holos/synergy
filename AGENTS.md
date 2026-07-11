@@ -66,6 +66,7 @@ See [Development reference](docs/reference/development.md) for modes, isolated i
 - Add OpenAPI metadata to server routes and run `./script/generate.ts` after route or API-schema changes.
 - Use `createSynergyClient()` and generated methods for internal Web APIs. Reserve raw browser transports for streams, external URLs, browser file/blob flows, and platform-provided fetch injection.
 - Preserve auth, Scope/directory parameters, error semantics, and asset URL formats when changing a client call.
+- Product color utilities must follow [Frontend themes and color](docs/reference/frontend-theming.md) and resolve through the canonical token catalog in `packages/ui/src/theme/tokens.ts`. Do not add Tailwind palette colors, literal color utilities, or component-local light/dark palettes. Change seeds or typed overrides in a structured theme, run the theme generator, and never hand-edit generated fallback or Tailwind color files. Plugin themes use the same validated JSON contract rather than arbitrary CSS overrides.
 
 ### Configuration and credentials
 
@@ -110,6 +111,8 @@ bun run test:changed
 bun test
 bun run test:coverage
 ```
+
+Frontend package suites run through `bun run --cwd packages/app test` and `bun run --cwd packages/ui test`; both are part of the Turbo test graph.
 
 Repository gates run from the root:
 

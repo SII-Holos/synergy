@@ -36,7 +36,7 @@ function statusDotClass(status: "success" | "danger" | "muted" | "active") {
     "bg-icon-critical-base text-icon-critical-base animate-[statusbarDotPulse_1.5s_ease-in-out_infinite]":
       status === "danger",
     "bg-icon-base text-icon-base animate-[statusbarDotPulse_2s_ease-in-out_infinite]": status === "active",
-    "bg-border-strong text-border-strong": status === "muted",
+    "bg-border-strong-base text-border-strong-base": status === "muted",
   }
 }
 
@@ -133,7 +133,7 @@ function HolosIconButton() {
         <div class="space-y-0.5 mb-2">
           <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
             <span class="text-text-weak w-14 shrink-0">Login</span>
-            <span class={holos.state.identity.loggedIn ? "text-text-success-base" : "text-text-subtle"}>
+            <span class={holos.state.identity.loggedIn ? "text-text-on-success-base" : "text-text-subtle"}>
               {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
             </span>
           </div>
@@ -141,9 +141,9 @@ function HolosIconButton() {
             <span class="text-text-weak w-14 shrink-0">Service</span>
             <span
               classList={{
-                "text-text-success-base": holos.state.connection.status === "connected",
+                "text-text-on-success-base": holos.state.connection.status === "connected",
                 "text-text-interactive-base": holos.state.connection.status === "connecting",
-                "text-text-critical-base":
+                "text-text-on-critical-base":
                   holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected",
                 "text-text-subtle": !["connected", "connecting", "failed", "disconnected"].includes(
                   holos.state.connection.status,
@@ -154,7 +154,7 @@ function HolosIconButton() {
             </span>
           </div>
           <Show when={holos.state.connection.error}>
-            <div class="px-1 py-1 text-11-regular text-text-critical-base break-words">
+            <div class="px-1 py-1 text-11-regular text-text-on-critical-base break-words">
               {holos.state.connection.error}
             </div>
           </Show>
@@ -162,7 +162,7 @@ function HolosIconButton() {
         <Show when={needReconnect()}>
           <button
             type="button"
-            class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-12-medium text-text-success-base transition-colors hover:bg-surface-raised-base-hover"
+            class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-12-medium text-text-on-success-base transition-colors hover:bg-surface-raised-base-hover"
             onClick={handleReconnect}
           >
             <Icon name={getSemanticIcon("action.refresh")} size="small" />
@@ -262,7 +262,7 @@ function SubsessionsButton(props: {
   function rowIconClass(tone: "base" | "active" | "danger") {
     if (tone === "active") return "text-text-interactive-base animate-pulse"
     if (tone === "danger") return "text-icon-critical-base"
-    return "text-icon-weak"
+    return "text-icon-weak-base"
   }
 
   function resetPageState() {
@@ -402,8 +402,8 @@ function SubsessionsButton(props: {
           </span>
         </div>
 
-        <label class="mt-2 flex h-8 items-center gap-2 rounded-md bg-[var(--workbench-input-bg,var(--input-base))] px-2 text-text-subtle ring-1 ring-inset ring-border-weaker-base focus-within:ring-border-strong">
-          <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak" />
+        <label class="mt-2 flex h-8 items-center gap-2 rounded-md bg-[var(--workbench-input-bg,var(--input-base))] px-2 text-text-subtle ring-1 ring-inset ring-border-weaker-base focus-within:ring-border-strong-base">
+          <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak-base" />
           <input
             value={search()}
             placeholder="Search subsessions..."
@@ -424,7 +424,7 @@ function SubsessionsButton(props: {
                   <div class="text-12-medium text-text-base">Couldn’t load subsessions</div>
                   <button
                     type="button"
-                    class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong"
+                    class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong-base"
                     onClick={() =>
                       void loadPage({
                         pageIndex: pageIndex(),
@@ -447,7 +447,7 @@ function SubsessionsButton(props: {
                     return (
                       <button
                         type="button"
-                        class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_4.5rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong"
+                        class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_4.5rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong-base"
                         onClick={() => {
                           setOpen(false)
                           props.onSelect(session)
@@ -475,7 +475,7 @@ function SubsessionsButton(props: {
                               classList={{
                                 "block truncate text-10-medium": true,
                                 "text-text-interactive-base": status().tone === "active",
-                                "text-text-critical-base": status().tone === "danger",
+                                "text-text-on-critical-base": status().tone === "danger",
                               }}
                             >
                               {status().label}
@@ -547,9 +547,9 @@ function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "d
       <Icon
         name={props.icon}
         size="small"
-        class={props.tone === "danger" ? "text-icon-critical-base" : "text-icon-weak"}
+        class={props.tone === "danger" ? "text-icon-critical-base" : "text-icon-weak-base"}
       />
-      <span class={props.tone === "danger" ? "text-text-critical-base" : "text-text-base"}>{props.label}</span>
+      <span class={props.tone === "danger" ? "text-text-on-critical-base" : "text-text-base"}>{props.label}</span>
     </div>
   )
 }
@@ -637,7 +637,7 @@ export function StatusBar() {
   const panelContent = (
     <div class="w-64">
       <Show when={waiting()}>
-        <div class="rounded-xl bg-surface-critical-subtle p-2.5 mb-3">
+        <div class="rounded-xl bg-surface-critical-weak p-2.5 mb-3">
           <PanelIconRow icon={getSemanticIcon("session.waiting")} label="Permission required" tone="danger" />
         </div>
       </Show>
@@ -666,7 +666,7 @@ export function StatusBar() {
         <Show keyed when={retryMessage()}>
           {(message) => (
             <PanelRow>
-              <span class="text-text-critical-base break-words">{message}</span>
+              <span class="text-text-on-critical-base break-words">{message}</span>
             </PanelRow>
           )}
         </Show>
@@ -681,7 +681,7 @@ export function StatusBar() {
           <PanelRow>
             MCP · {mcpConnected()} connected
             <Show when={mcpFailed() > 0}>
-              <span class="text-text-critical-base">, {mcpFailed()} unavailable</span>
+              <span class="text-text-on-critical-base">, {mcpFailed()} unavailable</span>
             </Show>
           </PanelRow>
         </Show>
@@ -712,7 +712,7 @@ export function StatusBar() {
           </Show>
           <RuntimeIconButton status={status()} waiting={waiting()} />
 
-          <div class="w-px h-4 bg-border-weak" />
+          <div class="w-px h-4 bg-border-weak-base" />
 
           <SessionLspIndicator />
           <SessionMcpIndicator />
@@ -726,7 +726,7 @@ export function StatusBar() {
             <ContextBar />
           </Show>
 
-          <div class="w-px h-4 bg-border-weak" />
+          <div class="w-px h-4 bg-border-weak-base" />
 
           <Popover
             open={expanded()}

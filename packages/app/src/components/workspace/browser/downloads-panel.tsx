@@ -2,11 +2,11 @@ import { For, Show, createMemo } from "solid-js"
 import { useBrowser, type DownloadEntry } from "./browser-store"
 
 const STATE_META: Record<DownloadEntry["state"], { label: string; color: string; bg: string }> = {
-  in_progress: { label: "Downloading", color: "text-blue-400", bg: "bg-blue-500/10" },
-  completed: { label: "Complete", color: "text-green-400", bg: "bg-green-500/10" },
+  in_progress: { label: "Downloading", color: "text-text-on-info-base", bg: "bg-surface-info-weak" },
+  completed: { label: "Complete", color: "text-text-on-success-base", bg: "bg-surface-success-weak" },
   cancelled: { label: "Cancelled", color: "text-text-weaker", bg: "bg-surface-inset-base" },
-  interrupted: { label: "Interrupted", color: "text-amber-400", bg: "bg-amber-500/10" },
-  blocked: { label: "Blocked", color: "text-red-400", bg: "bg-red-500/10" },
+  interrupted: { label: "Interrupted", color: "text-text-on-warning-base", bg: "bg-surface-warning-weak" },
+  blocked: { label: "Blocked", color: "text-text-on-critical-base", bg: "bg-surface-critical-weak" },
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const

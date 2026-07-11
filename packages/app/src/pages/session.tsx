@@ -60,6 +60,10 @@ import {
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { sessionLoadView } from "@/components/session/session-load-state"
+import { TerminalProvider } from "@/context/terminal"
+import { PromptProvider } from "@/context/prompt"
+import { ResourceOpenProvider } from "@/context/resource-open"
+import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 
 const handoff = {
   prompt: "",
@@ -68,7 +72,17 @@ const handoff = {
 }
 
 export default function Page() {
-  return <SessionPageContent />
+  return (
+    <TerminalProvider>
+      <ResourceOpenProvider>
+        <PromptProvider>
+          <BuiltinWorkbenchPanelsProvider>
+            <SessionPageContent />
+          </BuiltinWorkbenchPanelsProvider>
+        </PromptProvider>
+      </ResourceOpenProvider>
+    </TerminalProvider>
+  )
 }
 
 function SessionPageContent() {
@@ -1056,7 +1070,7 @@ function SessionPageContent() {
                           <Show when={conversationLoadView().type === "delayed-loading"}>
                             <button
                               type="button"
-                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
                               onClick={() => void refreshConversation()}
                             >
                               <Icon name={getSemanticIcon("action.refresh")} size="small" />
@@ -1071,7 +1085,7 @@ function SessionPageContent() {
                           <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
                             onClick={() => void refreshConversation()}
                           >
                             <Icon name={getSemanticIcon("action.refresh")} size="small" />
@@ -1083,11 +1097,11 @@ function SessionPageContent() {
                         <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
                           <span class="text-sm text-text-weak">No messages yet</span>
                           <Show when={conversationLoadView().type === "empty-error"}>
-                            <span class="max-w-md text-sm text-text-critical-base">{conversationLoadError()}</span>
+                            <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
                           </Show>
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background hover:text-text disabled:opacity-50"
+                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base disabled:opacity-50"
                             disabled={conversationLoadView().type === "refreshing-empty"}
                             onClick={() => void refreshConversation()}
                           >
@@ -1189,7 +1203,7 @@ function SessionPageContent() {
               <span class="text-13-medium text-text-strong">{reviewCount()} Files Changed</span>
               <button
                 type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                 aria-label="Close review"
                 onClick={() => setStore("mobileReviewOpen", false)}
               >

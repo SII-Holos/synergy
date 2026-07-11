@@ -30,7 +30,7 @@ export function MobileToolsDrawer() {
       <div class="fixed inset-0 z-[100] flex md:hidden justify-end">
         {/* Backdrop */}
         <div
-          class="absolute inset-0 bg-black/40"
+          class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
           onClick={close}
         />
@@ -44,7 +44,7 @@ export function MobileToolsDrawer() {
             <span class="text-14-medium text-text-strong">Tools</span>
             <button
               type="button"
-              class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+              class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
               <Icon name={getSemanticIcon("action.close")} size="normal" />

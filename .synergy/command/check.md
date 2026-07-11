@@ -18,6 +18,15 @@ bun run secrets:check
 bun run desktop:test
 ```
 
+Frontend changes use the package test entry points before the root gates:
+
+```bash
+bun run --cwd packages/app test
+bun run --cwd packages/ui test
+```
+
+Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
+
 Do not use root `bun test`; it intentionally fails. Do not bypass hooks or weaken tests. Report each command, pass/fail counts, causal failure, fixes made, rerun result, and checks not run.
 
 $ARGUMENTS

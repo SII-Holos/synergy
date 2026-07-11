@@ -4,11 +4,7 @@ import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { useTerminal } from "@/context/terminal"
 import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
-import { BrowserWorkbenchContent } from "./tool-browser"
-import { NotesWorkbenchContent } from "./tool-notes"
-import { SessionReviewWorkbenchContent } from "./tool-session-review"
-import { TerminalWorkbenchContent } from "./tool-terminal"
-import { FileWorkbenchContent, shortestUniqueFileTitle } from "@/components/file-workbench"
+import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
@@ -25,7 +21,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         cardinality: "singleton",
         pluginId: "builtin",
         order: 10,
-        component: NotesWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
       }),
       registerWorkbenchPanel({
         id: "session-review",
@@ -36,7 +32,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         requiresSession: true,
         pluginId: "builtin",
         order: 15,
-        component: SessionReviewWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
         title: () => "Review",
       }),
       registerWorkbenchPanel({
@@ -49,7 +45,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         supportsDraftSession: true,
         pluginId: "builtin",
         order: 18,
-        component: FileWorkbenchContent,
+        loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
         createTab() {
           file.explorer.setOpen(true)
           return { title: "Open file", source: "explorer" }
@@ -76,7 +72,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         requiresSession: true,
         pluginId: "builtin",
         order: 20,
-        component: BrowserWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
       }),
       registerWorkbenchPanel({
         id: "terminal",
@@ -86,7 +82,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         cardinality: "multi",
         pluginId: "builtin",
         order: 10,
-        component: TerminalWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-terminal")).TerminalWorkbenchContent }),
         async createTab() {
           const pty = await terminal.new()
           if (!pty) return undefined

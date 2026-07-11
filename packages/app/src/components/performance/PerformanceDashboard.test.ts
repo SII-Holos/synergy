@@ -63,17 +63,18 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
 }
 
 const datasetSpecs: ChartDatasetSpec[] = [
-  { label: "CPU avg", field: "cpu", unit: "percent", axisId: "percent", axisTitle: "Percent", color: "red" },
-  { label: "Memory", field: "memory", unit: "megabytes", axisId: "memory", axisTitle: "Memory (MB)", color: "green" },
+  { label: "CPU avg", field: "cpu", unit: "percent", axisId: "percent", axisTitle: "Percent", color: "#2563eb" },
+  { label: "Memory", field: "memory", unit: "megabytes", axisId: "memory", axisTitle: "Memory (MB)", color: "#16805d" },
   {
     label: "Event loop p95",
     field: "eventLoopLag",
     unit: "ms",
     axisId: "duration",
     axisTitle: "Milliseconds",
-    color: "blue",
+    color: "#b7791f",
   },
 ]
+const chartTheme = { axisText: "#6b7280", gridColor: "#d1d5db" }
 
 function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
   return { generatedAt: new Date(0).toISOString(), from: 1000, to: 3000, bucketMs: 1000, series }
@@ -84,6 +85,7 @@ describe("performance chart model", () => {
     const model = buildLineChartModel({
       points: [{ timestamp: 1000, cpu: 25, memory: 512, eventLoopLag: 12 }],
       datasets: datasetSpecs,
+      theme: chartTheme,
     })
     expect(model.data.datasets.every((dataset) => dataset.yAxisID)).toBe(true)
     const scales = model.options.scales ?? {}
@@ -169,18 +171,19 @@ describe("performance chart model", () => {
           unit: "megabytes",
           axisId: "memory",
           axisTitle: "Memory (MB)",
-          color: "purple",
+          color: "#7c3aed",
         },
-        { label: "DOM", field: "domNodes", unit: "count", axisId: "count", axisTitle: "Count", color: "green" },
+        { label: "DOM", field: "domNodes", unit: "count", axisId: "count", axisTitle: "Count", color: "#16805d" },
         {
           label: "Navigation",
           field: "latency",
           unit: "ms",
           axisId: "duration",
           axisTitle: "Milliseconds",
-          color: "orange",
+          color: "#b7791f",
         },
       ],
+      theme: chartTheme,
     })
     expect(points[0]).toMatchObject({ memory: 1, domNodes: 42, latency: 120 })
     expect(new Set(model.data.datasets.map((dataset) => dataset.yAxisID))).toEqual(
@@ -196,6 +199,7 @@ describe("performance chart model", () => {
         { timestamp: 3000, cpu: Number.POSITIVE_INFINITY },
       ],
       datasets: [datasetSpecs[0]],
+      theme: chartTheme,
     })
     expect(model.data.datasets[0].data).toEqual([
       { x: 1000, y: null },
