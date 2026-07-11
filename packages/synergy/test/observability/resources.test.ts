@@ -6,7 +6,10 @@ import { cleanupObservabilityHomes, resetObservabilityHome } from "./fixture"
 
 describe("ObservabilityResources", () => {
   beforeEach(() => resetObservabilityHome())
-  afterEach(() => cleanupObservabilityHomes())
+  afterEach(() => {
+    ObservabilityResources.stop()
+    cleanupObservabilityHomes()
+  })
 
   test("records finite process resource samples and metrics", () => {
     ObservabilityResources.addRead(128)
