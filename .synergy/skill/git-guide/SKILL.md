@@ -3,7 +3,7 @@ name: git-guide
 description: Safely inspect Synergy git history, create or reuse task worktrees and topic branches, stage focused changes, write redacted agent commit messages, rebase, push, or open pull requests. Use for git status, blame, archaeology, commits, branches, worktrees, protected branches, rebases, pushes, PR preparation, GitHub publication, or agent co-author rules in this shared repository.
 ---
 
-# Work with Git Safely
+# Git Guide for Synergy Development
 
 ## Establish a Safe Checkout
 
