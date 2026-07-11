@@ -66,6 +66,7 @@ export class BrowserWebRTCClient {
   private input: RTCDataChannel | null = null
   private closed = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempt = 0
   private negotiating: Promise<void> | null = null
   private readonly connectionId = crypto.randomUUID()
   private generation = 0
@@ -154,13 +155,17 @@ export class BrowserWebRTCClient {
       .signalingUrl()
       .then((resolved) => {
         if (this.closed) return
+        this.reconnectAttempt = 0
         this.rtcConfiguration = resolved.rtcConfiguration
         this.openSignaling(resolved.url)
       })
       .catch((error) => {
         if (this.closed) return
-        this.options.onStatus?.("error", error)
-        this.reconnectTimer = setTimeout(() => this.connectSignaling(), 1_000)
+        const retryable = (error as Record<string, unknown>).retryable === true
+        this.reconnectAttempt++
+        const delay = retryable ? backoffDelay(this.reconnectAttempt) : backoffDelay(this.reconnectAttempt)
+        this.options.onStatus?.(retryable ? "host_pending" : "error", error)
+        this.reconnectTimer = setTimeout(() => this.connectSignaling(), delay)
       })
   }
 
@@ -181,7 +186,10 @@ export class BrowserWebRTCClient {
     ws.addEventListener("close", () => {
       if (this.ws === ws) this.ws = null
       this.options.onStatus?.("closed")
-      if (!this.closed) this.reconnectTimer = setTimeout(() => this.connectSignaling(), 1000)
+      if (!this.closed) {
+        this.reconnectAttempt++
+        this.reconnectTimer = setTimeout(() => this.connectSignaling(), backoffDelay(this.reconnectAttempt))
+      }
     })
 
     ws.addEventListener("error", (event) => {
@@ -289,4 +297,8 @@ export class BrowserWebRTCClient {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify(message))
   }
+}
+
+function backoffDelay(attempt: number): number {
+  return Math.min(1000 * Math.pow(2, Math.min(attempt - 1, 5)), 30_000)
 }

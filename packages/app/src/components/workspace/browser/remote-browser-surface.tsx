@@ -89,7 +89,13 @@ export function RemoteBrowserSurface(props: {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           browserViewerTicketRequest: { protocolVersion: BROWSER_PROTOCOL_VERSION, pageId },
         })
-        if (!response.data) throw new Error(response.error?.message ?? "Could not create a Browser viewer ticket")
+        if (!response.data) {
+          const retryable = response.error?.retryable === true
+          const message = response.error?.message ?? "Could not create a Browser viewer ticket"
+          const err = new Error(message) as Error & { retryable?: boolean }
+          err.retryable = retryable
+          throw err
+        }
         const url = createBrowserWebRTCSignalingUrl({
           serverUrl: sdk.url,
           sessionID: props.sessionID,
