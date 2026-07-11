@@ -53,7 +53,12 @@ function uiContributions(plugin: Plugin.LoadedPlugin) {
     generation: plugin.manifest.artifacts.generation,
     scopeId: ScopeContext.current.scope.id,
     capabilities: plugin.manifest.capabilities.map((item) => item.id),
-    contributions: plugin.manifest.contributions.filter((item) => item.kind.startsWith("ui.")),
+    contributions: plugin.manifest.contributions.filter(
+      (item) =>
+        item.kind.startsWith("ui.") ||
+        item.kind === "event" ||
+        (item.kind === "operation" && item.expose.includes("ui")),
+    ),
     uiArtifact: plugin.manifest.artifacts.ui,
   }
 }
@@ -117,7 +122,7 @@ export const PluginRoute = new Hono()
     async (context) => context.json((await Plugin.getLoaded()).map(uiContributions)),
   )
   .get(
-    "/assets/:pluginId/:generation/*",
+    "/assets/:pluginId/:generation/:asset{.+}",
     describeRoute({
       summary: "Serve a generated plugin artifact",
       operationId: "plugin.serveAsset",
@@ -127,7 +132,7 @@ export const PluginRoute = new Hono()
       const plugin = await Plugin.get(context.req.param("pluginId"))
       if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
         return context.json({ message: "Plugin generation not found" }, 404)
-      const relative = context.req.param("*") ?? ""
+      const relative = context.req.param("asset")
       const file = path.resolve(plugin.pluginDir, relative)
       if (!relative || !isPathContained(plugin.pluginDir, file))
         return context.json({ message: "Asset not found" }, 404)

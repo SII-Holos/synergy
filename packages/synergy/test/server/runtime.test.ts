@@ -1,15 +1,33 @@
 import { describe, expect, test } from "bun:test"
-import { startupScopeLabel } from "../../src/server/runtime"
+import { pluginStatusRow, startupScopeLabel } from "../../src/server/runtime"
 import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 import { Global } from "../../src/global"
 import { Asset } from "../../src/asset/asset"
+import { Plugin } from "../../src/plugin"
+import fs from "fs/promises"
+import path from "path"
 
 describe("server runtime startup output", () => {
   test("startup scope label does not require a scope context", () => {
     expect(() => startupScopeLabel()).not.toThrow()
     expect(startupScopeLabel()).toBeTruthy()
+  })
+
+  test("reports the plugin registry state instead of relying on loader events", () => {
+    expect(pluginStatusRow([], [])).toEqual({ label: "Plugins", value: "none configured", kind: "muted" })
+    expect(pluginStatusRow([{ id: "focus", name: "FOCUS" }], [])).toEqual({
+      label: "Plugins",
+      value: "FOCUS",
+      kind: "success",
+    })
+    expect(
+      pluginStatusRow(
+        [{ id: "focus", name: "FOCUS" }],
+        [{ pluginId: "git+ssh://git@github.com/SII-Holos/holos-research" }],
+      ),
+    ).toEqual({ label: "Plugins", value: "FOCUS; 1 unavailable: holos-research", kind: "error" })
   })
 })
 
@@ -106,5 +124,57 @@ describe("server request scope boundaries", () => {
     expect(response.status).toBe(200)
     const body = await response.json()
     expect(body.model).toBe("test-provider/test-model")
+  })
+
+  test("plugin UI APIs use the explicit project scope while plugin assets stay global", async () => {
+    await using tmp = await tmpdir()
+    const pluginDir = path.join(tmp.path, "plugin")
+    const assetPath = path.join(pluginDir, "ui", "index.js")
+    await fs.mkdir(path.dirname(assetPath), { recursive: true })
+    await Bun.write(assetPath, "export const panel = true\n")
+
+    const originalGetLoaded = Plugin.getLoaded
+    const originalGet = Plugin.get
+    const fake = {
+      id: "focus",
+      name: "FOCUS",
+      pluginDir,
+      manifest: {
+        version: "0.1.0",
+        capabilities: [],
+        contributions: [
+          { kind: "ui.workbenchPanel", id: "research-map" },
+          { kind: "operation", id: "research.graph.get", type: "query", expose: ["ui"] },
+          { kind: "operation", id: "admin.reset", type: "command", expose: ["sdk"] },
+          { kind: "event", id: "research.graph.changed" },
+          { kind: "tool", id: "internal-tool" },
+        ],
+        artifacts: { generation: "generation-one", ui: { entry: "ui/index.js", sha256: "test" } },
+      },
+    } as any
+    ;(Plugin as any).getLoaded = async () => [fake]
+    ;(Plugin as any).get = async (id: string) => (id === "focus" ? fake : undefined)
+    try {
+      const app = Server.App()
+      const contributions = await app.request("/plugin/ui/contributions", {
+        headers: { "x-synergy-directory": tmp.path },
+      })
+      expect(contributions.status).toBe(200)
+      const body = await contributions.json()
+      expect(body[0].scopeId).toBe((await tmp.scope()).id)
+      expect(body[0].contributions.map((item: { kind: string; id: string }) => `${item.kind}:${item.id}`)).toEqual([
+        "ui.workbenchPanel:research-map",
+        "operation:research.graph.get",
+        "event:research.graph.changed",
+      ])
+
+      const asset = await app.request("/plugin/assets/focus/generation-one/ui/index.js")
+      expect(asset.status).toBe(200)
+      expect(asset.headers.get("content-type")).toContain("text/javascript")
+      expect(await asset.text()).toContain("panel = true")
+    } finally {
+      ;(Plugin as any).getLoaded = originalGetLoaded
+      ;(Plugin as any).get = originalGet
+    }
   })
 })

@@ -197,8 +197,8 @@ export namespace Server {
       pathname.startsWith("/holos/") ||
       pathname === "/channel" ||
       pathname.startsWith("/channel/") ||
-      pathname === "/plugin" ||
-      pathname.startsWith("/plugin/") ||
+      pathname === "/plugin/assets" ||
+      pathname.startsWith("/plugin/assets/") ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||
@@ -355,6 +355,10 @@ export namespace Server {
     (): Hono =>
       app
         .onError((err, c) => {
+          if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
+          if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+            return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
+          }
           log.error("failed", {
             method: c.req.method,
             route: ObservabilityRedaction.routePath(c.req.path),
@@ -362,8 +366,7 @@ export namespace Server {
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof Storage.NotFoundError) status = 404
-            else if (err instanceof Provider.ModelNotFoundError) status = 400
+            if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
             else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else if (err.name.startsWith("ProviderAuth")) status = 400

@@ -10,6 +10,7 @@ import { useWorkbenchPanels } from "../workbench"
 import { Persist, persisted } from "@/utils/persist"
 import { normalizeWorkspacePath } from "@/components/file-workbench/model"
 import { releaseFileSourceScope } from "@/components/file-workbench/source-model-cache"
+import { isWorkspaceFileNotFoundError, removePathTree } from "./errors"
 
 export type FileSelection = {
   startLine: number
@@ -399,6 +400,19 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           pruneDocuments()
         } catch (error) {
           if (controller.signal.aborted) return
+          if (isWorkspaceFileNotFoundError(error)) {
+            setStore(
+              "documents",
+              path,
+              produce((draft) => {
+                draft.loading = false
+                draft.stale = false
+                draft.deleted = true
+                draft.error = undefined
+              }),
+            )
+            return
+          }
           const message = error instanceof Error ? error.message : String(error)
           setStore(
             "documents",
@@ -493,6 +507,23 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           pruneExplorer()
         } catch (error) {
           if (controller.signal.aborted) return
+          if (path && isWorkspaceFileNotFoundError(error)) {
+            setScope("expanded", (items) => removePathTree(items, path))
+            setStore(
+              produce((draft) => {
+                for (const key of Object.keys(draft.nodes)) {
+                  if (key === path || key.startsWith(path + "/")) delete draft.nodes[key]
+                }
+                for (const key of Object.keys(draft.directories)) {
+                  if (key === path || key.startsWith(path + "/")) delete draft.directories[key]
+                }
+                for (const directory of Object.values(draft.directories)) {
+                  directory.items = removePathTree(directory.items, path)
+                }
+              }),
+            )
+            return
+          }
           setStore(
             "directories",
             path,
@@ -584,6 +615,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         if (oldPath) renameCachedPath(oldPath, path)
         void load(path, { force: true })
       } else if (event.properties.event === "deleted") {
+        setScope("expanded", (items) => removePathTree(items, path))
         setStore(
           produce((draft) => {
             for (const key of Object.keys(draft.nodes)) {
@@ -591,6 +623,9 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
             }
             for (const key of Object.keys(draft.directories)) {
               if (key === path || key.startsWith(path + "/")) delete draft.directories[key]
+            }
+            for (const directory of Object.values(draft.directories)) {
+              directory.items = removePathTree(directory.items, path)
             }
             for (const [key, document] of Object.entries(draft.documents)) {
               if (key === path || key.startsWith(path + "/")) {

@@ -8923,6 +8923,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9014,6 +9024,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9060,6 +9080,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceFileNode"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -14354,7 +14384,7 @@
         ]
       }
     },
-    "/plugin/assets/{pluginId}/{generation}/*": {
+    "/plugin/assets/{pluginId}/{generation}/{asset}": {
       "get": {
         "operationId": "plugin.serveAsset",
         "parameters": [
@@ -14386,6 +14416,14 @@
             },
             "in": "path",
             "name": "generation",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "asset",
             "required": true
           }
         ],

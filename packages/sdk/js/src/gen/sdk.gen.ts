@@ -472,9 +472,12 @@ import type {
   WorkflowSessionSetErrors,
   WorkflowSessionSetResponses,
   WorkflowSetInput,
+  WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
+  WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
   WorkspaceFilesSearchResponses,
+  WorkspaceFilesStatErrors,
   WorkspaceFilesStatResponses,
   WorkspaceFilesStatusResponses,
   WorktreeCreateErrors,
@@ -1208,7 +1211,11 @@ export class Files extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorkspaceFilesChildrenResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      WorkspaceFilesChildrenResponses,
+      WorkspaceFilesChildrenErrors,
+      ThrowOnError
+    >({
       url: "/workspace/files/children",
       ...options,
       ...params,
@@ -1250,7 +1257,7 @@ export class Files extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorkspaceFilesReadResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<WorkspaceFilesReadResponses, WorkspaceFilesReadErrors, ThrowOnError>({
       url: "/workspace/files/read",
       ...options,
       ...params,
@@ -1282,7 +1289,7 @@ export class Files extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorkspaceFilesStatResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<WorkspaceFilesStatResponses, WorkspaceFilesStatErrors, ThrowOnError>({
       url: "/workspace/files/stat",
       ...options,
       ...params,
@@ -8460,6 +8467,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       generation: string
+      asset: string
       directory?: string
       scopeID?: string
     },
@@ -8472,6 +8480,7 @@ export class Plugin extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "path", key: "generation" },
+            { in: "path", key: "asset" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
           ],
@@ -8479,7 +8488,7 @@ export class Plugin extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
-      url: "/plugin/assets/{pluginId}/{generation}/*",
+      url: "/plugin/assets/{pluginId}/{generation}/{asset}",
       ...options,
       ...params,
     })

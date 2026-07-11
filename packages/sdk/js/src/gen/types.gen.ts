@@ -10876,6 +10876,15 @@ export type WorkspaceFilesChildrenData = {
   url: "/workspace/files/children"
 }
 
+export type WorkspaceFilesChildrenErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesChildrenError = WorkspaceFilesChildrenErrors[keyof WorkspaceFilesChildrenErrors]
+
 export type WorkspaceFilesChildrenResponses = {
   /**
    * Workspace file children
@@ -10901,6 +10910,15 @@ export type WorkspaceFilesReadData = {
   url: "/workspace/files/read"
 }
 
+export type WorkspaceFilesReadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesReadError = WorkspaceFilesReadErrors[keyof WorkspaceFilesReadErrors]
+
 export type WorkspaceFilesReadResponses = {
   /**
    * Workspace file read result
@@ -10920,6 +10938,15 @@ export type WorkspaceFilesStatData = {
   }
   url: "/workspace/files/stat"
 }
+
+export type WorkspaceFilesStatErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesStatError = WorkspaceFilesStatErrors[keyof WorkspaceFilesStatErrors]
 
 export type WorkspaceFilesStatResponses = {
   /**
@@ -13526,12 +13553,13 @@ export type PluginServeAssetData = {
   path: {
     pluginId: string
     generation: string
+    asset: string
   }
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/plugin/assets/{pluginId}/{generation}/*"
+  url: "/plugin/assets/{pluginId}/{generation}/{asset}"
 }
 
 export type PluginServeAssetErrors = {
