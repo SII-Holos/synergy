@@ -22,12 +22,11 @@ const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ defa
 
 export function BrowserPanel() {
   const params = useParams()
-  const sdk = useSDK()
   const ownerKey = createMemo(() =>
-    sdk.scopeID && params.id ? browserOwnerKey({ mode: "session", scopeID: sdk.scopeID, sessionID: params.id }) : null,
+    params.dir && params.id ? browserOwnerKey({ mode: "session", scopeID: params.dir, sessionID: params.id }) : null,
   )
   createEffect(() => {
-    browserDebug("panel.route", { dir: params.dir, scopeID: sdk.scopeID, sessionID: params.id, ownerKey: ownerKey() })
+    browserDebug("panel.route", { dir: params.dir, sessionID: params.id, ownerKey: ownerKey() })
   })
 
   return (
