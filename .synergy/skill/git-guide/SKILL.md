@@ -24,11 +24,18 @@ Classify the current checkout before changing files:
 
 Never run `git checkout` or `git switch` in a shared or pre-existing checkout. A branch change affects every session using that working directory. Never switch branches, commit, rebase, or push from the primary checkout, even when it currently happens to be on a topic branch.
 
-Create a topic branch and worktree from the verified development base when no matching worktree exists:
+Create a topic branch and worktree from the verified development base when no matching worktree exists. By default, put task worktrees under the repository checkout's project-local `.synergy/worktrees/` directory with a short filesystem-safe task slug:
 
 ```bash
-git worktree add -b synergy/<topic> <worktree-path> origin/dev
+REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_ROOT="$REPO_ROOT/.synergy/worktrees"
+TASK_SLUG=<short-task-slug>
+
+mkdir -p "$WORKTREE_ROOT"
+git worktree add -b synergy/<topic> "$WORKTREE_ROOT/$TASK_SLUG" origin/dev
 ```
+
+This is `<repository>/.synergy/worktrees/<task-slug>`, not the installation or runtime home under `SYNERGY_HOME`. Use a different worktree location only when the user explicitly requests it. If the default path is unavailable, stop and ask rather than silently creating the worktree elsewhere.
 
 Worktrees are branch-isolation tools, not something to recreate for every edit or every feature. One task branch should keep using its existing worktree. After entering it, inspect status again; do not assume it is clean.
 
