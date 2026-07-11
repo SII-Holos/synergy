@@ -108,6 +108,17 @@ test("/provider returns catalog, auth health, and runtime availability", async (
   })
 })
 
+test("/provider returns runtime provider models with reasoning effort capabilities", async () => {
+  const response = await Server.App().request("/provider")
+  expect(response.status).toBe(200)
+  const body = await response.json()
+  const openAI = body.all.find((provider: Provider.Info) => provider.id === "openai")
+  const model = openAI?.models["gpt-5.4-pro"]
+
+  expect(model?.capabilities.reasoningEfforts).toEqual(["medium", "high", "xhigh"])
+  expect(model?.reasoning_options).toBeUndefined()
+})
+
 test("usage rejection completes the durable auth-health transition before responding", async () => {
   await Auth.set(CodexProvider.PROVIDER_ID, {
     type: "oauth",
