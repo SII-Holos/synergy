@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
-import z from "zod"
 import { Diagnostics } from "@/observability/diagnostics"
+import { ObservabilitySchema } from "@/observability/schema"
 
 export const ObservabilityRoute = new Hono().get(
   "/diagnostics",
@@ -14,7 +14,7 @@ export const ObservabilityRoute = new Hono().get(
         description: "Diagnostics summary",
         content: {
           "application/json": {
-            schema: resolver(z.record(z.string(), z.any()).meta({ ref: "DiagnosticsSummary" })),
+            schema: resolver(ObservabilitySchema.DiagnosticsSummary),
           },
         },
       },

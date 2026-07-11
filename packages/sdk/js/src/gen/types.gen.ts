@@ -179,8 +179,233 @@ export type ServerUpdateStartInput = {
   version?: string
 }
 
+export type TelemetryEventLevel = "debug" | "info" | "warn" | "error"
+
+export type TelemetrySource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
+
+export type TelemetryModule =
+  | "server"
+  | "session"
+  | "llm"
+  | "tool"
+  | "enforcement"
+  | "storage"
+  | "library"
+  | "process"
+  | "pty"
+  | "browser"
+  | "frontend"
+  | "desktop"
+  | "observability"
+  | "mcp"
+  | "plugin"
+  | "channel"
+
+export type TelemetryLabelValue = string | number | boolean | null
+
+export type TelemetryLabels = {
+  [key: string]: TelemetryLabelValue
+}
+
+export type TelemetryRedactionSummary = {
+  applied: boolean
+  omittedKeys: number
+  truncatedValues: number
+}
+
+export type TelemetryEvent = {
+  eventId: string
+  time: number
+  iso: string
+  type: string
+  level?: TelemetryEventLevel
+  correlationId?: string
+  traceId?: string
+  spanId?: string
+  parentSpanId?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  tool?: string
+  processId?: string
+  pid?: number
+  cwd?: string
+  scopeID?: string
+  rid?: string
+  source?: TelemetrySource
+  module?: TelemetryModule
+  data?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+}
+
+export type TelemetryIssueSeverity = "info" | "warning" | "error" | "critical"
+
+export type TelemetryIssueStatus = "open" | "resolved" | "suppressed"
+
+export type TelemetryIssue = {
+  issueId: string
+  time: number
+  iso: string
+  severity: TelemetryIssueSeverity
+  status?: TelemetryIssueStatus
+  code: string
+  title: string
+  message: string
+  recommendation?: string
+  module: TelemetryModule
+  correlationId?: string
+  traceId?: string
+  spanId?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  evidence?: TelemetryLabels
+  firstSeenTime: number
+  lastSeenTime: number
+  occurrenceCount: number
+  fingerprint: string
+  redaction?: TelemetryRedactionSummary
+}
+
+export type TelemetrySpanKind =
+  | "http"
+  | "session"
+  | "session_step"
+  | "llm"
+  | "tool"
+  | "permission"
+  | "storage"
+  | "library"
+  | "frontend"
+  | "sse"
+  | "process"
+  | "plugin"
+  | "mcp"
+  | "channel"
+  | "diagnostic"
+  | "runtime"
+
+export type TelemetrySpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+
+export type TelemetryInflightSpan = {
+  traceId: string
+  correlationId?: string
+  spanId: string
+  parentSpanId?: string
+  kind: TelemetrySpanKind
+  name: string
+  module: TelemetryModule
+  source: TelemetrySource
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  lastActivityTime: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
+  status?: TelemetrySpanStatus
+  errorCode?: string
+  errorMessage?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  processId?: string
+  pid?: number
+  tool?: string
+  attributes?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+  ageMs: number
+  idleMs: number
+  stale: boolean
+}
+
+export type TelemetryResourceSample = {
+  sampleId: string
+  time: number
+  iso: string
+  source: TelemetrySource
+  correlationId?: string
+  traceId?: string
+  scopeID?: string
+  sessionID?: string
+  process: {
+    pid?: number
+    processId?: string
+    role: "server" | "tool" | "pty" | "mcp" | "plugin" | "desktop" | "browser" | "unknown"
+  }
+  cpu?: {
+    userMicros?: number
+    systemMicros?: number
+    utilizationRatio?: number
+  }
+  memory?: {
+    rssBytes?: number
+    heapTotalBytes?: number
+    heapUsedBytes?: number
+    externalBytes?: number
+    arrayBuffersBytes?: number
+  }
+  eventLoop: {
+    lagMs?: number
+    sampleWindowMs: number
+  }
+  io?: {
+    appReadBytes?: number
+    appWrittenBytes?: number
+    appReadOps?: number
+    appWriteOps?: number
+    osReadBytes?: number
+    osWrittenBytes?: number
+    osAvailable?: boolean
+  }
+  labels?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+}
+
 export type DiagnosticsSummary = {
-  [key: string]: unknown
+  generatedAt: string
+  logs: {
+    current?: string
+    dev?: string
+    daemon?: string
+    devArchives: Array<string>
+  }
+  traces: {
+    directory: string
+    files: Array<string>
+    recentErrors: Array<TelemetryEvent>
+  }
+  issues: Array<TelemetryIssue>
+  inflight: Array<TelemetryInflightSpan>
+  resources: {
+    latest?: TelemetryResourceSample
+    samples: Array<TelemetryResourceSample>
+    pressure?: TelemetryLabels
+  }
+  lock?: {
+    path: string
+    lock?: unknown
+    inspection?: unknown
+  }
+  processes: {
+    active: Array<{
+      [key: string]: unknown
+    }>
+    finished: Array<{
+      [key: string]: unknown
+    }>
+  }
+  sessions: {
+    pendingReply: Array<{
+      sessionID: string
+      path: string
+      updated?: number
+    }>
+  }
 }
 
 export type PerfTimelineQuality = {
@@ -205,6 +430,9 @@ export type PerfModule =
   | "frontend"
   | "desktop"
   | "observability"
+  | "mcp"
+  | "plugin"
+  | "channel"
 
 export type PerfUnit = "ms" | "bytes" | "count" | "ratio" | "percent" | "microseconds" | "tokens"
 
@@ -226,10 +454,8 @@ export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
 
 export type PerfIssueStatus = "open" | "resolved" | "suppressed"
 
-export type PerfLabelValue = string | number | boolean | null
-
 export type PerfLabels = {
-  [key: string]: PerfLabelValue
+  [key: string]: TelemetryLabelValue
 }
 
 export type PerfIssue = {
@@ -243,6 +469,8 @@ export type PerfIssue = {
   message: string
   recommendation?: string
   module: PerfModule
+  correlationId?: string
+  scopeID?: string
   traceId?: string
   spanId?: string
   sessionID?: string
@@ -308,7 +536,8 @@ export type PerfDashboardSummary = {
     healthy?: boolean
     pid?: number
     mode?: string
-    traceFiles: number
+    mirrorFiles: number
+    traceFiles?: number
     recentErrors: number
     pendingSessions: number
     sessionRuntimes: {
@@ -346,11 +575,51 @@ export type PerfDashboardSummary = {
   issues: Array<PerfIssue>
 }
 
+export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
+
+export type PerfSpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+
+export type PerfInflightSpan = {
+  traceId: string
+  correlationId?: string
+  spanId: string
+  parentSpanId?: string
+  kind?: string
+  name: string
+  module: PerfModule
+  source: PerfSource
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  status?: PerfSpanStatus
+  lastActivityTime?: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
+  errorCode?: string
+  errorMessage?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  processId?: string
+  pid?: number
+  tool?: string
+  attributes?: PerfLabels
+  ageMs: number
+  idleMs: number
+  stale: boolean
+}
+
+export type PerfInflight = {
+  generatedAt: string
+  spans: Array<PerfInflightSpan>
+}
+
 export type PerfMetricKind = "duration" | "gauge" | "counter" | "rate" | "size" | "ratio"
 
 export type PerfTimelineStat = "avg" | "latest" | "sum" | "rate" | "p50" | "p95" | "p99" | "max"
-
-export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
 
 export type PerfTimelinePoint = {
   time: number
@@ -380,10 +649,9 @@ export type PerfTimeline = {
   series: Array<PerfTimelineSeries>
 }
 
-export type PerfSpanStatus = "ok" | "error" | "cancelled" | "timeout"
-
 export type PerfTraceListItem = {
   traceId: string
+  correlationId?: string
   kind: string
   name: string
   status: PerfSpanStatus
@@ -408,8 +676,10 @@ export type PerfTraceList = {
 
 export type PerfSpan = {
   traceId: string
+  correlationId?: string
   spanId: string
   parentSpanId?: string
+  kind?: string
   name: string
   module: PerfModule
   source: PerfSource
@@ -417,6 +687,10 @@ export type PerfSpan = {
   endTime?: number
   durationMs?: number
   status?: PerfSpanStatus
+  lastActivityTime?: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
   errorCode?: string
   errorMessage?: string
   scopeID?: string
@@ -436,6 +710,7 @@ export type PerfTraceEvent = {
   type: string
   level?: string
   traceId?: string
+  correlationId?: string
   sessionID?: string
   messageID?: string
   callID?: string
@@ -553,6 +828,9 @@ export type PerfBrowserMetricBatch = {
     pathTemplate?: string
     sessionID?: string
     scopeID?: string
+    correlationId?: string
+    navigationId?: string
+    sessionSwitchId?: string
   }
   metrics: Array<PerfBrowserMetric>
   resourceEntries?: Array<{
@@ -2311,23 +2589,23 @@ export type SandboxConfig = {
 }
 
 /**
- * Local logs, traces, and diagnostics settings
+ * Local logs, indexed telemetry, and diagnostics settings
  */
 export type ObservabilityConfig = {
   /**
-   * Enable local observability trace JSONL events (default: true)
+   * Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)
    */
   enabled?: boolean
   /**
-   * Days to retain local trace files (default: 7)
+   * Days to retain optional observability mirror files (default: 7)
    */
   retentionDays?: number
   /**
-   * Maximum total trace storage in bytes (default: 250MB)
+   * Maximum total local observability storage in bytes (default: 250MB)
    */
   maxBytes?: number
   /**
-   * Milliseconds without tool activity before emitting a stalled-tool trace event
+   * Milliseconds without tool activity before emitting a stalled-tool observability event
    */
   stalledToolMs?: number
   /**
@@ -2399,6 +2677,9 @@ export type ObservabilityConfig = {
     }
     storage?: {
       sqliteEnabled?: boolean
+      /**
+       * Enable optional JSONL mirror files for debugging exports
+       */
       jsonlMirrorEnabled?: boolean
       maxSqliteBytes?: number
       walCheckpointIntervalMs?: number
@@ -7021,6 +7302,27 @@ export type PerformanceSummaryResponses = {
 
 export type PerformanceSummaryResponse = PerformanceSummaryResponses[keyof PerformanceSummaryResponses]
 
+export type PerformanceInflightData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    staleMs?: number
+    limit?: number
+  }
+  url: "/global/performance/inflight"
+}
+
+export type PerformanceInflightResponses = {
+  /**
+   * Inflight performance spans
+   */
+  200: PerfInflight
+}
+
+export type PerformanceInflightResponse = PerformanceInflightResponses[keyof PerformanceInflightResponses]
+
 export type PerformanceTimelineData = {
   body?: never
   path?: never
@@ -7057,7 +7359,17 @@ export type PerformanceTracesListData = {
     to?: string
     limit?: number
     cursor?: string
-    kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+    kind?:
+      | "request"
+      | "session"
+      | "tool"
+      | "provider"
+      | "runtime"
+      | "storage"
+      | "frontend"
+      | "mcp"
+      | "plugin"
+      | "channel"
     status?: PerfSpanStatus
     minDurationMs?: number
     scopeID?: string

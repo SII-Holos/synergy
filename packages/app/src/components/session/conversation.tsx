@@ -112,11 +112,9 @@ export function SessionConversation(props: {
       </Show>
       <For each={props.timeline()}>
         {(msg, index) => {
-          if (import.meta.env.DEV) {
-            onMount(() => {
-              navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
-            })
-          }
+          onMount(() => {
+            navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
+          })
 
           const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
           const hasTabs = props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1

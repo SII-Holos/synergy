@@ -1,10 +1,17 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import z from "zod"
 import { ToolRegistry } from "../../src/tool/registry"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 describe.serial("tool schemas", () => {
+  beforeEach(async () => {
+    await ToolRegistry.state.resetAll()
+  })
+
+  afterEach(async () => {
+    await ToolRegistry.state.resetAll()
+  })
   test("all registered tool parameter schemas can be represented as JSON Schema", async () => {
     await using tmp = await tmpdir({ git: true })
 

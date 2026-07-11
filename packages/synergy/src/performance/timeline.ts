@@ -1,12 +1,12 @@
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityStore } from "@/observability/store"
 import { PerformanceCatalog } from "./catalog"
-import { PerformanceConfig } from "./config"
+import { ObservabilityConfig } from "@/observability/config"
 import { PerformanceError } from "./error"
-import { PerformanceMetrics } from "./metrics"
 import { PerformanceSchema } from "./schema"
-import { PerformanceStore } from "./store"
 
 export namespace PerformanceTimeline {
-  const ROW_LIMIT = 50_000
+  const ROW_LIMIT_PER_SERIES = 50_000
 
   export function get(query: PerformanceSchema.TimelineQuery): PerformanceSchema.Timeline {
     const now = Date.now()
@@ -14,7 +14,7 @@ export namespace PerformanceTimeline {
     const from = parseTime(query.from, query.windowMs ? to - query.windowMs : to - 15 * 60 * 1000)
     if (from >= to) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline from must be before to.", 400)
 
-    const config = PerformanceConfig.effective()
+    const config = ObservabilityConfig.current()
     const bucketMs = query.bucketMs ?? Math.max(1000, Math.ceil((to - from) / config.maxTimelineBuckets))
     const bucketCount = Math.floor((to - from) / bucketMs) + 1
     if (bucketCount > config.maxTimelineBuckets) {
@@ -25,28 +25,28 @@ export namespace PerformanceTimeline {
     }
 
     const metrics = normalizeMetrics(query.metric)
-    const storageNames = [...new Set(metrics.flatMap((name) => PerformanceCatalog.storageNamesFor(name)))]
-    const rows = PerformanceStore.queryMetrics({
-      since: from,
-      until: to,
-      names: storageNames,
-      module: query.module,
-      scopeID: query.scopeID,
-      sessionID: query.sessionID,
-      tool: query.tool,
-      providerID: query.providerID,
-      limit: ROW_LIMIT + 1,
-      newestFirst: true,
-    })
-    const truncated = rows.length > ROW_LIMIT
-    const usableRows = truncated ? rows.slice(-ROW_LIMIT) : rows
     const buckets = bucketStarts(from, to, bucketMs)
-    const bucketed = bucketRows(usableRows, metrics, from, bucketMs, buckets.length)
-
+    let anyTruncated = false
     const series = metrics.map((name) => {
       const info = PerformanceCatalog.get(name)
       if (!info) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400)
       const stat = query.stat ?? info.defaultStat
+      const rows = ObservabilityStore.queryMetricSeries({
+        since: from,
+        until: to,
+        name,
+        module: query.module,
+        scopeID: query.scopeID,
+        sessionID: query.sessionID,
+        tool: query.tool,
+        providerID: query.providerID,
+        limit: ROW_LIMIT_PER_SERIES + 1,
+      })
+      const truncated = rows.length > ROW_LIMIT_PER_SERIES
+      anyTruncated ||= truncated
+      // newestFirst:true returns DESC order, so the first N are the newest rows
+      const usableRows = truncated ? rows.slice(0, ROW_LIMIT_PER_SERIES) : rows
+      const bucketed = bucketRows(usableRows, [name], from, bucketMs, buckets.length)
       const bucketsForMetric = bucketed.get(name) ?? new Map<number, Bucket>()
       const points = buckets.map((time, index) => {
         const bucket = bucketsForMetric.get(index)
@@ -66,7 +66,13 @@ export namespace PerformanceTimeline {
         sampleCount,
         module: info.module,
         source: info.source,
-        quality: truncated ? { truncated: true, partial: true } : undefined,
+        quality: truncated
+          ? {
+              truncated: true,
+              partial: true,
+              unavailableReason: `Series ${name} exceeded ${ROW_LIMIT_PER_SERIES} rows for this range.`,
+            }
+          : undefined,
         points,
       })
     })
@@ -75,7 +81,13 @@ export namespace PerformanceTimeline {
       from,
       to,
       bucketMs,
-      quality: truncated ? { truncated: true, partial: true } : undefined,
+      quality: anyTruncated
+        ? {
+            truncated: true,
+            partial: true,
+            unavailableReason: "One or more requested series exceeded the per-series row limit.",
+          }
+        : undefined,
       series,
     })
   }
@@ -92,11 +104,10 @@ export namespace PerformanceTimeline {
     const resolved = requested.map((name) => PerformanceCatalog.resolveName(name))
     const unique = [...new Set(resolved)]
     const invalid = unique.filter((name) => !PerformanceCatalog.get(name))
-    if (invalid.length) {
+    if (invalid.length)
       throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400, {
         invalidMetrics: invalid,
       })
-    }
     return unique
   }
 
@@ -113,7 +124,7 @@ export namespace PerformanceTimeline {
   }
 
   function bucketRows(
-    rows: PerformanceStore.StoredMetric[],
+    rows: ObservabilityStore.StoredMetric[],
     metrics: string[],
     from: number,
     bucketMs: number,
@@ -150,9 +161,9 @@ export namespace PerformanceTimeline {
     if (stat === "sum") return bucket.values.reduce((sum, value) => sum + value, 0)
     if (stat === "rate") return bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucketMs / 1000)
     if (stat === "max") return Math.max(...bucket.values)
-    if (stat === "p50") return PerformanceMetrics.percentile(bucket.values, 50) ?? null
-    if (stat === "p95") return PerformanceMetrics.percentile(bucket.values, 95) ?? null
-    if (stat === "p99") return PerformanceMetrics.percentile(bucket.values, 99) ?? null
+    if (stat === "p50") return ObservabilityMetrics.percentile(bucket.values, 50) ?? null
+    if (stat === "p95") return ObservabilityMetrics.percentile(bucket.values, 95) ?? null
+    if (stat === "p99") return ObservabilityMetrics.percentile(bucket.values, 99) ?? null
     return bucket.values.reduce((sum, value) => sum + value, 0) / bucket.values.length
   }
 

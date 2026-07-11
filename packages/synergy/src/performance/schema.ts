@@ -1,39 +1,21 @@
+import { ObservabilityConfig } from "@/observability/config"
+import { ObservabilitySchema } from "@/observability/schema"
 import z from "zod"
 
 export namespace PerformanceSchema {
-  export const Source = z
-    .enum(["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"])
-    .meta({ ref: "PerfSource" })
+  export const Source = ObservabilitySchema.Source.meta({ ref: "PerfSource" })
   export type Source = z.infer<typeof Source>
 
-  export const Module = z
-    .enum([
-      "server",
-      "session",
-      "llm",
-      "tool",
-      "enforcement",
-      "storage",
-      "library",
-      "process",
-      "pty",
-      "browser",
-      "frontend",
-      "desktop",
-      "observability",
-    ])
-    .meta({ ref: "PerfModule" })
+  export const Module = ObservabilitySchema.Module.meta({ ref: "PerfModule" })
   export type Module = z.infer<typeof Module>
 
-  export const Unit = z
-    .enum(["ms", "bytes", "count", "ratio", "percent", "microseconds", "tokens"])
-    .meta({ ref: "PerfUnit" })
+  export const Unit = ObservabilitySchema.Unit.meta({ ref: "PerfUnit" })
   export type Unit = z.infer<typeof Unit>
 
-  export const LabelValue = z
-    .union([z.string().max(512), z.number(), z.boolean(), z.null()])
-    .meta({ ref: "PerfLabelValue" })
-  export const Labels = z.record(z.string().max(64), LabelValue).default({}).meta({ ref: "PerfLabels" })
+  export const LabelValue = ObservabilitySchema.LabelValue.meta({ ref: "PerfLabelValue" })
+  export type LabelValue = z.infer<typeof LabelValue>
+  export const Labels = ObservabilitySchema.Labels.meta({ ref: "PerfLabels" })
+  export type Labels = z.infer<typeof Labels>
 
   export const Metric = z
     .object({
@@ -45,6 +27,7 @@ export namespace PerformanceSchema {
       unit: Unit,
       source: Source,
       module: Module,
+      correlationId: z.string().optional(),
       scopeID: z.string().optional(),
       sessionID: z.string().optional(),
       messageID: z.string().optional(),
@@ -62,13 +45,15 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfMetric" })
   export type Metric = z.infer<typeof Metric>
 
-  export const SpanStatus = z.enum(["ok", "error", "cancelled", "timeout"]).meta({ ref: "PerfSpanStatus" })
+  export const SpanStatus = z.enum(["running", "ok", "error", "cancelled", "timeout"]).meta({ ref: "PerfSpanStatus" })
   export type SpanStatus = z.infer<typeof SpanStatus>
   export const Span = z
     .object({
       traceId: z.string(),
+      correlationId: z.string().optional(),
       spanId: z.string(),
       parentSpanId: z.string().optional(),
+      kind: z.string().optional(),
       name: z.string(),
       module: Module,
       source: Source,
@@ -76,6 +61,10 @@ export namespace PerformanceSchema {
       endTime: z.number().optional(),
       durationMs: z.number().optional(),
       status: SpanStatus.default("ok"),
+      lastActivityTime: z.number().optional(),
+      heartbeatTime: z.number().optional(),
+      heartbeatCount: z.number().int().optional(),
+      stalled: z.boolean().optional(),
       errorCode: z.string().optional(),
       errorMessage: z.string().optional(),
       scopeID: z.string().optional(),
@@ -89,7 +78,6 @@ export namespace PerformanceSchema {
       attributes: Labels,
     })
     .meta({ ref: "PerfSpan" })
-  export type Span = z.infer<typeof Span>
 
   export const ResourceSample = z
     .object({
@@ -126,6 +114,7 @@ export namespace PerformanceSchema {
           osAvailable: z.boolean().default(false),
         })
         .default({ osAvailable: false }),
+      correlationId: z.string().optional(),
       scopeID: z.string().optional(),
       sessionID: z.string().optional(),
       traceId: z.string().optional(),
@@ -150,6 +139,8 @@ export namespace PerformanceSchema {
       message: z.string(),
       recommendation: z.string().optional(),
       module: Module,
+      correlationId: z.string().optional(),
+      scopeID: z.string().optional(),
       traceId: z.string().optional(),
       spanId: z.string().optional(),
       sessionID: z.string().optional(),
@@ -245,7 +236,8 @@ export namespace PerformanceSchema {
         healthy: z.boolean().optional(),
         pid: z.number().int().optional(),
         mode: z.string().optional(),
-        traceFiles: z.number().int(),
+        mirrorFiles: z.number().int(),
+        traceFiles: z.number().int().optional(),
         recentErrors: z.number().int(),
         pendingSessions: z.number().int(),
         sessionRuntimes: z.object({
@@ -343,7 +335,9 @@ export namespace PerformanceSchema {
       to: z.string().optional(),
       limit: z.coerce.number().int().positive().max(200).optional(),
       cursor: z.string().optional(),
-      kind: z.enum(["request", "session", "agent", "tool", "provider", "runtime", "storage", "frontend"]).optional(),
+      kind: z
+        .enum(["request", "session", "tool", "provider", "runtime", "storage", "frontend", "mcp", "plugin", "channel"])
+        .optional(),
       status: SpanStatus.optional(),
       minDurationMs: z.coerce.number().nonnegative().optional(),
       scopeID: z.string().optional(),
@@ -355,6 +349,7 @@ export namespace PerformanceSchema {
   export const TraceListItem = z
     .object({
       traceId: z.string(),
+      correlationId: z.string().optional(),
       kind: z.string(),
       name: z.string(),
       status: SpanStatus,
@@ -378,6 +373,18 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfTraceList" })
   export type TraceList = z.infer<typeof TraceList>
 
+  export const InflightSpan = Span.extend({
+    ageMs: z.number(),
+    idleMs: z.number(),
+    stale: z.boolean(),
+  }).meta({ ref: "PerfInflightSpan" })
+  export type InflightSpan = z.infer<typeof InflightSpan>
+
+  export const Inflight = z
+    .object({ generatedAt: z.string(), spans: z.array(InflightSpan) })
+    .meta({ ref: "PerfInflight" })
+  export type Inflight = z.infer<typeof Inflight>
+
   export const TraceEvent = z
     .object({
       time: z.number(),
@@ -385,6 +392,7 @@ export namespace PerformanceSchema {
       type: z.string(),
       level: z.string().optional(),
       traceId: z.string().optional(),
+      correlationId: z.string().optional(),
       sessionID: z.string().optional(),
       messageID: z.string().optional(),
       callID: z.string().optional(),
@@ -423,14 +431,17 @@ export namespace PerformanceSchema {
 
   export const BrowserMetricBatch = z
     .object({
-      batchId: z.string().optional(),
+      batchId: z.string().max(128).optional(),
       sentAt: z.number(),
       page: z
         .object({
-          routeName: z.string().optional(),
-          pathTemplate: z.string().optional(),
-          sessionID: z.string().optional(),
-          scopeID: z.string().optional(),
+          routeName: z.string().max(256).optional(),
+          pathTemplate: z.string().max(512).optional(),
+          sessionID: z.string().max(128).optional(),
+          scopeID: z.string().max(128).optional(),
+          correlationId: z.string().max(128).optional(),
+          navigationId: z.string().max(128).optional(),
+          sessionSwitchId: z.string().max(128).optional(),
         })
         .default({}),
       metrics: z.array(BrowserMetric).max(100),
@@ -461,32 +472,6 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfBrowserMetricIngestResult" })
   export type BrowserMetricIngestResult = z.infer<typeof BrowserMetricIngestResult>
 
-  export const Config = z
-    .object({
-      enabled: z.boolean(),
-      samplingRate: z.number(),
-      metricRetentionMs: z.number(),
-      traceRetentionMs: z.number(),
-      resourceSampleIntervalMs: z.number(),
-      slowTraceThresholdMs: z.number(),
-      maxTraceEvents: z.number(),
-      maxTimelineBuckets: z.number(),
-      maxTraceListLimit: z.number(),
-      maxAttributeStringLength: z.number(),
-      dashboardRefreshMs: z.number(),
-      sseHeartbeatMs: z.number(),
-      sseBufferSize: z.number(),
-      perClientSseQueueSize: z.number(),
-      rateLimits: z.record(z.string(), z.number()).default({}),
-      redactAttributeKeys: z.array(z.string()),
-      storage: z.object({
-        sqliteEnabled: z.boolean(),
-        jsonlMirrorEnabled: z.boolean(),
-        maxSqliteBytes: z.number(),
-        walCheckpointIntervalMs: z.number(),
-      }),
-      thresholds: z.record(z.string(), z.number()),
-    })
-    .meta({ ref: "PerfConfig" })
+  export const Config = ObservabilityConfig.Schema.meta({ ref: "PerfConfig" })
   export type Config = z.infer<typeof Config>
 }

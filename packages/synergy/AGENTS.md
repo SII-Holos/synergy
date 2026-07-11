@@ -15,6 +15,7 @@ Start from [Architecture](../../docs/architecture/README.md), then read the docu
 - Preserve frontend sync contracts when changing server events or snapshots: scope-monotonic `seq`, runtime `epoch`, replay journal, snapshot watermark headers, unsequenced streaming deltas, immediate terminal events, and write-behind part persistence. See [Frontend data sync](../../docs/architecture/frontend-data-sync.md).
 - Cortex delegation creates durable child sessions with explicit lineage, visibility, tools, timeout, and output contract. Do not hide work in one message history or create a parallel in-memory mailbox. See [Cortex](../../docs/architecture/cortex.md).
 - Plan, BlueprintLoop, Light Loop, and Lattice are mutually exclusive session workflows with host-owned continuation/review rules. See [Workflows](../../docs/architecture/workflows.md).
+- `observability/` owns canonical telemetry context, redaction, indexed SQLite storage, writer backpressure, events, metrics, spans, issues, resource samples, migrations, and diagnostics. `performance/` is the product/API read model over that store and must not reintroduce generic stores, writers, redaction, span lifecycle, or JSONL runtime query paths. See [Performance observability](../../docs/operations/performance-observability.md).
 
 ## Execution and Security
 

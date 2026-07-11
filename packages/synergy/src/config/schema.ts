@@ -288,15 +288,28 @@ export type SandboxConfig = z.infer<typeof SandboxConfig>
 
 export const ObservabilityConfig = z
   .object({
-    enabled: z.boolean().optional().describe("Enable local observability trace JSONL events (default: true)"),
-    retentionDays: z.number().int().positive().optional().describe("Days to retain local trace files (default: 7)"),
-    maxBytes: z.number().int().positive().optional().describe("Maximum total trace storage in bytes (default: 250MB)"),
+    enabled: z
+      .boolean()
+      .optional()
+      .describe("Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)"),
+    retentionDays: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Days to retain optional observability mirror files (default: 7)"),
+    maxBytes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum total local observability storage in bytes (default: 250MB)"),
     stalledToolMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+      .describe("Milliseconds without tool activity before emitting a stalled-tool observability event"),
     performance: z
       .object({
         enabled: z.boolean().optional().describe("Enable structured local performance metrics and traces"),
@@ -351,7 +364,10 @@ export const ObservabilityConfig = z
         storage: z
           .object({
             sqliteEnabled: z.boolean().optional(),
-            jsonlMirrorEnabled: z.boolean().optional(),
+            jsonlMirrorEnabled: z
+              .boolean()
+              .optional()
+              .describe("Enable optional JSONL mirror files for debugging exports"),
             maxSqliteBytes: z.number().int().positive().optional(),
             walCheckpointIntervalMs: z.number().int().positive().optional(),
           })
@@ -1468,7 +1484,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
-    observability: ObservabilityConfig.optional().describe("Local logs, traces, and diagnostics settings"),
+    observability: ObservabilityConfig.optional().describe("Local logs, indexed telemetry, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),

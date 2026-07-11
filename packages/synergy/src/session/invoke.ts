@@ -73,7 +73,8 @@ import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
-import { PerformanceSpans } from "@/performance/spans"
+import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityContext } from "@/observability/context"
 import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
@@ -841,7 +842,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         // Race against the deadline instead of relying on abort propagation:
         // the processor can be stuck in an await that never observes signals
         // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
-        const turnSpan = PerformanceSpans.start({
+        const turnSpan = ObservabilitySpans.start({
           name: "session.turn",
           module: "session",
           scopeID,
@@ -865,10 +866,27 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           model,
         }
         try {
-          result = await Promise.race([processor.process(streamInput), deadlinePromise])
+          const currentStreamInput = streamInput
+          const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
+          result = turnSpan
+            ? await ObservabilityContext.withContextAsync(
+                {
+                  correlationId: turnSpan.correlationId,
+                  traceId: turnSpan.traceId,
+                  spanId: turnSpan.spanId,
+                  parentSpanId: turnSpan.parentSpanId,
+                  scopeID: turnSpan.scopeID,
+                  sessionID: turnSpan.sessionID,
+                  messageID: turnSpan.messageID,
+                  module: turnSpan.module,
+                  source: turnSpan.source,
+                },
+                process,
+              )
+            : await process()
         } catch (error) {
           if (error !== deadlineError) {
-            PerformanceSpans.end(turnSpan, { status: "error", error })
+            ObservabilitySpans.end(turnSpan, { status: "error", error })
             turnSpanEnded = true
             await completeAssistantWithError({ sessionID, processor, model, error })
             result = "stop"
@@ -880,7 +898,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             await Session.updateMessage(processor.message)
             Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
             result = "stop"
-            PerformanceSpans.end(turnSpan, { status: "timeout", error: deadlineError })
+            ObservabilitySpans.end(turnSpan, { status: "timeout", error: deadlineError })
             turnSpanEnded = true
           }
         } finally {
@@ -888,7 +906,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           processTimer.stop()
           releaseTurnReferences(!turnDeadline.signal.aborted)
           if (!turnSpanEnded) {
-            PerformanceSpans.end(turnSpan, {
+            ObservabilitySpans.end(turnSpan, {
               attributes: {
                 result,
                 assistantMessageID: processor.message.id,

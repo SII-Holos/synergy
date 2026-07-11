@@ -4,13 +4,12 @@ import { Global } from "../global"
 import { Lock } from "../util/lock"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
-import { PerformanceIssues } from "@/performance/issues"
-import { PerformanceMetrics } from "@/performance/metrics"
-import { PerformanceResources } from "@/performance/resources"
+import { ObservabilityIssues } from "@/observability/issues"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityResources } from "@/observability/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
-  const STORAGE_DURATION_SAMPLE_RATE = 0.02
 
   export const NotFoundError = NamedError.create(
     "NotFoundError",
@@ -41,7 +40,7 @@ export namespace Storage {
         const file = Bun.file(target)
         const result = await file.json()
         const size = file.size
-        PerformanceResources.addRead(size)
+        ObservabilityResources.addRead(size)
         return result as T
       }),
     )
@@ -69,16 +68,11 @@ export namespace Storage {
         }
       })
       await Promise.all(workers)
-      if (readBytes) PerformanceResources.addRead(readBytes)
+      if (readBytes) ObservabilityResources.addRead(readBytes)
       return result
     })
   }
 
-  // Streaming part/message writes pass { compact: true } to skip pretty-print
-  // indentation (~30-50% fewer bytes and less serialization on the hottest write
-  // path). Low-frequency, human-inspected files (session info, config) keep the
-  // default indented form. JSON.parse reads either transparently, so no
-  // migration is needed for files previously written indented.
   export interface WriteOptions {
     compact?: boolean
   }
@@ -97,7 +91,7 @@ export namespace Storage {
         fn(content)
         const serialized = serialize(content, options)
         await writeJsonAtomic(target, serialized)
-        PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
+        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
         return content as T
       }),
     )
@@ -111,7 +105,7 @@ export namespace Storage {
         using _ = await Lock.write(target)
         const serialized = serialize(content, options)
         await writeJsonAtomic(target, serialized)
-        PerformanceResources.addWrite(Buffer.byteLength(serialized, "utf8"))
+        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
       }),
     )
   }
@@ -159,7 +153,7 @@ export namespace Storage {
       return await body()
     } catch (error) {
       status = "error"
-      PerformanceIssues.raise({
+      ObservabilityIssues.raise({
         code: "PERF_STORAGE_OPERATION_ERROR",
         severity: "warning",
         module: "storage",
@@ -174,15 +168,14 @@ export namespace Storage {
       throw error
     } finally {
       const durationMs = performance.now() - start
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "storage.operation.duration",
         value: durationMs,
         unit: "ms",
         module: "storage",
         labels: { operation, keyPrefix: key[0] ?? "root", status },
-        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
       })
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "storage.operation.count",
         value: 1,
         unit: "count",
@@ -190,7 +183,7 @@ export namespace Storage {
         labels: { operation, status },
       })
       if (status === "error") {
-        PerformanceMetrics.record({
+        ObservabilityMetrics.record({
           name: "storage.operation.error",
           value: 1,
           unit: "count",

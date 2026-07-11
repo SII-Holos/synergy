@@ -21,6 +21,7 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
     sessions: { turnCount: 0, llmCallCount: 0, toolCallCount: 0 },
     frontend: { longTaskCount: 0 },
     runtime: {
+      mirrorFiles: 0,
       traceFiles: 0,
       recentErrors: 0,
       pendingSessions: 0,
@@ -204,7 +205,7 @@ describe("performance chart model", () => {
   })
 
   test("summary quality warning uses quiet partial copy", () => {
-    const baseSummary = summary({ traceFiles: 0, recentErrors: 0, pendingSessions: 0 })
+    const baseSummary = summary({ mirrorFiles: 0, recentErrors: 0, pendingSessions: 0 })
     expect(summaryQualityMessage({ ...baseSummary, quality: { partial: true, truncated: true } })).toBe(
       "Summary is partial because the metric volume exceeded the dashboard cap.",
     )
@@ -220,12 +221,12 @@ describe("performance dashboard runtime support", () => {
         healthy: true,
         pid: 42,
         mode: "server",
-        traceFiles: 3,
+        mirrorFiles: 3,
         recentErrors: 0,
         pendingSessions: 2,
       }),
     )
-    expect(items).toContainEqual({ label: "Trace files", value: "3 files", tone: "default" })
+    expect(items).toContainEqual({ label: "Mirror files", value: "3 files", tone: "default" })
     expect(items).toContainEqual({ label: "Recent errors", value: "0", tone: "default" })
     expect(items).toContainEqual({ label: "Pending sessions", value: "2", tone: "warning" })
     expect(items).toContainEqual({ label: "Session runtimes", value: "0 total · 0 running", tone: "default" })
@@ -237,7 +238,7 @@ describe("performance dashboard runtime support", () => {
 
   test("marks unhealthy runtime support state as warning", () => {
     const items = runtimeSupportItems(
-      summary({ alive: false, healthy: false, traceFiles: 0, recentErrors: 5, pendingSessions: 0 }),
+      summary({ alive: false, healthy: false, mirrorFiles: 0, recentErrors: 5, pendingSessions: 0 }),
     )
     expect(items[0].tone).toBe("warning")
     expect(items[0].value).toContain("Not running")

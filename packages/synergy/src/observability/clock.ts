@@ -1,7 +1,7 @@
 let monotonicCounter = 0
 const processStartMs = Date.now()
 
-export namespace PerformanceClock {
+export namespace ObservabilityClock {
   export function now() {
     return Date.now()
   }

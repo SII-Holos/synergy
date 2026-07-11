@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { PerformanceRedaction } from "../packages/synergy/src/performance/redact"
+import { ObservabilityRedaction } from "../packages/synergy/src/observability/redaction"
 import { PerformanceTimeline } from "../packages/synergy/src/performance/timeline"
 
 const iterations = Number(process.env.SYNERGY_BENCH_ITERATIONS ?? 20_000)
@@ -11,7 +11,7 @@ const benches: Bench[] = [
   {
     name: "redact.record",
     fn: () => {
-      PerformanceRedaction.record({
+      ObservabilityRedaction.record({
         route: "/session/index",
         token: "secret",
         prompt: "must not leak",

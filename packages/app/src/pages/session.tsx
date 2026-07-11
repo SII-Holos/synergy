@@ -93,45 +93,43 @@ function SessionPageContent() {
   const sideOpen = createMemo(() => sideSurface().opened())
   const view = createMemo(() => layout.view(sessionKey()))
 
-  if (import.meta.env.DEV) {
-    createEffect(
-      on(
-        () => [params.dir, params.id] as const,
-        ([dir, id], prev) => {
-          if (!id) return
-          navParams({ dir, from: prev?.[1], to: id })
-        },
-      ),
-    )
+  createEffect(
+    on(
+      () => [params.dir, params.id, sync.data.scopeID] as const,
+      ([dir, id, scopeID], prev) => {
+        if (!id) return
+        navParams({ dir, from: prev?.[1], to: id, scopeID })
+      },
+    ),
+  )
 
-    createEffect(() => {
-      const id = params.id
-      if (!id) return
-      if (!prompt.ready()) return
-      navMark({ dir: params.dir, to: id, name: "storage:prompt-ready" })
-    })
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!prompt.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:prompt-ready" })
+  })
 
-    createEffect(() => {
-      const id = params.id
-      if (!id) return
-      if (!terminal.ready()) return
-      navMark({ dir: params.dir, to: id, name: "storage:terminal-ready" })
-    })
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!terminal.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:terminal-ready" })
+  })
 
-    createEffect(() => {
-      const id = params.id
-      if (!id) return
-      if (!file.ready()) return
-      navMark({ dir: params.dir, to: id, name: "storage:file-view-ready" })
-    })
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!file.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:file-view-ready" })
+  })
 
-    createEffect(() => {
-      const id = params.id
-      if (!id) return
-      if (sync.data.message[id] === undefined) return
-      navMark({ dir: params.dir, to: id, name: "session:data-ready" })
-    })
-  }
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (sync.data.message[id] === undefined) return
+    navMark({ dir: params.dir, to: id, name: "session:data-ready" })
+  })
 
   const isDesktop = () => layout.isDesktop()
 
