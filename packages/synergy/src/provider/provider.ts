@@ -908,29 +908,28 @@ export namespace Provider {
             }, timeoutMs as number).unref()
           }
 
+          let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
           const wrappedStream = new ReadableStream({
-            async start(controller) {
-              const reader = originalBody.getReader()
+            // Pull-based so provider bytes stay bounded by downstream demand
+            // (AI SDK / SessionProcessor). The previous eager start() pump could
+            // enqueue far ahead of a slow fanout path and inflate native buffers
+            // (#524 / #498).
+            async pull(controller) {
+              reader ??= originalBody.getReader()
               try {
-                while (true) {
-                  const { done, value } = await Promise.race([reader.read(), idleAborted])
-                  if (done) {
-                    if (idleTimer) clearTimeout(idleTimer)
-                    controller.close()
-                    break
-                  }
-                  resetIdle()
-                  controller.enqueue(value)
+                const { done, value } = await Promise.race([reader.read(), idleAborted])
+                if (done) {
+                  if (idleTimer) clearTimeout(idleTimer)
+                  controller.close()
+                  return
                 }
+                resetIdle()
+                controller.enqueue(value)
               } catch (err) {
                 if (idleTimer) clearTimeout(idleTimer)
                 controller.error(err)
                 try {
-                  reader.cancel(err).catch(() => {})
-                } catch {}
-              } finally {
-                try {
-                  reader.releaseLock()
+                  await reader.cancel(err)
                 } catch {}
               }
             },

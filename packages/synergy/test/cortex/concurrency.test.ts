@@ -67,6 +67,32 @@ describe("CortexConcurrency", () => {
       expect(status["agent-a"].running).toBe(8)
       expect(status["agent-b"].running).toBe(8)
     })
+
+    test("global limit throttles across agents under memory pressure", async () => {
+      CortexConcurrency.setMemoryProbeForTest(() => ({
+        rssBytes: 10 * 1024 ** 3,
+        heapUsedBytes: 1,
+        heapTotalBytes: 1,
+        externalBytes: 1,
+        arrayBuffersBytes: 9 * 1024 ** 3,
+      }))
+
+      await CortexConcurrency.acquire("agent-a")
+      await CortexConcurrency.acquire("agent-b")
+
+      let resolved = false
+      const queued = CortexConcurrency.acquire("agent-c").then(() => {
+        resolved = true
+      })
+      await flushMicrotasks(4)
+      expect(resolved).toBe(false)
+      expect(CortexConcurrency.globalStatus().running).toBe(2)
+
+      CortexConcurrency.release("agent-a")
+      await queued
+      expect(resolved).toBe(true)
+      expect(CortexConcurrency.globalStatus().running).toBe(2)
+    })
   })
 
   describe("release", () => {

@@ -25,6 +25,7 @@ export namespace Cortex {
 
   const tasks: Map<string, CortexTypes.Task> = new Map()
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
+  const deferredParentNotifications = new Map<string, Set<string>>()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
   let progressUpdateTimer: Timer | undefined
@@ -486,10 +487,14 @@ export namespace Cortex {
       taskWaiters.delete(taskID)
       log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
     } else if (task.notifyParentOnComplete !== false) {
+      // Background/auto-background tasks rely on this mail to re-enter the parent
+      // after the current turn ends (#548/#550). If the parent is mid-turn, defer
+      // until release() so we do not permanently drop the wake or force an
+      // immediate mid-turn re-entry (#244).
       if (SessionManager.isRunning(task.parentSessionID)) {
-        log.info("skipping parent notification: session is mid-turn", { taskID: task.id })
+        deferParentNotification(task)
       } else {
-        notifyParentSession(task)
+        void notifyParentSession(task)
       }
     } else {
       log.info("task parent notification suppressed", { taskID })
@@ -534,7 +539,49 @@ export namespace Cortex {
     }
   }
 
-  function notifyParentSession(task: CortexTypes.Task): void {
+  function deferParentNotification(task: CortexTypes.Task): void {
+    const parentSessionID = task.parentSessionID
+    const pending = deferredParentNotifications.get(parentSessionID) ?? new Set<string>()
+    if (pending.has(task.id)) return
+    pending.add(task.id)
+    deferredParentNotifications.set(parentSessionID, pending)
+    log.info("deferred parent notification until parent turn ends", {
+      taskID: task.id,
+      parentSessionID,
+    })
+  }
+
+  export async function flushDeferredParentNotifications(parentSessionID: string): Promise<void> {
+    const pending = deferredParentNotifications.get(parentSessionID)
+    if (!pending || pending.size === 0) return
+    deferredParentNotifications.delete(parentSessionID)
+
+    for (const taskID of pending) {
+      const task = tasks.get(taskID)
+      if (!task) {
+        log.info("skipped deferred parent notification for missing task", { taskID, parentSessionID })
+        continue
+      }
+      if (task.notifyParentOnComplete === false) {
+        log.info("skipped deferred parent notification: notifyParentOnComplete is false", {
+          taskID,
+          parentSessionID,
+        })
+        continue
+      }
+      if (!isTerminal(task.status)) {
+        log.info("skipped deferred parent notification for non-terminal task", {
+          taskID,
+          parentSessionID,
+          status: task.status,
+        })
+        continue
+      }
+      await notifyParentSession(task)
+    }
+  }
+
+  async function notifyParentSession(task: CortexTypes.Task): Promise<void> {
     const statusText = task.status === "error" ? "FAILED" : task.status === "cancelled" ? "CANCELLED" : "COMPLETED"
     const notification = [
       `[BACKGROUND TASK ${statusText}]`,
@@ -549,24 +596,26 @@ export namespace Cortex {
       .filter(Boolean)
       .join("\n")
 
-    void SessionManager.deliver({
-      target: task.parentSessionID,
-      mail: {
-        type: "user",
-        metadata: { source: "cortex", sourceSessionID: task.sessionID },
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            sessionID: task.parentSessionID,
-            messageID: Identifier.ascending("message"),
-            type: "text",
-            text: notification,
-          },
-        ],
-      },
-    }).catch((error) => {
+    try {
+      await SessionManager.deliver({
+        target: task.parentSessionID,
+        mail: {
+          type: "user",
+          metadata: { source: "cortex", sourceSessionID: task.sessionID },
+          parts: [
+            {
+              id: Identifier.ascending("part"),
+              sessionID: task.parentSessionID,
+              messageID: Identifier.ascending("message"),
+              type: "text",
+              text: notification,
+            },
+          ],
+        },
+      })
+    } catch (error) {
       log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })
-    })
+    }
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
@@ -820,6 +869,7 @@ export namespace Cortex {
     tasks.clear()
     taskRuns.clear()
     acquiredTasks.clear()
+    deferredParentNotifications.clear()
     if (progressUpdateTimer) {
       clearTimeout(progressUpdateTimer)
       progressUpdateTimer = undefined
