@@ -105,6 +105,8 @@ export function SubagentSessionFooter(props: {
         return { label: "Error", tone: "text-text-on-critical-base", dot: "bg-icon-critical-base" }
       case "cancelled":
         return { label: "Cancelled", tone: "text-text-subtle", dot: "bg-text-subtle" }
+      case "interrupted":
+        return { label: "Interrupted", tone: "text-text-on-warning-base", dot: "bg-icon-warning-base" }
     }
   })
 

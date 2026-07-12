@@ -13,7 +13,6 @@ import { UI } from "../ui.js"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths.js"
 import { sha256File } from "../lib/crypto.js"
 import type { SignatureMetadata } from "../lib/signature.js"
-import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "../lib/hash.js"
 
 interface KeyFile {
@@ -60,17 +59,15 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Signing${UI.Style.TEXT_NORMAL} ${path.basename(tarballPath)}`)
 
   const tarballHash = sha256File(tarballPath)
-  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.normalizedManifestFile)
+  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.manifestFile)
   if (!manifestRaw)
-    throw new Error(
-      `Failed to extract ${PluginArtifact.normalizedManifestFile} from tarball. Has the plugin been built?`,
-    )
+    throw new Error(`Failed to extract ${PluginArtifact.manifestFile} from tarball. Has the plugin been built?`)
 
   let manifest: PluginManifestType
   try {
     manifest = PluginManifest.parse(JSON.parse(manifestRaw)) as PluginManifestType
   } catch {
-    throw new Error(`Failed to parse ${PluginArtifact.normalizedManifestFile} from tarball`)
+    throw new Error(`Failed to parse ${PluginArtifact.manifestFile} from tarball`)
   }
 
   if (!extractFromTarball(tarballPath, PluginArtifact.permissionsSummaryFile)) {
@@ -91,13 +88,13 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   const payload = {
     tarballHash,
     manifestHash: computeManifestHash(manifest),
-    permissionsHash: computePermissionsHash(manifest, baseCapabilities(manifest)),
+    permissionsHash: computePermissionsHash(manifest),
   }
   const privateKey = await importPrivateKey(keyFile.privateKey)
   const sigRaw = await subtle.sign("Ed25519" as any, privateKey, new TextEncoder().encode(JSON.stringify(payload)))
   const signature: SignatureMetadata = {
     signatureVersion: 1,
-    pluginId: manifest.name,
+    pluginId: manifest.id,
     version: manifest.version,
     algorithm: "ed25519",
     signer: keyFile.publicKey,

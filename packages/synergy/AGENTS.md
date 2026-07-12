@@ -45,7 +45,7 @@ Do not move centralized checks into individual tools or treat an unavailable san
 - Keep `openai-codex` device-code OAuth and Codex transport separate from the `openai` Platform API-key provider.
 - Let real model, usage, and discovery requests drive provider auth recovery and health transitions; do not add startup or periodic third-party credential probes.
 - Canonical config lives in domain files; add migrations rather than a monolithic runtime loader.
-- Plugins declare capability ceilings before import. Preserve ID consistency, approval hashes, trust decisions, effective runtime mode, host-bridge enforcement, and failure isolation. See [Plugin runtime and permissions](../../docs/plugins/runtime-and-permissions.md).
+- Plugins declare Host Service capability ceilings before import. Preserve ID consistency, approval hashes, process/inProcess selection, generation checks, scoped Host Service enforcement, and contribution-level failure isolation. See [Plugin runtime and capabilities](../../docs/plugins/runtime-and-permissions.md).
 
 ## LLM-Backed Operations
 

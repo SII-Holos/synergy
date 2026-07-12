@@ -29,7 +29,7 @@ Use `synergy config path` to print the active global roots.
 | `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                |
 | `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                              |
 | `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                             |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin config, approval, runtime isolation, marketplace                                 |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                  |
 | `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                       |
 | `70-commands.jsonc`    | Commands    | configured command definitions                                                                           |
 | `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                       |

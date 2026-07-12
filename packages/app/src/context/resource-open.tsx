@@ -1,4 +1,4 @@
-import { type ParentProps } from "solid-js"
+import { onCleanup, onMount, type ParentProps } from "solid-js"
 import {
   ResourceOpenProvider as BaseResourceOpenProvider,
   type OpenableResource,
@@ -132,6 +132,29 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
     return false
   }
+
+  onMount(() => {
+    const listener = (event: Event) => {
+      const resource = (event as CustomEvent<{ kind: "artifact" | "file"; uri: string }>).detail
+      if (!resource?.uri) return
+      if (resource.kind === "file") {
+        openWorkspaceFile(resource.uri)
+        return
+      }
+      const path = fileUrlPath(resource.uri)
+      if (path) {
+        openWorkspaceFile(path)
+        return
+      }
+      if (/^(https?:|data:|blob:)/i.test(resource.uri)) {
+        openUrl({ url: resource.uri })
+        return
+      }
+      openWorkspaceFile(resource.uri)
+    }
+    window.addEventListener("synergy:plugin-open-resource", listener)
+    onCleanup(() => window.removeEventListener("synergy:plugin-open-resource", listener))
+  })
 
   return <BaseResourceOpenProvider value={{ open, openAttachment }}>{props.children}</BaseResourceOpenProvider>
 }

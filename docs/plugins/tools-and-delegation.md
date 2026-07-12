@@ -1,126 +1,71 @@
 # Plugin Tools and Delegation
 
-Plugin tools use the public `tool()` helper and participate in the same session, permission, sandbox, timeout, tracing, and result-presentation pipeline as first-party tools.
-
-## Define and Declare the Same Tool
-
-Runtime code defines behavior:
+## Declare a Tool
 
 ```ts
-import { tool } from "@ericsanchezok/synergy-plugin/tool"
+import z from "zod"
+import { capability, definePlugin, tool } from "@ericsanchezok/synergy-plugin"
 
-export const lookup = tool({
-  description: "Look up a record",
-  exposure: { mode: "search", keywords: ["record", "lookup"] },
-  args: {
-    id: tool.schema.string(),
-  },
-  async execute(args, context) {
-    if (context.abort.aborted) throw new Error("Cancelled")
-    return { output: `Record ${args.id}` }
-  },
+export default definePlugin({
+  id: "analysis-tools",
+  version: "1.0.0",
+  description: "Analysis tools",
+  capabilities: [capability("task.delegate", { agents: ["explore"], maxRuntimeMs: 300_000 })],
+  contributions: [
+    tool({
+      id: "analyze",
+      description: "Start analysis of a research question",
+      input: z.object({ question: z.string(), correlationId: z.string() }),
+      requires: ["task.delegate"],
+      async handler({ question, correlationId }, context) {
+        const handle = await context.task!.start({
+          subagent: "explore",
+          description: "Analyze the question",
+          prompt: question,
+          correlationId,
+          visibility: "hidden",
+        })
+        return JSON.stringify(handle)
+      },
+    }),
+  ],
 })
 ```
 
-`plugin.json` declares the same tool's name, description, exposure, display contract, and capability ceiling. Runtime discovery rejects undeclared runtime tools and meaningful capability mismatches because the host must know what it is approving before code runs.
-
-Use precise Zod arguments and return either a string or a `ToolResult` containing `output` plus optional title, metadata, and attachments.
-
-## Exposure
-
-Exposure controls how a tool enters model context:
-
-- `resident` — directly available in the active tool set.
-- `group` — available through a named expandable group.
-- `search` — discoverable by tool search using its title and keywords.
-- `internal` — unavailable to ordinary resident, group, and search discovery; reserved for an explicitly controlled flow.
-
-Exposure is not permission. A discovered tool still passes through capability classification and the active control profile.
-
-## Tool Context
-
-The execution context identifies the session, message, agent, current directory, and abort signal. Optional services are present only when the host and manifest permit them:
-
-- `ask()` requests a normal Synergy permission decision.
-- `$` runs shell work through the active workspace boundary.
-- `task.run()` delegates a child session through Cortex.
-- `tools.invoke()` invokes another allowed tool through the host.
-
-Honor `abort`; avoid detached work that survives cancellation or plugin shutdown.
-
-## Attachments and Presentation
-
-Use the generated SDK client or public asset API to upload content and return an `asset://` URL in an attachment. Do not import Synergy's private asset modules.
-
-Each attachment can declare a renderer, size, crop mode, whether it is hidden, and how much content is provided to the model. A tool can also set:
-
-```ts
-metadata: {
-  display: {
-    toolCard: "hidden",
-  },
-}
-```
-
-This is appropriate when the returned attachment is the primary visible result. It does not remove the tool call from durable history.
-
-For generated image, video, or audio, declare `display.kind: "media-generation"` both in runtime code and the manifest. The host then owns the pending media presentation. Accessibility labels such as `actionLabel` and `pendingTitle` describe the state; they are not a substitute for a useful textual result.
+Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and validates input from the generated schema. `requires` drives the contribution capability gate and must reference top-level capabilities.
 
 ## Delegated Tasks
 
-`context.task.run()` starts a durable Cortex child session. The plugin receives a task ID, child session ID, terminal status, and the requested output form:
-
-- `summary` — a compact child-work summary
-- `final_response` — the child's final response
-- `structured` — JSON Schema-validated data, with up to three repair turns
+`context.task` exists only when `task.delegate` is approved. It exposes three finite Host calls:
 
 ```ts
-const result = await context.task?.run({
-  subagent: "my-plugin-planner",
-  description: "Plan the lookup",
-  prompt: "Return the lookup steps as JSON.",
-  tools: {
-    "*": false,
-    "plugin__my-plugin__private_lookup": true,
-  },
-  visibility: "hidden",
-  timeoutMs: 120_000,
-  output: {
-    mode: "structured",
-    schema: {
-      type: "object",
-      required: ["steps"],
-      properties: {
-        steps: { type: "array", items: { type: "string" } },
-      },
-    },
-    maxRepairTurns: 2,
-  },
-})
+const handle = await context.task.start(input)
+const snapshot = await context.task.get(handle)
+await context.task.cancel(handle)
 ```
 
-Declare `permissions.tools.task` before using this service. Marketplace plugins should bound both the allowed subagent names and `maxRuntimeMs`.
+`start()` returns the task and child Session identity immediately. It does not wait for agent completion. The input requires a plugin-owned `correlationId`; Cortex persists it with owner metadata containing plugin ID, generation, and Scope ID.
 
-`visibility: "hidden"` removes child progress from the ordinary chat step list; it does not erase the child session, lineage, trace, or permission boundary. Use hidden visibility for internal orchestration, not for concealing consequential external actions.
+`get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
 
-## Internal Helpers
+For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. Synergy invokes this hook only for the plugin that owns the Task. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
 
-An internal helper is useful when a public tool delegates a tightly controlled child that needs a private operation. Declare the helper with `exposure: { mode: "internal" }` and pass an explicit tool allowlist to the child.
+Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.task.running`, and terminal `plugin.task.*` observability records. They use the plugin correlation ID as the trace ID and include generation, Scope, Task, Session, resolved model, and duration. The child Session remains the source of truth for full Agent messages and tool traces; plugins should keep stable Task/Session references instead of copying Session history.
 
-Do not use internal exposure as a security boundary by itself. The manifest capability ceiling, task permission, child control profile, and runtime enforcement are the actual boundary.
+A non-agent handler may call `start()` only when it supplies an explicit parent Session/message in the active Scope. This supports hook-driven continuations and trusted plugin UI commands using a previously bound control Session. Agent tool handlers may omit `parent`; the current invocation supplies it.
+
+The capability can constrain allowed subagents and maximum runtime. The host also checks agent visibility, control profile, permission policy, Scope ownership, cancellation, and task ownership.
+
+## Exposure and Display
+
+`exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. `display` supplies host-owned presentation metadata. Both are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.
+
+A handler may return a string or `ToolResult` with title, output, metadata, and attachments. Keep durable business state and provenance in plugin-owned artifacts.
 
 ## Invoking Other Tools
 
-`context.tools.invoke()` routes a nested invocation through Synergy rather than calling another plugin function directly. This preserves schemas, timeouts, result normalization, capability enforcement, and tracing.
+`context.tools` exists only with `tool.invoke` approval and only in an agent invocation. The target tool must be visible in the active agent/session pipeline, and its ordinary permission boundaries still apply.
 
-Use a direct function call only for pure implementation helpers that are not independently modeled as tools. Use host invocation when the operation is a real tool capability or must remain auditable as one.
+## Agents, Skills, and MCP
 
-## Design Checklist
-
-- Keep every tool's capability declaration narrower than or equal to the manifest ceiling.
-- Choose exposure based on model-context cost and discoverability.
-- Keep internal helpers out of broad tool catalogs.
-- Return useful text even when a custom renderer or attachment owns the main presentation.
-- Bound child agents, tools, time, and output schema.
-- Propagate cancellation and avoid ambient filesystem, process, or network access.
-- Test behavior through the public SDK contract, not private Synergy modules.
+`agent`, `skill`, and `mcp` contributions are declarative. The `tools` map inside a delegated task is a per-task visibility toggle, not a capability declaration.

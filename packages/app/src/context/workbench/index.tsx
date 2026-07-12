@@ -86,10 +86,16 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const target = surface(entry.surface)
       const tabs = target.tabs()
       const shouldReuse = options.reuseExisting || (!options.forceNew && entry.cardinality !== "multi")
-      const existing = shouldReuse ? tabs.find((tab) => tab.panelId === panelId) : undefined
+      const requestedResource = options.init?.resourceId ?? entry.defaultResource?.resourceId
+      const existing = shouldReuse
+        ? tabs.find(
+            (tab) =>
+              tab.panelId === panelId && (requestedResource === undefined || tab.resourceId === requestedResource),
+          )
+        : undefined
       let init: WorkbenchPanelTabInit | undefined = existing
         ? { ...existing, ...options.init, id: existing.id }
-        : options.init
+        : (options.init ?? entry.defaultResource)
       if (!init && entry.createTab) {
         const created = await entry.createTab()
         if (!created) return undefined
@@ -160,6 +166,23 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       if (!tab) return undefined
       return getWorkbenchPanel(tab.panelId)
     }
+
+    const openFromPlugin = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ panelId?: string; resource?: { id: string; title?: string; state?: unknown } }>
+      ).detail
+      if (!detail?.panelId) return
+      void openPanel(detail.panelId, {
+        init: {
+          resourceId: detail.resource?.id,
+          title: detail.resource?.title,
+          state: detail.resource?.state,
+          source: "plugin",
+        },
+      })
+    }
+    window.addEventListener("synergy:plugin-open-workbench", openFromPlugin)
+    onCleanup(() => window.removeEventListener("synergy:plugin-open-workbench", openFromPlugin))
 
     return {
       surface,

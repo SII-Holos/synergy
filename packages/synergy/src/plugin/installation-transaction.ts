@@ -7,11 +7,12 @@ import path from "path"
 import { Global } from "../global"
 import { Config } from "../config/config"
 import * as Lockfile from "./lockfile"
-import { addEntry, removeEntry } from "./lockfile"
-import { readApprovals, saveApproval, writeApprovals } from "./consent/approval-store"
+import { addEntry, removePluginEntries } from "./lockfile"
+import { readApprovals, removeApproval, saveApproval, writeApprovals } from "./consent/approval-store"
 import type { ResolvedPluginSpec } from "./spec-resolver"
 import { Log } from "../util/log"
 import { recordEvent } from "./audit"
+import { IncompatiblePluginStore } from "./incompatible-store"
 
 const log = Log.create({ service: "plugin.install.transaction" })
 
@@ -33,6 +34,18 @@ export interface CanonicalizePluginSpecsResult {
   changed: boolean
 }
 
+export interface SelectPluginRegistrationSpecsInput {
+  pluginId: string
+  specs: string[]
+  knownSpecs: string[]
+  resolvePluginId: (spec: string) => Promise<string | null> | string | null
+}
+
+export interface SelectPluginRegistrationSpecsResult {
+  kept: string[]
+  removed: string[]
+}
+
 export interface PluginInstallCommitInput {
   spec: string
   pluginId: string
@@ -47,10 +60,10 @@ export interface PluginInstallCommitInput {
 
 export interface PluginRemoveCommitInput {
   pluginId: string
-  pluginDir: string
-  autoReload?: boolean
+  knownSpecs: string[]
   reload: () => Promise<void>
-  resolveSpecPluginDir: (spec: string) => string
+  resolvePluginId: (spec: string) => Promise<string | null> | string | null
+  beforeCommit?: () => Promise<void>
 }
 
 export interface PluginDoctorIssue {
@@ -187,9 +200,24 @@ export async function canonicalizePluginSpecs(
   return { plugins, removed, changed }
 }
 
+export async function selectPluginRegistrationSpecs(
+  input: SelectPluginRegistrationSpecsInput,
+): Promise<SelectPluginRegistrationSpecsResult> {
+  const known = new Set(input.knownSpecs)
+  const kept: string[] = []
+  const removed: string[] = []
+  for (const spec of input.specs) {
+    const matches = known.has(spec) || (await input.resolvePluginId(spec)) === input.pluginId
+    if (matches) removed.push(spec)
+    else kept.push(spec)
+  }
+  return { kept, removed }
+}
+
 function resolvedPathAfterPromotion(resolved: ResolvedPluginSpec): string {
-  if (!resolved.stagingDir || !resolved.finalPluginDir) return resolved.entryPath
-  return path.join(resolved.finalPluginDir, path.relative(resolved.stagingDir, resolved.entryPath))
+  const resolvedFile = resolved.entryPath ?? path.join(resolved.pluginDir, "plugin.json")
+  if (!resolved.stagingDir || !resolved.finalPluginDir) return resolvedFile
+  return path.join(resolved.finalPluginDir, path.relative(resolved.stagingDir, resolvedFile))
 }
 
 async function promoteStagingDir(resolved: ResolvedPluginSpec): Promise<{
@@ -255,10 +283,11 @@ export namespace PluginInstallationTransaction {
       const previousDomain = await Config.domainGet("plugins")
       const previousLockfile = await Lockfile.read()
       const previousApprovals = await readApprovals()
+      const previousIncompatible = await IncompatiblePluginStore.read()
       const currentPlugins = previousDomain.plugin ?? []
       const resolveConfiguredPluginId = async (spec: string): Promise<string | null> => {
         for (const [pluginId, entry] of Object.entries(previousLockfile.plugins)) {
-          if (entry.spec === spec) return pluginId
+          if (entry.spec === spec) return entry.approvalId ?? pluginId
         }
         return (await input.resolvePluginId?.(spec)) ?? null
       }
@@ -282,6 +311,12 @@ export namespace PluginInstallationTransaction {
           mode: "replace-domain",
         })
         if (input.approval) await saveApproval(input.approval)
+        await IncompatiblePluginStore.write(
+          IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, [
+            input.spec,
+            ...nextConfig.removed,
+          ]),
+        )
         if (input.autoReload !== false) await input.reload()
 
         const loaded = await input.getLoaded()
@@ -297,6 +332,7 @@ export namespace PluginInstallationTransaction {
         await Lockfile.write(previousLockfile).catch(() => {})
         await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
         await writeApprovals(previousApprovals).catch(() => {})
+        await IncompatiblePluginStore.write(previousIncompatible).catch(() => {})
         await promoted.restore().catch(() => {})
         if (input.autoReload !== false) await input.reload().catch(() => {})
         if (previousEntry) {
@@ -325,22 +361,46 @@ export namespace PluginInstallationTransaction {
     await withPluginInstallationLock(async () => {
       const previousDomain = await Config.domainGet("plugins")
       const previousLockfile = await Lockfile.read()
+      const previousApprovals = await readApprovals()
+      const previousIncompatible = await IncompatiblePluginStore.read()
       const currentPlugins = previousDomain.plugin ?? []
-      const kept = currentPlugins.filter((spec) => input.resolveSpecPluginDir(spec) !== input.pluginDir)
-      const nextDomain = { ...previousDomain, plugin: kept } as any
+      const recordedIds = new Map<string, string>()
+      for (const [pluginId, entry] of Object.entries(previousLockfile.plugins)) {
+        recordedIds.set(entry.spec, entry.approvalId ?? pluginId)
+      }
+      for (const record of previousIncompatible) {
+        if (record.spec) recordedIds.set(record.spec, record.pluginId)
+      }
+      const selected = await selectPluginRegistrationSpecs({
+        pluginId: input.pluginId,
+        specs: currentPlugins,
+        knownSpecs: input.knownSpecs,
+        resolvePluginId: async (spec) => recordedIds.get(spec) ?? (await input.resolvePluginId(spec)),
+      })
+      if (selected.removed.length === 0) {
+        throw new Error(`Plugin registration not found: ${input.pluginId}`)
+      }
+      const nextDomain = { ...previousDomain, plugin: selected.kept } as any
       if (previousDomain.pluginConfig?.[input.pluginId]) {
         const { [input.pluginId]: _, ...rest } = previousDomain.pluginConfig ?? {}
         nextDomain.pluginConfig = rest
       }
 
+      await input.beforeCommit?.()
       try {
         await Config.domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
-        await Lockfile.write(removeEntry(previousLockfile, input.pluginId))
-        if (input.autoReload !== false) await input.reload()
+        await Lockfile.write(removePluginEntries(previousLockfile, input.pluginId, selected.removed))
+        await removeApproval(input.pluginId)
+        await IncompatiblePluginStore.write(
+          IncompatiblePluginStore.withoutPlugin(previousIncompatible, input.pluginId, selected.removed),
+        )
+        await input.reload()
       } catch (err) {
         await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
         await Lockfile.write(previousLockfile).catch(() => {})
-        if (input.autoReload !== false) await input.reload().catch(() => {})
+        await writeApprovals(previousApprovals).catch(() => {})
+        await IncompatiblePluginStore.write(previousIncompatible).catch(() => {})
+        await input.reload().catch(() => {})
         throw err
       }
     })

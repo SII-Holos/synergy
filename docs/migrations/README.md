@@ -1,9 +1,8 @@
 # Migration Notes
 
-This directory preserves upgrade instructions for consumers of retired contracts. It is historical material, not the source of truth for current behavior.
+This directory documents host-data migrations and explicit clean breaks that still affect Synergy users. It is not the source of truth for current plugin authoring.
 
-- [Plugin API](plugin-api.md) — move an older function-style or partially declared plugin to the current descriptor, manifest, and packaged-artifact contract.
-- [Plugin theme JSON](plugin-theme-json.md) — move a CSS theme contribution to the validated light/dark seed and canonical-token override contract.
-- [Synergy Link rebrand](synergy-link-rebrand.md) — rename MetaSynergy protocol and package identifiers to Synergy Link v2.
+- [Plugin API](plugin-api.md) — explains the Plugin API 3 clean break and the host catalog migration; no plugin compatibility adapter exists.
+- [Synergy Link rebrand](synergy-link-rebrand.md) — renames MetaSynergy protocol and package identifiers to Synergy Link v2.
 
 For current product and developer behavior, start at [Documentation](../README.md).

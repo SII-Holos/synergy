@@ -9,10 +9,7 @@
     "types": ["bun", "node"],
     "lib": ["es2022", "dom", "dom.iterable"],
     "jsx": "preserve",
-    "jsxImportSource": "solid-js",
-    "paths": {
-      "@ericsanchezok/synergy-util/*": ["../util/src/*.ts"]
-    }
+    "jsxImportSource": "solid-js"
   },
   "include": ["src"]
 }

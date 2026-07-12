@@ -1,4 +1,4 @@
-import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
 // Re-export the PluginManifest type for convenience
 export type { PluginManifestType }
@@ -22,15 +22,15 @@ export namespace Plugin {
   export const getDisabled = loader.getDisabledPlugins
   export const get = loader.getPlugin
   export const getDisabledPlugin = loader.getDisabledPlugin
-  export const perPluginHooks = loader.getHooks
-  export const allHooks = loader.getHooksList
-  export const cliEntries = loader.getCliEntries
   export const skillEntries = loader.getSkillEntries
   export const agentEntries = loader.getAgentEntries
+  export const authProviderEntries = loader.getAuthProviderEntries
+  export const contributions = loader.contributions
   export const lookupSpec = loader.lookupSpec
 
   // Lifecycle
   export const trigger = lifecycle.trigger
+  export const triggerForPlugin = lifecycle.triggerForPlugin
   export const init = lifecycle.init
   export const notifyConfigHooks = lifecycle.notifyConfigHooks
   export const reload = lifecycle.reload

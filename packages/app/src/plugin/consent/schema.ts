@@ -1,7 +1,12 @@
-import type { PluginPermissionItem, PluginPermissionSeverity } from "@ericsanchezok/synergy-plugin/permissions"
-
-export type PermissionSeverity = PluginPermissionSeverity
-export type PermissionItem = PluginPermissionItem
+export type PermissionSeverity = "low" | "medium" | "high"
+export interface PermissionItem {
+  key: string
+  category: string
+  severity: PermissionSeverity
+  title: string
+  description: string
+  technical?: string
+}
 
 export interface PermissionChange {
   key: string

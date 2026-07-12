@@ -31,12 +31,6 @@ export namespace StartupReporter {
     next?: string[]
   }
 
-  export interface PluginEvent {
-    name: string
-    status: "cached" | "installed" | "loaded" | "failed"
-    error?: string
-  }
-
   export interface Reporter {
     migration(summary: {
       totalDomains: number
@@ -45,16 +39,12 @@ export namespace StartupReporter {
       dryRun: number
       failed: number
     }): void
-    plugin(event: PluginEvent): void
     warning(message: string): void
     render(panel: Panel): void
-    pluginStatuses(): StatusRow[]
     warnings(): string[]
   }
 
   const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g
-  let activeReporter: Reporter | undefined
-
   export function stripAnsi(value: string): string {
     return value.replace(ANSI_RE, "")
   }
@@ -77,7 +67,6 @@ export namespace StartupReporter {
   }
 
   export function create(): Reporter {
-    const plugins = new Map<string, PluginEvent>()
     const warningMessages: string[] = []
     let migrationStatus: StatusRow | undefined
 
@@ -96,62 +85,19 @@ export namespace StartupReporter {
           kind: failed ? "error" : "success",
         }
       },
-      plugin(event) {
-        const current = plugins.get(event.name)
-        if (current?.status === "failed") return
-        if (current && current.status !== "loaded" && event.status === "loaded") return
-        plugins.set(event.name, event)
-      },
       warning(message) {
         warningMessages.push(message)
       },
       render(panel) {
         print({
           ...panel,
-          statuses: [
-            ...(migrationStatus ? [migrationStatus] : []),
-            ...this.pluginStatuses(),
-            ...(panel.statuses ?? []),
-          ],
+          statuses: [...(migrationStatus ? [migrationStatus] : []), ...(panel.statuses ?? [])],
           notes: [...warningMessages, ...(panel.notes ?? [])],
         })
-      },
-      pluginStatuses() {
-        if (plugins.size === 0) {
-          return [{ label: "Plugins", value: "none configured", kind: "muted" }]
-        }
-        const failed = [...plugins.values()].filter((event) => event.status === "failed")
-        if (failed.length > 0) {
-          return [
-            {
-              label: "Plugins",
-              value: `${failed.length} failed: ${failed.map((event) => event.name).join(", ")}`,
-              kind: "error",
-            },
-          ]
-        }
-        const values = [...plugins.values()].map((event) =>
-          event.status === "loaded" ? event.name : `${event.name} ${event.status}`,
-        )
-        return [{ label: "Plugins", value: values.join(", "), kind: "success" }]
       },
       warnings() {
         return [...warningMessages]
       },
-    }
-  }
-
-  export function active(): Reporter | undefined {
-    return activeReporter
-  }
-
-  export async function provide<T>(reporter: Reporter | undefined, fn: () => Promise<T>): Promise<T> {
-    const previous = activeReporter
-    activeReporter = reporter
-    try {
-      return await fn()
-    } finally {
-      activeReporter = previous
     }
   }
 

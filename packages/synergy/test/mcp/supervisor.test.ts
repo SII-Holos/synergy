@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -7,6 +8,7 @@ import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
 import { connectClientOrCloseOnFailure, McpSupervisor } from "../../src/mcp/supervisor"
 import { Plugin } from "../../src/plugin"
+import { computeManifestHash, computePermissionsHash, saveApproval } from "../../src/plugin/consent/approval-store"
 import { startForPlugin } from "../../src/plugin/mcp"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
@@ -38,41 +40,30 @@ await server.connect(new StdioServerTransport())
 
 async function writeMcpPlugin(root: string, input: { id: string; serverPath: string }) {
   const dir = path.join(root, input.id)
-  await fs.mkdir(path.join(dir, "src"), { recursive: true })
-  await Bun.write(
-    path.join(dir, "plugin.json"),
-    JSON.stringify(
+  await fs.mkdir(dir, { recursive: true })
+  const manifest = {
+    manifestVersion: 1 as const,
+    apiVersion: "3.0" as const,
+    id: input.id,
+    name: input.id,
+    version: "0.1.0",
+    description: "MCP contribution test plugin",
+    capabilities: [],
+    contributions: [
       {
-        name: input.id,
-        version: "0.1.0",
-        main: "./src/index.ts",
-        description: "MCP contribution test plugin",
-        runtime: { mode: "in-process" },
-        contributes: {
-          mcp: {
-            defaults: { startup: "lazy" },
-            layout: {
-              type: "local",
-              command: ["node", input.serverPath],
-            },
-          },
+        kind: "mcp" as const,
+        id: "layout",
+        server: {
+          type: "local",
+          command: ["node", input.serverPath],
+          startup: "lazy",
         },
       },
-      null,
-      2,
-    ),
-  )
-  await Bun.write(
-    path.join(dir, "src", "index.ts"),
-    `export default {
-  id: ${JSON.stringify(input.id)},
-  async init() {
-    return {}
-  }
-}
-`,
-  )
-  return dir
+    ],
+    artifacts: { generation: "mcp-test-generation" },
+  } satisfies PluginManifestType
+  await Bun.write(path.join(dir, "plugin.json"), JSON.stringify(manifest, null, 2))
+  return { dir, manifest }
 }
 
 describe.serial("McpSupervisor", () => {
@@ -215,12 +206,12 @@ describe.serial("McpSupervisor", () => {
   })
 
   test("plugin MCP contributions can be re-registered after MCP reload", async () => {
-    await using tmp = await tmpdir<{ pluginDir: string }>({
+    await using tmp = await tmpdir<{ pluginDir: string; manifest: PluginManifestType }>({
       git: true,
       init: async (dir) => {
         const serverPath = await writeFakeMcpServer(dir)
-        const pluginDir = await writeMcpPlugin(dir, { id: "demo-plugin", serverPath })
-        return { pluginDir }
+        const plugin = await writeMcpPlugin(dir, { id: "demo-plugin", serverPath })
+        return { pluginDir: plugin.dir, manifest: plugin.manifest }
       },
       config: {
         pluginMarketplace: { enabled: false },
@@ -231,6 +222,19 @@ describe.serial("McpSupervisor", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        await saveApproval({
+          pluginId: tmp.extra.manifest.id,
+          source: "local",
+          version: tmp.extra.manifest.version,
+          manifestHash: computeManifestHash(tmp.extra.manifest),
+          capabilitiesHash: computePermissionsHash(tmp.extra.manifest),
+          approvedAt: Date.now(),
+          approvedBy: "user",
+          trustTier: "declarative",
+          approvedCapabilities: [],
+          risk: "low",
+          status: "approved",
+        })
         await Config.update({
           plugin: [pathToFileURL(tmp.extra.pluginDir).href],
         } as any)

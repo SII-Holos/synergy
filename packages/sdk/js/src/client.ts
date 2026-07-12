@@ -2,11 +2,31 @@ export * from "./gen/types.gen.js"
 
 import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
-import { SynergyClient } from "./gen/sdk.gen.js"
+import { Plugin as GeneratedPlugin, SynergyClient } from "./gen/sdk.gen.js"
 export { type Config as SynergyClientConfig }
 export { SynergyClient }
 
-export function createSynergyClient(config?: Config & { directory?: string; scopeID?: string }) {
+type GeneratedPluginRequestOptions = NonNullable<Parameters<GeneratedPlugin["invokeOperation"]>[1]>
+export type PluginInvokeOptions = GeneratedPluginRequestOptions & {
+  sessionId?: string
+  directory?: string
+  scopeID?: string
+}
+
+export interface PluginInvoker {
+  invoke(
+    pluginId: string,
+    operationId: string,
+    input: unknown,
+    options?: PluginInvokeOptions,
+  ): ReturnType<GeneratedPlugin["invokeOperation"]>
+}
+
+export type SynergyClientInstance = SynergyClient & {
+  plugin: GeneratedPlugin & PluginInvoker
+}
+
+export function createSynergyClient(config?: Config & { directory?: string; scopeID?: string }): SynergyClientInstance {
   if (!config?.fetch) {
     const customFetch: any = (req: any) => {
       // @ts-ignore
@@ -36,5 +56,12 @@ export function createSynergyClient(config?: Config & { directory?: string; scop
   }
 
   const client = createClient(config)
-  return new SynergyClient({ client })
+  const synergy = new SynergyClient({ client })
+  const plugin = Object.assign(synergy.plugin, {
+    invoke(pluginId: string, operationId: string, input: unknown, options: PluginInvokeOptions = {}) {
+      const { sessionId, directory, scopeID, ...request } = options
+      return synergy.plugin.invokeOperation({ pluginId, operationId, input, sessionId, directory, scopeID }, request)
+    },
+  })
+  return Object.assign(synergy, { plugin }) as SynergyClientInstance
 }

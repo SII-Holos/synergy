@@ -1,5 +1,4 @@
 import type { PluginSource, TrustTier } from "../trust.js"
-import type { RuntimeMode } from "../../plugin-runtime/index.js"
 import type { PluginApprovalPolicy } from "../../config/schema.js"
 
 // ---------------------------------------------------------------------------
@@ -31,7 +30,6 @@ export function evaluatePolicy(input: {
   source: PluginSource
   verified: boolean
   risk: "low" | "medium" | "high"
-  runtimeMode: RuntimeMode
   trustTier: TrustTier
   signed?: boolean
   policy: PluginApprovalPolicy

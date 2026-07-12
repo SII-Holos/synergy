@@ -19,6 +19,9 @@ import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
 import { CortexOutput } from "./output"
+import { ScopeContext } from "../scope/context"
+import { Observability } from "../observability"
+import { pluginTaskSnapshotFromTask } from "./plugin-task"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -28,6 +31,9 @@ export namespace Cortex {
   const deferredParentNotifications = new Map<string, Set<string>>()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
+  const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+  const finalizingTasks = new Set<string>()
+  const cancellationRequests = new Set<string>()
   let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
@@ -134,16 +140,20 @@ export namespace Cortex {
             : []),
         ],
         cortex: {
+          taskID,
           parentSessionID: input.parentSessionID,
           parentMessageID: input.parentMessageID,
           description: input.description,
           agent: input.agent,
+          model: input.model,
           executionRole,
           status: "queued",
           startedAt: Date.now(),
           visibility: input.visibility,
           tools: input.tools,
           outputConfig: input.output,
+          owner: input.owner,
+          timeoutMs: input.timeoutMs,
         },
         workspace: (parent as import("../session/types").Info).workspace,
         completionNotice: { silent: input.visibility === "hidden" },
@@ -180,6 +190,7 @@ export namespace Cortex {
       description: input.description,
       prompt: input.prompt,
       agent: input.agent,
+      model: input.model,
       executionRole: input.executionRole,
       category: input.category,
       dagNodeId: input.dagNodeId,
@@ -194,9 +205,31 @@ export namespace Cortex {
       visibility: input.visibility,
       tools: input.tools,
       outputConfig: input.output,
+      owner: input.owner,
+      timeoutMs: input.timeoutMs,
     }
 
+    await Session.update(session.id, (draft) => {
+      if (!draft.cortex) return
+      draft.cortex.taskID = taskID
+      draft.cortex.parentSessionID = input.parentSessionID
+      draft.cortex.parentMessageID = input.parentMessageID
+      draft.cortex.description = input.description
+      draft.cortex.agent = input.agent
+      draft.cortex.model = input.model
+      draft.cortex.executionRole = input.executionRole
+      draft.cortex.status = "queued"
+      draft.cortex.startedAt = task.startedAt
+      draft.cortex.completedAt = undefined
+      draft.cortex.error = undefined
+      draft.cortex.output = undefined
+      draft.cortex.owner = input.owner
+      draft.cortex.timeoutMs = input.timeoutMs
+    })
+
     tasks.set(taskID, task)
+    emitPluginTaskObservability(task, "started")
+    emitPluginTaskObservability(task, "queued")
     SessionManager.registerChildRuntime(session.id)
 
     if (task.visibility !== "hidden") {
@@ -216,14 +249,24 @@ export namespace Cortex {
     setTaskStatus(taskID, "running")
 
     const run = runTask(current, input.model)
-      .catch((error) => {
+      .catch(async (error) => {
         log.error("task error", { taskID, error })
-        updateTaskStatus(taskID, "error", String(error))
+        await updateTaskStatus(taskID, "error", String(error))
       })
       .finally(() => {
         taskRuns.delete(taskID)
       })
     taskRuns.set(taskID, run)
+
+    if (input.timeoutMs) {
+      const timeout = setTimeout(() => {
+        const active = tasks.get(taskID)
+        if (!active || isTerminal(active.status)) return
+        SessionInvoke.cancel(active.sessionID)
+        void updateTaskStatus(taskID, "error", `Task exceeded its ${input.timeoutMs}ms runtime limit.`)
+      }, input.timeoutMs)
+      taskTimeouts.set(taskID, timeout)
+    }
 
     return current
   })
@@ -235,16 +278,40 @@ export namespace Cortex {
     task.status = status
     tasks.set(taskID, task)
     log.info("task status updated", { taskID, status })
+    emitPluginTaskObservability(task, status)
 
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
-        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
+        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
       }
     }).catch((error) => {
       log.error("failed to persist task status", { taskID, status, error })
     })
 
     publishVisibleTasksUpdate()
+  }
+
+  function emitPluginTaskObservability(task: CortexTypes.Task, phase: string): void {
+    if (!task.owner) return
+    void Observability.emit(`plugin.task.${phase}`, {
+      traceId: task.owner.correlationId,
+      sessionID: task.sessionID,
+      scopeID: task.owner.scopeId,
+      level: phase === "error" || phase === "interrupted" ? "error" : "info",
+      data: {
+        pluginId: task.owner.pluginId,
+        pluginGeneration: task.owner.pluginGeneration,
+        correlationId: task.owner.correlationId,
+        taskId: task.id,
+        status: task.status,
+        agent: task.agent,
+        model: task.model,
+        startedAt: task.startedAt,
+        completedAt: task.completedAt,
+        durationMs: task.completedAt ? task.completedAt - task.startedAt : undefined,
+        usage: task.usage,
+      },
+    })
   }
 
   function publishVisibleTasksUpdate(): void {
@@ -277,6 +344,11 @@ export namespace Cortex {
       throw new Error("Structured Cortex output is not supported for external agents")
     }
     CortexOutput.assertValidStructuredSchema(outputConfig)
+    const currentTask = tasks.get(task.id)
+    if (currentTask) {
+      currentTask.model = resolvedModel
+      tasks.set(task.id, currentTask)
+    }
     // Persist resolved model to session metadata
     void Session.update(task.sessionID, (draft) => {
       if (draft.cortex) {
@@ -378,7 +450,7 @@ export namespace Cortex {
         if (outputResolution && !outputResolution.ok) {
           unsub()
           unsub = undefined
-          updateTaskStatus(
+          await updateTaskStatus(
             task.id,
             "error",
             `Structured output validation failed after ${CortexOutput.maxRepairTurns(outputConfig)} repair turns: ${outputResolution.error}`,
@@ -391,11 +463,11 @@ export namespace Cortex {
       unsub = undefined
 
       const completedOutput = await completedTaskOutput(task, agent, outputConfig, outputResolution)
-      updateTaskStatus(task.id, "completed", undefined, completedOutput)
+      await updateTaskStatus(task.id, "completed", undefined, completedOutput)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
-      updateTaskStatus(task.id, "error", String(error))
+      await updateTaskStatus(task.id, "error", String(error))
     }
   }
 
@@ -418,6 +490,30 @@ export namespace Cortex {
     return { mode: "summary", value }
   }
 
+  async function taskUsage(sessionID: string): Promise<CortexTypes.TaskUsage> {
+    const messages = await Session.messages({ sessionID, raw: true }).catch(() => [])
+    return messages.reduce<CortexTypes.TaskUsage>(
+      (total, message) => {
+        if (message.info.role !== "assistant") return total
+        total.inputTokens += message.info.tokens.input
+        total.outputTokens += message.info.tokens.output
+        total.reasoningTokens += message.info.tokens.reasoning
+        total.cacheReadTokens += message.info.tokens.cache.read
+        total.cacheWriteTokens += message.info.tokens.cache.write
+        total.cost += message.info.cost
+        return total
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cost: 0,
+      },
+    )
+  }
+
   function rootMessageID(message: MessageV2.WithParts): string {
     if (message.info.role === "assistant") return message.info.rootID ?? message.info.parentID
     return message.info.rootID ?? message.info.id
@@ -427,98 +523,169 @@ export namespace Cortex {
     return value.length > maxChars ? value.slice(0, maxChars - 3) + "..." : value
   }
 
-  function updateTaskStatus(
+  async function updateTaskStatus(
     taskID: string,
     status: CortexTypes.TaskStatus,
     error?: string,
     output?: CortexTypes.TaskOutput,
-  ): void {
+  ): Promise<void> {
     const task = tasks.get(taskID)
     if (!task) return
+
+    // Once cancel() accepts a request, an abort/error callback from the task
+    // processor must not race it into the less precise "error" terminal state.
+    if (cancellationRequests.has(taskID)) {
+      status = "cancelled"
+      error = undefined
+      output = undefined
+    }
 
     if (isTerminal(task.status)) {
       log.info("ignoring task status update for terminal task", { taskID, current: task.status, next: status })
       return
     }
-
-    task.completedAt = Date.now()
-    if (error) task.error = error
-    if (output) task.output = output
-    tasks.set(taskID, task)
-
-    setTaskStatus(taskID, status)
-
-    // Terminal-specific: extra session fields (status already synced by setTaskStatus)
-    void Session.update(task.sessionID, (draft) => {
-      if (draft.cortex) {
-        draft.cortex.completedAt = task.completedAt
-        if (error) draft.cortex.error = error
-        if (output) draft.cortex.output = output
-      }
-    }).catch((error) => {
-      log.error("failed to persist terminal task fields", { taskID, error })
-    })
-
-    if (acquiredTasks.delete(taskID)) {
-      CortexConcurrency.release(task.agent)
+    if (finalizingTasks.has(taskID)) {
+      log.info("ignoring concurrent task finalization", { taskID, next: status })
+      return
     }
+    finalizingTasks.add(taskID)
 
-    if (task.visibility !== "hidden") {
-      Bus.publish(Event.TaskCompleted, { task })
-    }
-    void Plugin.trigger(
-      "cortex.task.after",
-      {
-        task,
-      },
-      {},
-    ).catch((error) => {
-      log.error("cortex task hook failed", { taskID, error })
-    })
-
-    updateDagNode(task)
-
-    const waiters = taskWaiters.get(taskID)
-    if (waiters && waiters.size > 0) {
-      for (const waiter of waiters) {
-        clearTimeout(waiter.timeout)
-        waiter.resolve(task)
+    try {
+      const terminalTask: CortexTypes.Task = {
+        ...task,
+        status,
+        completedAt: Date.now(),
+        usage: await taskUsage(task.sessionID),
       }
-      taskWaiters.delete(taskID)
-      log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
-    } else if (task.notifyParentOnComplete !== false) {
-      // Background/auto-background tasks rely on this mail to re-enter the parent
-      // after the current turn ends (#548/#550). If the parent is mid-turn, defer
-      // until release() so we do not permanently drop the wake or force an
-      // immediate mid-turn re-entry (#244).
-      if (SessionManager.isRunning(task.parentSessionID)) {
-        deferParentNotification(task)
+      if (error) terminalTask.error = error
+      if (output) terminalTask.output = output
+
+      const timeout = taskTimeouts.get(taskID)
+      if (timeout) {
+        clearTimeout(timeout)
+        taskTimeouts.delete(taskID)
+      }
+
+      await Session.update(task.sessionID, (draft) => {
+        if (draft.cortex) {
+          draft.cortex.status = status
+          draft.cortex.completedAt = terminalTask.completedAt
+          draft.cortex.model = terminalTask.model
+          if (error) draft.cortex.error = error
+          if (output) draft.cortex.output = output
+          draft.cortex.usage = terminalTask.usage
+        }
+      }).catch((error) => {
+        log.error("failed to persist terminal task fields", { taskID, error })
+      })
+
+      // Cancellation may arrive while usage/session metadata is being
+      // persisted. Reconcile once more immediately before the synchronous
+      // publication boundary so an accepted cancel cannot surface as error.
+      if (cancellationRequests.has(taskID) && terminalTask.status !== "cancelled") {
+        terminalTask.status = "cancelled"
+        terminalTask.error = undefined
+        terminalTask.output = undefined
+        await Session.update(task.sessionID, (draft) => {
+          if (draft.cortex) {
+            draft.cortex.status = "cancelled"
+            draft.cortex.error = undefined
+            draft.cortex.output = undefined
+          }
+        }).catch((error) => {
+          log.error("failed to persist task cancellation", { taskID, error })
+        })
+      }
+
+      if (acquiredTasks.delete(taskID)) {
+        CortexConcurrency.release(terminalTask.agent)
+      }
+
+      const waiters = taskWaiters.get(taskID)
+      if (!waiters?.size && terminalTask.notifyParentOnComplete !== false) {
+        // Register a deferred notification before exposing the terminal state.
+        // release() can then never observe "completed" without also seeing the
+        // pending wake. For an idle parent, finish delivery before publishing the
+        // terminal state so callers observe one coherent completion boundary.
+        if (SessionManager.isRunning(terminalTask.parentSessionID)) {
+          deferParentNotification(terminalTask)
+        } else {
+          await notifyParentSession(terminalTask)
+        }
       } else {
-        void notifyParentSession(task)
+        if (waiters?.size) {
+          log.info("task result has waiters, skipping mail", { taskID, waiterCount: waiters.size })
+        } else {
+          log.info("task parent notification suppressed", { taskID })
+        }
       }
-    } else {
-      log.info("task parent notification suppressed", { taskID })
-    }
 
-    void cleanupChildWorktree(task)
+      // Keep the task handle returned by launch() live while still publishing
+      // the terminal transition at this single, ordered boundary.
+      Object.assign(task, terminalTask)
+      tasks.set(taskID, task)
+      log.info("task status updated", { taskID, status: terminalTask.status })
+      emitPluginTaskObservability(terminalTask, terminalTask.status)
+      publishVisibleTasksUpdate()
 
-    setTimeout(() => {
-      const task = tasks.get(taskID)
-      if (task) {
-        task.prompt = truncate(task.prompt, 4096)
-        task.progress = undefined
-        log.info("task compacted", { taskID })
+      if (terminalTask.visibility !== "hidden") {
+        Bus.publish(Event.TaskCompleted, { task: terminalTask })
       }
-    }, PROMPT_COMPACT_DELAY_MS)
+      const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
+      if (pluginSnapshot) {
+        void Session.get(terminalTask.sessionID)
+          .then((session) =>
+            ScopeContext.provide({
+              scope: session.scope,
+              fn: () =>
+                Plugin.triggerForPlugin(
+                  pluginSnapshot.owner.pluginId,
+                  pluginSnapshot.owner.pluginGeneration,
+                  "cortex.task.after",
+                  { task: pluginSnapshot },
+                  {},
+                ),
+            }),
+          )
+          .catch((error) => {
+            log.error("cortex task hook failed", { taskID, error })
+          })
+      }
 
-    setTimeout(() => {
-      void (async () => {
+      void updateDagNode(terminalTask)
+
+      if (waiters?.size) {
+        for (const waiter of waiters) {
+          clearTimeout(waiter.timeout)
+          waiter.resolve(terminalTask)
+        }
+        taskWaiters.delete(taskID)
+        log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
+      }
+
+      void cleanupChildWorktree(terminalTask)
+
+      setTimeout(() => {
+        const task = tasks.get(taskID)
+        if (task) {
+          task.prompt = truncate(task.prompt, 4096)
+          task.progress = undefined
+          log.info("task compacted", { taskID })
+        }
+      }, PROMPT_COMPACT_DELAY_MS)
+
+      setTimeout(() => {
         tasks.delete(taskID)
         acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(task.sessionID)
+        SessionManager.unregisterRuntime(terminalTask.sessionID)
         log.info("task cleaned up", { taskID })
-      })()
-    }, TASK_CLEANUP_DELAY_MS)
+      }, TASK_CLEANUP_DELAY_MS)
+    } finally {
+      // Once the terminal state is published, isTerminal() is the durable race
+      // guard. Keeping task IDs here would turn this lock into a lifetime leak.
+      finalizingTasks.delete(taskID)
+      cancellationRequests.delete(taskID)
+    }
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {
@@ -582,7 +749,14 @@ export namespace Cortex {
   }
 
   async function notifyParentSession(task: CortexTypes.Task): Promise<void> {
-    const statusText = task.status === "error" ? "FAILED" : task.status === "cancelled" ? "CANCELLED" : "COMPLETED"
+    const statusText =
+      task.status === "error"
+        ? "FAILED"
+        : task.status === "cancelled"
+          ? "CANCELLED"
+          : task.status === "interrupted"
+            ? "INTERRUPTED"
+            : "COMPLETED"
     const notification = [
       `[BACKGROUND TASK ${statusText}]`,
       `**ID:** \`${task.id}\``,
@@ -619,7 +793,7 @@ export namespace Cortex {
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
-    return status === "completed" || status === "error" || status === "cancelled"
+    return status === "completed" || status === "error" || status === "cancelled" || status === "interrupted"
   }
 
   export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"
@@ -685,7 +859,9 @@ export namespace Cortex {
   }
 
   export function getCompletedTasks(): CortexTypes.Task[] {
-    return listVisible().filter((t) => t.status === "completed" || t.status === "error")
+    return listVisible().filter(
+      (t) => t.status === "completed" || t.status === "error" || t.status === "cancelled" || t.status === "interrupted",
+    )
   }
 
   export function getTasksForSession(sessionID: string): CortexTypes.Task[] {
@@ -725,8 +901,9 @@ export namespace Cortex {
     if (isTerminal(task.status)) return
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
+    cancellationRequests.add(taskID)
     SessionInvoke.cancel(task.sessionID)
-    updateTaskStatus(taskID, "cancelled")
+    await updateTaskStatus(taskID, "cancelled")
 
     const run = taskRuns.get(taskID)
     // Don't block cancel on processor settle — status is already "cancelled".
@@ -869,7 +1046,11 @@ export namespace Cortex {
     tasks.clear()
     taskRuns.clear()
     acquiredTasks.clear()
+    finalizingTasks.clear()
+    cancellationRequests.clear()
     deferredParentNotifications.clear()
+    for (const timeout of taskTimeouts.values()) clearTimeout(timeout)
+    taskTimeouts.clear()
     if (progressUpdateTimer) {
       clearTimeout(progressUpdateTimer)
       progressUpdateTimer = undefined

@@ -8,13 +8,11 @@ import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 // ---------------------------------------------------------------------------
 
 interface RuntimeInfo {
-  mode: string
+  mode: "process" | "inProcess"
   pid?: number
-  state: string
-  restarts: number
+  state: "starting" | "ready" | "draining" | "crashed" | "stopped"
+  inFlight: number
   lastHeartbeatAt?: number
-  memoryMb?: number
-  limits: Record<string, number>
   lastError?: string
 }
 
@@ -22,7 +20,7 @@ function formatRuntimeState(state: string): string {
   const map: Record<string, string> = {
     ready: UI.Style.TEXT_SUCCESS + "ready" + UI.Style.TEXT_NORMAL,
     starting: UI.Style.TEXT_WARNING + "starting" + UI.Style.TEXT_NORMAL,
-    unhealthy: UI.Style.TEXT_DANGER + "unhealthy" + UI.Style.TEXT_NORMAL,
+    draining: UI.Style.TEXT_WARNING + "draining" + UI.Style.TEXT_NORMAL,
     stopped: UI.Style.TEXT_DIM + "stopped" + UI.Style.TEXT_NORMAL,
     crashed: UI.Style.TEXT_DANGER + "crashed" + UI.Style.TEXT_NORMAL,
   }
@@ -53,9 +51,7 @@ const PluginRuntimeStatusCommand = cmd({
     const runtime = status?.runtime ?? null
 
     if (!runtime) {
-      UI.println(
-        `${UI.Style.TEXT_DIM}Plugin "${pluginId}" has no runtime entry (in-process mode or not running).${UI.Style.TEXT_NORMAL}`,
-      )
+      UI.println(`${UI.Style.TEXT_DIM}Plugin "${pluginId}" has no active runtime.${UI.Style.TEXT_NORMAL}`)
       return
     }
 
@@ -66,20 +62,13 @@ const PluginRuntimeStatusCommand = cmd({
     if (runtime.pid !== undefined && runtime.pid > 0) {
       UI.println(`  ${UI.Style.TEXT_DIM}PID:${UI.Style.TEXT_NORMAL}        ${runtime.pid}`)
     }
-    UI.println(`  ${UI.Style.TEXT_DIM}Restarts:${UI.Style.TEXT_NORMAL}   ${runtime.restarts}`)
+    UI.println(`  ${UI.Style.TEXT_DIM}In flight:${UI.Style.TEXT_NORMAL}  ${runtime.inFlight}`)
     if (runtime.lastHeartbeatAt) {
       const ago = Math.round((Date.now() - runtime.lastHeartbeatAt) / 1000)
       UI.println(`  ${UI.Style.TEXT_DIM}Heartbeat:${UI.Style.TEXT_NORMAL}  ${ago}s ago`)
     }
-    if (runtime.memoryMb !== undefined) {
-      UI.println(`  ${UI.Style.TEXT_DIM}Memory:${UI.Style.TEXT_NORMAL}     ${runtime.memoryMb} MB`)
-    }
     if (runtime.lastError) {
       UI.println(`  ${UI.Style.TEXT_DIM}Last Error:${UI.Style.TEXT_NORMAL} ${runtime.lastError}`)
-    }
-    UI.println(`  ${UI.Style.TEXT_DIM}Limits:${UI.Style.TEXT_NORMAL}`)
-    for (const [key, val] of Object.entries(runtime.limits)) {
-      UI.println(`    ${key}: ${val}`)
     }
   },
 })

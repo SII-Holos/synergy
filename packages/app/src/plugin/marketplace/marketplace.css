@@ -150,6 +150,47 @@
   line-height: 1rem;
 }
 
+.plugin-marketplace-source-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  border-radius: 0.625rem;
+  background: var(--plugin-control-bg);
+  padding: 0.125rem;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 20%, transparent);
+}
+
+.plugin-marketplace-source-filter button {
+  min-height: 1.625rem;
+  border-radius: 0.5rem;
+  padding: 0 0.625rem;
+  color: var(--text-weak);
+  font-size: 0.6875rem;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.plugin-marketplace-source-filter button:hover {
+  color: var(--text-base);
+}
+
+.plugin-marketplace-source-filter button.active {
+  background: var(--plugin-selected-bg);
+  color: var(--text-strong);
+}
+
+.plugin-detail-development-path {
+  overflow-wrap: anywhere;
+  border-radius: 0.625rem;
+  background: var(--surface-inset-base);
+  padding: 0.625rem 0.75rem;
+  color: var(--text-base);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+}
+
 .plugin-marketplace-list {
   display: flex;
   min-height: 0;

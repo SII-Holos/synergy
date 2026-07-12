@@ -1,10 +1,9 @@
 export namespace PluginArtifact {
   export const manifestFile = "plugin.json"
-  export const normalizedManifestFile = "plugin.normalized.json"
   export const runtimeEntry = "runtime/index.js"
   export const integrityFile = "integrity.json"
   export const permissionsSummaryFile = "permissions.summary.json"
-  export const requiredFiles = [manifestFile, runtimeEntry, integrityFile, permissionsSummaryFile] as const
+  export const requiredFiles = [manifestFile, integrityFile, permissionsSummaryFile] as const
   export const assetRoutePrefix = "/plugin/assets"
   export const allowedAssetRoots = ["dist", "public", "assets", "ui", "themes", "icons"] as const
 }

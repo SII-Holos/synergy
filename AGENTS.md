@@ -97,7 +97,7 @@ Do not create compatibility paths that violate those contracts. In particular:
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
 - Built-in primary agents are `synergy` and `synergy-max`; visibility masks and delegation groups define each subagent catalog. Hidden BlueprintLoop and Light Loop reviewers remain host-selected.
-- Plugins use the public SDK, manifest, approval, isolation, bridge, and UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
+- Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality
 
@@ -165,7 +165,7 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 - `change-server-api`, `change-persistence` — API/SDK and durable-state workflows
 - `change-execution-boundaries` — capabilities, permissions, control profiles, enforcement, and sandboxing
 - `change-browser-runtime` — Browser ownership/control plus Desktop native and WebRTC presentation
-- `change-plugin-runtime` — public plugin contracts, installation, runtime isolation, bridge, and UI host
+- `change-plugin-runtime` — Plugin API 3 definitions, generated artifacts, installation, runtime generations, Host Services, and UI host
 - `develop-synergy` — run an isolated second instance
 - `testing-guide` — choose fixtures and verification gates
 - `git-guide` — worktree, commit, rebase, push, and PR safety
