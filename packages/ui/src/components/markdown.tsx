@@ -8,6 +8,7 @@ import {
 import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
+import { applyMarkdownTerminalCrossfade } from "./markdown-terminal-transition"
 import * as smd from "streaming-markdown"
 
 type Entry = MarkdownRenderEntry
@@ -245,15 +246,27 @@ export function Markdown(
   })
 
   // Terminal render: once the full-fidelity HTML resolves (and we are no longer
-  // streaming), finish any live parser and replace the streamed DOM in one shot,
-  // then run the one-time DOM enhancement (copy buttons, table wrap, katex copy).
+  // streaming), finish any live parser and crossfade from the streamed DOM into
+  // the one-shot high-fidelity tree. Enhancement (copy buttons, table wrap,
+  // katex copy) runs on the terminal content only once.
   createEffect(() => {
     if (local.streaming) return
     const rendered = html()
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
+    const hadStreamContent = Boolean(stream) || container.childNodes.length > 0
     endStream()
-    container.innerHTML = rendered.html
-    const cleanup = enhanceMarkdown(container)
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const cleanup = applyMarkdownTerminalCrossfade({
+      container,
+      html: rendered.html,
+      enhance: (root) => enhanceMarkdown(root as HTMLDivElement),
+      prefersReducedMotion,
+      markdownLength: local.text.length,
+      hadStreamContent,
+    })
     onCleanup(cleanup)
   })
 
