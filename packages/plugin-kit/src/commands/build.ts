@@ -25,10 +25,11 @@ function ensureDir(directory: string) {
   fs.mkdirSync(directory, { recursive: true })
 }
 
-function copyPath(pluginDir: string, distDir: string, source: string) {
-  const relative = normalizeManifestPath(source)
-  const from = resolveUnder(pluginDir, relative)
-  const to = resolveUnder(distDir, relative)
+function copyPath(pluginDir: string, distDir: string, source: string, target = source) {
+  const sourceRelative = normalizeManifestPath(source)
+  const targetRelative = normalizeManifestPath(target)
+  const from = resolveUnder(pluginDir, sourceRelative)
+  const to = resolveUnder(distDir, targetRelative)
   if (!fs.existsSync(from)) throw new Error(`Declared plugin asset not found: ${source}`)
   ensureDir(path.dirname(to))
   const stat = fs.statSync(from)
@@ -37,14 +38,20 @@ function copyPath(pluginDir: string, distDir: string, source: string) {
   else throw new Error(`Unsupported plugin asset: ${source}`)
 }
 
-function assetPaths(definition: PluginDefinition): string[] {
-  const result = new Set<string>()
-  if (definition.icon && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(definition.icon)) result.add(definition.icon)
-  for (const contribution of definition.contributions) {
-    if (contribution.kind === "skill" && contribution.skill.dir) result.add(contribution.skill.dir)
-    if (contribution.kind === "ui.theme" || contribution.kind === "ui.icon") result.add(contribution.path)
+function assetPaths(definition: PluginDefinition): Array<{ source: string; target: string }> {
+  const result = new Map<string, { source: string; target: string }>()
+  const add = (source: string, target = source) => {
+    const normalizedTarget = normalizeManifestPath(target)
+    if (result.has(normalizedTarget)) throw new Error(`Duplicate packaged plugin asset target: ${normalizedTarget}`)
+    result.set(normalizedTarget, { source, target: normalizedTarget })
   }
-  return [...result]
+  for (const asset of definition.assets) add(asset.source, asset.target)
+  if (definition.icon && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(definition.icon)) add(definition.icon)
+  for (const contribution of definition.contributions) {
+    if (contribution.kind === "skill" && contribution.skill.dir) add(contribution.skill.dir)
+    if (contribution.kind === "ui.theme" || contribution.kind === "ui.icon") add(contribution.path)
+  }
+  return [...result.values()]
 }
 
 function trustedComponents(contributions: PluginContribution[]) {
@@ -132,14 +139,13 @@ export async function buildPluginProject(pluginDir: string, options: { outputDir
       definition.handlerIds.length > 0 || Boolean(definition.activate) || Boolean(definition.deactivate),
     )
     const ui = await buildUI(pluginDir, distDir, definition)
-    for (const asset of assetPaths(definition)) copyPath(pluginDir, distDir, asset)
+    for (const asset of assetPaths(definition)) copyPath(pluginDir, distDir, asset.source, asset.target)
 
     const generation = sha256JSON({
       id: definition.id,
       version: definition.version,
       handlers: definition.handlerIds,
-      runtime: runtime?.sha256,
-      ui: ui?.sha256,
+      files: hashPackagedFiles(distDir),
     })
     const artifacts: CompiledPluginArtifacts = { generation, ...(runtime ? { runtime } : {}), ...(ui ? { ui } : {}) }
     const manifest = compilePluginManifest(definition, artifacts)

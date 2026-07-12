@@ -221,4 +221,27 @@ describe("definePlugin", () => {
 
     expect(plugin.handlerIds).toEqual(["tool:echo"])
   })
+
+  test("normalizes omitted assets and rejects duplicate package targets", () => {
+    const plugin = definePlugin({
+      id: "assets",
+      version: "1.0.0",
+      description: "Asset declaration test",
+      contributions: [],
+    })
+    expect(plugin.assets).toEqual([])
+
+    expect(() =>
+      definePlugin({
+        id: "duplicate-assets",
+        version: "1.0.0",
+        description: "Duplicate asset target test",
+        assets: [
+          { source: "prompts/one", target: "runtime/prompts" },
+          { source: "prompts/two", target: "./runtime/prompts" },
+        ],
+        contributions: [],
+      }),
+    ).toThrow('Duplicate plugin asset target "runtime/prompts"')
+  })
 })

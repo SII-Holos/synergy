@@ -10,6 +10,7 @@ export default definePlugin({
   id: "example",
   version: "1.0.0",
   description: "Example plugin",
+  assets: [{ source: "src/prompts", target: "runtime/prompts" }],
   capabilities: [capability("workspace.read"), capability("ui.hostActions")],
   contributions: [
     event({ id: "example.changed", payload: z.object({ reason: z.string() }) }),
@@ -41,6 +42,7 @@ export default definePlugin({
 - `operation()` defaults to `expose: ['ui']`; add `sdk` explicitly for public SDK access.
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
 - `activate()` runs once per runtime generation and does not receive Scope or Session state.
+- Top-level `assets` map project-relative files or directories into package-relative targets. Asset contents are integrity-checked and included in the generation hash.
 
 ## Contribution Factories
 
