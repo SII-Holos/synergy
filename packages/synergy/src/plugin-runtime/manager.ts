@@ -252,14 +252,26 @@ export class PluginRuntimeManager {
     const requestId = crypto.randomUUID()
     const controller = new AbortController()
     const abort = () => controller.abort(input.signal?.reason)
-    input.signal?.addEventListener("abort", abort, { once: true })
+    if (input.signal?.aborted) abort()
+    else input.signal?.addEventListener("abort", abort, { once: true })
     const timeoutMs = input.timeoutMs ?? DEFAULT_LIMITS.toolInvocationTimeoutMs
     const timeout = setTimeout(
       () => controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError")),
       timeoutMs,
     )
+    const abortError = () => {
+      const timedOut =
+        controller.signal.reason instanceof DOMException && controller.signal.reason.name === "TimeoutError"
+      return new PluginRuntimeError(
+        timedOut ? "TIMEOUT" : "CANCELLED",
+        timedOut ? `Plugin invocation timed out after ${timeoutMs}ms` : "Plugin invocation cancelled",
+      )
+    }
     const cancelRuntime = () => {
+      const error = abortError()
       entry.process?.send({ type: "abort", requestId, reason: String(controller.signal.reason ?? "cancelled") })
+      // Single-settle the IPC pending so a late child response cannot resolve after cancel/timeout.
+      entry.process?.rejectRequest(requestId, error)
     }
     controller.signal.addEventListener("abort", cancelRuntime, { once: true })
     entry.inFlight++
@@ -291,25 +303,29 @@ export class PluginRuntimeManager {
               input.manifest,
               controller,
             ).then((value) => ({ requestId, generation: entry.generation, ok: true as const, value }))
-      const response = await Promise.race([
-        invocation,
-        new Promise<never>((_, reject) => {
-          controller.signal.addEventListener(
-            "abort",
-            () => {
-              const timeout =
-                controller.signal.reason instanceof DOMException && controller.signal.reason.name === "TimeoutError"
-              reject(
-                new PluginRuntimeError(
-                  timeout ? "TIMEOUT" : "CANCELLED",
-                  timeout ? `Plugin invocation timed out after ${timeoutMs}ms` : "Plugin invocation cancelled",
-                ),
-              )
-            },
-            { once: true },
-          )
-        }),
-      ])
+      // Reject only after process pending is tracked so pre-aborted signals still settle the request.
+      if (controller.signal.aborted) cancelRuntime()
+      // Process mode settles cancel/timeout through rejectRequest on the same pending promise.
+      // In-process still races an abort rejection because there is no IPC pending map.
+      const response =
+        entry.mode === "process"
+          ? await invocation
+          : await Promise.race([
+              invocation,
+              new Promise<never>((_, reject) => {
+                if (controller.signal.aborted) {
+                  reject(abortError())
+                  return
+                }
+                controller.signal.addEventListener(
+                  "abort",
+                  () => {
+                    reject(abortError())
+                  },
+                  { once: true },
+                )
+              }),
+            ])
       if (
         response.generation !== entry.generation ||
         (!input.runtimeKey && this.registry.active(input.pluginId)?.key !== entry.key)
