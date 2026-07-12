@@ -133,7 +133,7 @@ describe("dev orchestrator process lifecycle", () => {
 
       await terminateDevProcesses([parent])
 
-      expect(parent.exitCode).not.toBeNull()
+      expect(isProcessRunning(parent.pid)).toBe(false)
       expect(isProcessRunning(childPid)).toBe(false)
     } finally {
       await terminateDevProcesses([parent])

@@ -110,7 +110,7 @@ export async function migratePluginCatalog(input: {
 
 const migrations: Migration[] = [
   {
-    id: "plugin-api-3-catalog",
+    id: "20260712-plugin-api-3-catalog",
     description: "Migrate plugin catalog and require fresh capability approval",
     version: "3.0.0",
     async up(progress) {
@@ -123,4 +123,4 @@ function pathToFileSpec(directory: string) {
   return pathToFileURL(directory).href
 }
 
-MigrationRegistry.register("plugin", migrations)
+MigrationRegistry.register("plugin_catalog", migrations)

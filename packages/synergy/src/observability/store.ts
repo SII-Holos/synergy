@@ -108,10 +108,16 @@ export namespace ObservabilityStore {
   }
 
   export function close() {
+    // Stop every producer before draining the queue. A timer firing between
+    // flush() and close() can otherwise retain a statement and make SQLite's
+    // strict close report SQLITE_BUSY during shutdown.
+    clearTimers()
     flush()
     if (db) checkpointConnectionSafely(db)
-    clearTimers()
-    db?.close(true)
+    // All queued writes have been committed above. Non-throwing close uses
+    // sqlite3_close_v2 semantics, so outstanding cached statements can finish
+    // without turning an otherwise clean server shutdown into an exception.
+    db?.close(false)
     db = undefined
     openFailed = false
   }

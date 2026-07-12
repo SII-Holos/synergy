@@ -542,107 +542,119 @@ export namespace Cortex {
     finalizingTasks.add(taskID)
 
     try {
-      task.completedAt = Date.now()
-      task.usage = await taskUsage(task.sessionID)
-      if (error) task.error = error
-      if (output) task.output = output
-      tasks.set(taskID, task)
-      setTaskStatus(taskID, status)
-    } finally {
-      // Once the terminal status is visible, isTerminal() is the durable race guard.
-      // Keeping task IDs forever would turn this transient lock into a process-lifetime leak.
-      finalizingTasks.delete(taskID)
-    }
-    const timeout = taskTimeouts.get(taskID)
-    if (timeout) {
-      clearTimeout(timeout)
-      taskTimeouts.delete(taskID)
-    }
-
-    // Terminal-specific: extra session fields (status already synced by setTaskStatus)
-    await Session.update(task.sessionID, (draft) => {
-      if (draft.cortex) {
-        draft.cortex.completedAt = task.completedAt
-        draft.cortex.model = task.model
-        if (error) draft.cortex.error = error
-        if (output) draft.cortex.output = output
-        draft.cortex.usage = task.usage
+      const terminalTask: CortexTypes.Task = {
+        ...task,
+        status,
+        completedAt: Date.now(),
+        usage: await taskUsage(task.sessionID),
       }
-    }).catch((error) => {
-      log.error("failed to persist terminal task fields", { taskID, error })
-    })
+      if (error) terminalTask.error = error
+      if (output) terminalTask.output = output
 
-    if (acquiredTasks.delete(taskID)) {
-      CortexConcurrency.release(task.agent)
-    }
-
-    if (task.visibility !== "hidden") {
-      Bus.publish(Event.TaskCompleted, { task })
-    }
-    const pluginSnapshot = pluginTaskSnapshotFromTask(task)
-    if (pluginSnapshot) {
-      void Session.get(task.sessionID)
-        .then((session) =>
-          ScopeContext.provide({
-            scope: session.scope,
-            fn: () =>
-              Plugin.triggerForPlugin(
-                pluginSnapshot.owner.pluginId,
-                pluginSnapshot.owner.pluginGeneration,
-                "cortex.task.after",
-                { task: pluginSnapshot },
-                {},
-              ),
-          }),
-        )
-        .catch((error) => {
-          log.error("cortex task hook failed", { taskID, error })
-        })
-    }
-
-    updateDagNode(task)
-
-    const waiters = taskWaiters.get(taskID)
-    if (waiters && waiters.size > 0) {
-      for (const waiter of waiters) {
-        clearTimeout(waiter.timeout)
-        waiter.resolve(task)
+      const timeout = taskTimeouts.get(taskID)
+      if (timeout) {
+        clearTimeout(timeout)
+        taskTimeouts.delete(taskID)
       }
-      taskWaiters.delete(taskID)
-      log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
-    } else if (task.notifyParentOnComplete !== false) {
-      // Background/auto-background tasks rely on this mail to re-enter the parent
-      // after the current turn ends (#548/#550). If the parent is mid-turn, defer
-      // until release() so we do not permanently drop the wake or force an
-      // immediate mid-turn re-entry (#244).
-      if (SessionManager.isRunning(task.parentSessionID)) {
-        deferParentNotification(task)
+
+      await Session.update(task.sessionID, (draft) => {
+        if (draft.cortex) {
+          draft.cortex.status = status
+          draft.cortex.completedAt = terminalTask.completedAt
+          draft.cortex.model = terminalTask.model
+          if (error) draft.cortex.error = error
+          if (output) draft.cortex.output = output
+          draft.cortex.usage = terminalTask.usage
+        }
+      }).catch((error) => {
+        log.error("failed to persist terminal task fields", { taskID, error })
+      })
+
+      if (acquiredTasks.delete(taskID)) {
+        CortexConcurrency.release(terminalTask.agent)
+      }
+
+      const waiters = taskWaiters.get(taskID)
+      if (!waiters?.size && terminalTask.notifyParentOnComplete !== false) {
+        // Register a deferred notification before exposing the terminal state.
+        // release() can then never observe "completed" without also seeing the
+        // pending wake. For an idle parent, finish delivery before publishing the
+        // terminal state so callers observe one coherent completion boundary.
+        if (SessionManager.isRunning(terminalTask.parentSessionID)) {
+          deferParentNotification(terminalTask)
+        } else {
+          await notifyParentSession(terminalTask)
+        }
       } else {
-        void notifyParentSession(task)
+        if (waiters?.size) {
+          log.info("task result has waiters, skipping mail", { taskID, waiterCount: waiters.size })
+        } else {
+          log.info("task parent notification suppressed", { taskID })
+        }
       }
-    } else {
-      log.info("task parent notification suppressed", { taskID })
-    }
 
-    void cleanupChildWorktree(task)
+      tasks.set(taskID, terminalTask)
+      log.info("task status updated", { taskID, status })
+      emitPluginTaskObservability(terminalTask, status)
+      publishVisibleTasksUpdate()
 
-    setTimeout(() => {
-      const task = tasks.get(taskID)
-      if (task) {
-        task.prompt = truncate(task.prompt, 4096)
-        task.progress = undefined
-        log.info("task compacted", { taskID })
+      if (terminalTask.visibility !== "hidden") {
+        Bus.publish(Event.TaskCompleted, { task: terminalTask })
       }
-    }, PROMPT_COMPACT_DELAY_MS)
+      const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
+      if (pluginSnapshot) {
+        void Session.get(terminalTask.sessionID)
+          .then((session) =>
+            ScopeContext.provide({
+              scope: session.scope,
+              fn: () =>
+                Plugin.triggerForPlugin(
+                  pluginSnapshot.owner.pluginId,
+                  pluginSnapshot.owner.pluginGeneration,
+                  "cortex.task.after",
+                  { task: pluginSnapshot },
+                  {},
+                ),
+            }),
+          )
+          .catch((error) => {
+            log.error("cortex task hook failed", { taskID, error })
+          })
+      }
 
-    setTimeout(() => {
-      void (async () => {
+      void updateDagNode(terminalTask)
+
+      if (waiters?.size) {
+        for (const waiter of waiters) {
+          clearTimeout(waiter.timeout)
+          waiter.resolve(terminalTask)
+        }
+        taskWaiters.delete(taskID)
+        log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
+      }
+
+      void cleanupChildWorktree(terminalTask)
+
+      setTimeout(() => {
+        const task = tasks.get(taskID)
+        if (task) {
+          task.prompt = truncate(task.prompt, 4096)
+          task.progress = undefined
+          log.info("task compacted", { taskID })
+        }
+      }, PROMPT_COMPACT_DELAY_MS)
+
+      setTimeout(() => {
         tasks.delete(taskID)
         acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(task.sessionID)
+        SessionManager.unregisterRuntime(terminalTask.sessionID)
         log.info("task cleaned up", { taskID })
-      })()
-    }, TASK_CLEANUP_DELAY_MS)
+      }, TASK_CLEANUP_DELAY_MS)
+    } finally {
+      // Once the terminal state is published, isTerminal() is the durable race
+      // guard. Keeping task IDs here would turn this lock into a lifetime leak.
+      finalizingTasks.delete(taskID)
+    }
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {

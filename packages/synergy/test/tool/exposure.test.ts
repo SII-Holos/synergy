@@ -289,7 +289,7 @@ describe("tool exposure", () => {
         expect(availability.visible.some((item) => item.id === badId)).toBe(false)
         const diagnostic = availability.diagnostics.get(badId)
         expect(diagnostic?.code).toBe("tool_unavailable")
-        expect(diagnostic?.message).toContain("zod >=4")
+        expect(diagnostic?.message).toContain("invalid JSON Schema input")
         expect(diagnostic?.metadata).toMatchObject({
           pluginId: "focus",
           pluginToolId: "bad_schema",
