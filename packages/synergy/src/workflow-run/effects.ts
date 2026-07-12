@@ -218,9 +218,10 @@ export namespace WorkflowEffects {
         e.time.updated = Date.now()
       }
       if (binding) {
-        binding.status = "working"
+        // Allocation only; live status is projected from Cortex/Session.
         binding.entityID = ctx.entityID
         binding.lastEntityIDs = [ctx.entityID, ...binding.lastEntityIDs].slice(0, 5)
+        binding.status = "waiting"
       }
     })
     await WorkflowRunStore.appendEvent(
@@ -307,14 +308,15 @@ export namespace WorkflowEffects {
       if (releasesPrevious && previous) {
         const prevBinding = WorkflowSeats.find(draft, previous.seat, previous.instance)
         if (prevBinding && prevBinding.entityID === ctx.entityID) {
-          prevBinding.status = "idle"
           prevBinding.entityID = undefined
+          prevBinding.activeTaskID = undefined
+          prevBinding.status = "idle"
         }
       }
       const binding = WorkflowSeats.find(draft, targetSeat, instance!)
       if (binding) {
-        binding.status = "working"
         binding.entityID = ctx.entityID
+        binding.status = "waiting"
       }
     })
     if (releasesPrevious && previous) {
@@ -324,7 +326,15 @@ export namespace WorkflowEffects {
         { kind: "seat_released", entityID: ctx.entityID, seat: previous.seat, data: { instance: previous.instance } },
       )
     }
-    await WorkflowHandoff.deliver(sessionID, handoff, entity)
+    const taskID = await WorkflowHandoff.deliver(ctx.scopeID, sessionID, handoff, entity)
+    await WorkflowRunStore.update(ctx.scopeID, ctx.runID, (draft) => {
+      const binding = WorkflowSeats.find(draft, targetSeat, instance!)
+      if (binding) {
+        binding.activeTaskID = taskID
+        binding.entityID = ctx.entityID
+        binding.status = "working"
+      }
+    })
     await WorkflowRunStore.appendEvent(
       ctx.scopeID,
       { id: ctx.runID },
@@ -332,7 +342,7 @@ export namespace WorkflowEffects {
         kind: "handoff_sent",
         entityID: ctx.entityID,
         seat: targetSeat,
-        data: { handoffID: handoff.id, sessionID },
+        data: { handoffID: handoff.id, sessionID, taskID },
       },
     )
   })
@@ -485,6 +495,7 @@ export namespace WorkflowEffects {
         if (binding) {
           binding.status = "idle"
           binding.entityID = undefined
+          binding.activeTaskID = undefined
         }
       }
     })

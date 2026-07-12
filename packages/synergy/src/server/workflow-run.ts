@@ -3,7 +3,14 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
-import { WorkflowRunStore, WorkflowRunService, CharterStore, WorkflowError, WorkflowTypes } from "../workflow-run"
+import {
+  WorkflowRunStore,
+  WorkflowRunService,
+  CharterStore,
+  WorkflowError,
+  WorkflowTypes,
+  WorkflowSeats,
+} from "../workflow-run"
 
 const RunOrNull = WorkflowTypes.Run.nullable()
 
@@ -24,7 +31,7 @@ export const WorkflowRunRoute = new Hono()
     async (c) => {
       try {
         const runs = await WorkflowRunStore.list(ScopeContext.current.scope.id)
-        return c.json(runs)
+        return c.json(runs.map(WorkflowSeats.withProjectedStatus))
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
       }
@@ -44,7 +51,7 @@ export const WorkflowRunRoute = new Hono()
     async (c) => {
       try {
         const run = await WorkflowRunStore.getOrUndefined(ScopeContext.current.scope.id, c.req.valid("param").id)
-        return c.json(run ?? null)
+        return c.json(run ? WorkflowSeats.withProjectedStatus(run) : null)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
       }

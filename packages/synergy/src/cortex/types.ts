@@ -94,6 +94,7 @@ export namespace CortexTypes {
       notifyParentOnComplete: z.boolean().optional(),
       visibility: z.enum(["visible", "hidden"]).optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
       outputConfig: OutputConfig.optional(),
       output: TaskOutput.optional(),
     })
@@ -127,6 +128,7 @@ export namespace CortexTypes {
     notifyParentOnComplete: z.boolean().optional(),
     visibility: z.enum(["visible", "hidden"]).optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     output: OutputConfig.optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>

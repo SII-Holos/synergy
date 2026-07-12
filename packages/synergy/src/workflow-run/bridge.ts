@@ -116,6 +116,8 @@ export namespace WorkflowBridge {
       kind?: string
       runID?: string
       entityID?: string
+      seat?: string
+      instance?: number
       correlationID?: string
     }
     output?: { mode?: string; value?: unknown }
@@ -127,17 +129,34 @@ export namespace WorkflowBridge {
     const run = await WorkflowRunStore.getOrUndefined(scopeID, task.owner.runID)
     if (!run || run.status !== "active") return
     const entityID = task.owner.entityID
+
+    // Clear seat active-task allocation when a seat Cortex task finishes.
+    if (task.owner.seat !== undefined && task.owner.instance !== undefined) {
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        const binding = draft.seats.find(
+          (seat) => seat.seat === task.owner!.seat && seat.instance === task.owner!.instance,
+        )
+        if (binding && binding.activeTaskID === task.id) {
+          binding.activeTaskID = undefined
+          if (!binding.entityID) binding.status = "idle"
+          else binding.status = "waiting"
+        }
+      }).catch(() => undefined)
+    }
+
     await WorkflowRunStore.appendEvent(
       scopeID,
       { id: run.id },
       {
-        kind: "contractor_finished",
+        kind: task.owner.seat ? "contractor_finished" : "contractor_finished",
         entityID,
         data: {
           taskID: task.id,
           status: task.status,
           correlationID: task.owner.correlationID,
           outputMode: task.output?.mode,
+          seat: task.owner.seat,
+          instance: task.owner.instance,
         },
       },
     )

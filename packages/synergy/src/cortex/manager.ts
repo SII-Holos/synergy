@@ -193,7 +193,9 @@ export namespace Cortex {
       notifyParentOnComplete: input.notifyParentOnComplete ?? (input.visibility === "hidden" ? false : undefined),
       visibility: input.visibility,
       tools: input.tools,
+      metadata: input.metadata,
       outputConfig: input.output,
+      output: undefined,
     }
 
     tasks.set(taskID, task)
@@ -345,6 +347,7 @@ export namespace Cortex {
         parts,
         tools: invokeTools,
         ephemeralTools,
+        metadata: task.metadata as Record<string, any> | undefined,
       })
 
       let outputResolution = await CortexOutput.resolve({

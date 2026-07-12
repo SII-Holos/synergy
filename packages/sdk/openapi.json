@@ -30098,6 +30098,32 @@
         },
         "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
       },
+      "CortexTaskOwner": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "entityID": {
+            "type": "string"
+          },
+          "seat": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "correlationID": {
+            "type": "string"
+          }
+        },
+        "required": ["kind"]
+      },
       "CortexTask": {
         "type": "object",
         "properties": {
@@ -30132,6 +30158,9 @@
           },
           "category": {
             "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/CortexTaskOwner"
           },
           "dagNodeId": {
             "type": "string"
@@ -30215,6 +30244,13 @@
             "additionalProperties": {
               "type": "boolean"
             }
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           },
           "outputConfig": {
             "anyOf": [
@@ -32993,6 +33029,10 @@
             "type": "string",
             "pattern": "^wfe.*"
           },
+          "activeTaskID": {
+            "type": "string",
+            "pattern": "^ctx.*"
+          },
           "status": {
             "default": "unbound",
             "type": "string",
@@ -33168,6 +33208,55 @@
         },
         "required": ["id", "gate", "transitionID", "status", "time"]
       },
+      "WorkflowEffectRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Effect name (must exist in the effect registry)",
+            "type": "string"
+          },
+          "args": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["name"]
+      },
+      "WorkflowPendingEffect": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "transitionEventID": {
+            "type": "string"
+          },
+          "transitionID": {
+            "type": "string"
+          },
+          "entityID": {
+            "type": "string",
+            "pattern": "^wfe.*"
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEffectRef"
+            }
+          },
+          "nextIndex": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["id", "transitionEventID", "transitionID", "entityID", "effects"]
+      },
       "WorkflowRun": {
         "type": "object",
         "properties": {
@@ -33201,6 +33290,12 @@
           "statusReason": {
             "type": "string"
           },
+          "revision": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "bossSessionID": {
             "type": "string",
             "pattern": "^ses.*"
@@ -33221,6 +33316,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkflowGateInstance"
+            }
+          },
+          "pendingEffects": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPendingEffect"
             }
           },
           "budget": {
@@ -33419,24 +33521,6 @@
             "additionalProperties": {
               "type": "string"
             }
-          }
-        },
-        "required": ["name"]
-      },
-      "WorkflowEffectRef": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "Effect name (must exist in the effect registry)",
-            "type": "string"
-          },
-          "args": {
-            "default": {},
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
           }
         },
         "required": ["name"]

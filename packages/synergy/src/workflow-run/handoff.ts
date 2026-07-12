@@ -1,18 +1,15 @@
 import z from "zod"
 import { Identifier } from "../id/id"
-import { SessionInbox } from "../session/inbox"
-import { SessionManager } from "../session/manager"
+import { CharterStore } from "./charter-store"
+import { WorkflowRunStore } from "./store"
 import { WorkflowTypes } from "./types"
 
 /**
  * Structured handoff (A2A v1.5). The engine delivers a handoff to a seat
- * session as a user mail (mode "task"); its metadata carries the handoffID.
- * Acknowledgement is deterministic: WorkflowBridge observes the handoff user
- * message actually materialise in the target session (the session was woken and
- * accepted the task) and only then appends `handoff_acked`. Guards depending on
- * `handoff_acked` will not release until that fact exists — so a
- * workflow-critical handoff that failed to wake its target is never treated as
- * complete.
+ * session as a Cortex-owned task on the seat's durable session. Its metadata
+ * carries the handoffID. Acknowledgement is deterministic: WorkflowBridge
+ * observes the handoff user message materialise in the target session and only
+ * then appends `handoff_acked`.
  */
 export namespace WorkflowHandoff {
   export const ContextRef = z.object({
@@ -66,33 +63,46 @@ export namespace WorkflowHandoff {
     return lines.join("\n")
   }
 
-  export async function deliver(sessionID: string, handoff: Info, entity: WorkflowTypes.Entity): Promise<void> {
+  /**
+   * Deliver a handoff by launching a Cortex task on the seat session. Returns
+   * the Cortex task id so the seat binding can track active work.
+   */
+  export async function deliver(
+    scopeID: string,
+    sessionID: string,
+    handoff: Info,
+    entity: WorkflowTypes.Entity,
+  ): Promise<string> {
     const text = render(handoff, entity)
-    // Canonical delivery: explicit task mode + system origin. Feature metadata
-    // only carries domain correlation; it is not a scheduling protocol.
-    await SessionInbox.deliver({
+    const run = await WorkflowRunStore.get(scopeID, handoff.runID)
+    const charter = await CharterStore.get(scopeID, run.charterRef.id, run.charterRef.version)
+    const def = charter.seats.find((seat) => seat.name === handoff.toSeat.seat)
+    if (!def) throw new Error(`Charter has no seat '${handoff.toSeat.seat}'`)
+
+    const { Cortex } = await import("../cortex")
+    const task = await Cortex.launch({
+      description: `Seat ${handoff.toSeat.seat}#${handoff.toSeat.instance}: ${entity.title}`,
+      prompt: text,
+      agent: def.agent,
+      parentSessionID: run.bossSessionID,
+      parentMessageID: Identifier.ascending("message"),
       sessionID,
-      mode: "task",
-      message: {
-        role: "user",
-        origin: { type: "system", detail: "workflow_handoff" },
-        visible: true,
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            type: "text",
-            text,
-            origin: "system",
-          } as any,
-        ],
-        summary: { title: `Handoff: ${entity.title}` },
-        metadata: {
-          workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
-        },
+      model: def.model,
+      tools: def.tools,
+      visibility: "hidden",
+      notifyParentOnComplete: false,
+      owner: {
+        kind: "workflow_run",
+        runID: handoff.runID,
+        entityID: handoff.entityID,
+        seat: handoff.toSeat.seat,
+        instance: handoff.toSeat.instance,
+        correlationID: `workflow:${handoff.runID}:entity:${handoff.entityID}:seat:${handoff.toSeat.seat}#${handoff.toSeat.instance}`,
+      },
+      metadata: {
+        workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
       },
     })
-    if (!SessionManager.isRunning(sessionID)) {
-      SessionManager.scheduleWake(sessionID, "workflow_handoff")
-    }
+    return task.id
   }
 }

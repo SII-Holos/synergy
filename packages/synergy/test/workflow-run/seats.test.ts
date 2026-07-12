@@ -49,15 +49,15 @@ describe("WorkflowSeats.initialBindings", () => {
 describe("WorkflowSeats.pickInstance", () => {
   test("returns undefined when the pool is fully occupied", () => {
     const r = run([
-      { seat: "executor", instance: 0, status: "working", lastEntityIDs: [] },
-      { seat: "executor", instance: 1, status: "working", lastEntityIDs: [] },
+      { seat: "executor", instance: 0, status: "working", entityID: "wfe_a", lastEntityIDs: [] },
+      { seat: "executor", instance: 1, status: "working", entityID: "wfe_b", lastEntityIDs: [] },
     ])
     expect(WorkflowSeats.pickInstance(r, charter(2), "executor")).toBeUndefined()
   })
 
   test("prefers an idle instance", () => {
     const r = run([
-      { seat: "executor", instance: 0, status: "working", lastEntityIDs: [] },
+      { seat: "executor", instance: 0, status: "working", entityID: "wfe_a", lastEntityIDs: [] },
       { seat: "executor", instance: 1, status: "idle", lastEntityIDs: [] },
     ])
     expect(WorkflowSeats.pickInstance(r, charter(2), "executor")).toBe(1)
@@ -84,5 +84,32 @@ describe("WorkflowSeats.pickInstance", () => {
       [affineEntity],
     )
     expect(WorkflowSeats.pickInstance(r, charter(2), "executor", "module-a")).toBe(1)
+  })
+})
+
+describe("WorkflowSeats.liveStatus", () => {
+  test("projects unbound/idle/waiting from allocation", () => {
+    expect(WorkflowSeats.liveStatus({ seat: "executor", instance: 0, status: "unbound", lastEntityIDs: [] })).toBe(
+      "unbound",
+    )
+    expect(
+      WorkflowSeats.liveStatus({
+        seat: "executor",
+        instance: 0,
+        status: "working",
+        sessionID: "ses_seat",
+        lastEntityIDs: [],
+      }),
+    ).toBe("idle")
+    expect(
+      WorkflowSeats.liveStatus({
+        seat: "executor",
+        instance: 0,
+        status: "idle",
+        sessionID: "ses_seat",
+        entityID: "wfe_1",
+        lastEntityIDs: [],
+      }),
+    ).toBe("waiting")
   })
 })

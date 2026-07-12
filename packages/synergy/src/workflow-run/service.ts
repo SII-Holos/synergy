@@ -66,7 +66,7 @@ export namespace WorkflowRunService {
     await Session.update(input.bossSessionID, (draft) => {
       draft.workflowRun = { runID: run.id, role: "boss" }
     })
-    return run
+    return WorkflowSeats.withProjectedStatus(run)
   }
 
   export async function addEntity(input: {
@@ -124,7 +124,7 @@ export namespace WorkflowRunService {
         }
       })
       await WorkflowRunStore.appendEvent(scopeID, { id: runID }, { kind: "run_paused", message: "user_paused" })
-      return updated
+      return WorkflowSeats.withProjectedStatus(updated)
     }
     if (action === "resume") {
       const updated = await WorkflowRunStore.update(scopeID, runID, (draft) => {
@@ -138,7 +138,7 @@ export namespace WorkflowRunService {
       for (const entity of updated.entities) {
         await WorkflowMachine.evaluateEventTransitions(scopeID, runID, entity.id).catch(() => undefined)
       }
-      return updated
+      return WorkflowSeats.withProjectedStatus(updated)
     }
     // cancel: stop real execution first, then mark the domain run cancelled.
     await stopRunExecution(scopeID, run)
@@ -152,7 +152,7 @@ export namespace WorkflowRunService {
       }
     })
     await WorkflowRunStore.appendEvent(scopeID, { id: runID }, { kind: "run_cancelled" })
-    return updated
+    return WorkflowSeats.withProjectedStatus(updated)
   }
 
   async function stopRunExecution(scopeID: string, run: WorkflowTypes.Run): Promise<void> {
@@ -197,7 +197,7 @@ export namespace WorkflowRunService {
     resolvedBy: "human_ui" | "boss_agent"
   }): Promise<WorkflowTypes.Run> {
     const scopeID = ScopeContext.current.scope.id
-    return WorkflowMachine.resolveGate({ scopeID, ...input })
+    return WorkflowSeats.withProjectedStatus(await WorkflowMachine.resolveGate({ scopeID, ...input }))
   }
 
   /** Boss-driven intent (e.g. unblock a blocked entity by re-driving a transition). */

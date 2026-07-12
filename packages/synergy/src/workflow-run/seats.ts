@@ -1,6 +1,7 @@
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { SessionInteraction } from "../session/interaction"
+import { SessionManager } from "../session/manager"
 import { Worktree } from "../project/worktree"
 import { CharterStore } from "./charter-store"
 import { WorkflowRunStore } from "./store"
@@ -9,10 +10,11 @@ import { WorkflowTypes } from "./types"
 /**
  * Seat session lifecycle. Seat sessions are lazily created (the first time an
  * entity is assigned to a seat instance) and never silently deleted — they are
- * audit material. Created directly via Session.create (the engine is
- * server-side; the human authorization points are run creation and gates, not
- * per-session tool permission), mirroring how Lattice / BlueprintLoop drive
- * SessionManager directly.
+ * audit material.
+ *
+ * SeatBinding is an allocation record (session + entity + optional active task).
+ * Live status is projected from Cortex/Session runtime, not treated as a second
+ * write-path source of truth.
  */
 export namespace WorkflowSeats {
   export function find(run: WorkflowTypes.Run, seat: string, instance: number): WorkflowTypes.SeatBinding | undefined {
@@ -70,6 +72,8 @@ export namespace WorkflowSeats {
       if (binding) {
         binding.sessionID = sessionID
         binding.status = "idle"
+        binding.entityID = undefined
+        binding.activeTaskID = undefined
       }
     })
     await WorkflowRunStore.appendEvent(
@@ -85,10 +89,44 @@ export namespace WorkflowSeats {
   }
 
   /**
+   * Project live seat status from allocation + runtime. Prefer this over the
+   * persisted status field when presenting runs to the UI/API.
+   */
+  export function liveStatus(binding: WorkflowTypes.SeatBinding): WorkflowTypes.SeatBinding["status"] {
+    if (!binding.sessionID) return "unbound"
+    if (binding.activeTaskID) {
+      try {
+        // Lazy require avoids circular imports in pure unit tests that never load Cortex.
+        const { Cortex } = require("../cortex") as typeof import("../cortex")
+        const task = Cortex.get(binding.activeTaskID)
+        if (task && (task.status === "running" || task.status === "queued" || task.status === "pending")) {
+          return "working"
+        }
+      } catch {
+        // Cortex unavailable in unit tests — fall through.
+      }
+    }
+    if (SessionManager.isRunning(binding.sessionID)) return "working"
+    if (binding.entityID) return "waiting"
+    return "idle"
+  }
+
+  export function withProjectedStatus(run: WorkflowTypes.Run): WorkflowTypes.Run {
+    return {
+      ...run,
+      seats: run.seats.map((seat) => ({
+        ...seat,
+        status: liveStatus(seat),
+      })),
+    }
+  }
+
+  /**
    * Choose a seat instance for an entity. Prefers (1) an idle instance that
    * recently handled an entity with the same affinityKey, then (2) any idle
-   * instance, then (3) undefined when the pool is fully occupied (the entity
-   * waits in its current state — the Issue Queue).
+   * instance, then (3) undefined when the pool is fully occupied.
+   *
+   * Idle = no allocated entity and no active Cortex task.
    */
   export function pickInstance(
     run: WorkflowTypes.Run,
@@ -102,7 +140,7 @@ export namespace WorkflowSeats {
       { length: def.pool },
       (_, instance) => find(run, seat, instance) ?? emptyBinding(seat, instance),
     )
-    const idle = bindings.filter((b) => b.status === "idle" || b.status === "unbound")
+    const idle = bindings.filter((b) => !b.entityID && !b.activeTaskID)
     if (idle.length === 0) return undefined
     if (affinityKey) {
       const affine = idle.find((b) =>
@@ -123,15 +161,6 @@ export namespace WorkflowSeats {
   /**
    * Create a worktree for a seat/entity session, bound to that session, without
    * leaking the workspace switch into the caller's ambient context.
-   *
-   * Worktree.create(bind:true) calls ScopeContext.refreshWorkspace, which
-   * overlays the CURRENT async workspace frame. Seat worktrees are created inside
-   * another session's live turn (the Boss enqueues an entity → the engine
-   * assigns a seat), so without isolation that overlay repoints the Boss's own
-   * workspace and its next loop step refuses to continue "outside the session
-   * workspace". Running the create inside its own workspace frame confines the
-   * overlay; the seat session's persistent workspace (Session.updateWorkspace)
-   * is still set correctly and is what the seat uses on its own turns.
    */
   export async function createSeatWorktree(sessionID: string, name: string): Promise<void> {
     const scope = ScopeContext.current.scope

@@ -4609,6 +4609,15 @@ export type SessionImportResult = {
   warnings: Array<string>
 }
 
+export type CortexTaskOwner = {
+  kind: string
+  runID?: string
+  entityID?: string
+  seat?: string
+  instance?: number
+  correlationID?: string
+}
+
 export type CortexTask = {
   id: string
   sessionID: string
@@ -4619,6 +4628,7 @@ export type CortexTask = {
   agent: string
   executionRole?: "primary" | "delegated_subagent"
   category?: string
+  owner?: CortexTaskOwner
   dagNodeId?: string
   status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
   startedAt: number
@@ -4644,6 +4654,9 @@ export type CortexTask = {
   visibility?: "visible" | "hidden"
   tools?: {
     [key: string]: boolean
+  }
+  metadata?: {
+    [key: string]: unknown
   }
   outputConfig?:
     | {
@@ -5580,6 +5593,7 @@ export type WorkflowSeatBinding = {
   instance: number
   sessionID?: string
   entityID?: string
+  activeTaskID?: string
   status?: "unbound" | "idle" | "working" | "waiting"
   /**
    * Recently handled entity ids (for affinity)
@@ -5640,6 +5654,25 @@ export type WorkflowGateInstance = {
   }
 }
 
+export type WorkflowEffectRef = {
+  /**
+   * Effect name (must exist in the effect registry)
+   */
+  name: string
+  args?: {
+    [key: string]: unknown
+  }
+}
+
+export type WorkflowPendingEffect = {
+  id: string
+  transitionEventID: string
+  transitionID: string
+  entityID: string
+  effects: Array<WorkflowEffectRef>
+  nextIndex?: number
+}
+
 export type WorkflowRun = {
   id: string
   scopeID: string
@@ -5650,10 +5683,12 @@ export type WorkflowRun = {
   title: string
   status: "active" | "paused" | "completed" | "failed" | "cancelled"
   statusReason?: string
+  revision?: number
   bossSessionID: string
   seats: Array<WorkflowSeatBinding>
   entities: Array<WorkflowEntity>
   gates: Array<WorkflowGateInstance>
+  pendingEffects?: Array<WorkflowPendingEffect>
   budget: {
     maxModelCalls: number
     used: number
@@ -5745,16 +5780,6 @@ export type WorkflowPredicateRef = {
   name: string
   args?: {
     [key: string]: string
-  }
-}
-
-export type WorkflowEffectRef = {
-  /**
-   * Effect name (must exist in the effect registry)
-   */
-  name: string
-  args?: {
-    [key: string]: unknown
   }
 }
 
