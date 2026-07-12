@@ -648,11 +648,7 @@ export namespace Server {
               })
               const payload = event?.payload
               const part = payload?.properties?.part
-              if (
-                result.dropped > 0 &&
-                payload?.type === "message.part.updated" &&
-                part?.type === "tool"
-              ) {
+              if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
                 log.warn("global event ws tool part send failed", {
                   sessionID: part.sessionID,
                   messageID: part.messageID,
