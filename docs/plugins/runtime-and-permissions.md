@@ -51,7 +51,7 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 | `tool.invoke`     | `context.tools.invoke()`                                                            |
 | `ui.hostActions`  | trusted UI host navigation, panel, resource, notification, and confirmation actions |
 
-`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` returns a handle immediately and persists plugin/generation/Scope/correlation ownership on the Cortex child Session. `get()` and `cancel()` enforce that ownership. Non-agent invocations must provide an explicit parent Session/message in the current Scope; `tool.invoke` remains agent-only.
+`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` resolves the target from Synergy's native Agent registry and launches it through native Cortex; plugins do not own a parallel Agent or task runtime. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules. `start()` returns a handle immediately and persists plugin/generation/Scope/correlation ownership on the Cortex child Session. `get()` and `cancel()` enforce that ownership. Non-agent invocations must provide an explicit parent Session/message in the current Scope; `tool.invoke` remains agent-only.
 
 Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
 

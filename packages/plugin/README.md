@@ -56,7 +56,7 @@ The generated manifest contains declarations only. Runtime startup reports its a
 
 Every executable call receives a fresh `PluginInvocationContext` with request ID, Scope, optional Session, actor, cancellation, logger, scoped events, and only the Host Services allowed by approved capabilities. Plugins never receive a raw Synergy client, server URL, or token.
 
-Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/get/cancel`; non-agent callers must provide an explicit parent Session/message in the active Scope. `tool.invoke` remains agent-only.
+Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/get/cancel`; non-agent callers must provide an explicit parent Session/message in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of model prompts and the native `task` tool; the owner plugin can launch it only through an approved `task.delegate` allowlist, and execution still uses native Cortex and child Sessions. `tool.invoke` remains agent-only.
 
 ## Trusted UI
 

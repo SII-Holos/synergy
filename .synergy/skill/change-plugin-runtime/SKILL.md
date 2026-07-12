@@ -22,11 +22,13 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 6. External plugins use `process`; only trusted built-ins may use `inProcess`. Do not restore worker mode or describe the process boundary as an OS sandbox.
 7. One active generation is shared across enabled Scopes. Inject Scope/Session per invocation and reject stale-generation responses.
 8. Expose Synergy internals only through capability-gated Host Services. Do not pass a raw SDK client, server URL, token, or mutable current Scope into plugin code.
-9. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
-10. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
-11. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
-12. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
-13. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
+9. Extend the existing host subsystem for every contribution. Agent contributions enter the native Agent registry; delegated work enters native Cortex and child Sessions; tools, settings, and UI enter their host registries. Never add a plugin-local Agent registry, scheduler, task lifecycle, transcript store, permission model, or renderer beside the host implementation.
+10. Keep prompt/native-task exposure separate from host-owned invocation. A private plugin Agent uses `hidden: true`; the owner plugin may launch it only after plugin ID, generation, declared contribution, and `task.delegate` allowlist checks. Non-owned targets retain ordinary Agent visibility, and collisions must fail closed.
+11. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
+12. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
+13. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
+14. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
+15. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
 
 ## Verify
 

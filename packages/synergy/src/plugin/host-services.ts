@@ -47,8 +47,20 @@ export async function startPluginTask(input: {
   const agent = await Agent.get(request.subagent)
   if (!agent) throw new Error(`Unknown delegated subagent: ${request.subagent}`)
   const caller = input.context.agent ? await Agent.get(input.context.agent) : undefined
-  if (!AgentDelegation.canDelegateTo(agent, caller ?? input.context.agent)) {
-    throw new Error(`Agent "${request.subagent}" is not visible to "${input.context.agent}"`)
+  if (
+    !canPluginStartAgent({
+      agent,
+      pluginOwner: Agent.pluginOwner(agent),
+      caller: caller ?? input.context.agent,
+      pluginId: input.pluginId,
+      pluginGeneration: input.pluginGeneration,
+      declaredByPlugin: taskPermission.declaredByPlugin,
+    })
+  ) {
+    const reason = taskPermission.declaredByPlugin
+      ? "is not registered to the invoking plugin generation"
+      : `is not delegatable by "${input.context.agent}"`
+    throw new Error(`Agent "${request.subagent}" ${reason}`)
   }
 
   await askForTask(input.context, request)
@@ -78,6 +90,22 @@ export async function startPluginTask(input: {
     },
   })
   return { taskId: task.id, sessionId: task.sessionID }
+}
+
+export function canPluginStartAgent(input: {
+  agent: Pick<Agent.Info, "name" | "mode" | "hidden" | "visibleTo">
+  pluginOwner?: Agent.PluginOwner
+  caller?: { name: string; delegationGroups?: string[] } | string
+  pluginId: string
+  pluginGeneration: string
+  declaredByPlugin: boolean
+}): boolean {
+  if (!input.declaredByPlugin) return AgentDelegation.canDelegateTo(input.agent, input.caller)
+  const owner = input.pluginOwner
+  if (!owner || owner.pluginId !== input.pluginId || owner.pluginGeneration !== input.pluginGeneration) {
+    return false
+  }
+  return AgentDelegation.canProgrammaticallyDelegateTo(input.agent, input.caller)
 }
 
 export async function getPluginTask(input: {
@@ -206,7 +234,10 @@ async function assertTaskPermission(pluginDir: string, request: PluginTaskStartI
   if (maxRuntimeMs && request.timeoutMs && request.timeoutMs > maxRuntimeMs) {
     throw new Error(`Delegated task timeout exceeds manifest maxRuntimeMs (${maxRuntimeMs}ms)`)
   }
-  return { maxRuntimeMs }
+  const declaredByPlugin = manifest.contributions.some(
+    (contribution) => contribution.kind === "agent" && contribution.id === request.subagent,
+  )
+  return { maxRuntimeMs, declaredByPlugin }
 }
 
 async function askForTask(context: RuntimeContext, request: PluginTaskStartInput) {

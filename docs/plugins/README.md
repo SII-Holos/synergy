@@ -21,6 +21,8 @@ The source definition owns plugin identity, capabilities, declarations, and hand
 
 Every contribution has a plugin-local unique `id` and a discriminating `kind`. Executable contributions are operations, tools, hooks, auth providers, and lifecycle handlers. Agents, skills, MCP servers, and UI metadata are declarative. Host adapters register each kind with its owning Synergy subsystem.
 
+Declarative contributions extend the corresponding host subsystem; they do not create plugin-local copies of it. In particular, Agent contributions enter Synergy's Agent registry, delegated work enters Cortex and native child Sessions, tools enter the host Tool Registry, and settings enter the host Settings renderer.
+
 The plugin ID remains identical across the definition, generated manifest, registry entry, lockfile, approval, runtime generation, asset URLs, and UI surface IDs. A mismatch is an error, not an alias.
 
 ## Runtime and Data Ownership

@@ -35,6 +35,11 @@ export interface LoadedPlugin {
   contributionHealth: Map<string, { state: "healthy" | "degraded"; lastError?: string; updatedAt: number }>
 }
 
+export type PluginAgentEntry = PluginAgent & {
+  pluginId: string
+  pluginGeneration: string
+}
+
 export type DisabledPluginPhase = "resolve" | "manifest" | "runtime" | "contribution" | "doctor"
 
 export interface DisabledPlugin {
@@ -227,7 +232,10 @@ export async function reloadDevelopmentGeneration(input: {
       entryPath: resolved.entryPath,
     })
   }
-  return registerResolved(current.spec, resolved)
+  const registered = registerResolved(current.spec, resolved)
+  const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
+  await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  return registered
 }
 
 export function getCatalogPlugin(pluginId: string) {
@@ -285,13 +293,15 @@ export async function getSkillEntries(): Promise<
   )
 }
 
-export async function getAgentEntries(): Promise<Record<string, PluginAgent>> {
-  const agents: Record<string, PluginAgent> = {}
+export async function getAgentEntries(): Promise<Record<string, PluginAgentEntry>> {
+  const agents: Record<string, PluginAgentEntry> = {}
   for (const plugin of await getLoadedPlugins()) {
     for (const item of contributions(plugin, "agent")) {
       agents[item.id] = {
         ...(item.agent as unknown as PluginAgent),
         name: (item.agent.name as string | undefined) ?? item.id,
+        pluginId: plugin.id,
+        pluginGeneration: plugin.manifest.artifacts.generation,
       }
     }
   }

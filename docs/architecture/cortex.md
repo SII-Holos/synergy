@@ -24,7 +24,14 @@ Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, 
 
 ## Launch and Concurrency
 
-The `task` tool validates that the requested subagent is visible to the parent and permitted by its delegation policy. Cortex then creates a child session in the parent's `Scope` and workspace, or reuses an idle compatible child when reuse is requested. If a new worktree is requested, Cortex creates one for the child; a child of an existing worktree inherits that worktree instead of nesting another.
+Synergy has one Cortex launch mechanism and two authorization entry paths:
+
+- Model-directed delegation through the native `task` tool requires a non-hidden subagent that is visible to the caller and permitted by its delegation policy. The same predicate determines which Agents appear in the caller's prompt.
+- Host-owned workflows may programmatically launch a private hidden subagent after their owning subsystem establishes authorization. Built-in workflows own their internal Agents. A plugin owns only the Agent contributions resolved from that same plugin generation, and its approved `task.delegate` allowlist must include the target.
+
+Both paths enter `Cortex.launch()` and create the same Task and child Session. Plugins do not get a second Agent registry, task scheduler, transcript store, or execution loop.
+
+Cortex creates a child session in the parent's `Scope` and workspace, or reuses an idle compatible child when reuse is requested. If a new worktree is requested, Cortex creates one for the child; a child of an existing worktree inherits that worktree instead of nesting another.
 
 Tasks are admitted through both per-agent and process-global concurrency limits. Each concurrency key allows at most eight running tasks. The global maximum defaults to eight and can be set with the global `cortex.maxConcurrentTasks` configuration or overridden for the process by `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`. Lowering the maximum does not cancel running tasks; it queues new work until capacity is available, while raising it wakes eligible queued work.
 
@@ -120,6 +127,8 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 ## Invariants
 
 - Delegation creates a child session; it does not splice child messages into the parent history.
+- Hidden Agents stay out of model prompts and native `task` targets; host-owned invocation does not make them visible.
+- Plugin-owned private Agents are resolved and authorized by plugin ID plus generation before entering the ordinary Cortex path.
 - Parent and child retain an explicit hierarchy through `parentID` and Cortex metadata.
 - An ordinary delegated subagent cannot recursively delegate or ask the user for permission.
 - Tool expansion changes child-session exposure only; it never grants a deferred tool denied by agent or session permissions.

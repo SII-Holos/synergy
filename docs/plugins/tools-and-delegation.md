@@ -54,7 +54,13 @@ Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.
 
 A non-agent handler may call `start()` only when it supplies an explicit parent Session/message in the active Scope. This supports hook-driven continuations and trusted plugin UI commands using a previously bound control Session. Agent tool handlers may omit `parent`; the current invocation supplies it.
 
-The capability can constrain allowed subagents and maximum runtime. The host also checks agent visibility, control profile, permission policy, Scope ownership, cancellation, and task ownership.
+The capability constrains allowed subagents and maximum runtime. Targets use Synergy's existing Agent registry and Cortex:
+
+- A plugin-contributed Agent may be `hidden: true`. It stays out of every primary Agent prompt and cannot be selected through the native `task` tool. The owner plugin may start it through `context.task` only when the resolved Agent belongs to the same plugin ID and generation and the capability allowlist includes it.
+- A target not contributed by the plugin follows ordinary Synergy delegation visibility. This permits an approved public Agent such as `explore`, but not a hidden built-in Agent or another plugin's private Agent.
+- A contribution name collision or stale generation is rejected. The Host never falls through to a different registered Agent under the same name.
+
+After target authorization, the normal control profile, permission policy, Scope ownership, cancellation, task ownership, Session loop, and Cortex lifecycle apply. A plugin must not implement a second Agent registry or task runner.
 
 ## Exposure and Display
 
@@ -68,4 +74,4 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 ## Agents, Skills, and MCP
 
-`agent`, `skill`, and `mcp` contributions are declarative. The `tools` map inside a delegated task is a per-task visibility toggle, not a capability declaration.
+`agent`, `skill`, and `mcp` contributions are declarative. `hidden` controls prompt/native-task exposure, not whether the owning host workflow can invoke the Agent. The `tools` map inside a delegated task is a per-task visibility toggle, not a capability declaration.

@@ -293,6 +293,8 @@ test("plugin agent model role appears in role summaries", async () => {
   const originalAgentEntries = Plugin.agentEntries
   ;(Plugin as any).agentEntries = async () => ({
     plugin_visual_reviewer: {
+      pluginId: "visual-plugin",
+      pluginGeneration: "generation-one",
       name: "plugin_visual_reviewer",
       description: "Reviews visual output from a plugin",
       prompt: "Review visual output.",
@@ -315,6 +317,11 @@ test("plugin agent model role appears in role summaries", async () => {
 
         const agent = await Agent.get("plugin_visual_reviewer")
         expect(agent?.source).toBe("plugin")
+        expect(agent && "pluginOwner" in agent).toBe(false)
+        expect(agent && Agent.pluginOwner(agent)).toEqual({
+          pluginId: "visual-plugin",
+          pluginGeneration: "generation-one",
+        })
         expect(agent?.modelRole).toBe("creative")
         expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
 

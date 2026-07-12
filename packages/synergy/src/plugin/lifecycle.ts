@@ -175,8 +175,8 @@ export async function reload() {
     ])
   }
   await resetAllPluginState()
-  const { ToolRegistry } = await import("../tool/registry")
-  await ToolRegistry.reload()
+  const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
+  await Promise.all([Agent.reload(), ToolRegistry.reload()])
 }
 
 export async function reloadMcpContributions() {
