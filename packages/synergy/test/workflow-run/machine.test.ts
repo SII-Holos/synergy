@@ -109,6 +109,34 @@ describe("WorkflowMachine", () => {
     })
   })
 
+  test("concurrent intents on the same entity only commit one transition", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await seedRun(testCharter())
+      const entity = await addEntity(scopeID, run.id, "working")
+      const [first, second] = await Promise.all([
+        WorkflowMachine.submitIntent({
+          scopeID,
+          runID: run.id,
+          entityID: entity.id,
+          transitionID: "submit",
+          actorSessionID: "ses_worker",
+        }),
+        WorkflowMachine.submitIntent({
+          scopeID,
+          runID: run.id,
+          entityID: entity.id,
+          transitionID: "submit",
+          actorSessionID: "ses_worker",
+        }),
+      ])
+      const outcomes = [first, second]
+      expect(outcomes.filter((item) => item.ok)).toHaveLength(1)
+      expect(outcomes.filter((item) => !item.ok)).toHaveLength(1)
+      const updated = await WorkflowRunStore.get(scopeID, run.id)
+      expect(updated.entities[0]?.state).toBe("review")
+    })
+  })
+
   test("authorized intent advances the entity", async () => {
     await withScope(async () => {
       const { scopeID, run } = await seedRun(testCharter())

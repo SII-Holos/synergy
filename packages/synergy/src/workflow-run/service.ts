@@ -147,8 +147,9 @@ export namespace WorkflowRunService {
       draft.status = "cancelled"
       draft.time.completed = Date.now()
       for (const seat of draft.seats) {
-        if (seat.status === "working" || seat.status === "waiting") seat.status = "idle"
+        seat.status = seat.sessionID ? "idle" : "unbound"
         seat.activeTaskID = undefined
+        seat.entityID = undefined
       }
     })
     await WorkflowRunStore.appendEvent(scopeID, { id: runID }, { kind: "run_cancelled" })

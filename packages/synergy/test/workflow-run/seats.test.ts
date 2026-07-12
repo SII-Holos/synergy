@@ -112,4 +112,20 @@ describe("WorkflowSeats.liveStatus", () => {
       }),
     ).toBe("waiting")
   })
+
+  test("withProjectedStatus rewrites seat status for API consumers", () => {
+    const projected = WorkflowSeats.withProjectedStatus(
+      run([
+        {
+          seat: "executor",
+          instance: 0,
+          status: "working",
+          sessionID: "ses_seat",
+          entityID: "wfe_1",
+          lastEntityIDs: [],
+        },
+      ]),
+    )
+    expect(projected.seats[0]?.status).toBe("waiting")
+  })
 })

@@ -63,10 +63,39 @@ describe("WorkflowRunService", () => {
       expect(entity.assignedSeat?.seat).toBe("executor")
       expect(entity.bindings.seatSessionID).toBeDefined()
 
+      const seat = after.seats.find(
+        (item) => item.seat === entity.assignedSeat?.seat && item.instance === entity.assignedSeat?.instance,
+      )
+      expect(seat?.entityID).toBe(entity.id)
+      expect(seat?.activeTaskID).toBeDefined()
+
       const events = await WorkflowRunStore.listEvents(scopeID, run.id)
       expect(events.some((e) => e.kind === "seat_session_created")).toBe(true)
       expect(events.some((e) => e.kind === "seat_assigned")).toBe(true)
-      expect(events.some((e) => e.kind === "handoff_sent")).toBe(true)
+      const handoff = events.find((e) => e.kind === "handoff_sent")
+      expect(handoff).toBeDefined()
+      expect(typeof handoff?.data?.taskID).toBe("string")
+    })
+  })
+
+  test("cancel clears active seat tasks and marks the run cancelled", async () => {
+    await withScope(async () => {
+      const scopeID = ScopeContext.current.scope.id
+      await IssueToPrCharter.ensureSeeded(scopeID)
+      const boss = await Session.create({})
+      const run = await WorkflowRunService.create({
+        charterID: IssueToPrCharter.CHARTER_ID,
+        title: "Issues",
+        bossSessionID: boss.id,
+      })
+      await WorkflowRunService.addEntity({ runID: run.id, title: "Fix bug", description: "A bug" })
+      const before = await WorkflowRunStore.get(scopeID, run.id)
+      expect(before.seats.some((seat) => !!seat.activeTaskID)).toBe(true)
+
+      const cancelled = await WorkflowRunService.control(run.id, "cancel")
+      expect(cancelled.status).toBe("cancelled")
+      expect(cancelled.seats.every((seat) => !seat.activeTaskID)).toBe(true)
+      expect(cancelled.seats.every((seat) => seat.status === "idle" || seat.status === "unbound")).toBe(true)
     })
   })
 

@@ -82,7 +82,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
     if (fullSession?.workflowRun?.role === "boss") {
       return {
-        icon: "network",
+        icon: getSemanticIcon("performance.network"),
         label: waiting ? "Boss — decision needed" : "Boss session",
         tone: "workflow-boss",
         pulse: waiting || undefined,
@@ -90,7 +90,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
     if (fullSession?.workflowRun?.role === "seat") {
       return {
-        icon: "users",
+        icon: getSemanticIcon("agents.main"),
         label: `Workflow seat${fullSession.workflowRun.seat ? ` (${fullSession.workflowRun.seat})` : ""}`,
         tone: "workflow-seat",
         pulse: running || childTasksRunning ? true : undefined,

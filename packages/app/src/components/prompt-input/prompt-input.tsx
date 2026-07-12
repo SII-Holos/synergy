@@ -876,7 +876,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             id: "boss-mode",
             label: "Boss Mode",
             description: "Run a team of agents; you supervise",
-            icon: "network",
+            icon: getSemanticIcon("performance.network"),
             selected: false,
             onSelect: openBossPanel,
           },
