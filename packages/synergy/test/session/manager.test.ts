@@ -4,11 +4,11 @@ import { Log } from "../../src/util/log"
 import { SessionManager } from "../../src/session/manager"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
+import { SessionInbox } from "../../src/session/inbox"
 import { tmpdir } from "../fixture/fixture"
 import { Channel } from "../../src/channel"
 import { Bus } from "../../src/bus"
 import { SessionEvent } from "../../src/session/event"
-
 Log.init({ print: false })
 
 describe("SessionManager.getSession", () => {
@@ -193,6 +193,137 @@ describe("SessionManager.getSession", () => {
           } finally {
             unsub()
             SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
+    })
+
+    test("release flushes deferred cortex parent notifications before scheduling wake", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { Cortex } = await import("../../src/cortex/manager")
+          const { SessionInvoke } = await import("../../src/session/invoke")
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const originalDeliver = SessionManager.deliver
+          const originalIsRunning = SessionManager.isRunning
+          const originalLoop = SessionInvoke.loop
+          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+          const wakes: string[] = []
+          let parentSessionID = ""
+
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              const parentID = "msg_cortex_parent"
+              const message = await Session.updateMessage({
+                id: "msg_cortex_assistant",
+                role: "assistant",
+                parentID,
+                rootID: parentID,
+                mode: "test",
+                agent: "developer",
+                path: {
+                  cwd: ScopeContext.current.directory,
+                  root: ScopeContext.current.directory,
+                },
+                cost: 0,
+                tokens: {
+                  input: 0,
+                  output: 0,
+                  reasoning: 0,
+                  cache: { read: 0, write: 0 },
+                },
+                modelID: "test-model",
+                providerID: "test-provider",
+                time: {
+                  created: Date.now(),
+                  completed: Date.now(),
+                },
+                sessionID: input.sessionID,
+              })
+              const part = await Session.updatePart({
+                id: "prt_cortex_assistant",
+                messageID: message.id,
+                sessionID: input.sessionID,
+                type: "text",
+                text: "completed",
+              })
+              return { info: message, parts: [part] }
+            },
+          )
+          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+            deliveries.push(input)
+            if (typeof input.target === "string") {
+              await SessionInbox.enqueueMail({
+                sessionID: input.target,
+                mail: input.mail as any,
+              })
+            }
+          })
+          ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+            wakes.push(sessionID)
+          })
+
+          try {
+            const parentSession = await Session.create({})
+            parentSessionID = parentSession.id
+            const rootID = "msg_parent_root"
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID: parentSession.id,
+              time: { created: Date.now() },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID,
+            } as any)
+            await Session.updatePart({
+              id: "prt_parent_root",
+              messageID: rootID,
+              sessionID: parentSession.id,
+              type: "text",
+              text: "parent root",
+            })
+            SessionManager.acquire(parentSession.id)
+            ;(SessionManager.isRunning as any) = mock((sessionID: string) => {
+              if (sessionID !== parentSession.id) return originalIsRunning(sessionID)
+              return !!SessionManager.getRuntime(sessionID)?.abort
+            })
+
+            const task = await Cortex.launch({
+              description: "Flush deferred parent notification",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: rootID,
+              model: { providerID: "test-provider", modelID: "test-model" },
+            })
+
+            for (let i = 0; i < 50; i++) {
+              const current = Cortex.get(task.id)
+              if (current?.status === "completed" || current?.status === "error") break
+              await Bun.sleep(10)
+            }
+
+            expect(deliveries).toHaveLength(0)
+            expect(SessionManager.isRunning(parentSession.id)).toBe(true)
+
+            await SessionManager.release(parentSession.id)
+            await Bun.sleep(20)
+
+            expect(deliveries).toHaveLength(1)
+            expect(deliveries[0].target).toBe(parentSession.id)
+            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
+            expect(wakes).toContain(parentSession.id)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            ;(SessionManager.deliver as any) = originalDeliver
+            ;(SessionManager.isRunning as any) = originalIsRunning
+            ;(SessionInvoke.loop as any) = originalLoop
+            if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+            Cortex.reset()
           }
         },
       })
