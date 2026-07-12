@@ -3951,6 +3951,76 @@
         ]
       }
     },
+    "/experimental/worktree/remove": {
+      "post": {
+        "operationId": "worktree.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove worktree",
+        "description": "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+        "responses": {
+          "200": {
+            "description": "Worktree removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Worktree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeRemoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/vcs": {
       "get": {
         "operationId": "vcs.get",
@@ -26130,6 +26200,9 @@
           "dirty": {
             "type": "boolean"
           },
+          "diskBytes": {
+            "type": "number"
+          },
           "owner": {
             "anyOf": [
               {
@@ -27017,6 +27090,23 @@
           "force": {
             "default": false,
             "type": "boolean"
+          }
+        },
+        "required": ["target"]
+      },
+      "WorktreeRemoveInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sessionID": {
+            "type": "string"
           }
         },
         "required": ["target"]

@@ -45,6 +45,7 @@ export namespace Worktree {
       managed: z.boolean().optional(),
       stale: z.boolean().optional(),
       dirty: z.boolean().optional(),
+      diskBytes: z.number().optional(),
       owner: Owner.optional(),
       bindings: z.array(z.string()).optional(),
       lifecycle: z.enum(["active", "detached", "gc_candidate", "deleted"]).optional(),
@@ -84,12 +85,21 @@ export namespace Worktree {
 
   export const TargetInput = z
     .object({
-      sessionID: z.string(),
+      sessionID: z.string().optional(),
       target: z.string().min(1),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeTargetInput" })
   export type TargetInput = z.infer<typeof TargetInput>
+
+  export const RemoveInput = z
+    .object({
+      target: z.string().min(1),
+      force: z.boolean().optional().default(false),
+      sessionID: z.string().optional(),
+    })
+    .meta({ ref: "WorktreeRemoveInput" })
+  export type RemoveInput = z.infer<typeof RemoveInput>
 
   export const CommandResult = z
     .object({
@@ -417,13 +427,47 @@ export namespace Worktree {
       result.push({ ...info, stale: true })
     }
 
-    return result
+    return Promise.all(
+      result.map(async (item) => {
+        const [dirty, diskBytes] = await Promise.all([
+          item.stale ? Promise.resolve(undefined) : isDirty(item.path).catch(() => undefined),
+          directorySize(item.path).catch(() => undefined),
+        ])
+        return {
+          ...item,
+          dirty,
+          diskBytes,
+        }
+      }),
+    )
   }
 
   async function isDirty(directory: string) {
     const status = await $`git status --porcelain`.quiet().nothrow().cwd(directory)
     if (status.exitCode !== 0) return true
     return outputText(status.stdout).length > 0
+  }
+
+  async function directorySize(directory: string) {
+    if (!(await exists(directory))) return undefined
+    let total = 0
+    const queue = [directory]
+    while (queue.length > 0) {
+      const current = queue.pop()!
+      const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => [])
+      for (const entry of entries) {
+        if (entry.name === ".git") continue
+        const full = path.join(current, entry.name)
+        if (entry.isDirectory()) {
+          queue.push(full)
+          continue
+        }
+        if (!entry.isFile()) continue
+        const stat = await fs.stat(full).catch(() => undefined)
+        if (stat) total += stat.size
+      }
+    }
+    return total
   }
 
   async function setupInfo(repoRoot: string) {
@@ -635,6 +679,7 @@ export namespace Worktree {
   }
 
   export async function enter(input: TargetInput) {
+    if (!input.sessionID) throw new CreateFailedError({ message: "sessionID is required to enter a worktree" })
     const info = await find(input.target)
     await bindSession(input.sessionID, info)
     return info
@@ -682,12 +727,43 @@ export namespace Worktree {
     }
   }
 
-  export async function remove(input: TargetInput) {
-    const parsed = TargetInput.parse(input)
+  async function isSessionRunning(sessionID: string) {
+    const { SessionManager } = await import("../session/manager")
+    return SessionManager.isRunning(sessionID)
+  }
+
+  async function leaveBoundSessions(info: Info, extraSessionID?: string) {
+    const bindings = new Set(info.bindings ?? [])
+    if (extraSessionID) bindings.add(extraSessionID)
+    for (const sessionID of bindings) {
+      if (await isSessionRunning(sessionID)) {
+        throw new SessionBusyError({
+          sessionID,
+          message: `Stop session ${sessionID} before removing worktree ${info.name}.`,
+        })
+      }
+    }
+    for (const sessionID of bindings) {
+      const session = await Session.get(sessionID).catch(() => undefined)
+      if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id) {
+        await leave(sessionID)
+      } else if (info.managed) {
+        await updateBinding(info, sessionID, "remove")
+      }
+    }
+  }
+
+  export async function remove(input: TargetInput | RemoveInput) {
+    const parsed = RemoveInput.parse(input)
     const info = await find(parsed.target)
     if (info.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
     if (!parsed.force && (await isDirty(info.path))) {
       throw new DirtyError({ message: `Worktree ${info.name} has uncommitted changes. Re-run with force to remove.` })
+    }
+    await leaveBoundSessions(info, parsed.sessionID)
+    if (info.stale) {
+      if (info.managed) await removeRegistry(info.id)
+      return info
     }
     const removed = parsed.force
       ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
@@ -695,14 +771,6 @@ export namespace Worktree {
     if (removed.exitCode !== 0)
       throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
     if (info.managed) await removeRegistry(info.id)
-    let session: Awaited<ReturnType<typeof Session.get>> | undefined
-    try {
-      session = await Session.get(parsed.sessionID)
-    } catch {
-      // sessionID may be a placeholder like "none" — ignore
-    }
-    if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id)
-      await leave(parsed.sessionID)
     return info
   }
 
