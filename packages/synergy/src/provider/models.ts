@@ -9,6 +9,12 @@ export namespace ModelsDev {
   const log = Log.create({ service: "models.dev" })
   const filepath = Global.Path.modelsCache
 
+  export const ReasoningOption = z.object({
+    type: z.string(),
+    values: z.array(z.unknown()).optional(),
+  })
+  export type ReasoningOption = z.infer<typeof ReasoningOption>
+
   export const Model = z.object({
     id: z.string(),
     name: z.string(),
@@ -16,6 +22,7 @@ export namespace ModelsDev {
     release_date: z.string(),
     attachment: z.boolean(),
     reasoning: z.boolean(),
+    reasoning_options: z.array(ReasoningOption).optional(),
     temperature: z.boolean(),
     tool_call: z.boolean(),
     interleaved: z
@@ -62,6 +69,14 @@ export namespace ModelsDev {
     variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
   })
   export type Model = z.infer<typeof Model>
+
+  export function reasoningEfforts(model: { reasoning_options?: ReasoningOption[] }) {
+    if (!Array.isArray(model.reasoning_options)) return
+    const values = model.reasoning_options.find((option) => option?.type === "effort")?.values
+    if (!Array.isArray(values)) return
+    const efforts = values.filter((value): value is string => typeof value === "string")
+    return efforts.length > 0 ? efforts : undefined
+  }
 
   export const Provider = z.object({
     api: z.string().optional(),

@@ -1,7 +1,7 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { For, Show } from "solid-js"
-import { ConnectedModelManager } from "@/components/model-manager"
+import { ConnectedModelManager } from "@/components/provider/model-manager"
 import { groupByProvider } from "../types"
 import { ModelRoleRow } from "../components/ModelRoleRow"
 import type { ModelKey, ModelsStore, ProviderModel } from "../types"

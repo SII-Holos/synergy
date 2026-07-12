@@ -1,6 +1,7 @@
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -271,7 +272,7 @@ export function PluginDetailDialog(props: {
           aria-label="Close plugin details"
           onClick={() => dialog.close()}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       }
       class="plugin-detail-dialog"
@@ -290,7 +291,7 @@ export function PluginDetailDialog(props: {
             when={plugin()}
             fallback={
               <div class="plugin-detail-empty">
-                <Icon name="scan-search" size="large" class="text-icon-weak" />
+                <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
                 <span class="plugin-detail-empty-title">Plugin not found</span>
                 <span class="plugin-detail-empty-text">{props.pluginId} does not exist in this registry.</span>
               </div>
@@ -364,7 +365,7 @@ export function PluginDetailDialog(props: {
                       aria-label={`${current().name} repository on ${repositoryHost(repoUrl())}`}
                       title={repositoryHost(repoUrl())}
                     >
-                      <Icon name="github" size="small" />
+                      <Icon name={getSemanticIcon("github.main")} size="small" />
                     </a>
                   </Show>
                 </div>
@@ -375,7 +376,7 @@ export function PluginDetailDialog(props: {
 
                 <Show when={error()}>
                   <div class="plugin-detail-error">
-                    <Icon name="alert-triangle" size="small" />
+                    <Icon name={getSemanticIcon("state.warning")} size="small" />
                     <span>{error()}</span>
                   </div>
                 </Show>

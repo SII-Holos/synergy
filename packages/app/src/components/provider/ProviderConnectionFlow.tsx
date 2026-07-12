@@ -9,7 +9,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { createMemo, For, Match, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
+import { Link } from "./external-link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -20,6 +20,7 @@ export { compareProviderIDs, providerConnectCopy } from "./provider-recommendati
 export function ProviderConnectionFlow(props: {
   providerID: string
   providerName?: string
+  intent?: "connect" | "recover"
   connectedOverride?: boolean
   completeDescription?: string
   iconID?: string
@@ -109,13 +110,12 @@ export function ProviderConnectionFlow(props: {
   })
 
   async function complete() {
-    await globalSDK.client.global.dispose()
-    await globalSync.refreshAllConfigs()
+    await globalSync.refreshProviders()
     await props.onComplete?.()
     showToast({
       type: "success",
-      icon: "circle-check",
-      title: `${providerName()} connected`,
+      icon: getSemanticIcon("state.complete"),
+      title: `${providerName()} ${props.intent === "recover" ? "reconnected" : "connected"}`,
       description: props.completeDescription ?? `${providerName()} models are now available to use.`,
     })
   }
@@ -166,8 +166,12 @@ export function ProviderConnectionFlow(props: {
           <Match when={store.methodIndex === undefined}>
             <div class="provider-method-list">
               <div class="provider-flow-intro">
-                <div class="provider-flow-eyebrow">{connected() ? "Credential refresh" : "Connection method"}</div>
-                <div class="provider-flow-heading">{connected() ? "Refresh credentials" : "Choose how to connect"}</div>
+                <div class="provider-flow-eyebrow">
+                  {props.intent === "recover" ? "Account recovery" : "Connection method"}
+                </div>
+                <div class="provider-flow-heading">
+                  {props.intent === "recover" ? "Reconnect or replace credentials" : "Choose how to connect"}
+                </div>
               </div>
               <For each={methods()}>
                 {(item, index) => (
@@ -232,7 +236,9 @@ export function ProviderConnectionFlow(props: {
                 <form onSubmit={handleSubmit} class="provider-api-form">
                   <div class="provider-step-header">
                     <div class="provider-flow-eyebrow">API key</div>
-                    <div class="provider-flow-heading">Add a {providerName()} key</div>
+                    <div class="provider-flow-heading">
+                      {props.intent === "recover" ? "Replace" : "Add"} a {providerName()} key
+                    </div>
                     <p>Use a key from your provider account to make this provider available in Synergy.</p>
                   </div>
                   <Show when={providerCTA(props.providerID, profiles())}>

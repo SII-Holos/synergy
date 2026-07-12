@@ -1,78 +1,52 @@
-# Synergy Link Rebrand Migration Guide
+# Synergy Link Rebrand Migration
 
-## Summary
+This note covers the persisted-state and consumer cutover from MetaSynergy to Synergy Link protocol v2. For current behavior, see [Connections](../product/connections.md).
 
-Version 2.0 renames MetaSynergy/meta-protocol to Synergy Link/synergy-link-protocol.
-All `envID`/`env_` identifiers become `linkID`/`link_`. See below for per-consumer migration steps.
+The repository retains the former `packages/meta-protocol` and `packages/meta-synergy` source trees for cutover reference. They are outside the root Bun workspace and are not release packages.
 
-## Breaking Changes
+## Identifier and Package Changes
 
-### 1. Tool parameters: `envID` → `linkID`
+| Retired                        | Current                                |
+| ------------------------------ | -------------------------------------- |
+| MetaSynergy                    | Synergy Link                           |
+| `meta-synergy`                 | `synergy-link`                         |
+| `@ericsanchezok/meta-protocol` | `@ericsanchezok/synergy-link-protocol` |
+| `@ericsanchezok/meta-synergy`  | `@ericsanchezok/synergy-link`          |
+| `META_SYNERGY_HOME`            | `SYNERGY_LINK_HOME`                    |
+| `~/.meta-synergy/`             | `~/.synergy-link/`                     |
+| `envID` / `env_…`              | `linkID` / `link_…`                    |
+| `meta.execution.request`       | `synergy_link.execution.request`       |
 
-- **bash tool**: `envID` → `linkID`. Old `backgroundAfterSeconds`/`timeoutSeconds` → `background`/`yieldSeconds`.
-  Invalid or omitted `linkID` values run locally with a Synergy Link warning.
-- **process tool**: `envID` → `linkID`. Same fallback behavior.
-- **connect tool**: New tool name (replaces `remote_session`). Use `connect(action, linkID)` with actions: `open`, `close`, `status`, `list`.
+Protocol envelopes use `version: 2`, `requestID`, `linkID`, a typed tool/action, and strict schemas. Error codes use Link terminology such as `link_not_found` and `link_inactive`.
 
-### 2. Binary rename: `meta-synergy` → `synergy-link`
+## State Migration
 
-- Install dir: `~/.meta-synergy/bin/` → `~/.synergy-link/bin/`
-- Env var: `META_SYNERGY_HOME` → `SYNERGY_LINK_HOME`
-- Update PATH and any scripts referencing the old binary name.
+Synergy Link runs the `20260705-meta-synergy-to-synergy-link` migration before normal state hydration. It checks `META_SYNERGY_HOME` first; otherwise, migration from the default legacy directory occurs only when the destination is the default `~/.synergy-link` directory.
 
-### 3. Package rename
+The migration:
 
-- `@ericsanchezok/meta-protocol` → `@ericsanchezok/synergy-link-protocol` (v2.0.0)
-- `@ericsanchezok/meta-synergy` → `@ericsanchezok/synergy-link` (v2.0.0)
+- refuses to run while the recorded legacy runtime PID is alive
+- refuses to merge legacy data into a populated destination without its migration manifest
+- rewrites `envID` to a valid `linkID`
+- resets connection and service state to stopped/disconnected
+- copies the owner registry and migration log
+- archives the old runtime log as `logs/legacy-runtime.log`
+- imports legacy Holos credentials only when the shared destination has no credentials, then removes the duplicate legacy auth file
+- records `migration-manifest.json`
+- quarantines a partially written destination if migration fails
 
-### 4. Protocol version v1 → v2
+Stop the legacy runtime before first Synergy Link startup. Do not manually merge the two state directories.
 
-- Envelope `version` field: `1` → `2`
-- Envelope field `envID` → `linkID`
-- All schemas now use `.strict()` — reject unknown fields
-- Error codes renamed: `env_not_found` → `link_not_found`, `env_inactive` → `link_inactive`, etc.
-- Event bridge names: `meta.execution.request` → `synergy_link.execution.request`
+## Tool Consumers
 
-### 5. State migration
+Use `linkID` for `connect`, remote `bash`, and remote `process` calls. Open an explicit Link session with `connect` before remote shell or process work.
 
-- Legacy `~/.meta-synergy/` state is migrated to `~/.synergy-link/` on first startup.
-- Old runtime must be stopped before migration.
-- Legacy `envID` values with `env_` prefix are rewritten to `link_` prefix.
-- Legacy credentials are migrated to shared auth and the old file is removed.
+Current Bash payload fields are `background` and `yieldSeconds`. Current process actions are `list`, `poll`, `log`, `write`, `send-keys`, `kill`, `clear`, and `remove`.
 
-### 6. Enforcement gate (new)
+The Synergy Bash and process tool schemas still accept `envID` as a deprecated compatibility alias, but new code and stored calls should use `linkID`. An omitted Link ID intentionally selects local execution; an invalid or unavailable supplied ID produces a warning and follows the tool's documented local fallback. `connect` itself requires a valid `linkID` and never falls back locally.
 
-- `shell_remote_execute` capability added for remote bash/process execution with valid `linkID`.
-  Non-bypassable — profiles must explicitly allow remote execution.
-- Autonomous mode: `network_request` denies `connect`; `shell_remote_execute` denies remote commands.
+## Protocol Consumers
 
-## Per-Consumer Migration
+Update imports to `@ericsanchezok/synergy-link-protocol`, emit v2 envelopes, and validate the strict request/result schemas. Do not preserve unknown v1 fields in v2 records.
 
-### Binary users
-
-```bash
-# Stop old runtime
-meta-synergy stop
-# Install new binary
-curl -fsSL https://holosai.io/synergy-link/install | bash
-# Start new runtime
-synergy-link start
-```
-
-### Agent/script consumers
-
-- Replace tool calls: `envID: "env_abc"` → `linkID: "link_abc"`
-- Replace tool calls: `remote_session(...)` → `connect(action: "open", linkID: "...")`
-- Remove `backgroundAfterSeconds` → use `background: true` or `yieldSeconds`
-- Remove `timeoutSeconds` → commands auto-background; use process tool for timeout
-
-### SDK consumers
-
-- Update import: `@ericsanchezok/meta-protocol` → `@ericsanchezok/synergy-link-protocol`
-- Update import: `@ericsanchezok/meta-synergy` → `@ericsanchezok/synergy-link`
-- `SessionInboxItem.mode` → `SessionInboxItem.kind`
-
-### Plugin authors
-
-- `PluginEventHookInput`, `PluginConfigHookInput/Output`, `PluginChatSystemTransformInput` removed
-- `config: true` permission removed from manifest schema
+Remote execution is classified as the non-bypassable `shell_remote_execute` capability when a valid Link target is present. Permission and control-profile rules must allow that capability explicitly.

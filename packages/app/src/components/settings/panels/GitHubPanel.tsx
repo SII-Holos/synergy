@@ -1,4 +1,4 @@
-import type { GitHubAuthStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { GitHubAuthStatus, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -8,6 +8,11 @@ import { ProviderConnectionFlow } from "@/components/provider/ProviderConnection
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  providerNeedsAction,
+  providerRecoveryCopy,
+  providerStatusLabel,
+} from "@/components/provider/provider-auth-presentation"
 
 export function GitHubPanel() {
   const globalSDK = useGlobalSDK()
@@ -18,15 +23,29 @@ export function GitHubPanel() {
   })
 
   const connected = createMemo(() => status()?.status === "connected")
-  const statusLabel = createMemo(() => githubStatusLabel(status()))
+  const effectiveHealth = createMemo<ProviderAuthHealth | undefined>(() => {
+    const health = globalSync.data.provider.authHealth?.github
+    if (health?.status === "action_required") return health
+    if (status()?.status !== "invalid") return health
+    return {
+      providerID: "github",
+      status: "action_required",
+      recovery: status()?.source === "env" ? "update_environment" : "reconnect",
+      source: status()?.source,
+      authKind: status()?.authKind,
+    }
+  })
+  const needsAction = createMemo(() => providerNeedsAction(effectiveHealth()))
+  const statusLabel = createMemo(() =>
+    needsAction() ? providerStatusLabel(effectiveHealth()) : githubStatusLabel(status()),
+  )
 
   async function refreshStatus() {
-    await Promise.all([refetch(), globalSync.refreshAllConfigs()])
+    await Promise.all([refetch(), globalSync.refreshProviders()])
   }
 
   async function logout() {
     await globalSDK.client.auth.githubLogout({}, { throwOnError: true })
-    await globalSDK.client.global.dispose()
     await refreshStatus()
     showToast({ type: "warning", title: "GitHub disconnected", description: "Stored GitHub credentials were removed." })
   }
@@ -64,6 +83,15 @@ export function GitHubPanel() {
         </div>
       </SettingsSection>
 
+      <Show when={needsAction()}>
+        <SettingsSection title="Action required">
+          <div class="providers-auth-warning" role="status">
+            <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
+            <span>{providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"])}</span>
+          </div>
+        </SettingsSection>
+      </Show>
+
       <Show when={status()?.account}>
         {(account) => (
           <SettingsSection title="Account">
@@ -75,32 +103,50 @@ export function GitHubPanel() {
                 </p>
               </div>
             </div>
-            <Show when={account().url}>
-              <div class="providers-connect-actions">
-                <a class="provider-auth-link" href={account().url} target="_blank" rel="noreferrer">
-                  <span>Open GitHub profile</span>
-                  <Icon name={getSemanticIcon("action.open")} size="small" />
-                </a>
+            <div class="providers-connect-actions">
+              <Show when={account().url}>
+                {(url) => (
+                  <a class="provider-auth-link" href={url()} target="_blank" rel="noreferrer">
+                    <span>Open GitHub profile</span>
+                    <Icon name={getSemanticIcon("action.open")} size="small" />
+                  </a>
+                )}
+              </Show>
+              <Show when={status()?.source === "store"}>
                 <button type="button" class="provider-auth-link" onClick={logout}>
                   <span>Log out</span>
                   <Icon name={getSemanticIcon("account.logout")} size="small" />
                 </button>
-              </div>
-            </Show>
+              </Show>
+            </div>
           </SettingsSection>
         )}
       </Show>
 
-      <SettingsSection>
-        <ProviderConnectionFlow
-          providerID="github"
-          providerName="GitHub"
-          connectedOverride={connected()}
-          skipAutoAdvance
-          completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
-          onComplete={refreshStatus}
-        />
-      </SettingsSection>
+      <Show
+        when={status()?.source !== "env"}
+        fallback={
+          <SettingsSection title="Environment credentials">
+            <p class="providers-connect-copy">
+              {needsAction()
+                ? "Update GH_TOKEN or GITHUB_TOKEN in the Synergy server environment, then restart the server and refresh this page."
+                : "GitHub is connected through GH_TOKEN or GITHUB_TOKEN in the Synergy server environment."}
+            </p>
+          </SettingsSection>
+        }
+      >
+        <SettingsSection>
+          <ProviderConnectionFlow
+            providerID="github"
+            providerName="GitHub"
+            intent={needsAction() ? "recover" : "connect"}
+            connectedOverride={connected()}
+            skipAutoAdvance
+            completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
+            onComplete={refreshStatus}
+          />
+        </SettingsSection>
+      </Show>
     </SettingsPage>
   )
 }

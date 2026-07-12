@@ -10,7 +10,7 @@
   --dag-failed: var(--border-critical-base);
   --dag-blocked: var(--border-info-base);
   --dag-card-shadow: var(--shadow-xs);
-  --dag-grid-dot: rgb(17 0 0 / 0.07);
+  --dag-grid-dot: var(--border-weaker-base);
 
   --dag-pending-bg: var(--surface-raised-base);
   --dag-running-bg: color-mix(in srgb, var(--surface-warning-weak) 55%, var(--surface-raised-base));

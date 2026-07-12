@@ -1,38 +1,25 @@
 import { Log } from "../util/log"
 import { GlobalBus } from "../bus/global"
-import { BrowserInstall } from "./install.js"
 import { BrowserOwner } from "./owner.js"
 import { PlaywrightBrowserDriver } from "./playwright-driver.js"
 import type { BrowserDriver } from "./driver.js"
+import { BrowserBroker } from "./broker.js"
+import { BrowserHostPage } from "./host-page.js"
+import { BrowserNetworkGateway } from "./network-gateway.js"
+import { BrowserHostBrokerProcess } from "./host-broker-process.js"
+import { BrowserEvent } from "./event.js"
 
 import type { BrowserSession } from "./types.js"
 export { type BrowserSession } from "./types.js"
 
-// ── BrowserRuntime namespace ──────────────────────────────────────────
 export namespace BrowserRuntime {
-  export interface RuntimeState {
-    running: boolean
-    chromiumPath: string | null
-    driver: BrowserDriver.Driver | null
-    sessions: Map<string, BrowserSession>
-    health: BrowserInstall.Health | null
-  }
-
-  // ── module-level singleton state ────────────────────────────────
   const log = Log.create({ service: "browser.runtime" })
 
   const sessions = new Map<string, BrowserSession>()
+  const sessionPromises = new Map<string, Promise<BrowserSession>>()
   let running = false
-  let chromiumPath: string | null = null
   let driver: BrowserDriver.Driver | null = null
 
-  // ── Public API ──────────────────────────────────────────────────
-
-  // Dispose a session's browser page when the session is deleted or archived
-  // (issue #350 D3/H4). Each session-owned browser holds a Chromium renderer
-  // (~100–300MB); without this they accumulate until the server exits. Installed
-  // once, only while the runtime is live (i.e. only when the browser is used),
-  // so no Playwright/Chromium cost is paid by sessions that never opened one.
   let reaperInstalled = false
   function installSessionReaper() {
     if (reaperInstalled) return
@@ -46,7 +33,6 @@ export namespace BrowserRuntime {
       if (!archived && !deleted) return
       const scopeID = info.scope?.id
       if (!scopeID) return
-      // directory is required by the type but unused for the session-mode key.
       const owner: BrowserOwner.Info = {
         mode: "session",
         scopeID,
@@ -59,124 +45,120 @@ export namespace BrowserRuntime {
     })
   }
 
-  /** Idempotent start: starts the driver if not already running. */
-  export async function ensure(): Promise<RuntimeState> {
-    if (running) return state()
+  export async function ensure(): Promise<void> {
+    if (running) return
     installSessionReaper()
-
-    // Discover chromium for health check (Playwright handles its own launch)
-    const exe = await BrowserInstall.discoverChromium()
-    if (exe) {
-      chromiumPath = exe
-    }
 
     const pwDriver = new PlaywrightBrowserDriver()
     await pwDriver.ensure()
     driver = pwDriver
     running = true
-
-    return state()
   }
 
-  /** Start the driver. */
-  export async function start(): Promise<RuntimeState> {
-    if (running) return state()
-    installSessionReaper()
-
-    const exe = await BrowserInstall.discoverChromium()
-    if (!exe) throw new Error("Chromium not found")
-
-    chromiumPath = exe
-
-    const pwDriver = new PlaywrightBrowserDriver()
-    await pwDriver.ensure()
-    driver = pwDriver
-    running = true
-
-    return state()
-  }
-
-  /** Graceful shutdown: close all sessions, stop driver. */
   export async function stop(): Promise<void> {
-    // Dispose all sessions
-    const disposeOps: Promise<void>[] = []
+    const failures: unknown[] = []
+    collectFailures(await Promise.allSettled(Array.from(sessionPromises.values())), failures)
+    const { BrowserCommandService } = await import("./command-service.js")
+    collectFailures(
+      await Promise.allSettled(
+        Array.from(sessions.values(), (session) =>
+          BrowserCommandService.disposeOwner(session.owner, () => session.dispose()),
+        ),
+      ),
+      failures,
+    )
     for (const session of sessions.values()) {
-      disposeOps.push(session.dispose())
+      BrowserNetworkGateway.revoke(session.owner)
+      BrowserBroker.release(session.owner)
+      BrowserEvent.remove(session.owner)
     }
-    await Promise.allSettled(disposeOps)
     sessions.clear()
+    sessionPromises.clear()
+    BrowserCommandService.clear()
 
-    // Stop driver
     if (driver) {
       try {
         await driver.stop()
-      } catch {
-        /* ignore */
+      } catch (error) {
+        log.error("browser.playwright.stop.failed", { error })
+        failures.push(error)
       }
       driver = null
     }
 
     running = false
-    chromiumPath = null
-  }
-
-  /** Get current health. Does not start the driver. */
-  export async function health(): Promise<BrowserInstall.Health> {
-    if (chromiumPath) {
-      return BrowserInstall.healthCheck(chromiumPath)
+    for (const stop of [() => BrowserNetworkGateway.stop(), () => BrowserHostBrokerProcess.stop()]) {
+      try {
+        await stop()
+      } catch (error) {
+        failures.push(error)
+      }
     }
-    const discovered = await BrowserInstall.discoverChromium()
-    if (discovered) {
-      return BrowserInstall.healthCheck(discovered)
-    }
-    return {
-      running: false,
-      chromiumPath: null,
-      installed: false,
-      version: null,
-    }
+    if (failures.length) throw new AggregateError(failures, "Browser runtime shutdown did not complete cleanly.")
   }
 
   /** Dispose a specific BrowserSession. */
   export async function disposeSession(owner: BrowserOwner.Info): Promise<void> {
     const k = BrowserOwner.key(owner)
+    const pending = sessionPromises.get(k)
+    if (pending) await pending
     const s = sessions.get(k)
     if (!s) return
+    const { BrowserCommandService } = await import("./command-service.js")
+    await BrowserCommandService.disposeOwner(owner, () => s.dispose())
     sessions.delete(k)
-    await s.dispose()
-  }
-
-  /** Register a session externally (for BrowserSession constructor). */
-  export function registerSession(owner: BrowserOwner.Info, session: BrowserSession): void {
-    sessions.set(BrowserOwner.key(owner), session)
+    BrowserNetworkGateway.revoke(owner)
+    BrowserBroker.release(owner)
+    BrowserEvent.remove(owner)
   }
 
   /** Create or retrieve a BrowserSession for the given owner. */
   export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
     BrowserOwner.assertValid(owner)
+    installSessionReaper()
     const k = BrowserOwner.key(owner)
     const existing = sessions.get(k)
     if (existing) return existing
-
-    if (!driver) {
-      throw new Error("Browser driver not running")
-    }
-
-    const { BrowserSessionImpl } = await import("./session.js")
-    const session = new BrowserSessionImpl(owner, driver)
-    sessions.set(k, session)
-    await session.restore()
-    return session
+    const pending = sessionPromises.get(k)
+    if (pending) return pending
+    const create = (async () => {
+      const { BrowserSessionImpl } = await import("./session.js")
+      const session = new BrowserSessionImpl(
+        owner,
+        driverForSession,
+        async (input) => {
+          if (input.backend !== "host") return null
+          const preference = BrowserBroker.preference(owner)
+          if (preference) {
+            return BrowserHostPage.create({
+              owner,
+              id: input.id ?? crypto.randomUUID(),
+              routeDirectory: preference.routeDirectory,
+              presentation: preference.presentation,
+              events: input.events,
+            })
+          }
+          return null
+        },
+        () => (BrowserBroker.preference(owner) ? "host" : "headless"),
+      )
+      sessions.set(k, session)
+      await session.restore()
+      return session
+    })().finally(() => sessionPromises.delete(k))
+    sessionPromises.set(k, create)
+    return create
   }
 
-  /** Get the current runtime state (for debugging). */
-  export function state(): RuntimeState {
-    return {
-      running,
-      chromiumPath,
-      driver,
-      sessions: new Map(sessions),
-      health: null,
+  async function driverForSession(): Promise<BrowserDriver.Driver> {
+    await ensure()
+    if (!driver) throw new Error("Browser driver not running")
+    return driver
+  }
+
+  function collectFailures(results: PromiseSettledResult<unknown>[], failures: unknown[]): void {
+    for (const result of results) {
+      if (result.status === "rejected") failures.push(result.reason)
     }
   }
 }

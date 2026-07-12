@@ -179,8 +179,233 @@ export type ServerUpdateStartInput = {
   version?: string
 }
 
+export type TelemetryEventLevel = "debug" | "info" | "warn" | "error"
+
+export type TelemetrySource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
+
+export type TelemetryModule =
+  | "server"
+  | "session"
+  | "llm"
+  | "tool"
+  | "enforcement"
+  | "storage"
+  | "library"
+  | "process"
+  | "pty"
+  | "browser"
+  | "frontend"
+  | "desktop"
+  | "observability"
+  | "mcp"
+  | "plugin"
+  | "channel"
+
+export type TelemetryLabelValue = string | number | boolean | null
+
+export type TelemetryLabels = {
+  [key: string]: TelemetryLabelValue
+}
+
+export type TelemetryRedactionSummary = {
+  applied: boolean
+  omittedKeys: number
+  truncatedValues: number
+}
+
+export type TelemetryEvent = {
+  eventId: string
+  time: number
+  iso: string
+  type: string
+  level?: TelemetryEventLevel
+  correlationId?: string
+  traceId?: string
+  spanId?: string
+  parentSpanId?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  tool?: string
+  processId?: string
+  pid?: number
+  cwd?: string
+  scopeID?: string
+  rid?: string
+  source?: TelemetrySource
+  module?: TelemetryModule
+  data?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+}
+
+export type TelemetryIssueSeverity = "info" | "warning" | "error" | "critical"
+
+export type TelemetryIssueStatus = "open" | "resolved" | "suppressed"
+
+export type TelemetryIssue = {
+  issueId: string
+  time: number
+  iso: string
+  severity: TelemetryIssueSeverity
+  status?: TelemetryIssueStatus
+  code: string
+  title: string
+  message: string
+  recommendation?: string
+  module: TelemetryModule
+  correlationId?: string
+  traceId?: string
+  spanId?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  evidence?: TelemetryLabels
+  firstSeenTime: number
+  lastSeenTime: number
+  occurrenceCount: number
+  fingerprint: string
+  redaction?: TelemetryRedactionSummary
+}
+
+export type TelemetrySpanKind =
+  | "http"
+  | "session"
+  | "session_step"
+  | "llm"
+  | "tool"
+  | "permission"
+  | "storage"
+  | "library"
+  | "frontend"
+  | "sse"
+  | "process"
+  | "plugin"
+  | "mcp"
+  | "channel"
+  | "diagnostic"
+  | "runtime"
+
+export type TelemetrySpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+
+export type TelemetryInflightSpan = {
+  traceId: string
+  correlationId?: string
+  spanId: string
+  parentSpanId?: string
+  kind: TelemetrySpanKind
+  name: string
+  module: TelemetryModule
+  source: TelemetrySource
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  lastActivityTime: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
+  status?: TelemetrySpanStatus
+  errorCode?: string
+  errorMessage?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  processId?: string
+  pid?: number
+  tool?: string
+  attributes?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+  ageMs: number
+  idleMs: number
+  stale: boolean
+}
+
+export type TelemetryResourceSample = {
+  sampleId: string
+  time: number
+  iso: string
+  source: TelemetrySource
+  correlationId?: string
+  traceId?: string
+  scopeID?: string
+  sessionID?: string
+  process: {
+    pid?: number
+    processId?: string
+    role: "server" | "tool" | "pty" | "mcp" | "plugin" | "desktop" | "browser" | "unknown"
+  }
+  cpu?: {
+    userMicros?: number
+    systemMicros?: number
+    utilizationRatio?: number
+  }
+  memory?: {
+    rssBytes?: number
+    heapTotalBytes?: number
+    heapUsedBytes?: number
+    externalBytes?: number
+    arrayBuffersBytes?: number
+  }
+  eventLoop: {
+    lagMs?: number
+    sampleWindowMs: number
+  }
+  io?: {
+    appReadBytes?: number
+    appWrittenBytes?: number
+    appReadOps?: number
+    appWriteOps?: number
+    osReadBytes?: number
+    osWrittenBytes?: number
+    osAvailable?: boolean
+  }
+  labels?: TelemetryLabels
+  redaction?: TelemetryRedactionSummary
+}
+
 export type DiagnosticsSummary = {
-  [key: string]: unknown
+  generatedAt: string
+  logs: {
+    current?: string
+    dev?: string
+    daemon?: string
+    devArchives: Array<string>
+  }
+  traces: {
+    directory: string
+    files: Array<string>
+    recentErrors: Array<TelemetryEvent>
+  }
+  issues: Array<TelemetryIssue>
+  inflight: Array<TelemetryInflightSpan>
+  resources: {
+    latest?: TelemetryResourceSample
+    samples: Array<TelemetryResourceSample>
+    pressure?: TelemetryLabels
+  }
+  lock?: {
+    path: string
+    lock?: unknown
+    inspection?: unknown
+  }
+  processes: {
+    active: Array<{
+      [key: string]: unknown
+    }>
+    finished: Array<{
+      [key: string]: unknown
+    }>
+  }
+  sessions: {
+    pendingReply: Array<{
+      sessionID: string
+      path: string
+      updated?: number
+    }>
+  }
 }
 
 export type PerfTimelineQuality = {
@@ -205,6 +430,9 @@ export type PerfModule =
   | "frontend"
   | "desktop"
   | "observability"
+  | "mcp"
+  | "plugin"
+  | "channel"
 
 export type PerfUnit = "ms" | "bytes" | "count" | "ratio" | "percent" | "microseconds" | "tokens"
 
@@ -226,10 +454,8 @@ export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
 
 export type PerfIssueStatus = "open" | "resolved" | "suppressed"
 
-export type PerfLabelValue = string | number | boolean | null
-
 export type PerfLabels = {
-  [key: string]: PerfLabelValue
+  [key: string]: TelemetryLabelValue
 }
 
 export type PerfIssue = {
@@ -243,6 +469,8 @@ export type PerfIssue = {
   message: string
   recommendation?: string
   module: PerfModule
+  correlationId?: string
+  scopeID?: string
   traceId?: string
   spanId?: string
   sessionID?: string
@@ -308,7 +536,8 @@ export type PerfDashboardSummary = {
     healthy?: boolean
     pid?: number
     mode?: string
-    traceFiles: number
+    mirrorFiles: number
+    traceFiles?: number
     recentErrors: number
     pendingSessions: number
     sessionRuntimes: {
@@ -346,11 +575,51 @@ export type PerfDashboardSummary = {
   issues: Array<PerfIssue>
 }
 
+export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
+
+export type PerfSpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+
+export type PerfInflightSpan = {
+  traceId: string
+  correlationId?: string
+  spanId: string
+  parentSpanId?: string
+  kind?: string
+  name: string
+  module: PerfModule
+  source: PerfSource
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  status?: PerfSpanStatus
+  lastActivityTime?: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
+  errorCode?: string
+  errorMessage?: string
+  scopeID?: string
+  sessionID?: string
+  messageID?: string
+  callID?: string
+  rid?: string
+  processId?: string
+  pid?: number
+  tool?: string
+  attributes?: PerfLabels
+  ageMs: number
+  idleMs: number
+  stale: boolean
+}
+
+export type PerfInflight = {
+  generatedAt: string
+  spans: Array<PerfInflightSpan>
+}
+
 export type PerfMetricKind = "duration" | "gauge" | "counter" | "rate" | "size" | "ratio"
 
 export type PerfTimelineStat = "avg" | "latest" | "sum" | "rate" | "p50" | "p95" | "p99" | "max"
-
-export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
 
 export type PerfTimelinePoint = {
   time: number
@@ -380,10 +649,9 @@ export type PerfTimeline = {
   series: Array<PerfTimelineSeries>
 }
 
-export type PerfSpanStatus = "ok" | "error" | "cancelled" | "timeout"
-
 export type PerfTraceListItem = {
   traceId: string
+  correlationId?: string
   kind: string
   name: string
   status: PerfSpanStatus
@@ -408,8 +676,10 @@ export type PerfTraceList = {
 
 export type PerfSpan = {
   traceId: string
+  correlationId?: string
   spanId: string
   parentSpanId?: string
+  kind?: string
   name: string
   module: PerfModule
   source: PerfSource
@@ -417,6 +687,10 @@ export type PerfSpan = {
   endTime?: number
   durationMs?: number
   status?: PerfSpanStatus
+  lastActivityTime?: number
+  heartbeatTime?: number
+  heartbeatCount?: number
+  stalled?: boolean
   errorCode?: string
   errorMessage?: string
   scopeID?: string
@@ -436,6 +710,7 @@ export type PerfTraceEvent = {
   type: string
   level?: string
   traceId?: string
+  correlationId?: string
   sessionID?: string
   messageID?: string
   callID?: string
@@ -553,6 +828,9 @@ export type PerfBrowserMetricBatch = {
     pathTemplate?: string
     sessionID?: string
     scopeID?: string
+    correlationId?: string
+    navigationId?: string
+    sessionSwitchId?: string
   }
   metrics: Array<PerfBrowserMetric>
   resourceEntries?: Array<{
@@ -1643,6 +1921,10 @@ export type ProviderConfig = {
       release_date?: string
       attachment?: boolean
       reasoning?: boolean
+      reasoning_options?: Array<{
+        type: string
+        values?: Array<unknown>
+      }>
       temperature?: boolean
       tool_call?: boolean
       interleaved?:
@@ -2307,23 +2589,23 @@ export type SandboxConfig = {
 }
 
 /**
- * Local logs, traces, and diagnostics settings
+ * Local logs, indexed telemetry, and diagnostics settings
  */
 export type ObservabilityConfig = {
   /**
-   * Enable local observability trace JSONL events (default: true)
+   * Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)
    */
   enabled?: boolean
   /**
-   * Days to retain local trace files (default: 7)
+   * Days to retain optional observability mirror files (default: 7)
    */
   retentionDays?: number
   /**
-   * Maximum total trace storage in bytes (default: 250MB)
+   * Maximum total local observability storage in bytes (default: 250MB)
    */
   maxBytes?: number
   /**
-   * Milliseconds without tool activity before emitting a stalled-tool trace event
+   * Milliseconds without tool activity before emitting a stalled-tool observability event
    */
   stalledToolMs?: number
   /**
@@ -2395,6 +2677,9 @@ export type ObservabilityConfig = {
     }
     storage?: {
       sqliteEnabled?: boolean
+      /**
+       * Enable optional JSONL mirror files for debugging exports
+       */
       jsonlMirrorEnabled?: boolean
       maxSqliteBytes?: number
       walCheckpointIntervalMs?: number
@@ -2956,6 +3241,7 @@ export type Model = {
   capabilities: {
     temperature: boolean
     reasoning: boolean
+    reasoningEfforts?: Array<string>
     attachment: boolean
     toolcall: boolean
     input: {
@@ -3846,6 +4132,8 @@ export type ProviderAuthError = {
   data: {
     providerID: string
     message: string
+    failureCode?: string
+    actionRequired?: boolean
   }
 }
 
@@ -4420,16 +4708,18 @@ export type ProviderProfileMetadata = {
   displayName?: string
   description?: string
   signupUrl?: string
+  authKind?: string
+  environment?: Array<string>
   recommendation?: ProviderRecommendation
 }
 
 export type ProviderAuthHealth = {
   providerID: string
-  status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
+  status: "connected" | "not_configured" | "exhausted" | "action_required"
+  recovery?: "reconnect" | "update_environment"
   authKind?: string
   source?: string
   updatedAt?: number
-  reloginRequired?: boolean
   cooldownUntil?: number
   resetAt?: number
   failureCode?: string
@@ -4438,7 +4728,14 @@ export type ProviderAuthHealth = {
 export type ProviderRuntimeAvailability = {
   providerID: string
   available: boolean
-  reason?: "connected" | "not_connected" | "disabled" | "no_models"
+  reason?:
+    | "connected"
+    | "not_connected"
+    | "disabled"
+    | "no_models"
+    | "authentication_required"
+    | "exhausted"
+    | "fallback_unverified"
   healthCheck?: "models" | "none"
   modelCount: number
 }
@@ -4569,6 +4866,7 @@ export type WorkspaceFileReadText = {
   totalBytes: number
   lineCount?: number
   truncated: boolean
+  truncationReason?: "size" | "range"
   nextRange?: WorkspaceFileTextRange
 }
 
@@ -4751,6 +5049,41 @@ export type ExperienceDetailInfo = {
 export type ApplyRewardResult = {
   compositeReward: number
   rewards: RewardsInfo
+}
+
+export type ExperienceDetectGroup = {
+  /**
+   * Detection reason: too-long, intent-in-raw, encoding_failed, empty, invalid, no-content
+   */
+  reason: string
+  count: number
+  /**
+   * Human-readable label for this group
+   */
+  label: string
+  /**
+   * Up to 5 sample items for preview
+   */
+  samples: Array<{
+    id: string
+    detail: string
+    /**
+     * First 80 chars of intent or script
+     */
+    preview?: string
+  }>
+}
+
+export type ExperienceDetectResult = {
+  scannedAt: number
+  intent: {
+    total: number
+    groups: Array<ExperienceDetectGroup>
+  }
+  script: {
+    total: number
+    groups: Array<ExperienceDetectGroup>
+  }
 }
 
 export type MemoryStats = {
@@ -5613,6 +5946,247 @@ export type HolosRetryResponse = {
 
 export type MailboxMessageList = Array<unknown>
 
+export type BrowserViewerTicketResponse = {
+  protocolVersion: 2
+  ticket: string
+  expiresAt: number
+  iceServers: Array<{
+    urls: string | Array<string>
+    username?: string
+    credential?: string
+  }>
+}
+
+export type BrowserApiError = {
+  type: "error"
+  code: string
+  message: string
+  retryable: boolean
+  pageId?: string
+  commandId?: string
+  url?: string
+  snapshotId?: string
+  obstruction?: {
+    tag?: string
+    role?: string | null
+    name?: string
+    id?: string
+    class?: string
+    candidates?: Array<{
+      tag?: string
+      role?: string | null
+      name?: string
+      id?: string
+      class?: string
+    }>
+  }
+  suggestedAction?: string
+  locator?: unknown
+}
+
+export type BrowserViewerTicketRequest = {
+  protocolVersion: 2
+  pageId: string
+}
+
+export type BrowserAnnotationResponse = {
+  protocolVersion: 2
+  annotation: {
+    id: string
+    pageURL: string
+    pageID: string
+    element?: string
+    comment: string
+    styleFeedback?: {
+      [key: string]: string
+    }
+    resolved: boolean
+    createdAt: number
+  }
+}
+
+export type BrowserAnnotationRequest = {
+  protocolVersion: 2
+  pageId: string
+  x: number
+  y: number
+  comment: string
+  styleFeedback?: {
+    [key: string]: string
+  }
+}
+
+export type BrowserDiagnosticsResponse = {
+  protocolVersion: 2
+  pageId: string
+  action: string
+  data: unknown
+}
+
+export type BrowserDiagnosticsRequest = {
+  protocolVersion: 2
+  pageId: string
+  commandId: string
+  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
+  limit?: number
+}
+
+export type BrowserApiSessionState = {
+  type: "session.state"
+  protocolVersion: 2
+  ownerKey: string
+  status: "empty" | "suspended" | "active" | "migrating" | "failed"
+  page: {
+    id: string
+    url: string
+    title: string
+    isLoading: boolean
+    lastActiveAt: number | null
+  } | null
+  presentation: {
+    protocolVersion: 2
+    kind: "native" | "webrtc"
+    capabilities: {
+      native: boolean
+      webrtc: boolean
+    }
+    reason: "desktop-local" | "remote-client" | "requested"
+  } | null
+  hostStatus:
+    | "unavailable"
+    | "installing"
+    | "starting"
+    | "pending"
+    | "ready"
+    | "detached"
+    | "restarting"
+    | "idle"
+    | "failed"
+  seq: number
+  epoch: string
+  error?: BrowserApiError
+}
+
+export type BrowserControlResponse = {
+  type: "control.result"
+  protocolVersion: 2
+  result:
+    | {
+        type: "void"
+      }
+    | {
+        type: "page"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "navigation"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "snapshot"
+        pageId: string
+        snapshotId: string
+        elements: Array<{
+          ref: string
+          role: string
+          name: string
+          value?: string
+          description?: string
+          depth: number
+        }>
+        truncated: boolean
+      }
+    | {
+        type: "action"
+        pageId: string
+        action: string
+        snapshot?: unknown
+      }
+    | {
+        type: "wait"
+        pageId: string
+        matched: boolean
+      }
+    | {
+        type: "evaluation"
+        pageId: string
+        value: unknown
+      }
+    | {
+        type: "screenshot"
+        pageId: string
+        dataUrl: string
+        width: number
+        height: number
+      }
+    | {
+        type: "data"
+        pageId: string
+        data: unknown
+      }
+}
+
+export type BrowserControlRequest = {
+  protocolVersion: 2
+  command:
+    | {
+        type: "navigate"
+        url: string
+        source?: "user"
+      }
+    | {
+        type: "history"
+        direction: "back" | "forward"
+      }
+    | {
+        type: "reload"
+        ignoreCache?: boolean
+      }
+    | {
+        type: "stop"
+      }
+    | {
+        type: "resume"
+      }
+    | {
+        type: "close"
+      }
+    | {
+        type: "setViewport"
+        width: number
+        height: number
+      }
+    | {
+        type: "dialog.respond"
+        requestId: string
+        accept: boolean
+        promptText?: string
+      }
+    | {
+        type: "filechooser.select"
+        requestId: string
+        files: Array<{
+          name: string
+          mimeType: string
+          dataBase64: string
+        }>
+      }
+  commandId: string
+  traceId?: string
+}
+
 export type PluginUiContribution = {
   pluginId: string
   name?: string
@@ -6193,6 +6767,13 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -6248,6 +6829,15 @@ export type EventMcpFailed = {
   properties: {
     server: string
     error: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -6527,15 +7117,6 @@ export type EventFileEdited = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventDagUpdated = {
   type: "dag.updated"
   properties: {
@@ -6776,6 +7357,7 @@ export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
+  | EventProviderAuthUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
@@ -6784,6 +7366,7 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
+  | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -6820,7 +7403,6 @@ export type Event =
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
-  | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
   | EventWorkflowRunCreated
@@ -7246,6 +7828,27 @@ export type PerformanceSummaryResponses = {
 
 export type PerformanceSummaryResponse = PerformanceSummaryResponses[keyof PerformanceSummaryResponses]
 
+export type PerformanceInflightData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    staleMs?: number
+    limit?: number
+  }
+  url: "/global/performance/inflight"
+}
+
+export type PerformanceInflightResponses = {
+  /**
+   * Inflight performance spans
+   */
+  200: PerfInflight
+}
+
+export type PerformanceInflightResponse = PerformanceInflightResponses[keyof PerformanceInflightResponses]
+
 export type PerformanceTimelineData = {
   body?: never
   path?: never
@@ -7282,7 +7885,17 @@ export type PerformanceTracesListData = {
     to?: string
     limit?: number
     cursor?: string
-    kind?: "request" | "session" | "agent" | "tool" | "provider" | "runtime" | "storage" | "frontend"
+    kind?:
+      | "request"
+      | "session"
+      | "tool"
+      | "provider"
+      | "runtime"
+      | "storage"
+      | "frontend"
+      | "mcp"
+      | "plugin"
+      | "channel"
     status?: PerfSpanStatus
     minDurationMs?: number
     scopeID?: string
@@ -10467,80 +11080,7 @@ export type ProviderListResponses = {
    * List of providers
    */
   200: {
-    all: Array<{
-      api?: string
-      name: string
-      description?: string
-      signupUrl?: string
-      recommendation?: {
-        level: "featured" | "recommended" | "standard"
-        rank?: number
-        headline?: string
-        reason?: string
-        cta?: {
-          kind: "external"
-          label: string
-          url: string
-        }
-        defaultModel?: string
-      }
-      env: Array<string>
-      id: string
-      npm?: string
-      models: {
-        [key: string]: {
-          id: string
-          name: string
-          family?: string
-          release_date: string
-          attachment: boolean
-          reasoning: boolean
-          temperature: boolean
-          tool_call: boolean
-          interleaved?:
-            | true
-            | {
-                field: "reasoning_content" | "reasoning_details"
-              }
-          cost?: {
-            input: number
-            output: number
-            cache_read?: number
-            cache_write?: number
-            context_over_200k?: {
-              input: number
-              output: number
-              cache_read?: number
-              cache_write?: number
-            }
-          }
-          limit: {
-            context: number
-            input?: number
-            output: number
-          }
-          modalities?: {
-            input: Array<"text" | "audio" | "image" | "video" | "pdf">
-            output: Array<"text" | "audio" | "image" | "video" | "pdf">
-          }
-          status?: "alpha" | "beta" | "deprecated"
-          options: {
-            [key: string]: unknown
-          }
-          headers?: {
-            [key: string]: string
-          }
-          provider?: {
-            npm: string
-          }
-          variants?: {
-            [key: string]: {
-              [key: string]: unknown
-            }
-          }
-        }
-      }
-    }>
+    all: Array<Provider>
     default: {
       [key: string]: string
     }
@@ -10980,6 +11520,7 @@ export type WorkspaceFilesReadData = {
     offset?: number
     limit?: number
     preview?: "true" | "false"
+    mode?: "range" | "document"
   }
   url: "/workspace/files/read"
 }
@@ -11279,6 +11820,83 @@ export type LibraryExperienceListResponses = {
 }
 
 export type LibraryExperienceListResponse = LibraryExperienceListResponses[keyof LibraryExperienceListResponses]
+
+export type LibraryExperienceDetectData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/detect"
+}
+
+export type LibraryExperienceDetectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LibraryExperienceDetectError = LibraryExperienceDetectErrors[keyof LibraryExperienceDetectErrors]
+
+export type LibraryExperienceDetectResponses = {
+  /**
+   * Detection results grouped by type and reason
+   */
+  200: ExperienceDetectResult
+}
+
+export type LibraryExperienceDetectResponse = LibraryExperienceDetectResponses[keyof LibraryExperienceDetectResponses]
+
+export type LibraryExperienceReencodeData = {
+  body?: {
+    /**
+     * What to re-encode
+     */
+    type: "intent" | "script"
+    /**
+     * Filter to one detection reason; omit for all
+     */
+    reason?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode"
+}
+
+export type LibraryExperienceReencodeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type LibraryExperienceReencodeError = LibraryExperienceReencodeErrors[keyof LibraryExperienceReencodeErrors]
+
+export type LibraryExperienceReencodeResponses = {
+  /**
+   * SSE stream of re-encode progress events
+   */
+  200: {
+    type: "start" | "progress" | "done" | "error"
+    total?: number
+    id?: string
+    status?: string
+    reason?: string
+    completed?: number
+    ok?: number
+    skipped?: number
+    failed?: number
+    message?: string
+  }
+}
+
+export type LibraryExperienceReencodeResponse =
+  LibraryExperienceReencodeResponses[keyof LibraryExperienceReencodeResponses]
 
 export type LibraryStatsData = {
   body?: never
@@ -13788,6 +14406,212 @@ export type HolosThreadGetResponses = {
 }
 
 export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type BrowserCreateViewerTicketData = {
+  body?: BrowserViewerTicketRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/webrtc/ticket"
+}
+
+export type BrowserCreateViewerTicketErrors = {
+  /**
+   * Ticket request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
+
+export type BrowserCreateViewerTicketResponses = {
+  /**
+   * Browser viewer ticket
+   */
+  200: BrowserViewerTicketResponse
+}
+
+export type BrowserCreateViewerTicketResponse =
+  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
+
+export type BrowserCreateAnnotationData = {
+  body?: BrowserAnnotationRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/annotations"
+}
+
+export type BrowserCreateAnnotationErrors = {
+  /**
+   * Annotation request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
+
+export type BrowserCreateAnnotationResponses = {
+  /**
+   * Created Browser annotation
+   */
+  200: BrowserAnnotationResponse
+}
+
+export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
+
+export type BrowserDiagnosticsData = {
+  body?: BrowserDiagnosticsRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/diagnostics"
+}
+
+export type BrowserDiagnosticsErrors = {
+  /**
+   * Diagnostics request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
+
+export type BrowserDiagnosticsResponses = {
+  /**
+   * Browser diagnostics result
+   */
+  200: BrowserDiagnosticsResponse
+}
+
+export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
+
+export type BrowserSessionData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/session"
+}
+
+export type BrowserSessionErrors = {
+  /**
+   * Browser session error
+   */
+  500: BrowserApiError
+}
+
+export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
+
+export type BrowserSessionResponses = {
+  /**
+   * Browser session state
+   */
+  200: BrowserApiSessionState
+}
+
+export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
+
+export type BrowserControlData = {
+  body?: BrowserControlRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/control"
+}
+
+export type BrowserControlErrors = {
+  /**
+   * Invalid browser command
+   */
+  400: BrowserApiError
+  /**
+   * Retryable browser error
+   */
+  409: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+}
+
+export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
+
+export type BrowserControlResponses = {
+  /**
+   * Browser control result
+   */
+  200: BrowserControlResponse
+}
+
+export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
 
 export type PluginListUiContributionsData = {
   body?: never

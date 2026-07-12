@@ -14,6 +14,7 @@ import "../library/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../note/migration"
+import "../observability/migration"
 import "../blueprint/migration"
 import "../holos/migration"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
@@ -111,13 +112,16 @@ export async function ensureMigrations(options?: RunOptions): Promise<MigrationS
     options?.reporter?.summary(summary)
     return summary
   }
-  runningMigrations ??= runMigrations({ ...options, output: options?.output ?? "silent" }).finally(() => {
-    runningMigrations = undefined
-    migrationsCompleted = true
-  })
-  const summary = await runningMigrations
-  lastSummary = summary
-  return summary
+  runningMigrations ??= runMigrations({ ...options, output: options?.output ?? "silent" })
+    .then((summary) => {
+      migrationsCompleted = true
+      lastSummary = summary
+      return summary
+    })
+    .finally(() => {
+      runningMigrations = undefined
+    })
+  return runningMigrations
 }
 
 export function resetMigrations(): void {

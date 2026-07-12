@@ -108,18 +108,30 @@ describe("BrowserWebRTCClient", () => {
 
     expect(ws.sent).toEqual([])
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.pending", pageId: "page_1" }) })
+    ws.emit("message", {
+      data: JSON.stringify({ type: "webrtc.host.pending", protocolVersion: 2, pageId: "page_1" }),
+    })
     expect(ws.sent).toEqual([])
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
+    ws.emit("message", {
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+    })
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(ws.sent).toContainEqual({ type: "webrtc.offer", pageId: "page_1", sdp: "fake-offer" })
+    expect(ws.sent).toContainEqual(
+      expect.objectContaining({
+        type: "webrtc.offer",
+        protocolVersion: 2,
+        pageId: "page_1",
+        generation: 1,
+        sdp: "fake-offer",
+      }),
+    )
     client.close()
   })
 
-  test("recreates a failed peer when the Browser Host becomes ready again", async () => {
+  test("reconnects signaling after a transient peer failure", async () => {
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
     globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
     const client = new BrowserWebRTCClient({
@@ -130,27 +142,47 @@ describe("BrowserWebRTCClient", () => {
     await client.connect()
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
+    ws.emit("message", {
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+    })
     await Promise.resolve()
     await Promise.resolve()
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.answer", pageId: "page_1", sdp: "fake-answer" }) })
+    const firstOffer = ws.sent.find((message) => (message as { type?: string }).type === "webrtc.offer") as {
+      connectionId: string
+      generation: number
+    }
+    ws.emit("message", {
+      data: JSON.stringify({
+        type: "webrtc.answer",
+        protocolVersion: 2,
+        pageId: "page_1",
+        connectionId: firstOffer.connectionId,
+        generation: firstOffer.generation,
+        sdp: "fake-answer",
+      }),
+    })
     await Promise.resolve()
 
     const firstPeer = FakeRTCPeerConnection.instances[0]!
     firstPeer.connectionState = "failed"
     firstPeer.onconnectionstatechange?.()
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
+    const retrySocket = FakeWebSocket.instances[1]!
+    retrySocket.emit("open", {})
+    retrySocket.emit("message", {
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+    })
     await Promise.resolve()
     await Promise.resolve()
 
     expect(firstPeer.closed).toBe(true)
     expect(FakeRTCPeerConnection.instances).toHaveLength(2)
-    expect(ws.sent.filter((message) => (message as { type?: string }).type === "webrtc.offer")).toHaveLength(2)
+    expect(retrySocket.sent.filter((message) => (message as { type?: string }).type === "webrtc.offer")).toHaveLength(1)
     client.close()
   })
 
-  test("surfaces host signaling errors and closed messages as statuses", async () => {
+  test("surfaces versioned host signaling errors and socket closure as statuses", async () => {
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
     globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
     const statuses: string[] = []
@@ -163,12 +195,67 @@ describe("BrowserWebRTCClient", () => {
     await client.connect()
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
-
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.error", pageId: "page_1", message: "capture failed" }) })
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.closed", pageId: "page_1" }) })
+    ws.emit("message", {
+      data: JSON.stringify({ type: "webrtc.host.ready", protocolVersion: 2, pageId: "page_1" }),
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    const offer = ws.sent.find((message) => (message as { type?: string }).type === "webrtc.offer") as {
+      connectionId: string
+      generation: number
+    }
+    ws.emit("message", {
+      data: JSON.stringify({
+        type: "webrtc.error",
+        protocolVersion: 2,
+        pageId: "page_1",
+        connectionId: offer.connectionId,
+        generation: offer.generation,
+        message: "capture failed",
+      }),
+    })
+    ws.emit("close", {})
 
     expect(statuses).toContain("error")
     expect(statuses).toContain("closed")
     client.close()
+  })
+
+  test("retries only retryable ticket failures and ignores stale ticket resolution after close", async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
+    let permanentCalls = 0
+    let retryableCalls = 0
+    let resolveStale: ((value: { url: string }) => void) | undefined
+
+    const permanent = new BrowserWebRTCClient({
+      signalingUrl: async () => {
+        permanentCalls++
+        throw Object.assign(new Error("denied"), { retryable: false })
+      },
+      pageId: "permanent",
+    })
+    const retryable = new BrowserWebRTCClient({
+      signalingUrl: async () => {
+        retryableCalls++
+        throw Object.assign(new Error("pending"), { retryable: true })
+      },
+      pageId: "retryable",
+    })
+    const stale = new BrowserWebRTCClient({
+      signalingUrl: () => new Promise((resolve) => (resolveStale = resolve)),
+      pageId: "stale",
+    })
+
+    await Promise.all([permanent.connect(), retryable.connect(), stale.connect()])
+    stale.close()
+    resolveStale?.({ url: "ws://localhost/stale" })
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+
+    expect(permanentCalls).toBe(1)
+    expect(retryableCalls).toBeGreaterThan(1)
+    expect(FakeWebSocket.instances).toHaveLength(0)
+    permanent.close()
+    retryable.close()
   })
 })

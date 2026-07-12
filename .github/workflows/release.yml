@@ -74,6 +74,7 @@ jobs:
           SYNERGY_BUMP: ${{ inputs.bump }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNERGY_BROWSER_HOST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
 
       - name: Upload release state
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -96,14 +97,17 @@ jobs:
             platform: darwin
             runtime_targets: darwin-x64,darwin-arm64
             builder_args: --mac pkg dmg zip --x64 --arm64
+            host_builder_args: --mac zip --x64 --arm64
           - os: windows-latest
             platform: win32
             runtime_targets: win32-x64,win32-arm64
             builder_args: --win nsis zip --x64 --arm64
+            host_builder_args: --win zip --x64 --arm64
           - os: ubuntu-latest
             platform: linux
             runtime_targets: linux-x64,linux-arm64
             builder_args: --linux AppImage deb tar.gz --x64 --arm64
+            host_builder_args: --linux zip --x64 --arm64
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -135,6 +139,7 @@ jobs:
           SYNERGY_CHANNEL: stable
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
           SYNERGY_REUSE_PUBLISHED_RUNTIME: ${{ matrix.platform == 'win32' && '1' || '' }}
+          SYNERGY_BROWSER_HOST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
 
       - name: Build desktop main process
         run: bun run --cwd packages/desktop desktop:build
@@ -167,6 +172,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Package signed Browser Host artifacts
+        shell: bash
+        run: |
+          HOST_BUILDER_ARGS=(${{ matrix.host_builder_args }})
+          cd packages/desktop
+          bun run browser-host:build
+          bunx electron-builder --config electron-builder.browser-host.json "${HOST_BUILDER_ARGS[@]}" --publish=never
+          SYNERGY_VERSION="${{ needs.stable_candidate.outputs.version }}" \
+          SYNERGY_BROWSER_HOST_SIGNING_KEY="${SYNERGY_BROWSER_HOST_SIGNING_KEY}" \
+          bun run script/browser-host-manifest.ts release/browser-host
+        env:
+          SYNERGY_BROWSER_HOST_SIGNING_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_SIGNING_KEY }}
+          CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
       - name: Upload desktop artifact bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -181,6 +202,9 @@ jobs:
             packages/desktop/release/*.tar.gz
             packages/desktop/release/*.yml
             packages/desktop/release/*.zip
+            packages/desktop/release/browser-host/*.zip
+            packages/desktop/release/browser-host/*.manifest.json
+            packages/desktop/release/browser-host/*.manifest.json.sig
 
   stable_desktop_publish:
     name: Upload Desktop Artifacts

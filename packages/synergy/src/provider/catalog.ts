@@ -53,8 +53,9 @@ export namespace ProviderCatalog {
     .strict()
   type RemoteCatalog = z.infer<typeof RemoteCatalog>
 
-  let inFlight: Promise<Record<string, ModelsDev.Provider>> | undefined
-  let memoryCache: { value: Record<string, ModelsDev.Provider>; createdAt: number } | undefined
+  const inFlight = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
+  const memoryCache = new Map<string, { value: Record<string, ModelsDev.Provider>; createdAt: number }>()
+  const liveDiscovery = new Map<string, "verified" | "fallback">()
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
     return {
@@ -274,7 +275,11 @@ export namespace ProviderCatalog {
       log.warn("failed to fetch live provider models", { providerID: profile.id, error })
       live = []
     }
-    if (!live.length) return provider
+    if (!live.length) {
+      liveDiscovery.set(profile.id, "fallback")
+      return provider
+    }
+    liveDiscovery.set(profile.id, "verified")
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     const next: ModelsDev.Provider = { ...provider, models: {} }
@@ -298,14 +303,24 @@ export namespace ProviderCatalog {
     includeLive?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
-    if (!input?.forceRefresh && memoryCache && Date.now() - memoryCache.createdAt < DEFAULT_CACHE_TTL_MS) {
-      return memoryCache.value
+    const key = cacheKey(input)
+    const cached = memoryCache.get(key)
+    if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < DEFAULT_CACHE_TTL_MS) {
+      return cached.value
     }
-    if (!input?.forceRefresh && inFlight) return inFlight
-    inFlight = doResolve(input).finally(() => {
-      inFlight = undefined
+    const pending = inFlight.get(key)
+    if (!input?.forceRefresh && pending) return pending
+    let request: Promise<Record<string, ModelsDev.Provider>>
+    request = doResolve(input).finally(() => {
+      if (inFlight.get(key) === request) inFlight.delete(key)
     })
-    return inFlight
+    inFlight.set(key, request)
+    return request
+  }
+
+  function cacheKey(input?: { config?: unknown; includeLive?: boolean }) {
+    const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
+    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog })
   }
 
   async function doResolve(input?: {
@@ -368,19 +383,21 @@ export namespace ProviderCatalog {
       }
     }
 
-    memoryCache = { value: result, createdAt: Date.now() }
+    memoryCache.set(cacheKey(input), { value: result, createdAt: Date.now() })
     return result
   }
 
   async function registerPluginProfiles() {
     const { Plugin } = await import("../plugin")
     const allHooks = await Plugin.allHooks().catch(() => [])
+    ProviderProfile.clearPluginProfiles()
     for (const hooks of allHooks) {
       const values = Array.isArray(hooks.provider) ? hooks.provider : hooks.provider ? [hooks.provider] : []
       for (const profile of values) {
         ProviderProfile.register({
           id: profile.id,
           name: profile.name,
+          origin: "plugin",
           aliases: profile.aliases,
           description: profile.description,
           signupUrl: profile.signupUrl,
@@ -425,7 +442,12 @@ export namespace ProviderCatalog {
   }
 
   export function reset() {
-    memoryCache = undefined
-    inFlight = undefined
+    memoryCache.clear()
+    inFlight.clear()
+    liveDiscovery.clear()
+  }
+
+  export function liveDiscoveryStatus(providerID: string) {
+    return liveDiscovery.get(providerID)
   }
 }

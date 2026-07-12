@@ -9,8 +9,8 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { lazy } from "@ericsanchezok/synergy-util/lazy"
 import { Shell } from "@/util/shell"
-import { PerformanceMetrics } from "@/performance/metrics"
-import { PerformanceRedaction } from "@/performance/redact"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityRedaction } from "@/observability/redaction"
 
 export namespace Pty {
   const log = Log.create({ service: "pty" })
@@ -134,7 +134,7 @@ export namespace Pty {
       subscribers: new Set(),
       outputBytes: 0,
     }
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name: "pty.session.created",
       value: 1,
       unit: "count",
@@ -142,7 +142,10 @@ export namespace Pty {
       source: "process",
       processId: id,
       pid: ptyProcess.pid,
-      labels: { cwdScope: PerformanceRedaction.cwdScope(cwd), command: PerformanceRedaction.commandFamily(command) },
+      labels: {
+        cwdScope: ObservabilityRedaction.cwdScope(cwd),
+        command: ObservabilityRedaction.commandFamily(command),
+      },
     })
     state().set(id, session)
     ptyProcess.onData((data: string) => {
@@ -152,7 +155,7 @@ export namespace Pty {
           const value = session.outputBytes
           session.outputBytes = 0
           session.outputTimer = undefined
-          PerformanceMetrics.record({
+          ObservabilityMetrics.record({
             name: "pty.output.bytes",
             value,
             unit: "bytes",
@@ -176,7 +179,7 @@ export namespace Pty {
           ws.send(data)
         } catch {
           session.subscribers.delete(ws)
-          PerformanceMetrics.record({
+          ObservabilityMetrics.record({
             name: "pty.websocket.write_failure",
             value: 1,
             unit: "count",
@@ -198,7 +201,7 @@ export namespace Pty {
       if (!session.outputBytes) return
       const value = session.outputBytes
       session.outputBytes = 0
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "pty.output.bytes",
         value,
         unit: "bytes",
@@ -214,7 +217,7 @@ export namespace Pty {
       session.info.status = "exited"
       flushOutputBytes()
       Bus.publish(Event.Exited, { id, exitCode })
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "pty.session.duration",
         value: Date.now() - startTime,
         unit: "ms",
@@ -268,7 +271,7 @@ export namespace Pty {
   export function write(id: string, data: string) {
     const session = state().get(id)
     if (session && session.info.status === "running") {
-      PerformanceMetrics.record({
+      ObservabilityMetrics.record({
         name: "pty.input.bytes",
         value: Buffer.byteLength(data),
         unit: "bytes",
@@ -290,7 +293,7 @@ export namespace Pty {
     log.info("client connected to session", { id })
     session.subscribers.add(ws)
     const connectedAt = Date.now()
-    PerformanceMetrics.record({
+    ObservabilityMetrics.record({
       name: "pty.websocket.connection.open",
       value: 1,
       unit: "count",
@@ -310,7 +313,7 @@ export namespace Pty {
         session.subscribers.delete(ws)
         session.buffer = buffer
         ws.close()
-        PerformanceMetrics.record({
+        ObservabilityMetrics.record({
           name: "pty.websocket.write_failure",
           value: 1,
           unit: "count",
@@ -325,7 +328,7 @@ export namespace Pty {
     }
     return {
       onMessage: (message: string | ArrayBuffer) => {
-        PerformanceMetrics.record({
+        ObservabilityMetrics.record({
           name: "pty.input.bytes",
           value: typeof message === "string" ? Buffer.byteLength(message) : message.byteLength,
           unit: "bytes",
@@ -340,7 +343,7 @@ export namespace Pty {
       onClose: () => {
         log.info("client disconnected from session", { id })
         session.subscribers.delete(ws)
-        PerformanceMetrics.record({
+        ObservabilityMetrics.record({
           name: "pty.websocket.connection.duration",
           value: Date.now() - connectedAt,
           unit: "ms",

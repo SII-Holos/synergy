@@ -621,8 +621,8 @@ export function ExperienceView(props: {
 
 function RewardDimensions(props: { rewards: RewardsInfo }) {
   const valueTone = (value: number) => {
-    if (value > 0) return "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]"
-    if (value < 0) return "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]"
+    if (value > 0) return "text-text-on-success-base"
+    if (value < 0) return "text-text-on-critical-base"
     return "text-text-weaker"
   }
   const discrete = createMemo(() => {
@@ -764,7 +764,7 @@ function ExperienceCard(props: {
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
                 onClick={handleCopyExperience}
                 title={copyExperience.tooltip()}
                 data-copy-state={copyExperience.state()}
@@ -776,7 +776,7 @@ function ExperienceCard(props: {
               </button>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -868,7 +868,7 @@ function ExperienceCard(props: {
                 </Show>
               </div>
 
-              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak" />}>
+              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak-base" />}>
                 {(detail) => (
                   <>
                     <Show when={detail().script}>
@@ -918,7 +918,7 @@ function ExperienceCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
@@ -964,9 +964,9 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
                 <span
                   classList={{
                     "text-[10px] font-semibold leading-none tabular-nums": true,
-                    "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]": dim.value > 0.05,
+                    "text-text-on-success-base": dim.value > 0.05,
                     "text-text-weaker": dim.value >= -0.05 && dim.value <= 0.05,
-                    "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]": dim.value < -0.05,
+                    "text-text-on-critical-base": dim.value < -0.05,
                   }}
                 >
                   {dim.value >= 0 ? "+" : ""}
@@ -993,7 +993,7 @@ function CollapsibleSection(props: { label: string; expanded: boolean; onToggle:
         <span class="text-12-medium text-text-weak">Content</span>
         <span
           classList={{
-            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
             "rotate-90": props.expanded,
           }}
         >

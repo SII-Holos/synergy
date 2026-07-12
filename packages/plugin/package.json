@@ -77,6 +77,11 @@
       "types": "./src/version.ts",
       "import": "./dist/version.js"
     },
+    "./loader": {
+      "bun": "./src/loader.ts",
+      "types": "./src/loader.ts",
+      "import": "./dist/loader.js"
+    },
     "./shell": {
       "bun": "./src/shell.ts",
       "types": "./src/shell.ts",

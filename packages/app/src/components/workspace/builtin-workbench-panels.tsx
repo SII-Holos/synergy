@@ -1,15 +1,14 @@
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { useTerminal } from "@/context/terminal"
+import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
-import { BossWorkbenchContent } from "./tool-boss"
-import { BrowserWorkbenchContent } from "./tool-browser"
-import { NotesWorkbenchContent } from "./tool-notes"
-import { SessionReviewWorkbenchContent } from "./tool-session-review"
-import { TerminalWorkbenchContent } from "./tool-terminal"
+import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
+  const file = useFile()
   const disposers: VoidFunction[] = []
 
   onMount(() => {
@@ -17,12 +16,12 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       registerWorkbenchPanel({
         id: "notes",
         label: "Notes",
-        icon: "notebook-pen",
+        icon: getSemanticIcon("notes.main"),
         surface: "side",
         cardinality: "singleton",
         pluginId: "builtin",
         order: 10,
-        component: NotesWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
       }),
       registerWorkbenchPanel({
         id: "session-review",
@@ -33,40 +32,68 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         requiresSession: true,
         pluginId: "builtin",
         order: 15,
-        component: SessionReviewWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
         title: () => "Review",
+      }),
+      registerWorkbenchPanel({
+        id: "file",
+        label: "Files",
+        icon: getSemanticIcon("workspace.files"),
+        surface: "side",
+        cardinality: "multi",
+        requiresSession: true,
+        supportsDraftSession: true,
+        pluginId: "builtin",
+        order: 18,
+        loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
+        createTab() {
+          file.explorer.setOpen(true)
+          return { title: "Open file", source: "explorer" }
+        },
+        title(tab, siblings) {
+          if (!tab.resourceId) return tab.title
+          return shortestUniqueFileTitle(
+            tab.resourceId,
+            siblings
+              .filter((candidate) => candidate.panelId === "file" && !!candidate.resourceId)
+              .map((candidate) => candidate.resourceId!),
+          )
+        },
+        tabIcon(tab) {
+          return <FileIcon node={{ path: tab.resourceId ?? tab.title ?? "file", type: "file" }} class="size-4" />
+        },
       }),
       registerWorkbenchPanel({
         id: "boss",
         label: "Boss",
-        icon: "network",
+        icon: getSemanticIcon("performance.network"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: false,
         pluginId: "builtin",
-        order: 18,
-        component: BossWorkbenchContent,
+        order: 19,
+        loader: async () => ({ default: (await import("./tool-boss")).BossWorkbenchContent }),
       }),
       registerWorkbenchPanel({
         id: "browser",
         label: "Browser",
-        icon: "globe",
+        icon: getSemanticIcon("browser.main"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,
         pluginId: "builtin",
         order: 20,
-        component: BrowserWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
       }),
       registerWorkbenchPanel({
         id: "terminal",
         label: "Terminal",
-        icon: "terminal",
+        icon: getSemanticIcon("terminal.main"),
         surface: "bottom",
         cardinality: "multi",
         pluginId: "builtin",
         order: 10,
-        component: TerminalWorkbenchContent,
+        loader: async () => ({ default: (await import("./tool-terminal")).TerminalWorkbenchContent }),
         async createTab() {
           const pty = await terminal.new()
           if (!pty) return undefined

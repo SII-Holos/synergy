@@ -233,30 +233,27 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
 
 const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
 
-const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
-  browser_navigate: { icon: "globe", title: "Navigate" },
+export const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
+  browser_navigation: { icon: "route", title: "Navigation" },
   browser_snapshot: { icon: "binoculars", title: "Snapshot" },
-  browser_screenshot: { icon: "image", title: "Screenshot" },
-  browser_click: { icon: "mouse-pointer-2", title: "Click" },
-  browser_type: { icon: "text-select", title: "Type" },
-  browser_scroll: { icon: "arrow-down", title: "Scroll" },
+  browser_action: { icon: "mouse-pointer-click", title: "Action" },
   browser_wait: { icon: "hourglass", title: "Wait" },
-  browser_inspect: { icon: "scan-eye", title: "Inspect" },
   browser_read: { icon: "glasses", title: "Read" },
+  browser_inspect: { icon: "scan-eye", title: "Inspect" },
+  browser_screenshot: { icon: "image", title: "Screenshot" },
+  browser_eval: { icon: "braces", title: "Evaluate" },
   browser_console: { icon: "file-terminal", title: "Console" },
-  browser_network: { icon: "cable", title: "Network" },
-  browser_download: { icon: "download", title: "Download" },
-  browser_downloads: { icon: "download", title: "Downloads" },
-  browser_tab: { icon: "panel-right", title: "Tab" },
-  browser_annotate: { icon: "square-pen", title: "Annotate" },
-  browser_action: { icon: "mouse-pointer-2", title: "Action" },
-  browser_clipboard: { icon: "copy", title: "Clipboard" },
-  browser_eval: { icon: "code", title: "Eval" },
-  browser_list: { icon: "list", title: "Browser Sessions" },
+  browser_network: { icon: "network", title: "Network" },
+  browser_performance: { icon: "gauge", title: "Performance" },
+  browser_audit: { icon: "shield-check", title: "Audit" },
+  browser_emulate: { icon: "sliders-horizontal", title: "Emulate" },
+  browser_dialog: { icon: "message-square-more", title: "Dialog" },
+  browser_upload: { icon: "upload", title: "Upload" },
+  browser_downloads: { icon: "download-cloud", title: "Downloads" },
+  browser_clipboard: { icon: "clipboard-list", title: "Clipboard" },
   browser_assets: { icon: "package", title: "Assets" },
+  browser_annotate: { icon: "square-pen", title: "Annotate" },
   browser_view: { icon: "panel-right", title: "Browser View" },
-  browser_navigation: { icon: "repeat", title: "Navigation" },
-  browser_viewport: { icon: "maximize", title: "Viewport" },
 }
 
 function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
@@ -273,15 +270,7 @@ function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   return {
     icon: info.icon,
     title: info.title,
-    subtitle: firstString(
-      metadata?.url,
-      input?.url,
-      metadata?.title,
-      input?.tabId,
-      metadata?.tabId,
-      input?.action,
-      input?.type,
-    ),
+    subtitle: firstString(metadata?.url, input?.url, metadata?.title, input?.action, input?.type),
     args: args.length ? args : undefined,
   }
 }

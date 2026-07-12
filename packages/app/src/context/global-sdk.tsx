@@ -3,7 +3,11 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
-import { startBrowserPerformanceMetrics, stopBrowserPerformanceMetrics } from "@/components/performance/browser-metrics"
+import {
+  recordTokenReceive,
+  startBrowserPerformanceMetrics,
+  stopBrowserPerformanceMetrics,
+} from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
 
 const PING_INTERVAL = 20_000
@@ -144,6 +148,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
 
         if (type === "server.heartbeat") return
+
+        if (payload.type === "message.part.updated" && payload.properties.delta !== undefined) {
+          const part = payload.properties.part
+          recordTokenReceive(part, { delta: payload.properties.delta })
+        }
 
         const directory = parsed.directory ?? "global"
         const k = key(directory, payload)

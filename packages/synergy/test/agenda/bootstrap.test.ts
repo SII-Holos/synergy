@@ -15,15 +15,19 @@ import { tmpdir } from "../fixture/fixture"
 const originalTestHome = process.env.SYNERGY_TEST_HOME
 
 afterEach(async () => {
+  const currentHome = process.env.SYNERGY_TEST_HOME
+  const rootToClean = currentHome !== originalTestHome ? Global.Path.root : undefined
+
   if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
   else process.env.SYNERGY_TEST_HOME = originalTestHome
 
-  await fs.rm(Global.Path.root, { recursive: true, force: true }).catch(() => {})
+  if (rootToClean) await fs.rm(rootToClean, { recursive: true, force: true }).catch(() => {})
 })
 
 function withAnima(autonomy: boolean, fn: () => Promise<void>) {
   return async () => {
     await using tmp = await tmpdir()
+    process.env.SYNERGY_TEST_HOME = path.join(tmp.path, "home")
     await fs.mkdir(Global.Path.config, { recursive: true })
     await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ library: { autonomy } }))
 

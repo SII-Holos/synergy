@@ -21,6 +21,7 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
     sessions: { turnCount: 0, llmCallCount: 0, toolCallCount: 0 },
     frontend: { longTaskCount: 0 },
     runtime: {
+      mirrorFiles: 0,
       traceFiles: 0,
       recentErrors: 0,
       pendingSessions: 0,
@@ -62,17 +63,18 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
 }
 
 const datasetSpecs: ChartDatasetSpec[] = [
-  { label: "CPU avg", field: "cpu", unit: "percent", axisId: "percent", axisTitle: "Percent", color: "red" },
-  { label: "Memory", field: "memory", unit: "megabytes", axisId: "memory", axisTitle: "Memory (MB)", color: "green" },
+  { label: "CPU avg", field: "cpu", unit: "percent", axisId: "percent", axisTitle: "Percent", color: "#2563eb" },
+  { label: "Memory", field: "memory", unit: "megabytes", axisId: "memory", axisTitle: "Memory (MB)", color: "#16805d" },
   {
     label: "Event loop p95",
     field: "eventLoopLag",
     unit: "ms",
     axisId: "duration",
     axisTitle: "Milliseconds",
-    color: "blue",
+    color: "#b7791f",
   },
 ]
+const chartTheme = { axisText: "#6b7280", gridColor: "#d1d5db" }
 
 function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
   return { generatedAt: new Date(0).toISOString(), from: 1000, to: 3000, bucketMs: 1000, series }
@@ -83,6 +85,7 @@ describe("performance chart model", () => {
     const model = buildLineChartModel({
       points: [{ timestamp: 1000, cpu: 25, memory: 512, eventLoopLag: 12 }],
       datasets: datasetSpecs,
+      theme: chartTheme,
     })
     expect(model.data.datasets.every((dataset) => dataset.yAxisID)).toBe(true)
     const scales = model.options.scales ?? {}
@@ -168,18 +171,19 @@ describe("performance chart model", () => {
           unit: "megabytes",
           axisId: "memory",
           axisTitle: "Memory (MB)",
-          color: "purple",
+          color: "#7c3aed",
         },
-        { label: "DOM", field: "domNodes", unit: "count", axisId: "count", axisTitle: "Count", color: "green" },
+        { label: "DOM", field: "domNodes", unit: "count", axisId: "count", axisTitle: "Count", color: "#16805d" },
         {
           label: "Navigation",
           field: "latency",
           unit: "ms",
           axisId: "duration",
           axisTitle: "Milliseconds",
-          color: "orange",
+          color: "#b7791f",
         },
       ],
+      theme: chartTheme,
     })
     expect(points[0]).toMatchObject({ memory: 1, domNodes: 42, latency: 120 })
     expect(new Set(model.data.datasets.map((dataset) => dataset.yAxisID))).toEqual(
@@ -195,6 +199,7 @@ describe("performance chart model", () => {
         { timestamp: 3000, cpu: Number.POSITIVE_INFINITY },
       ],
       datasets: [datasetSpecs[0]],
+      theme: chartTheme,
     })
     expect(model.data.datasets[0].data).toEqual([
       { x: 1000, y: null },
@@ -204,7 +209,7 @@ describe("performance chart model", () => {
   })
 
   test("summary quality warning uses quiet partial copy", () => {
-    const baseSummary = summary({ traceFiles: 0, recentErrors: 0, pendingSessions: 0 })
+    const baseSummary = summary({ mirrorFiles: 0, recentErrors: 0, pendingSessions: 0 })
     expect(summaryQualityMessage({ ...baseSummary, quality: { partial: true, truncated: true } })).toBe(
       "Summary is partial because the metric volume exceeded the dashboard cap.",
     )
@@ -220,12 +225,12 @@ describe("performance dashboard runtime support", () => {
         healthy: true,
         pid: 42,
         mode: "server",
-        traceFiles: 3,
+        mirrorFiles: 3,
         recentErrors: 0,
         pendingSessions: 2,
       }),
     )
-    expect(items).toContainEqual({ label: "Trace files", value: "3 files", tone: "default" })
+    expect(items).toContainEqual({ label: "Mirror files", value: "3 files", tone: "default" })
     expect(items).toContainEqual({ label: "Recent errors", value: "0", tone: "default" })
     expect(items).toContainEqual({ label: "Pending sessions", value: "2", tone: "warning" })
     expect(items).toContainEqual({ label: "Session runtimes", value: "0 total · 0 running", tone: "default" })
@@ -237,7 +242,7 @@ describe("performance dashboard runtime support", () => {
 
   test("marks unhealthy runtime support state as warning", () => {
     const items = runtimeSupportItems(
-      summary({ alive: false, healthy: false, traceFiles: 0, recentErrors: 5, pendingSessions: 0 }),
+      summary({ alive: false, healthy: false, mirrorFiles: 0, recentErrors: 5, pendingSessions: 0 }),
     )
     expect(items[0].tone).toBe("warning")
     expect(items[0].value).toContain("Not running")

@@ -263,8 +263,8 @@
   --agenda-grid-bg: var(--workbench-panel-bg, var(--background-base));
   --agenda-selected-bg: var(--workbench-selected-bg, var(--surface-interactive-selected));
   --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, var(--surface-base-active));
-  --agenda-grid-line: light-dark(rgba(15, 23, 42, 0.095), rgba(255, 255, 255, 0.105));
-  --agenda-grid-line-strong: light-dark(rgba(15, 23, 42, 0.13), rgba(255, 255, 255, 0.145));
+  --agenda-grid-line: var(--border-weak-base);
+  --agenda-grid-line-strong: var(--border-base);
 
   border-radius: 14px;
   border: 1px solid var(--agenda-grid-line-strong);
@@ -287,8 +287,8 @@
   --agenda-grid-bg: var(--workbench-panel-bg, var(--background-base));
   --agenda-selected-bg: var(--workbench-selected-bg, var(--surface-interactive-selected));
   --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, var(--surface-base-active));
-  --agenda-grid-line: light-dark(rgba(15, 23, 42, 0.095), rgba(255, 255, 255, 0.105));
-  --agenda-grid-line-strong: light-dark(rgba(15, 23, 42, 0.13), rgba(255, 255, 255, 0.145));
+  --agenda-grid-line: var(--border-weak-base);
+  --agenda-grid-line-strong: var(--border-base);
 
   border-radius: 14px;
   border: 1px solid var(--agenda-grid-line-strong);

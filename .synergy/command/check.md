@@ -1,31 +1,32 @@
-Run all quality checks and report results.
+Verify the current Synergy changes from narrow checks to repository gates. Interpret `$ARGUMENTS` as a requested scope or additional check.
 
-1. Run the full quality preflight:
+1. Inspect `git diff --stat` and select the affected package/domain tests.
+2. Run the narrow test first. Core runtime tests run from `packages/synergy`.
+3. Run the default root preflight:
 
 ```bash
 bun run quality:quick
 ```
 
-2. If that passes, run the full quality suite with tests:
+4. Run `bun run quality` when the change crosses shared abstractions, the user requests the full suite, or the work is ready for PR-level verification.
+5. Add specialized checks when relevant:
 
 ```bash
-bun run quality
+bun run deadcode
+bun run workflow:check
+bun run secrets:check
+bun run desktop:test
 ```
 
-3. Run individual checks as needed:
+Frontend changes use the package test entry points before the root gates:
 
 ```bash
-bun run format:check       # check formatting with prettier
-bun run lint                # lint with oxlint
-bun run typecheck           # type-check all packages via turbo
-bun run deadcode            # check dead code and dependency hygiene (knip)
-bun run monorepo:check      # validate monorepo dependency consistency (sherif)
-bun run workflow:check      # validate CI workflow files (actionlint)
-bun run secrets:check       # scan for secrets (gitleaks)
-bun run package:check       # validate publishable packages (publint + attw)
-cd packages/synergy && bun test  # run test suite
+bun run --cwd packages/app test
+bun run --cwd packages/ui test
 ```
 
-If a check fails, fix the root cause and re-run. Do not bypass pre-push hooks.
+Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
 
-Summarize: which checks passed, which failed, and what needs fixing. $ARGUMENTS
+Do not use root `bun test`; it intentionally fails. Do not bypass hooks or weaken tests. Report each command, pass/fail counts, causal failure, fixes made, rerun result, and checks not run.
+
+$ARGUMENTS

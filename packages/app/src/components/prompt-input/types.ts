@@ -88,6 +88,6 @@ export type PermissionModeVisual = {
   label: string
   shortLabel: string
   description: string
-  icon: "shield-check" | "orbit" | "shield-alert"
+  icon: import("@ericsanchezok/synergy-ui/semantic-icon").SemanticIconTokenName
   iconClass: string
 }

@@ -14,13 +14,19 @@ const HEATMAP_STYLE = `
 }
 `
 
-const LEVEL_COLORS = ["rgba(128, 120, 108, 0.12)", "#214438", "#2b6a58", "#338472", "#4fa08a"] as const
+const LEVEL_COLORS = [
+  "var(--surface-inset-base)",
+  "color-mix(in srgb, var(--chart-series-3) 28%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 48%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 68%, transparent)",
+  "var(--chart-series-3)",
+] as const
 const LEVEL_BORDERS = [
-  "rgba(182,170,154,0.08)",
-  "rgba(78,145,121,0.18)",
-  "rgba(86,163,136,0.24)",
-  "rgba(96,181,152,0.30)",
-  "rgba(122,204,174,0.36)",
+  "var(--border-weaker-base)",
+  "color-mix(in srgb, var(--chart-series-3) 35%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 55%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 75%, transparent)",
+  "var(--chart-series-3)",
 ] as const
 const RANGES = [
   { label: "24h", value: "24h" },
@@ -80,7 +86,7 @@ function formatHourTick(hour: number) {
 
 function DayView(props: { cells: DayCell[]; columns: number }) {
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
       <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(0, 1fr))` }}>
         <For each={props.cells}>
           {(cell, index) => (
@@ -90,8 +96,6 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
                 "background-color": LEVEL_COLORS[cell.level],
                 "border-color": LEVEL_BORDERS[cell.level],
                 animation: `heatmapCellEnter 280ms cubic-bezier(0.22, 1, 0.36, 1) ${index() * 8}ms both`,
-                "box-shadow":
-                  cell.level > 0 ? "inset 0 1px 0 rgba(214,204,190,0.1)" : "inset 0 1px 0 rgba(214,204,190,0.05)",
               }}
               title={cell.label}
             />
@@ -104,7 +108,7 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
 
 function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) {
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
       <div
         class="grid items-center gap-x-1.5 gap-y-2"
         style={{ "grid-template-columns": "auto repeat(24, minmax(0, 1fr))" }}

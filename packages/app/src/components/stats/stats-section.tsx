@@ -113,7 +113,7 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
               <div class="flex items-center gap-2">
                 <button
                   type="button"
-                  class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-hover"
+                  class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
                   onClick={refresh}
                 >
                   {loading ? "Loading…" : "Retry loading stats"}

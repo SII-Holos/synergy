@@ -24,9 +24,11 @@
     "deadcode": "knip --include dependencies,unlisted,binaries,unresolved,catalog",
     "monorepo:check": "bunx sherif@1.13.0",
     "workflow:check": "bun script/workflow-check.ts",
+    "skill:check": "bun script/skill-check.ts",
+    "package-guide:check": "bun script/package-guide-check.ts",
     "secrets:check": "bun script/secrets-check.ts",
     "package:check": "bun script/package-check.ts",
-    "quality:quick": "bun run format:check && bun run lint && bun run typecheck && bun run monorepo:check && bun run package:check",
+    "quality:quick": "bun run format:check && bun run lint && bun run skill:check && bun run package-guide:check && bun run typecheck && bun run monorepo:check && bun run package:check",
     "quality": "bun run quality:quick && bun turbo test",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
@@ -35,6 +37,7 @@
   "workspaces": {
     "packages": [
       "packages/app",
+      "packages/browser",
       "packages/desktop",
       "packages/synergy-link-protocol",
       "packages/synergy-link",

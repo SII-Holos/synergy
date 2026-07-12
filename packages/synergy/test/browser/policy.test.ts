@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import path from "path"
-import { pathToFileURL } from "url"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { BrowserPolicy } from "../../src/browser/policy"
-import { tmpdir } from "../fixture/fixture"
 
 describe("BrowserPolicy URL normalization", () => {
   test("normalizes bare domains and search text", () => {
@@ -12,32 +11,18 @@ describe("BrowserPolicy URL normalization", () => {
   })
 })
 
-describe("BrowserPolicy user hard safety", () => {
-  test("allows public HTTP navigation for explicit user browsing", () => {
+describe("BrowserPolicy navigation", () => {
+  test("allows HTTP navigation without classifying the destination address or port", () => {
     const result = BrowserPolicy.hardCheckNavigation("https://example.com/", process.cwd())
     expect(result.decision).toBe("allow")
+    expect(BrowserPolicy.hardCheckNavigation("http://localhost:6379/", process.cwd()).decision).toBe("allow")
+    expect(BrowserPolicy.hardCheckNavigation("http://198.18.0.102/", process.cwd()).decision).toBe("allow")
   })
 
-  test("keeps sensitive localhost ports as hard deny", () => {
-    const result = BrowserPolicy.hardCheckNavigation("http://localhost:6379/", process.cwd())
-    expect(result.decision).toBe("deny")
-  })
-
-  test("allows file URLs only inside workspace", async () => {
-    const inside = path.join(process.cwd(), "README.md")
+  test("allows file URLs only inside workspace", () => {
+    const inside = path.join(process.cwd(), "package.json")
     expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(inside).href, process.cwd()).decision).toBe("allow")
     expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", process.cwd()).decision).toBe("deny")
-
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Bun.write(path.join(dir, ".synergy", "worktrees", "project", "README.md"), "workspace file")
-      },
-    })
-    const worktreeWorkspace = path.join(tmp.path, ".synergy", "worktrees", "project")
-    const worktreeFile = path.join(worktreeWorkspace, "README.md")
-    expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(worktreeFile).href, worktreeWorkspace).decision).toBe(
-      "allow",
-    )
   })
 
   test("checks blocked file segments inside directories whose names start with two dots", () => {
@@ -46,12 +31,8 @@ describe("BrowserPolicy user hard safety", () => {
     expect(result.decision).toBe("deny")
     expect(result.reason).toContain("blocked segment")
   })
-})
-
-describe("BrowserPolicy agent navigation approval split", () => {
-  test("continues to block public URLs for agent approval flow", () => {
-    const result = BrowserPolicy.evaluateURL("https://example.com/", process.cwd())
-    expect(result.decision).toBe("blocked")
+  test("rejects unsupported protocols", () => {
+    expect(BrowserPolicy.hardCheckNavigation("javascript:alert(1)", process.cwd()).decision).toBe("deny")
   })
 })
 

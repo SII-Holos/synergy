@@ -174,14 +174,36 @@ export namespace FileWatcher {
         return { subs }
       }
 
-      // Project scope: existing project-scoped watching logic.
-      if (ScopeContext.current.scope.vcs !== "git") return { subs }
+      // Project scopes always watch the workspace. Git scopes additionally watch
+      // their VCS directory below so index-only changes are observed.
+      const pendingByParent = new Map<string, Array<{ path: string; event: WorkspaceFileEvent; oldPath?: string }>>()
+      const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+      const enqueue = (events: ReturnType<typeof normalizeWorkspaceEvents>) => {
+        for (const event of events) {
+          const parent = parentOf(event.path)
+          const queued = pendingByParent.get(parent) ?? []
+          queued.push(event)
+          pendingByParent.set(parent, queued)
+          const existing = timers.get(parent)
+          if (existing) clearTimeout(existing)
+          timers.set(
+            parent,
+            setTimeout(() => {
+              timers.delete(parent)
+              const batch = pendingByParent.get(parent) ?? []
+              pendingByParent.delete(parent)
+              for (const item of batch) {
+                void publishWorkspaceFileEvent(item.path, item.event, { oldPath: item.oldPath })
+              }
+            }, 50),
+          )
+        }
+      }
 
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
         if (err) return
-        for (const evt of normalizeWorkspaceEvents(evts)) {
-          void publishWorkspaceFileEvent(evt.path, evt.event, { oldPath: evt.oldPath })
-        }
+        enqueue(normalizeWorkspaceEvents(evts))
       }
 
       const cfgIgnores = cfg?.watcher?.ignore ?? []
@@ -218,26 +240,27 @@ export namespace FileWatcher {
         if (sub) subs.push(sub)
       }
 
-      if (Flag.SYNERGY_EXPERIMENTAL_FILEWATCHER) {
-        const pending = watcher().subscribe(ScopeContext.current.directory, subscribe, {
-          ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
-          backend,
-        })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to ScopeContext.current.directory", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
-        })
-        if (sub) subs.push(sub)
-      }
+      const pending = watcher().subscribe(ScopeContext.current.directory, subscribe, {
+        ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
+        backend,
+      })
+      const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
+        log.error("failed to subscribe to workspace directory", { error: err })
+        pending.then((s) => s.unsubscribe()).catch(() => {})
+        return undefined
+      })
+      if (sub) subs.push(sub)
 
-      const vcsDir = await $`git rev-parse --git-dir`
-        .quiet()
-        .nothrow()
-        .cwd(ScopeContext.current.directory)
-        .text()
-        .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
-        .catch(() => undefined)
+      const vcsDir =
+        ScopeContext.current.scope.vcs === "git"
+          ? await $`git rev-parse --git-dir`
+              .quiet()
+              .nothrow()
+              .cwd(ScopeContext.current.directory)
+              .text()
+              .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
+              .catch(() => undefined)
+          : undefined
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])
         const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
@@ -253,10 +276,14 @@ export namespace FileWatcher {
         if (sub) subs.push(sub)
       }
 
-      return { subs }
+      return { subs, timers }
     },
     async (state) => {
       if (!state.subs) return
+      if ("timers" in state) {
+        const timers = state.timers
+        if (timers) for (const timer of timers.values()) clearTimeout(timer)
+      }
       await Promise.all(state.subs.map((sub) => sub?.unsubscribe()))
     },
   )
@@ -268,7 +295,7 @@ export namespace FileWatcher {
   }
 
   export function init() {
-    if (Flag.SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER) {
+    if (Flag.SYNERGY_DISABLE_FILEWATCHER) {
       return
     }
     state()

@@ -340,7 +340,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                         fileInputRef.click()
                       }}
                     >
-                      <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak shrink-0" />
+                      <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak-base shrink-0" />
                       <div class="min-w-0">
                         <div class="text-13-regular text-text-base">Upload ZIP</div>
                         <div class="text-11-regular text-text-weaker">Import from a local .zip file</div>
@@ -351,7 +351,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                       class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
                       onClick={() => setImportMode("url")}
                     >
-                      <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak shrink-0" />
+                      <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak-base shrink-0" />
                       <div class="min-w-0">
                         <div class="text-13-regular text-text-base">From URL</div>
                         <div class="text-11-regular text-text-weaker">Download and import a .zip URL</div>
@@ -438,7 +438,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
 
       <Show when={!skills.loading}>
         <Show when={diagnostics().length > 0}>
-          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-[rgba(196,132,36,0.08)] px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-surface-warning-weak px-4 py-3 ring-1 ring-inset ring-border-weaker-base">
             <button
               type="button"
               class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
@@ -519,7 +519,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
           </div>
           <button
             type="button"
-            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
             onClick={props.onOpen}
             title={`Open details for ${props.skill.name}`}
             aria-label={`Open details for ${props.skill.name}`}
@@ -535,7 +535,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
         <div class="mt-auto flex flex-col gap-2.5 pt-1">
           <Show when={displayLocation()}>
             <div class={`flex items-center gap-2 px-3 py-2.5 ${libraryInsetClass}`} title={props.skill.location}>
-              <Icon name={getSemanticIcon("settings.commands")} size="small" class="shrink-0 text-icon-weak" />
+              <Icon name={getSemanticIcon("settings.commands")} size="small" class="shrink-0 text-icon-weak-base" />
               <span class="min-w-0 truncate text-10-regular text-text-weaker">{displayLocation()}</span>
             </div>
           </Show>

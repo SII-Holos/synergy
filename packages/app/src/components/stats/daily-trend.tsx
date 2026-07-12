@@ -14,6 +14,7 @@ import {
 } from "chart.js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { formatCompact, formatCost } from "./use-stats"
+import { useChartTheme } from "../visualization/use-chart-theme"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -32,16 +33,6 @@ const RANGES: { label: string; value: Range }[] = [
   { label: "30d", value: 30 },
   { label: "All", value: "all" },
 ]
-
-const COST_COLOR = "rgba(56, 88, 182, 0.96)"
-const COST_FILL_TOP = "rgba(56, 88, 182, 0.24)"
-const COST_FILL_BOTTOM = "rgba(56, 88, 182, 0.03)"
-const TOKEN_COLOR = "rgba(39, 143, 116, 0.96)"
-const TOKEN_FILL_TOP = "rgba(39, 143, 116, 0.22)"
-const TOKEN_FILL_BOTTOM = "rgba(39, 143, 116, 0.03)"
-const AXIS_TEXT = "rgba(125,122,118,.84)"
-const AXIS_TEXT_STRONG = "rgba(152,148,144,.94)"
-const GRID_COLOR = "rgba(124,118,110,.14)"
 
 function formatDayLabel(day: string): string {
   return new Date(day).toLocaleDateString("en-US", {
@@ -69,6 +60,7 @@ function createAreaFill(ctx: ScriptableContext<"line">, top: string, bottom: str
 }
 
 export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] }) {
+  const theme = useChartTheme()
   const [range, setRange] = createSignal<Range>(14)
 
   const filtered = createMemo(() => {
@@ -111,8 +103,9 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         label: "Cost",
         data: points().map((point) => point.cost),
         yAxisID: "cost",
-        borderColor: COST_COLOR,
-        backgroundColor: (ctx) => createAreaFill(ctx, COST_FILL_TOP, COST_FILL_BOTTOM),
+        borderColor: theme().series[0],
+        backgroundColor: (ctx) =>
+          createAreaFill(ctx, theme().alpha("chart-series-1", 0.24), theme().alpha("chart-series-1", 0.03)),
         fill: true,
         tension: 0.36,
         borderWidth: 2.6,
@@ -120,16 +113,17 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         pointHoverRadius: 5,
         pointHoverBorderWidth: 3,
         pointHitRadius: 18,
-        pointBackgroundColor: COST_COLOR,
-        pointHoverBackgroundColor: "rgba(247, 243, 235, 0.96)",
-        pointHoverBorderColor: COST_COLOR,
+        pointBackgroundColor: theme().series[0],
+        pointHoverBackgroundColor: theme().background,
+        pointHoverBorderColor: theme().series[0],
       },
       {
         label: "Tokens",
         data: points().map((point) => point.tokens),
         yAxisID: "tokens",
-        borderColor: TOKEN_COLOR,
-        backgroundColor: (ctx) => createAreaFill(ctx, TOKEN_FILL_TOP, TOKEN_FILL_BOTTOM),
+        borderColor: theme().series[1],
+        backgroundColor: (ctx) =>
+          createAreaFill(ctx, theme().alpha("chart-series-2", 0.22), theme().alpha("chart-series-2", 0.03)),
         fill: true,
         tension: 0.34,
         borderWidth: 2.6,
@@ -137,9 +131,9 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         pointHoverRadius: 5,
         pointHoverBorderWidth: 3,
         pointHitRadius: 18,
-        pointBackgroundColor: TOKEN_COLOR,
-        pointHoverBackgroundColor: "rgba(247, 243, 235, 0.96)",
-        pointHoverBorderColor: TOKEN_COLOR,
+        pointBackgroundColor: theme().series[1],
+        pointHoverBackgroundColor: theme().background,
+        pointHoverBorderColor: theme().series[1],
       },
     ],
   }))
@@ -163,12 +157,12 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         mode: "index",
         intersect: false,
         displayColors: false,
-        backgroundColor: "rgba(14, 16, 24, 0.94)",
-        borderColor: "rgba(215, 205, 192, 0.18)",
+        backgroundColor: theme().background,
+        borderColor: theme().grid,
         borderWidth: 1,
         padding: 12,
-        titleColor: "rgba(247,247,250,0.98)",
-        bodyColor: "rgba(221,221,230,0.96)",
+        titleColor: theme().foreground,
+        bodyColor: theme().axisStrong,
         titleMarginBottom: 6,
         callbacks: {
           title: (items) => {
@@ -193,7 +187,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           display: false,
         },
         ticks: {
-          color: AXIS_TEXT_STRONG,
+          color: theme().axisStrong,
           autoSkip: false,
           maxRotation: 0,
           minRotation: 0,
@@ -214,15 +208,15 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         title: {
           display: true,
           text: "Cost ($)",
-          color: AXIS_TEXT,
+          color: theme().axis,
           padding: { bottom: 6 },
         },
         grid: {
-          color: GRID_COLOR,
+          color: theme().grid,
           drawBorder: false,
         },
         ticks: {
-          color: AXIS_TEXT,
+          color: theme().axis,
           padding: 8,
           callback: (value) => formatCost(Number(value)),
         },
@@ -235,7 +229,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         title: {
           display: true,
           text: "Tokens",
-          color: AXIS_TEXT,
+          color: theme().axis,
           padding: { bottom: 6 },
         },
         grid: {
@@ -243,7 +237,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           drawBorder: false,
         },
         ticks: {
-          color: AXIS_TEXT,
+          color: theme().axis,
           padding: 8,
           callback: (value) => formatCompact(Number(value)),
         },
@@ -280,11 +274,11 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
 
       <div class="mt-3 flex flex-wrap gap-2">
         <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
-          <span class="h-2.5 w-2.5 rounded-full" style={{ background: COST_COLOR }} />
+          <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[0] }} />
           <span>Cost</span>
         </div>
         <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
-          <span class="h-2.5 w-2.5 rounded-full" style={{ background: TOKEN_COLOR }} />
+          <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[1] }} />
           <span>Tokens</span>
         </div>
       </div>
@@ -294,7 +288,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           <Show when={peaks().cost}>
             {(peak) => (
               <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
-                <div class="h-8 w-1 rounded-full" style={{ background: COST_COLOR }} />
+                <div class="h-8 w-1 rounded-full" style={{ background: theme().series[0] }} />
                 <div class="min-w-0">
                   <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest cost</div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">
@@ -308,7 +302,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           <Show when={peaks().tokens}>
             {(peak) => (
               <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
-                <div class="h-8 w-1 rounded-full" style={{ background: TOKEN_COLOR }} />
+                <div class="h-8 w-1 rounded-full" style={{ background: theme().series[1] }} />
                 <div class="min-w-0">
                   <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest volume</div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">

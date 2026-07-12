@@ -1,8 +1,8 @@
 import type { BrowserOwner } from "./owner.js"
-import type { BrowserDialogRequest, BrowserDownloadEntry, BrowserFileChooserRequest, BrowserTab } from "./tab.js"
+import type { BrowserCheckpoint, BrowserProtocolErrorData } from "@ericsanchezok/synergy-browser"
+import type { BrowserPageBackend } from "./page.js"
 
-export type BrowserPage = BrowserTab
-export type { BrowserTab }
+export type { BrowserPageBackend }
 
 export interface BrowserAnnotation {
   id: string
@@ -26,20 +26,6 @@ export interface BrowserAnnotationInput {
   pageURL?: string
 }
 
-export interface BrowserSessionObserver {
-  onPageCreated?: (page: BrowserPage) => void
-  onPageClosed?: (pageID: string) => void
-  onPageNavigated?: (page: BrowserPage) => void
-  onPageUpdated?: (page: BrowserPage) => void
-  onScreenshotAvailable?: (page: BrowserPage, dataUrl: string, width: number, height: number) => void
-  onAgentActivity?: (activity: BrowserAgentActivity) => void
-  onControlChanged?: (mode: "user" | "agent") => void
-  onPageLoadState?: (page: BrowserPage, state: "loading" | "loaded" | "error", message?: string) => void
-  onDownload?: (page: BrowserPage, entry: BrowserDownloadEntry) => void
-  onFileChooser?: (page: BrowserPage, request: BrowserFileChooserRequest) => void
-  onDialog?: (page: BrowserPage, request: BrowserDialogRequest) => void
-}
-
 export interface BrowserAgentActivity {
   pageId: string
   url: string
@@ -51,24 +37,33 @@ export interface BrowserAgentActivity {
 
 export interface BrowserSession {
   readonly owner: BrowserOwner.Info
-  readonly page: BrowserPage | null
+  readonly page: BrowserPageBackend | null
+  readonly status: "empty" | "suspended" | "active" | "migrating" | "failed"
+  readonly descriptor: {
+    id: string
+    url: string
+    title: string
+    lastActiveAt: number | null
+  } | null
+  readonly checkpoint: BrowserCheckpoint | null
+  readonly error: BrowserProtocolErrorData | null
   readonly annotations: BrowserAnnotation[]
 
-  ensurePage(url?: string): Promise<BrowserPage>
+  ensurePage(url?: string, options?: { resume?: boolean }): Promise<BrowserPageBackend>
+  resumePage(): Promise<BrowserPageBackend>
   closePage(): Promise<void>
-  getPage(pageID: string): BrowserPage | undefined
+  getPage(pageID: string): BrowserPageBackend | undefined
 
-  addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation
-  removeAnnotation(id: string): boolean
-  clearAnnotations(): void
+  addAnnotation(input: BrowserAnnotationInput): Promise<BrowserAnnotation>
+  removeAnnotation(id: string): Promise<boolean>
+  clearAnnotations(): Promise<void>
   formatAnnotationsForContext(): string
 
-  addObserver(observer: BrowserSessionObserver): () => void
-  notifyPageNavigated(page: BrowserPage): Promise<void>
+  notifyPageNavigated(page: BrowserPageBackend): Promise<void>
   notifyAgentActivity(activity: BrowserAgentActivity): Promise<void>
   notifyControlChanged(mode: "user" | "agent"): Promise<void>
 
-  save(): Promise<void>
+  save(options?: { captureCheckpoint?: boolean }): Promise<void>
   restore(): Promise<boolean>
   dispose(): Promise<void>
 }

@@ -73,7 +73,7 @@ export type SettingsPanelProps = DialogSettingsProps & {
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
   return (
-    <Dialog class="settings-dialog-panel">
+    <Dialog ariaLabel="Settings" class="settings-dialog-panel">
       <SettingsPanel {...props} onClose={() => dialog.close()} />
     </Dialog>
   )
@@ -123,6 +123,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const list: ProviderModel[] = []
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
+      if (data.runtimeAvailability?.[provider.id]?.available === false) continue
       for (const [modelId, model] of Object.entries(provider.models) as [
         string,
         { name: string; variants?: Record<string, unknown> },
@@ -165,14 +166,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         id: provider.id,
         name: provider.name,
         connected: data.connected.includes(provider.id),
-        available: availability?.available ?? data.connected.includes(provider.id),
         modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
-        authStatus: health?.status,
-        availabilityReason: availability?.reason,
-        reloginRequired: health?.reloginRequired,
-        cooldownUntil: health?.cooldownUntil,
-        resetAt: health?.resetAt,
-        failureCode: health?.failureCode,
+        health,
+        availability,
         profile: data.profiles?.[provider.id],
       }
     })

@@ -157,7 +157,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
         <div class="gsm-results">
           <Show when={!loading() && results().length === 0}>
             <div class="gsm-empty">
-              <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak" />
+              <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
               <span class="text-13-medium text-text-weak">
                 {query().length > 0 ? `No sessions matching "${query()}"` : "No sessions found"}
               </span>

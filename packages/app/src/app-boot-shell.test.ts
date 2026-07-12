@@ -7,7 +7,9 @@ const themeContext = await Bun.file(new URL("../../ui/src/theme/context.tsx", im
 const globalSync = await Bun.file(new URL("./context/global-sync.tsx", import.meta.url)).text()
 const css = await Bun.file(new URL("./index.css", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
-const desktopThemeSync = await Bun.file(new URL("./components/desktop-theme-sync.tsx", import.meta.url)).text()
+const desktopThemeSync = await Bun.file(
+  new URL("./components/app-shell/desktop-theme-sync.tsx", import.meta.url),
+).text()
 
 function blockBetween(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start)
@@ -106,10 +108,9 @@ describe("app boot shell", () => {
     expect(initialSchemeIndex).toBeGreaterThanOrEqual(0)
     expect(createStoreIndex).toBeGreaterThan(initialSchemeIndex)
     expect(themeContext).toContain("colorScheme: initialColorScheme")
-    expect(themeContext).toContain("mode: resolveColorSchemeMode(initialColorScheme)")
-    expect(themeContext).toContain("applyThemeCss(resolveColorSchemeMode(initialColorScheme))")
-    expect(themeContext).toContain("document.documentElement.dataset.colorScheme = mode")
-    expect(themeContext).toContain("document.documentElement.dataset.synergyColorScheme = mode")
+    expect(themeContext).toContain("const initialMode = resolveColorSchemeMode(initialColorScheme)")
+    expect(themeContext).toContain("mode: initialMode")
+    expect(themeContext).toContain("applyThemeToDocument(document")
     expect(themeContext).not.toContain('colorScheme: "system" as ColorScheme')
     expect(themeContext).not.toContain("const savedScheme = getSavedColorScheme()")
   })
@@ -124,7 +125,7 @@ describe("app boot shell", () => {
       'class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger"',
     )
     expect(sessionPage).toContain(
-      'class="synergy-workbench-canvas relative h-full overflow-hidden bg-background-stronger"',
+      'class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col"',
     )
   })
 

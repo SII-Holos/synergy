@@ -21,7 +21,7 @@ function dayLabel(days: number) {
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]"
+      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base"
       style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}
     >
       <div class="flex min-h-[5.5rem] flex-col justify-between gap-2">
@@ -53,7 +53,7 @@ export function OverviewCards(props: { metrics: OverviewMetric[]; streak: { curr
           <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
         </div>
         <div
-          class="mt-2 flex items-center justify-between rounded-xl bg-amber-500/8 px-3 py-1.5"
+          class="mt-2 flex items-center justify-between rounded-xl bg-surface-warning-weak px-3 py-1.5"
           style={{ animation: `overviewCardEnter 0.32s ease-out ${metrics().length * 40}ms both` }}
         >
           <StreakItem label="Current streak ·" value={props.streak.current} delay={0} />

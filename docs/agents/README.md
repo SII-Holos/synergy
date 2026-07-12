@@ -1,47 +1,34 @@
-# External Agent Guide
+# Agent Entry Points
 
-This directory explains how an external coding agent should use the Synergy repository without confusing plugin authoring with Synergy source development.
+Choose documentation by the system you are changing. Plugin authoring and Synergy repository development have different contracts.
 
-## Pick The Right Path
+## Build a Plugin
 
-### Build A Synergy Plugin
+For a plugin that runs on Synergy, start with:
 
-Use this path when the task is to create or maintain a plugin that runs on Synergy.
+- [Plugin platform](../plugins/README.md)
+- [Getting started](../plugins/getting-started.md)
+- [Manifest reference](../plugins/manifest.md)
+- [Runtime and permissions](../plugins/runtime-and-permissions.md)
+- [Public plugin SDK](../../packages/plugin/README.md)
 
-Read:
+Use the published plugin kit and SDK. A Synergy source checkout is needed only when changing the platform, testing unreleased platform behavior, or diagnosing a host bug that cannot be isolated in the plugin project.
 
-- [../plugins/agent-quickstart.md](../plugins/agent-quickstart.md)
-- [../plugins/development-kit.md](../plugins/development-kit.md)
-- [../../packages/plugin/README.md](../../packages/plugin/README.md)
-- [../plugin/toolchain.md](../plugin/toolchain.md)
-- [../plugin/marketplace.md](../plugin/marketplace.md)
+## Modify Synergy
 
-Do not read `AGENTS.md` for normal plugin authoring. `AGENTS.md` is about modifying this Synergy source repository.
+For the runtime, Web app, Desktop, SDK, plugin platform, repository tools, tests, or documentation, read:
 
-### Modify Synergy Itself
+- [Repository agent rules](../../AGENTS.md)
+- [Documentation index](../README.md)
+- [Development reference](../reference/development.md)
+- [Contribution guide](../../CONTRIBUTING.md)
 
-Use this path when the task changes the server runtime, Web app, SDK, plugin platform internals, docs, tests, release scripts, or repository configuration.
+Then read the nearest package `AGENTS.md` and the architecture or product contract for the subsystem being changed.
 
-Read:
+Load the repository `development-standards` Skill when the change is cross-cutting or its workflow owner is unclear. It routes frontend, LLM, server API, persistence, agent, tool, CLI, testing, runtime, and Git work to focused Skills.
 
-- [../../AGENTS.md](../../AGENTS.md)
-- [../../README.md](../../README.md)
-- [../../CONTRIBUTING.md](../../CONTRIBUTING.md)
-- package-specific `AGENTS.md` files when touching `packages/synergy` or `packages/app`
+## Repository-only Workflows
 
-## Source Checkout Boundary
+The `.synergy/skill/` directory contains executable workflows for agents working in this repository. Those workflows link to canonical docs instead of repeating architecture knowledge. They are also where new reusable development conventions must be captured when implementation or review exposes a missing rule. They are not part of the public plugin-authoring contract.
 
-Plugin authors should not need a Synergy source checkout. They should use `@ericsanchezok/synergy-plugin-kit`, the `synergy-plugin ...` commands, and the `@ericsanchezok/synergy-plugin` SDK.
-
-For official marketplace publishing, use `synergy-plugin publish-market` from the plugin repository. It prepares the GitHub Release assets and the `SII-Holos/synergy-plugins` registry PR; external agents do not need Synergy source-development instructions for that flow.
-
-A source checkout is only needed when:
-
-- changing Synergy core behavior
-- changing the plugin loader, runtime isolation, permissions, marketplace, or Web host
-- debugging a platform bug that cannot be isolated from an external plugin project
-- testing unreleased Synergy changes before a CLI/SDK release exists
-
-## LLM Entry Point
-
-When an agent receives only the GitHub repository URL, start with [../../llms.txt](../../llms.txt). It routes plugin authors, source contributors, architecture readers, and SDK users to different document sets.
+When only a repository URL is available, [`llms.txt`](../../llms.txt) is the compact routing entry point.

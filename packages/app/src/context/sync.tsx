@@ -7,6 +7,8 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
+import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
+import { requestErrorMessage } from "@/utils/error"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -29,6 +31,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       limit: {} as Record<string, number>,
       complete: {} as Record<string, boolean>,
       loading: {} as Record<string, boolean>,
+      messageLoad: {} as Record<string, SessionMessageLoadState>,
     })
     // Track the reconnectVersion at the time of each session's last explicit
     // load, so we can force a re-fetch after a backend restart — whose
@@ -108,52 +111,58 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       })
     }
 
-    const loadMessages = async (sessionID: string, limit: number) => {
-      if (meta.loading[sessionID]) return
+    type SessionMessagesResponse = Awaited<ReturnType<(typeof sdk.client.session)["messages"]>>
+    const messageLoader = createSessionMessageLoader<SessionMessagesResponse, { limit: number }>({
+      request: (sessionID, signal, input) =>
+        retry(() => sdk.client.session.messages({ sessionID, limit: input?.limit ?? chunk }, { signal })),
+      apply: (sessionID, messages, input) => {
+        const limit = input?.limit ?? chunk
+        const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
+        const all = items
+          .map((x) => x.info)
+          .filter((message) => !!message?.id)
+          .slice()
+          .sort((a, b) => a.id.localeCompare(b.id))
+        const keep = all.length > maxMessages ? all.slice(-maxMessages) : all
 
-      setMeta("loading", sessionID, true)
-      await retry(() => sdk.client.session.messages({ sessionID, limit }))
-        .then((messages) => {
-          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-          const all = items
-            .map((x) => x.info)
-            .filter((m) => !!m?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
-
-          const keep = all.length > maxMessages ? all.slice(-maxMessages) : all
-
-          batch(() => {
-            setStore("message", sessionID, reconcile(keep, { key: "id" }))
-
-            const keepIds = new Set(keep.map((m) => m.id))
-            for (const item of items) {
-              if (!keepIds.has(item.info.id)) continue
-              setStore(
-                "part",
-                item.info.id,
-                reconcile(
-                  item.parts
-                    .filter((p) => !!p?.id)
-                    .slice()
-                    .sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
-
-            setMeta("limit", sessionID, limit)
-            setMeta("complete", sessionID, all.length < limit)
-          })
-          // Track this bucket for LRU eviction now that it is loaded.
-          globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
-          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        batch(() => {
+          setStore("message", sessionID, reconcile(keep, { key: "id" }))
+          const keepIds = new Set(keep.map((message) => message.id))
+          for (const item of items) {
+            if (!keepIds.has(item.info.id)) continue
+            setStore(
+              "part",
+              item.info.id,
+              reconcile(
+                item.parts
+                  .filter((part) => !!part?.id)
+                  .slice()
+                  .sort((a, b) => a.id.localeCompare(b.id)),
+                { key: "id" },
+              ),
+            )
+          }
+          setMeta("limit", sessionID, limit)
+          setMeta("complete", sessionID, all.length < limit)
         })
-        .finally(() => {
-          setMeta("loading", sessionID, false)
+        globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
+        refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+      },
+      errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
+      onState: (sessionID, state) => {
+        batch(() => {
+          setMeta("messageLoad", sessionID, state)
+          setMeta("loading", sessionID, state.phase === "loading" || state.phase === "refreshing")
         })
-        .catch(() => {})
-    }
+      },
+    })
+
+    const loadMessages = (sessionID: string, limit: number, options?: { force?: boolean }) =>
+      messageLoader.load(sessionID, {
+        force: options?.force,
+        hasSnapshot: store.message[sessionID] !== undefined,
+        input: { limit },
+      })
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -262,6 +271,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        loadState(sessionID: string): SessionMessageLoadState {
+          const current = meta.messageLoad[sessionID]
+          if (current) return current
+          if (store.message[sessionID] !== undefined) {
+            return { phase: "ready", generation: 0, hasSnapshot: true }
+          }
+          return { phase: "idle", generation: 0, hasSnapshot: false }
+        },
         addOptimisticMessage(input: {
           sessionID: string
           messageID: string
@@ -362,7 +379,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const limit = meta.limit[sessionID] ?? chunk
           await Promise.all([
             loadSession(sessionID, { force: true }).catch(() => {}),
-            loadMessages(sessionID, limit),
+            loadMessages(sessionID, limit, { force: true }),
             refreshVolatile(sessionID),
           ])
         },
@@ -413,6 +430,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     onCleanup(() => {
+      messageLoader.dispose()
       globalSync.releaseScopeState(sdk.scopeKey)
     })
   },

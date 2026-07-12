@@ -1,4 +1,5 @@
 import { Auth } from "./api-key"
+import { ProviderAuthRecovery } from "./auth-recovery"
 import z from "zod"
 
 export namespace AccountUsage {
@@ -100,23 +101,35 @@ export namespace AccountUsage {
     if (!auth || auth.type !== "api") {
       return unavailable(providerID, "OpenRouter credits are only available for API-key credentials.")
     }
-    const headers = {
-      Authorization: `Bearer ${auth.key}`,
-      Accept: "application/json",
-    }
-    const [creditsResponse, keyResponse] = await Promise.all([
-      fetchFn("https://openrouter.ai/api/v1/credits", {
-        headers,
-        signal: AbortSignal.timeout(10_000),
-      }),
-      fetchFn("https://openrouter.ai/api/v1/key", {
-        headers,
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => undefined),
-    ])
+    const request = (url: string) =>
+      ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const current = await Auth.get(providerID)
+          if (current?.type !== "api") return new Response(null, { status: 401 })
+          return fetchFn(url, {
+            headers: {
+              Authorization: `Bearer ${current.key}`,
+              Accept: "application/json",
+            },
+            signal: AbortSignal.timeout(10_000),
+          })
+        },
+        throwOnActionRequired: false,
+      })
+    const creditsResponse = await request("https://openrouter.ai/api/v1/credits")
     if (!creditsResponse.ok) {
-      return error(providerID, `OpenRouter credits request failed with status ${creditsResponse.status}.`)
+      if (creditsResponse.status === 401) {
+        return error(providerID, "OpenRouter rejected this API key. Replace it to restore usage.", {
+          reloginRequired: true,
+        })
+      }
+      if (creditsResponse.status === 429) {
+        return unavailable(providerID, "OpenRouter usage is temporarily rate limited.")
+      }
+      return error(providerID, "OpenRouter usage is temporarily unavailable.")
     }
+    const keyResponse = await request("https://openrouter.ai/api/v1/key").catch(() => undefined)
     const creditsPayload = (await creditsResponse.json().catch(() => ({}))) as any
     const keyPayload = keyResponse?.ok ? ((await keyResponse.json().catch(() => ({}))) as any) : {}
     const credits = creditsPayload.data ?? {}

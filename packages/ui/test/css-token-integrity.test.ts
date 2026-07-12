@@ -21,7 +21,7 @@ const PHASE2_UI_FILES: FileSet[] = [
 ]
 
 const APP_FILES = [
-  "../app/src/components/quick-actions.css",
+  "../app/src/components/prompt-input/quick-actions.css",
   "../app/src/components/header-bar.css",
   "../app/src/components/context-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
@@ -245,12 +245,6 @@ describe("CSS Token Integrity", () => {
     }
   })
 
-  test("context.tsx uses 'synergy-theme' style ID, not 'oc-theme'", async () => {
-    const source = await readFileSafe("src/theme/context.tsx")
-    expect(source).toContain('"synergy-theme"')
-    expect(source).not.toContain('"oc-theme"')
-  })
-
   test("index.html uses synergy theme preload naming", async () => {
     const source = await readFileSafe("../app/index.html")
     expect(source).toContain('id="synergy-theme-preload-script"')
@@ -273,7 +267,7 @@ describe("CSS Token Integrity", () => {
       "src/components/markdown.css",
       "src/components/session-resonance-popover.css",
       "src/components/diagram.css",
-      "../app/src/components/quick-actions.css",
+      "../app/src/components/prompt-input/quick-actions.css",
     ]
 
     const mustNotReappear = new Set([

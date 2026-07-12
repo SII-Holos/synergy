@@ -55,6 +55,7 @@ import {
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { recordTokenApply } from "@/components/performance/browser-metrics"
 
 type GlobalPaths = {
   home: string
@@ -815,6 +816,14 @@ function createGlobalSync() {
       bootstrap()
       return
     }
+    if (event?.type === "provider.auth.updated") {
+      const health = event.properties.health
+      setGlobalStore("provider", "authHealth", health.providerID, reconcile(health))
+      for (const state of Object.values(children)) {
+        state[1]("provider", "authHealth", health.providerID, reconcile(health))
+      }
+      return
+    }
     if (event?.type === "scope.updated") {
       const result = Binary.search(globalStore.scope, event.properties.id, (s) => s.id)
       if (event.properties.time?.archived) {
@@ -1434,6 +1443,7 @@ function createGlobalSync() {
     loadGlobalAgenda,
     refreshConfig,
     refreshAllConfigs,
+    refreshProviders: () => refreshTargeted(["provider"]),
     scope: {
       loadSessions,
       loadAgenda,

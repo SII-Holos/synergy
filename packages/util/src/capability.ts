@@ -332,17 +332,30 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Use browser clipboard",
     description: "Can read from or write to browser clipboard state.",
   },
+  browser_upload: {
+    category: "browser",
+    severity: "high",
+    title: "Upload files to browser",
+    description: "Can transfer approved workspace file content into the current browser page.",
+    nonBypassable: true,
+  },
+  browser_coordinate: {
+    category: "browser",
+    severity: "medium",
+    title: "Use browser coordinates",
+    description: "Can interact with a browser page using visual coordinates instead of semantic locators.",
+  },
   browser_download: {
     category: "browser",
     severity: "medium",
     title: "Download browser files",
     description: "Can download files through the browser workspace.",
   },
-  browser_viewport: {
+  browser_emulation: {
     category: "browser",
     severity: "low",
-    title: "Resize browser viewport",
-    description: "Can change the browser workspace viewport.",
+    title: "Emulate a browser environment",
+    description: "Can change browser viewport, device, locale, media, CPU, and network emulation.",
   },
   identity_act: {
     category: "identity",
@@ -421,8 +434,10 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "browser_eval_readonly",
   "browser_eval_trusted",
   "browser_clipboard",
+  "browser_upload",
+  "browser_coordinate",
   "browser_download",
-  "browser_viewport",
+  "browser_emulation",
 ] as const
 
 export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
@@ -487,7 +502,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   email_read: "communication_email",
   email_send: "communication_email",
   communication_email: "communication_email",
-  session_send: "channel_outbound",
+  session_send: "identity_act",
   channel_outbound: "channel_outbound",
   identity_act: "identity_act",
   platform_control: "platform_control",

@@ -9,19 +9,19 @@ export interface AgentVisual {
 }
 
 const COLORS = {
-  primary: "rgba(99, 102, 241, 0.35)",
-  max: "rgba(249, 115, 22, 0.35)",
-  code: "rgba(59, 130, 246, 0.35)",
-  analysis: "rgba(168, 85, 247, 0.35)",
-  design: "rgba(245, 158, 11, 0.35)",
-  test: "rgba(34, 197, 94, 0.35)",
-  quality: "rgba(20, 184, 166, 0.35)",
-  review: "rgba(236, 72, 153, 0.35)",
-  knowledge: "rgba(14, 165, 233, 0.35)",
-  research: "rgba(139, 92, 246, 0.35)",
-  external: "rgba(16, 185, 129, 0.35)",
-  supervisor: "rgba(220, 38, 38, 0.35)",
-  neutral: "rgba(107, 114, 128, 0.35)",
+  primary: "var(--text-interactive-base)",
+  max: "var(--avatar-text-orange)",
+  code: "var(--avatar-text-cyan)",
+  analysis: "var(--avatar-text-purple)",
+  design: "var(--text-on-warning-base)",
+  test: "var(--text-on-success-base)",
+  quality: "var(--avatar-text-mint)",
+  review: "var(--avatar-text-pink)",
+  knowledge: "var(--text-on-info-base)",
+  research: "var(--avatar-text-purple)",
+  external: "var(--avatar-text-mint)",
+  supervisor: "var(--text-on-critical-base)",
+  neutral: "var(--text-weak)",
 } as const
 
 const VISUALS: Record<string, AgentVisual> = {

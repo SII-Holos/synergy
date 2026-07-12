@@ -229,6 +229,17 @@ config(input, output) {
 
 If a transform empties `output.system`, Synergy restores the original system prompt.
 
+### Provider authentication recovery
+
+Provider profiles may implement `classifyError` and `refreshAuth`. These hooks run in the shared provider request pipeline for model calls and live discovery:
+
+- `classifyError` should return a classification only for a confirmed credential rejection or rate limit. Do not classify a generic 403, timeout, network error, or 5xx response as a credential failure.
+- Set `reloginRequired: true` only when the credential itself has been rejected. Set `exhausted: true` for quota or rate limits and include `cooldownUntil` or `resetAt` when known.
+- `refreshAuth` receives the current credential and returns one replacement credential. It must not persist credentials, mutate the pool, retry the business request, or implement an unbounded refresh loop; Synergy serializes refreshes, updates the selected pool entry, and performs the single request retry.
+- A plugin without `classifyError` keeps its original error response. In particular, Synergy does not guess that an unclassified plugin 403 is an authentication failure.
+
+Auth and error response bodies are never included in public provider-health events. Keep classifier output machine-readable and free of tokens, keys, and upstream response bodies.
+
 ## Plugin Input
 
 `init(input)` receives runtime services scoped to the active Synergy Scope:
@@ -342,7 +353,9 @@ import type {
 } from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-Supported UI surfaces are tool renderers, part renderers, navigation, settings sections, workbench panels, message slots, composer slots, themes, icons, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+Supported UI surfaces are tool renderers, part renderers, navigation, settings sections, workbench panels, message slots, composer slots, structured JSON themes, icons, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+
+Structured JSON theme plugins require Synergy 2.4.4 or later. Use `PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE` for their `engines.synergy` declaration; use `PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE` when a plugin only depends on the general plugin protocol floor.
 
 ## Runtime Modes
 
@@ -361,7 +374,7 @@ Worker and process plugins are started through Synergy's plugin runner. The runn
 - `dist/plugin.json`
 - `dist/runtime/index.js`
 - `dist/ui/index.js` when UI entry is declared
-- copied theme/icon/assets files
+- copied theme JSON, icon, and other declared asset files
 - `dist/permissions.summary.json`
 - `dist/integrity.json`
 

@@ -3,13 +3,16 @@ import { streamSSE } from "hono/streaming"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Config } from "@/config/config"
-import { PerformanceConfig } from "@/performance/config"
-import { PerformanceEvents } from "@/performance/events"
+import { ObservabilityConfig } from "@/observability/config"
+import { ObservabilityLiveEvents } from "@/observability/live-events"
 import { PerformanceError } from "@/performance/error"
-import { PerformanceStore } from "@/performance/store"
+import { ObservabilityBrowserMetrics } from "@/observability/browser-metrics"
+import { ObservabilityIssues } from "@/observability/issues"
+import { ObservabilityResources } from "@/observability/resources"
+import { ObservabilityStore } from "@/observability/store"
 import { PerformanceDashboard } from "@/performance/dashboard"
-import { PerformanceIngestion } from "@/performance/ingestion"
-import { PerformanceIssues } from "@/performance/issues"
+import { PerformanceInflight } from "@/performance/inflight"
+import { PerformanceProjection } from "@/performance/projection"
 import { ServerSseMetrics } from "./sse-metrics"
 import { PerformanceSchema } from "@/performance/schema"
 import { PerformanceTimeline } from "@/performance/timeline"
@@ -24,6 +27,12 @@ const SummaryQuery = z
   })
   .meta({ ref: "PerformanceSummaryQuery" })
 
+const InflightQuery = z.object({
+  scopeID: z.string().optional(),
+  sessionID: z.string().optional(),
+  staleMs: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+})
 const IssuesQuery = z
   .object({
     status: PerformanceSchema.IssueStatus.default("open"),
@@ -112,7 +121,7 @@ function handleUnknownPerformanceError(c: Context, error: unknown) {
 }
 
 function ensureStorageAvailable() {
-  if (!PerformanceStore.open()) {
+  if (!ObservabilityStore.open()) {
     throw new PerformanceError("PERF_STORAGE_UNAVAILABLE", "Performance SQLite storage is unavailable.", 503)
   }
 }
@@ -127,8 +136,8 @@ function mergePerformanceConfigPatch(
   current: Awaited<ReturnType<typeof Config.current>>,
   patch: Partial<PerformanceSchema.Config>,
 ) {
-  const raw = (current.observability?.performance ?? {}) as PerformanceConfig.Raw
-  return PerformanceConfig.effective({
+  const raw = (current.observability?.performance ?? {}) as ObservabilityConfig.Raw
+  return ObservabilityConfig.effective({
     observability: {
       ...current.observability,
       performance: {
@@ -161,9 +170,29 @@ export const PerformanceRoute = new Hono()
       handlePerformanceError(c, async () => {
         ensureStorageAvailable()
         return (
-          rateLimit(c, "summary", PerformanceConfig.current().rateLimits.summaryPerMinute) ??
+          rateLimit(c, "summary", ObservabilityConfig.current().rateLimits.summaryPerMinute) ??
           c.json(await PerformanceDashboard.summary(c.req.valid("query")))
         )
+      }),
+  )
+  .get(
+    "/performance/inflight",
+    describeRoute({
+      summary: "List inflight performance spans",
+      description: "List running spans and stale operations from the indexed observability store.",
+      operationId: "performance.inflight",
+      responses: {
+        200: {
+          description: "Inflight performance spans",
+          content: { "application/json": { schema: resolver(PerformanceSchema.Inflight) } },
+        },
+      },
+    }),
+    performanceValidator("query", InflightQuery, "PERF_INVALID_QUERY"),
+    (c) =>
+      handlePerformanceError(c, () => {
+        ensureStorageAvailable()
+        return c.json(PerformanceInflight.get(c.req.valid("query")))
       }),
   )
   .get(
@@ -184,7 +213,7 @@ export const PerformanceRoute = new Hono()
       handlePerformanceError(c, () => {
         ensureStorageAvailable()
         return (
-          rateLimit(c, "timeline", PerformanceConfig.current().rateLimits.timelinePerMinute) ??
+          rateLimit(c, "timeline", ObservabilityConfig.current().rateLimits.timelinePerMinute) ??
           c.json(PerformanceTimeline.get(c.req.valid("query")))
         )
       }),
@@ -207,7 +236,7 @@ export const PerformanceRoute = new Hono()
       handlePerformanceError(c, () => {
         ensureStorageAvailable()
         return (
-          rateLimit(c, "traces", PerformanceConfig.current().rateLimits.traceListPerMinute) ??
+          rateLimit(c, "traces", ObservabilityConfig.current().rateLimits.traceListPerMinute) ??
           c.json(PerformanceTraceDetail.list(c.req.valid("query")))
         )
       }),
@@ -231,7 +260,7 @@ export const PerformanceRoute = new Hono()
       handlePerformanceError(c, async () => {
         ensureStorageAvailable()
         return (
-          rateLimit(c, "trace-detail", PerformanceConfig.current().rateLimits.traceDetailPerMinute) ??
+          rateLimit(c, "trace-detail", ObservabilityConfig.current().rateLimits.traceDetailPerMinute) ??
           c.json(await PerformanceTraceDetail.detail(c.req.valid("param").traceId, c.req.valid("query")))
         )
       }),
@@ -262,8 +291,11 @@ export const PerformanceRoute = new Hono()
       handlePerformanceError(c, () => {
         ensureStorageAvailable()
         return (
-          rateLimit(c, "issues", PerformanceConfig.current().rateLimits.issueListPerMinute) ??
-          c.json({ generatedAt: new Date().toISOString(), issues: PerformanceIssues.list(c.req.valid("query")) })
+          rateLimit(c, "issues", ObservabilityConfig.current().rateLimits.issueListPerMinute) ??
+          c.json({
+            generatedAt: new Date().toISOString(),
+            issues: ObservabilityIssues.list(c.req.valid("query")).map(PerformanceProjection.issue),
+          })
         )
       }),
   )
@@ -295,8 +327,8 @@ export const PerformanceRoute = new Hono()
     async (c) => {
       const current = await Config.current()
       return c.json({
-        config: PerformanceConfig.effective(current),
-        defaults: PerformanceConfig.defaults,
+        config: ObservabilityConfig.effective(current),
+        defaults: ObservabilityConfig.defaults,
         sources: ["runtime.observability.performance"],
       })
     },
@@ -317,7 +349,7 @@ export const PerformanceRoute = new Hono()
     }),
     performanceValidator("json", ConfigPatch, "PERF_INVALID_QUERY"),
     async (c) => {
-      const limited = rateLimit(c, "config-patch", PerformanceConfig.current().rateLimits.configPatchPerMinute)
+      const limited = rateLimit(c, "config-patch", ObservabilityConfig.current().rateLimits.configPatchPerMinute)
       if (limited) return limited
       const patch = c.req.valid("json")
       const restartFields = requiredRestartFields(patch)
@@ -330,8 +362,10 @@ export const PerformanceRoute = new Hono()
         await Config.domainUpdate("runtime", {
           observability: { ...(current.observability ?? {}), performance: nextPerformance },
         })
-        PerformanceConfig.refresh(await Config.current())
-        return c.json(PerformanceConfig.current())
+        ObservabilityConfig.refresh(await Config.current())
+        ObservabilityStore.reconfigure()
+        ObservabilityResources.reconfigure()
+        return c.json(ObservabilityConfig.current())
       } catch (error) {
         Log.create({ service: "performance-route" }).error("Failed to persist performance configuration", { error })
         return c.json({ code: "PERF_CONFIG_CONFLICT", message: "Failed to persist performance configuration." }, 409)
@@ -354,12 +388,12 @@ export const PerformanceRoute = new Hono()
     (c, next) => {
       const tooLarge = rejectLargePayload(c, 256 * 1024)
       if (tooLarge) return tooLarge
-      const limited = rateLimit(c, "browser-ingest", PerformanceConfig.current().rateLimits.browserIngestPerMinute)
+      const limited = rateLimit(c, "browser-ingest", ObservabilityConfig.current().rateLimits.browserIngestPerMinute)
       if (limited) return limited
       return next()
     },
     performanceValidator("json", PerformanceSchema.BrowserMetricBatch, "PERF_INVALID_METRIC_BATCH"),
-    (c) => handlePerformanceError(c, () => c.json(PerformanceIngestion.browserMetrics(c.req.valid("json")))),
+    (c) => handlePerformanceError(c, () => c.json(ObservabilityBrowserMetrics.ingest(c.req.valid("json")))),
   )
   .get(
     "/performance/events",
@@ -383,7 +417,7 @@ export const PerformanceRoute = new Hono()
     (c) => {
       const query = c.req.valid("query")
       if (query.includeTraces && !query.sessionID) return c.json({ code: "PERF_FORBIDDEN" }, 403)
-      const limited = rateLimit(c, "sse", PerformanceConfig.current().rateLimits.sseConnectionsPerClient)
+      const limited = rateLimit(c, "sse", ObservabilityConfig.current().rateLimits.sseConnectionsPerClient)
       if (limited) return limited
       c.header("X-Accel-Buffering", "no")
       c.header("Cache-Control", "no-cache, no-transform")
@@ -395,7 +429,7 @@ export const PerformanceRoute = new Hono()
           data: JSON.stringify(await PerformanceDashboard.summary({ scopeID: query.scopeID })),
         })
         let pendingWrites = 0
-        const maxPendingWrites = PerformanceConfig.current().perClientSseQueueSize
+        const maxPendingWrites = ObservabilityConfig.current().perClientSseQueueSize
         const write = (event: string, data: unknown) => {
           if (pendingWrites >= maxPendingWrites) {
             ServerSseMetrics.writeDropped("performance", event)
@@ -407,21 +441,19 @@ export const PerformanceRoute = new Hono()
             .catch(() => ServerSseMetrics.writeFailure("performance", event))
             .finally(() => pendingWrites--)
         }
-        const unsubscribe = PerformanceEvents.subscribe((event) => {
-          if (event.type === "performance.issue.raised") {
-            if (query.scopeID && event.issue.evidence.scopeID !== query.scopeID) return
+        const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
+          if (event.type === "issue.raised") {
+            if (query.scopeID && (event.issue.scopeID ?? event.issue.evidence.scopeID) !== query.scopeID) return
             if (query.sessionID && event.issue.sessionID !== query.sessionID) return
-            write(event.type, event.issue)
+            write("performance.issue.raised", PerformanceProjection.issue(event.issue))
             return
           }
-          if (event.type === "performance.trace.ended") {
+          if (event.type === "trace.ended") {
             if (!query.includeTraces) return
             if (query.scopeID && event.trace.scopeID !== query.scopeID) return
             if (query.sessionID && event.trace.sessionID !== query.sessionID) return
-            write(event.type, event.trace)
-            return
+            write("performance.trace.ended", PerformanceProjection.traceListItem(event.trace))
           }
-          write(event.type, event)
         })
         const heartbeat = setInterval(() => {
           void stream

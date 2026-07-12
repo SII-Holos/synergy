@@ -12,8 +12,8 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { agendaActionConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
-import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
@@ -279,7 +279,7 @@ export function AgendaPanel() {
               <AppPanel.Title>Agenda</AppPanel.Title>
               <button
                 type="button"
-                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
+                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-border-weaker-selected shadow-sm transition-colors hover:bg-text-base"
                 onClick={openCreate}
               >
                 <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />
@@ -466,7 +466,7 @@ function DetailPopover(props: {
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
         <button
           type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onEdit}
           title="Edit"
         >
@@ -482,7 +482,7 @@ function DetailPopover(props: {
         <div class="flex-1" />
         <button
           type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onClose}
           title="Close"
         >
@@ -594,9 +594,9 @@ function ActionIconBtn(props: {
       type="button"
       classList={{
         "size-7 flex items-center justify-center rounded-lg transition-colors": true,
-        "text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
+        "text-icon-weak-base hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           !!props.danger && !props.loading,
-        "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !props.danger && !props.loading,
+        "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !props.danger && !props.loading,
         "opacity-40 pointer-events-none": props.loading,
       }}
       onClick={props.onClick}

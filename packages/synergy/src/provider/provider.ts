@@ -42,6 +42,7 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
+import { ProviderAuthRecovery } from "./auth-recovery"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -209,7 +210,7 @@ export namespace Provider {
   }
 
   async function fetchWithProxyOptions(
-    fetchFn: typeof fetch,
+    fetchFn: ProviderProfile.FetchLike,
     input: RequestInfo | URL,
     init: RequestInit | undefined,
     proxyUrl: string | undefined,
@@ -236,6 +237,7 @@ export namespace Provider {
       capabilities: z.object({
         temperature: z.boolean(),
         reasoning: z.boolean(),
+        reasoningEfforts: z.array(z.string()).optional(),
         attachment: z.boolean(),
         toolcall: z.boolean(),
         input: z.object({
@@ -293,6 +295,52 @@ export namespace Provider {
     })
   export type Model = z.infer<typeof Model>
 
+  const CATALOG_CAPABILITY_DEFAULTS: Model["capabilities"] = {
+    temperature: false,
+    reasoning: false,
+    attachment: false,
+    toolcall: false,
+    input: { text: false, audio: false, image: false, video: false, pdf: false },
+    output: { text: false, audio: false, image: false, video: false, pdf: false },
+    interleaved: false,
+  }
+
+  const CONFIG_CAPABILITY_DEFAULTS: Model["capabilities"] = {
+    ...CATALOG_CAPABILITY_DEFAULTS,
+    toolcall: true,
+    input: { ...CATALOG_CAPABILITY_DEFAULTS.input, text: true },
+    output: { ...CATALOG_CAPABILITY_DEFAULTS.output, text: true },
+  }
+
+  export function mergeModelCapabilities(
+    model: Partial<ModelsDev.Model>,
+    fallback: Model["capabilities"] = CONFIG_CAPABILITY_DEFAULTS,
+  ): Model["capabilities"] {
+    const reasoning = model.reasoning ?? fallback.reasoning
+    return {
+      temperature: model.temperature ?? fallback.temperature,
+      reasoning,
+      reasoningEfforts: reasoning ? (ModelsDev.reasoningEfforts(model) ?? fallback.reasoningEfforts) : undefined,
+      attachment: model.attachment ?? fallback.attachment,
+      toolcall: model.tool_call ?? fallback.toolcall,
+      input: {
+        text: model.modalities?.input?.includes("text") ?? fallback.input.text,
+        audio: model.modalities?.input?.includes("audio") ?? fallback.input.audio,
+        image: model.modalities?.input?.includes("image") ?? fallback.input.image,
+        video: model.modalities?.input?.includes("video") ?? fallback.input.video,
+        pdf: model.modalities?.input?.includes("pdf") ?? fallback.input.pdf,
+      },
+      output: {
+        text: model.modalities?.output?.includes("text") ?? fallback.output.text,
+        audio: model.modalities?.output?.includes("audio") ?? fallback.output.audio,
+        image: model.modalities?.output?.includes("image") ?? fallback.output.image,
+        video: model.modalities?.output?.includes("video") ?? fallback.output.video,
+        pdf: model.modalities?.output?.includes("pdf") ?? fallback.output.pdf,
+      },
+      interleaved: model.interleaved ?? fallback.interleaved,
+    }
+  }
+
   export const Info = z
     .object({
       id: z.string(),
@@ -345,27 +393,7 @@ export namespace Provider {
         input: model.limit.input,
         output: model.limit.output,
       },
-      capabilities: {
-        temperature: model.temperature,
-        reasoning: model.reasoning,
-        attachment: model.attachment,
-        toolcall: model.tool_call,
-        input: {
-          text: model.modalities?.input?.includes("text") ?? false,
-          audio: model.modalities?.input?.includes("audio") ?? false,
-          image: model.modalities?.input?.includes("image") ?? false,
-          video: model.modalities?.input?.includes("video") ?? false,
-          pdf: model.modalities?.input?.includes("pdf") ?? false,
-        },
-        output: {
-          text: model.modalities?.output?.includes("text") ?? false,
-          audio: model.modalities?.output?.includes("audio") ?? false,
-          image: model.modalities?.output?.includes("image") ?? false,
-          video: model.modalities?.output?.includes("video") ?? false,
-          pdf: model.modalities?.output?.includes("pdf") ?? false,
-        },
-        interleaved: model.interleaved ?? false,
-      },
+      capabilities: mergeModelCapabilities(model, CATALOG_CAPABILITY_DEFAULTS),
       release_date: model.release_date,
       variants: {},
     }
@@ -459,27 +487,7 @@ export namespace Provider {
           status: model.status ?? existingModel?.status ?? "active",
           name,
           providerID,
-          capabilities: {
-            temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
-            attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
-            toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
-            input: {
-              text: model.modalities?.input?.includes("text") ?? existingModel?.capabilities.input.text ?? true,
-              audio: model.modalities?.input?.includes("audio") ?? existingModel?.capabilities.input.audio ?? false,
-              image: model.modalities?.input?.includes("image") ?? existingModel?.capabilities.input.image ?? false,
-              video: model.modalities?.input?.includes("video") ?? existingModel?.capabilities.input.video ?? false,
-              pdf: model.modalities?.input?.includes("pdf") ?? existingModel?.capabilities.input.pdf ?? false,
-            },
-            output: {
-              text: model.modalities?.output?.includes("text") ?? existingModel?.capabilities.output.text ?? true,
-              audio: model.modalities?.output?.includes("audio") ?? existingModel?.capabilities.output.audio ?? false,
-              image: model.modalities?.output?.includes("image") ?? existingModel?.capabilities.output.image ?? false,
-              video: model.modalities?.output?.includes("video") ?? existingModel?.capabilities.output.video ?? false,
-              pdf: model.modalities?.output?.includes("pdf") ?? existingModel?.capabilities.output.pdf ?? false,
-            },
-            interleaved: model.interleaved ?? false,
-          },
+          capabilities: mergeModelCapabilities(model, existingModel?.capabilities),
           cost: {
             input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
             output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
@@ -709,18 +717,19 @@ export namespace Provider {
     delete options["proxy"]
     delete options["noProxy"]
 
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
     const proxyFetch =
       proxyUrl || noProxy
-        ? (input: any, init?: any) => fetchWithProxyOptions(customFetch ?? fetch, input, init, proxyUrl, noProxy)
-        : customFetch
-    if (proxyFetch) options["fetch"] = proxyFetch
+        ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
+        : authFetch
+    options["fetch"] = proxyFetch
 
     const builtSDK = bundledFn({
       name: model.providerID,
       ...options,
     }) as SDK
 
-    if (proxyFetch) {
+    if (proxyUrl || noProxy) {
       const patchedSDK = new Proxy(builtSDK as object, {
         get(target, prop) {
           if (prop === "fetch") return proxyFetch
@@ -764,6 +773,7 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
@@ -772,7 +782,7 @@ export namespace Provider {
       const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        const fetchFn = customFetch ?? fetch
+        const fetchFn = authFetch
         const opts = init ?? {}
 
         const proxyUrlForRequest = proxyUrl

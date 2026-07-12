@@ -1,61 +1,45 @@
 import z from "zod"
+import { BrowserWaitConditionSchema } from "@ericsanchezok/synergy-browser"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { ToolTimeout } from "./timeout"
-
-const waitConditionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("load") }),
-  z.object({ type: z.literal("url"), contains: z.string() }),
-  z.object({ type: z.literal("title"), contains: z.string() }),
-])
 
 export const BrowserWaitTool = Tool.define("browser_wait", {
-  description:
-    "Wait for a condition on the current browser page. Supports waiting for the page to finish loading, or for the URL/title to contain specific text. Returns whether the condition was met within the timeout.",
-  parameters: z.object({
-    condition: waitConditionSchema.describe("Condition to wait for"),
-    timeout: z
-      .number()
-      .int()
-      .min(500)
-      .max(ToolTimeout.DEFAULTS.browserWaitMaxMs)
-      .default(ToolTimeout.DEFAULTS.browserWaitMs)
-      .describe(
-        `Timeout in milliseconds. Max ${ToolTimeout.DEFAULTS.browserWaitMaxMs}. Default ${ToolTimeout.DEFAULTS.browserWaitMs}.`,
-      ),
-    pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
-  }),
+  description: "Wait for load, URL, title, text, locator state, download, or dialog. Default timeout is 10 seconds.",
+  parameters: z
+    .object({
+      condition: BrowserWaitConditionSchema,
+      timeoutMs: z.number().int().min(500).max(60_000).default(10_000),
+    })
+    .strict(),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+    const page = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
+      page,
       "reading",
       "browser_wait",
       "Waiting for page condition",
       async () => {
-        const met = await tab.waitFor(params.condition, params.timeout)
-
-        const conditionDesc =
-          params.condition.type === "load"
-            ? "page loaded"
-            : `${params.condition.type} contains "${params.condition.contains}"`
-
+        const result = await BrowserToolHelper.execute(ctx, {
+          type: "wait",
+          condition: params.condition,
+          timeoutMs: params.timeoutMs,
+        })
+        if (result.type !== "wait") throw new Error("Browser wait returned an unexpected result.")
         return {
-          title: met ? `Wait satisfied` : `Wait timed out`,
-          output: met
-            ? `Condition met: ${conditionDesc} (after waiting)`
-            : `Condition not met within ${params.timeout}ms: ${conditionDesc}`,
+          title: "Browser wait satisfied",
+          output: `Condition ${params.condition.type} was satisfied within ${params.timeoutMs}ms.`,
           metadata: {
-            pageId: tab.id,
+            pageId: page.id,
             condition: params.condition,
-            timeout: params.timeout,
-            satisfied: met,
-            url: tab.url,
-            title: tab.title,
+            timeoutMs: params.timeoutMs,
+            matched: result.matched,
           },
         }
       },
     )
+  },
+  formatValidationError() {
+    return 'Invalid browser_wait input. Example: {"condition":{"type":"locator","locator":{"kind":"role","role":"button","name":"Continue"},"state":"visible"},"timeoutMs":10000}'
   },
 })

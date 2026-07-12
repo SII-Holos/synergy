@@ -6,6 +6,7 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { PERMISSION_MODES } from "./permission-modes"
 import type { PermissionModeVisual } from "./types"
 
@@ -43,7 +44,11 @@ export function PermissionModeSelector(props: {
             when={props.switching()}
             fallback={
               <>
-                <Icon name={props.activeMode().icon} size="small" class={`shrink-0 ${props.activeMode().iconClass}`} />
+                <Icon
+                  name={getSemanticIcon(props.activeMode().icon)}
+                  size="small"
+                  class={`shrink-0 ${props.activeMode().iconClass}`}
+                />
                 <span
                   class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}
                 >
@@ -75,7 +80,7 @@ export function PermissionModeSelector(props: {
           >
             {(mode) => (
               <div class="flex items-start gap-3 min-w-0 text-left">
-                <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
+                <Icon name={getSemanticIcon(mode.icon)} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
                 <div class="min-w-0 flex-1">
                   <div class="text-13-medium text-text-base">{mode.label}</div>
                   <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
@@ -84,7 +89,7 @@ export function PermissionModeSelector(props: {
             )}
           </List>
           <Show when={props.working()}>
-            <div class="px-3 pb-2 text-11-regular text-text-warning">
+            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">
               Stop the session before changing permission mode.
             </div>
           </Show>

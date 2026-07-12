@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { PermissionRiskBadge } from "./PermissionRiskBadge"
 import type { PermissionItem, PluginPermissionDiff } from "./schema"
@@ -9,12 +10,12 @@ import "./InstallConsentDialog.css"
 
 // ── Display grouping ────────────────────────────────────────────────────────
 
-const DISPLAY_GROUPS: { key: string; label: string; categories: string[]; icon: string }[] = [
-  { key: "tools", label: "Tools", categories: ["tools", "files"], icon: "terminal" },
-  { key: "data", label: "Data", categories: ["data"], icon: "folder" },
-  { key: "network", label: "Network", categories: ["network"], icon: "globe" },
-  { key: "ui", label: "UI", categories: ["ui"], icon: "panel-left" },
-  { key: "runtime", label: "Runtime", categories: ["runtime", "hooks"], icon: "cpu" },
+const DISPLAY_GROUPS: { key: string; label: string; categories: string[]; icon: SemanticIconTokenName }[] = [
+  { key: "tools", label: "Tools", categories: ["tools", "files"], icon: "plugins.permission.tools" },
+  { key: "data", label: "Data", categories: ["data"], icon: "plugins.permission.data" },
+  { key: "network", label: "Network", categories: ["network"], icon: "plugins.permission.network" },
+  { key: "ui", label: "UI", categories: ["ui"], icon: "plugins.permission.ui" },
+  { key: "runtime", label: "Runtime", categories: ["runtime", "hooks"], icon: "plugins.permission.runtime" },
 ]
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -30,15 +31,15 @@ function groupByDisplayCategory(items: PermissionItem[]) {
   return DISPLAY_GROUPS.map((g) => ({ ...g, items: map[g.key] ?? [] })).filter((g) => g.items.length > 0)
 }
 
-function iconForItem(item: PermissionItem): string {
-  if (item.category === "tools") return "terminal"
-  if (item.category === "files") return "folder"
-  if (item.category === "network") return "globe"
-  if (item.category === "data") return "file-text"
-  if (item.category === "ui") return "panel-left"
-  if (item.category === "runtime") return "cpu"
-  if (item.category === "hooks") return "zap"
-  return "circle"
+function iconForItem(item: PermissionItem): SemanticIconTokenName {
+  if (item.category === "tools") return "plugins.permission.tools"
+  if (item.category === "files") return "plugins.permission.filesystem"
+  if (item.category === "network") return "plugins.permission.network"
+  if (item.category === "data") return "plugins.permission.data"
+  if (item.category === "ui") return "plugins.permission.ui"
+  if (item.category === "runtime") return "plugins.permission.runtime"
+  if (item.category === "hooks") return "plugins.permission.hooks"
+  return "state.empty"
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
     >
       {/* ── Risk summary header ── */}
       <div class="consent-risk-summary">
-        <Icon name="shield-check" size="small" />
+        <Icon name={getSemanticIcon("permission.required")} size="small" />
         <span>This plugin requires your approval to install</span>
         <PermissionRiskBadge risk={overallRisk()} />
       </div>
@@ -77,7 +78,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
           {(group) => (
             <div class="consent-group">
               <div class="consent-group-header">
-                <Icon name={group.icon} size="small" class="consent-group-icon" />
+                <Icon name={getSemanticIcon(group.icon)} size="small" class="consent-group-icon" />
                 <span class="consent-group-label">{group.label}</span>
                 <span class="consent-group-count">{group.items.length}</span>
               </div>
@@ -86,7 +87,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
                   {(item) => (
                     <li class="consent-item">
                       <div class="consent-item-row">
-                        <Icon name={iconForItem(item)} size="small" class="consent-item-icon" />
+                        <Icon name={getSemanticIcon(iconForItem(item))} size="small" class="consent-item-icon" />
                         <div class="consent-item-body">
                           <span class="consent-item-title">{item.title}</span>
                           <span class="consent-item-desc">{item.description}</span>
@@ -114,7 +115,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
       <Show when={props.diff.changed.length > 0}>
         <div class="consent-changed">
           <p class="consent-changed-title">
-            <Icon name="diff" size="small" class="consent-changed-icon" />
+            <Icon name={getSemanticIcon("plugins.permission.diff")} size="small" class="consent-changed-icon" />
             Severity changes
           </p>
           <For each={props.diff.changed}>
@@ -123,7 +124,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
                 <code>{change.key}</code>
                 <span>
                   <PermissionRiskBadge risk={(change.before ?? "low") as "low" | "medium" | "high"} />
-                  <Icon name="arrow-right" size="small" class="consent-arrow" />
+                  <Icon name={getSemanticIcon("navigation.forward")} size="small" class="consent-arrow" />
                   <PermissionRiskBadge risk={(change.after ?? "low") as "low" | "medium" | "high"} />
                 </span>
               </div>

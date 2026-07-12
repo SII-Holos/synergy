@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
+import { randomBytes } from "node:crypto"
 
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
@@ -10,7 +11,17 @@ const DEFAULT_HOSTNAME = "127.0.0.1"
 const DEFAULT_APP_HOST = "127.0.0.1"
 
 export interface DevProcessSpec {
-  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox" | "build:plugin"
+  label:
+    | "server"
+    | "app"
+    | "desktop"
+    | "browser-host"
+    | "send"
+    | "build"
+    | "install"
+    | "generate"
+    | "sandbox"
+    | "build:plugin"
   command: string[]
   cwd: string
   env?: Record<string, string | undefined>
@@ -165,6 +176,7 @@ function serverProcess(input: {
   port: number
   hostname: string
   printLogs?: boolean
+  browserHostSecret?: string
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const command = [
@@ -184,7 +196,10 @@ function serverProcess(input: {
     label: "server",
     command,
     cwd: dirs.synergy,
-    env: { SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd },
+    env: {
+      SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
+      SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+    },
     waitUrl: `${url}/global/health`,
     waitTimeoutMs: null,
   }
@@ -210,12 +225,16 @@ function desktopProcess(input: {
   bunPath: string
   mode: "external" | "managed"
   appPort?: number
+  browserServerUrl?: string
+  browserHostSecret?: string
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const env: Record<string, string | undefined> = {
     BUN_BIN: input.bunPath,
     SYNERGY_DESKTOP_CHANNEL: "dev",
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
+    SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+    SYNERGY_BROWSER_BROKER_SERVER_URL: input.browserServerUrl,
   }
   if (input.mode === "external") env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appPort ?? DEFAULT_APP_PORT)
   return {
@@ -223,6 +242,23 @@ function desktopProcess(input: {
     command: [input.bunPath, "run", "dev"],
     cwd: dirs.desktop,
     env,
+  }
+}
+
+function browserHostProcess(input: {
+  repoRoot: string
+  bunPath: string
+  serverUrl: string
+  secret: string
+}): DevProcessSpec {
+  return {
+    label: "browser-host",
+    command: [input.bunPath, "run", "browser-host:dev"],
+    cwd: directories(input.repoRoot).desktop,
+    env: {
+      SYNERGY_BROWSER_HOST_SERVER_URL: input.serverUrl,
+      SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.secret,
+    },
   }
 }
 
@@ -245,6 +281,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
 
   const parsed = parseArgs(rest)
   const dirs = directories(repoRoot)
+  const browserHostSecret = randomBytes(32).toString("hex")
 
   if (command === "prepare") {
     return {
@@ -276,6 +313,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
           port,
           hostname,
           printLogs: boolFlag(parsed.flags, "print-logs"),
+          browserHostSecret,
         }),
       ],
       requiredPorts: [{ label: "server", port, host: displayHost(hostname) }],
@@ -316,9 +354,11 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               port: serverPort,
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
+              browserHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl }),
+      ...(attach ? [] : [browserHostProcess({ repoRoot, bunPath, serverUrl: attachUrl, secret: browserHostSecret })]),
     ]
     return {
       kind: "run",
@@ -344,7 +384,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
         { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
         { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
-        desktopProcess({ repoRoot, bunPath, mode: "managed" }),
+        desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret }),
       ]
       return {
         kind: "run",
@@ -374,10 +414,18 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               port: serverPort,
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
+              browserHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl }),
-      desktopProcess({ repoRoot, bunPath, mode: "external", appPort }),
+      desktopProcess({
+        repoRoot,
+        bunPath,
+        mode: "external",
+        appPort,
+        browserServerUrl: attach ? undefined : attachUrl,
+        browserHostSecret: attach ? undefined : browserHostSecret,
+      }),
     ]
     return {
       kind: "run",

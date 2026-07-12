@@ -208,7 +208,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
             href="https://github.com/SII-Holos/synergy/issues"
             target="_blank"
             rel="noopener noreferrer"
-            class="flex items-center justify-center gap-1 text-text-link hover:underline"
+            class="flex items-center justify-center gap-1 text-text-interactive-base hover:underline"
           >
             Report this issue on GitHub
           </a>

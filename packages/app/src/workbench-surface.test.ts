@@ -15,18 +15,23 @@ const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", 
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
-const nativeTitlebarCss = await Bun.file(new URL("./components/desktop-native-titlebar.css", import.meta.url)).text()
-const nativeTitlebar = await Bun.file(new URL("./components/desktop-native-titlebar.tsx", import.meta.url)).text()
+const nativeTitlebarCss = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.css", import.meta.url),
+).text()
+const nativeTitlebar = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.tsx", import.meta.url),
+).text()
 const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-top-bar.css", import.meta.url)).text()
 const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
-const workbenchSurface = await Bun.file(new URL("./components/session/workbench-surface.tsx", import.meta.url)).text()
+const workbenchSurface = await Bun.file(new URL("./components/workspace/workbench-surface.tsx", import.meta.url)).text()
 const workbenchSurfaceCss = await Bun.file(
-  new URL("./components/session/workbench-surface.css", import.meta.url),
+  new URL("./components/workspace/workbench-surface.css", import.meta.url),
 ).text()
-const workbenchPanels = await Bun.file(new URL("./context/workbench-panels.tsx", import.meta.url)).text()
-const workspaceNotesTool = await Bun.file(new URL("./components/workspace/tool-notes.tsx", import.meta.url)).text()
-const workspaceBrowserTool = await Bun.file(new URL("./components/workspace/tool-browser.tsx", import.meta.url)).text()
+const workbenchPanels = await Bun.file(new URL("./context/workbench/index.tsx", import.meta.url)).text()
+const builtinWorkbenchPanels = await Bun.file(
+  new URL("./components/workspace/builtin-workbench-panels.tsx", import.meta.url),
+).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -123,8 +128,9 @@ describe("workbench surface polarity", () => {
   })
 
   test("workbench panel tabs keep close and add controls compact", () => {
-    expect(workspaceNotesTool).toContain('cardinality: "singleton"')
-    expect(workspaceBrowserTool).toContain('cardinality: "singleton"')
+    expect(builtinWorkbenchPanels.match(/cardinality: "singleton"/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(builtinWorkbenchPanels).toContain('id: "file"')
+    expect(builtinWorkbenchPanels).toContain('cardinality: "multi"')
     expect(workbenchSurface).toContain("addablePanels")
     expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
     expect(workbenchSurface).toContain("const activePanel = createMemo")
@@ -137,12 +143,16 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurfaceCss).toContain("pointer-events: none;")
     expect(workbenchSurfaceCss).toContain("var(--workbench-tab-bg)")
     expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
-    expect(workbenchSurfaceCss).toContain("left: 0;")
+    expect(workbenchSurface).toContain("<Popover")
+    expect(workbenchSurface).toContain('aria-haspopup="menu"')
+    expect(workbenchSurface).toContain("if (local.addOpen)")
+    expect(workbenchSurfaceCss).toContain('.workbench-surface-add-menu [data-slot="popover-body"]')
+    expect(builtinWorkbenchPanels).not.toContain("DialogSelectFile")
+    expect(builtinWorkbenchPanels).toContain('return { title: "Open file", source: "explorer" }')
   })
 
   test("workbench surfaces close instead of persisting empty launchers", () => {
     expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
-    expect(workbenchPanels).toContain("if (nextTabs.length === 0) target.close()")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
@@ -154,8 +164,8 @@ describe("workbench surface polarity", () => {
   })
 
   test("agenda time grid uses centered labels and scoped line tokens", () => {
-    expect(agendaCss).toContain("--agenda-grid-line: light-dark(")
-    expect(agendaCss).toContain("--agenda-grid-line-strong: light-dark(")
+    expect(agendaCss).toContain("--agenda-grid-line: var(--border-weak-base)")
+    expect(agendaCss).toContain("--agenda-grid-line-strong: var(--border-base)")
     expect(agendaCss).toContain(".agenda-time-label")
     expect(agendaCss).toContain("text-align: center;")
     expect(agendaCss).toContain("border-left: 1px solid var(--agenda-grid-line);")
@@ -221,7 +231,7 @@ describe("workbench surface polarity", () => {
     const sourceFiles = [...walkSourceFiles(appSrc), ...walkSourceFiles(uiSrc)]
     const genericBgClass = /(?:^|[\s"'`])((?:hover:)?bg-(?:surface|background|input|button)-[A-Za-z0-9\-/]+)/g
     const semanticState =
-      /success|warning|critical|info|diff|action|brand|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
+      /success|warning|critical|info|diff|action|brand|overlay|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
     const missing = new Set<string>()
 
     for (const filepath of sourceFiles) {

@@ -179,7 +179,7 @@ describe("EnforcementGate path classification", () => {
     expect(network.nonBypassable).toBe(false)
   })
 
-  test("browser_screenshot save stays browser_inspect only", async () => {
+  test("browser_screenshot stays browser_inspect only", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -188,12 +188,57 @@ describe("EnforcementGate path classification", () => {
       synergyRoot: "/Users/test/.synergy",
     })
 
-    const envelope = gate.evaluate("browser_screenshot", {
-      save: true,
-    })
+    const envelope = gate.evaluate("browser_screenshot", { fullPage: true })
 
     expect(envelope.decision).toBe("allow")
     expect(envelope.capabilities.map((cap: any) => cap.class)).toEqual(["browser_inspect"])
+  })
+
+  test("browser privileged operations use distinct capabilities and profile semantics", async () => {
+    const input = {
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree" as const,
+    }
+    const guarded = await EnforcementGate.create({ ...input, profileId: "guarded" })
+    const autonomous = await EnforcementGate.create({ ...input, profileId: "autonomous" })
+    const fullAccess = await EnforcementGate.create({ ...input, profileId: "full_access" })
+
+    expect(guarded.evaluate("browser_eval", { mode: "readonly", expression: "document.title" }).decision).toBe("ask")
+    expect(guarded.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "ask",
+    )
+    expect(autonomous.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "deny",
+    )
+    expect(fullAccess.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "allow",
+    )
+
+    const upload = guarded.classify("browser_upload", {
+      paths: ["/Users/test/synergy-control-profile/fixture.txt"],
+    })
+    expect(upload.capabilities.map((cap: any) => cap.class)).toEqual(["browser_upload", "file_read"])
+    expect(autonomous.evaluate("browser_upload", { paths: ["fixture.txt"] }).decision).toBe("deny")
+    expect(fullAccess.evaluate("browser_upload", { paths: ["fixture.txt"] }).decision).toBe("allow")
+
+    expect(guarded.classify("browser_clipboard", { action: "read" }).capabilities.map((cap: any) => cap.class)).toEqual(
+      ["browser_clipboard"],
+    )
+    expect(
+      guarded
+        .classify("browser_action", { action: { type: "click", target: { kind: "point", x: 1, y: 1 } } })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_interact", "browser_coordinate"])
+    expect(
+      guarded
+        .classify("browser_downloads", { action: "export", path: "downloads/file.txt" })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_download", "file_write"])
+    expect(
+      guarded
+        .classify("browser_navigation", { action: "goto", url: "http://192.168.1.10" })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_interact", "network_request"])
   })
   test("revise_file target path is classified from hashline patch header", async () => {
     const gate = await EnforcementGate.create({
@@ -246,6 +291,31 @@ describe("EnforcementGate path classification", () => {
 // 2. Shell classification
 // ------------------------------------------------------------------
 describe("EnforcementGate shell classification", () => {
+  test("keeps reserved note virtual paths inside the bash boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const command of [
+      "gh pr create --body-file /synergy/note/nte_reviewed",
+      'gh pr create --body "$(cat /synergy/note/nte_reviewed)"',
+      'gh pr create --body "`cat /synergy/note/nte_reviewed`"',
+    ]) {
+      const result = gate.classify("bash", {
+        command,
+        workdir: "/Users/test/synergy-control-profile",
+      })
+
+      expect(result.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(true)
+      expect(
+        result.capabilities.some(
+          (cap: any) => cap.class === "file_external_read" || cap.class === "file_external_write",
+        ),
+      ).toBe(false)
+    }
+  })
+
   test("simple ls within workspace is classified as shell_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -626,6 +696,29 @@ describe("EnforcementGate network classification", () => {
     expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("allow")
     expect(gate.evaluate("email_read", {}).decision).toBe("ask")
     expect(gate.evaluate("inspire_submit", {}).decision).toBe("allow")
+  })
+})
+
+describe("EnforcementGate session_send classification", () => {
+  test("classifies supported user deliveries as identity actions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", {}).capabilities).toEqual([{ class: "identity_act", nonBypassable: true }])
+    expect(gate.classify("session_send", { role: "user" }).capabilities).toEqual([
+      { class: "identity_act", nonBypassable: true },
+    ])
+  })
+
+  test("leaves unsupported assistant role to schema validation without requesting approval", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", { role: "assistant" }).capabilities).toEqual([])
   })
 })
 

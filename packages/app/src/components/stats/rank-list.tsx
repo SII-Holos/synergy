@@ -47,47 +47,25 @@ const LEGACY_METRIC: RankingMetric = {
   color: "indigo",
 }
 
-const PALETTE = {
+const ACTIVE_METRIC_CLASSES = "bg-surface-interactive-selected text-text-base ring-border-selected"
+const METRIC_SERIES = {
   indigo: {
-    tab: "bg-[rgba(56,88,182,0.14)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.28)] dark:text-[rgba(157,183,255,0.92)]",
-    text: "text-[rgba(73,103,194,0.96)] dark:text-[rgba(157,183,255,0.92)]",
-    badge:
-      "bg-[rgba(56,88,182,0.12)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.2)] dark:text-[rgba(157,183,255,0.92)]",
-    rail: "rgba(56, 88, 182, 0.14)",
-    bar: "linear-gradient(90deg, rgba(56,88,182,0.88), rgba(86,118,204,0.62))",
-    glow: "0 0 0 1px rgba(73,103,194,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-1) 14%, transparent)",
+    bar: "var(--chart-series-1)",
   },
   emerald: {
-    tab: "bg-[rgba(39,143,116,0.14)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.26)] dark:text-[rgba(126,213,188,0.92)]",
-    text: "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]",
-    badge:
-      "bg-[rgba(39,143,116,0.12)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.2)] dark:text-[rgba(126,213,188,0.92)]",
-    rail: "rgba(39, 143, 116, 0.14)",
-    bar: "linear-gradient(90deg, rgba(39,143,116,0.88), rgba(72,175,144,0.62))",
-    glow: "0 0 0 1px rgba(39,143,116,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-3) 14%, transparent)",
+    bar: "var(--chart-series-3)",
   },
   amber: {
-    tab: "bg-[rgba(196,132,36,0.14)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.28)] dark:text-[rgba(245,202,134,0.92)]",
-    text: "text-[rgba(155,103,26,0.96)] dark:text-[rgba(245,202,134,0.92)]",
-    badge:
-      "bg-[rgba(196,132,36,0.12)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.2)] dark:text-[rgba(245,202,134,0.92)]",
-    rail: "rgba(196, 132, 36, 0.14)",
-    bar: "linear-gradient(90deg, rgba(196,132,36,0.9), rgba(222,168,84,0.64))",
-    glow: "0 0 0 1px rgba(196,132,36,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-4) 14%, transparent)",
+    bar: "var(--chart-series-4)",
   },
   rose: {
-    tab: "bg-[rgba(163,92,68,0.14)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.24)] dark:text-[rgba(236,176,156,0.9)]",
-    text: "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]",
-    badge:
-      "bg-[rgba(163,92,68,0.12)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.18)] dark:text-[rgba(236,176,156,0.9)]",
-    rail: "rgba(163, 92, 68, 0.13)",
-    bar: "linear-gradient(90deg, rgba(163,92,68,0.86), rgba(196,125,102,0.6))",
-    glow: "0 0 0 1px rgba(163,92,68,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-7) 14%, transparent)",
+    bar: "var(--chart-series-7)",
   },
-} satisfies Record<
-  RankingMetric["color"],
-  { tab: string; text: string; badge: string; rail: string; bar: string; glow: string }
->
+} satisfies Record<RankingMetric["color"], { rail: string; bar: string }>
 
 function isNewProps(props: RankListProps): props is Extract<RankListProps, { rows: RankingRow[] }> {
   return "rows" in props
@@ -162,7 +140,7 @@ export function RankList(props: RankListProps) {
   const activeMetric = createMemo(
     () => metrics().find((metric) => metric.id === state.activeMetricID) ?? metrics()[0] ?? LEGACY_METRIC,
   )
-  const palette = createMemo(() => PALETTE[activeMetric().color])
+  const metricSeries = createMemo(() => METRIC_SERIES[activeMetric().color])
   const sortedRows = createMemo(() => sortedByMetric(normalized().rows, activeMetric().id))
   const visibleRows = createMemo(() => (state.expanded ? sortedRows() : sortedRows().slice(0, top())))
   const hiddenCount = createMemo(() => Math.max(0, sortedRows().length - top()))
@@ -176,7 +154,7 @@ export function RankList(props: RankListProps) {
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <section class="rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <section class="rounded-[1.25rem] bg-surface-raised-base/95 p-3 ring-1 ring-inset ring-border-weaker-base">
         <div class="flex items-start justify-between gap-4 px-1 pb-3">
           <div class="min-w-0">
             <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Ranking</div>
@@ -184,7 +162,7 @@ export function RankList(props: RankListProps) {
             <p class="mt-1 text-10-regular text-text-weak line-clamp-2">{description()}</p>
           </div>
           <div
-            class={`hidden rounded-full px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.16em] ring-1 ring-inset md:block ${palette().tab}`}
+            class={`hidden rounded-full px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.16em] ring-1 ring-inset md:block ${ACTIVE_METRIC_CLASSES}`}
           >
             {activeMetric().label}
           </div>
@@ -199,7 +177,7 @@ export function RankList(props: RankListProps) {
                   type="button"
                   class={`rounded-full px-2.5 py-1.5 text-10-medium ring-1 ring-inset transition-all ${
                     isActive()
-                      ? `${PALETTE[metric.color].tab} shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]`
+                      ? ACTIVE_METRIC_CLASSES
                       : "bg-surface-inset-base/65 text-text-weak ring-border-base/45 hover:bg-surface-inset-base hover:text-text-base"
                   }`}
                   onClick={() => setState({ activeMetricID: metric.id, expanded: false })}
@@ -236,14 +214,11 @@ export function RankList(props: RankListProps) {
                 return (
                   <article
                     class="rounded-xl bg-surface-inset-base/45 px-3.5 py-3 ring-1 ring-inset ring-border-base/45"
-                    style={{
-                      animation: `rankListEnter 0.32s ease-out ${index() * 34}ms both`,
-                      "box-shadow": palette().glow,
-                    }}
+                    style={{ animation: `rankListEnter 0.32s ease-out ${index() * 34}ms both` }}
                   >
                     <div class="flex items-start gap-3">
                       <div
-                        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-10-semibold tabular-nums ring-1 ring-inset ${palette().badge}`}
+                        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-10-semibold tabular-nums ring-1 ring-inset ${ACTIVE_METRIC_CLASSES}`}
                       >
                         {index() + 1}
                       </div>
@@ -258,7 +233,7 @@ export function RankList(props: RankListProps) {
                             </Show>
                           </div>
                           <div class="shrink-0 text-right">
-                            <div class={`text-12-semibold tabular-nums ${palette().text}`}>
+                            <div class="text-12-semibold tabular-nums text-text-base">
                               {formatMetricValue(activeMetric(), value())}
                             </div>
                             <div class="mt-1 text-[9px] uppercase tracking-[0.16em] text-text-weaker">
@@ -267,10 +242,10 @@ export function RankList(props: RankListProps) {
                           </div>
                         </div>
 
-                        <div class="mt-3 h-1.5 rounded-full" style={{ background: palette().rail }}>
+                        <div class="mt-3 h-1.5 rounded-full" style={{ background: metricSeries().rail }}>
                           <div
                             class="h-full rounded-full transition-all duration-300 ease-out"
-                            style={{ width: `${width()}%`, background: palette().bar }}
+                            style={{ width: `${width()}%`, background: metricSeries().bar }}
                           />
                         </div>
 

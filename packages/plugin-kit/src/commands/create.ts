@@ -2,7 +2,11 @@ import path from "path"
 import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
-import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin"
+import {
+  PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+  PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE,
+  PLUGIN_UI_API_VERSION,
+} from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
@@ -21,13 +25,13 @@ interface FileTemplate {
   content(name: string): string
 }
 
-function pluginJson(name: string, extra: (name: string) => object): string {
+function pluginJson(name: string, extra: (name: string) => object, minSynergyRange: string): string {
   const base = {
     name,
     version: "0.1.0",
     description: `${name} plugin`,
     engines: {
-      synergy: PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+      synergy: minSynergyRange,
     },
     permissions: {},
     contributes: {},
@@ -104,6 +108,32 @@ bun run sign ${name}-0.1.0.synergy-plugin.tgz
 bun run publish:market
 \`\`\`
 `
+}
+
+function themeJson(name: string): string {
+  const seeds = {
+    neutral: "#64748B",
+    primary: "#0EA5E9",
+    success: "#22C55E",
+    warning: "#F59E0B",
+    error: "#EF4444",
+    info: "#38BDF8",
+    interactive: "#0EA5E9",
+    diffAdd: "#22C55E",
+    diffDelete: "#EF4444",
+  }
+  return (
+    JSON.stringify(
+      {
+        name,
+        id: `${name}-theme`,
+        light: { seeds },
+        dark: { seeds },
+      },
+      null,
+      2,
+    ) + EOL
+  )
 }
 
 function indexToolUI(name: string): string {
@@ -308,7 +338,7 @@ function manifestToolUI(name: string): object {
       ],
       ui: {
         entry: "./dist/ui/index.js",
-        minUIApiVersion: "1.0",
+        minUIApiVersion: PLUGIN_UI_API_VERSION,
         toolRenderers: [{ tool: "greet" }],
       },
     },
@@ -323,7 +353,7 @@ function manifestWorkbenchPanel(name: string): object {
     contributes: {
       ui: {
         entry: "./dist/ui/index.js",
-        minUIApiVersion: "1.0",
+        minUIApiVersion: PLUGIN_UI_API_VERSION,
         workbenchPanels: [
           {
             id: `${name}-panel`,
@@ -346,7 +376,7 @@ function manifestNavigation(name: string): object {
     contributes: {
       ui: {
         entry: "./dist/ui/index.js",
-        minUIApiVersion: "1.0",
+        minUIApiVersion: PLUGIN_UI_API_VERSION,
         navigation: [
           {
             id: `${name}-nav`,
@@ -399,7 +429,7 @@ function manifestApiConnector(_name: string): object {
       ],
       ui: {
         entry: "./dist/ui/index.js",
-        minUIApiVersion: "1.0",
+        minUIApiVersion: PLUGIN_UI_API_VERSION,
         toolRenderers: [{ tool: "getJSON" }, { tool: "postJSON" }],
       },
     },
@@ -413,7 +443,7 @@ function manifestThemeIcon(name: string): object {
     },
     contributes: {
       ui: {
-        themes: [{ id: `${name}-theme`, label: name, path: "./themes/default.css" }],
+        themes: [{ id: `${name}-theme`, label: name, path: "./themes/default.json" }],
         icons: [{ name: `${name}-logo`, path: "./icons/logo.svg" }],
       },
     },
@@ -424,6 +454,7 @@ interface TemplateDef {
   label: string
   manifest: (name: string) => object
   files: FileTemplate[]
+  minSynergyRange?: string
 }
 
 const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
@@ -464,9 +495,10 @@ const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
   "theme-icon": {
     label: "Theme & Icon - themes and icon contributions",
     manifest: manifestThemeIcon,
+    minSynergyRange: PLUGIN_STRUCTURED_THEME_MIN_SYNERGY_RANGE,
     files: [
       { relativePath: "src/index.ts", content: indexThemeIcon },
-      { relativePath: "themes/default.css", content: () => ":root { --plugin-accent: #2563eb; }\n" },
+      { relativePath: "themes/default.json", content: themeJson },
       {
         relativePath: "icons/logo.svg",
         content: () =>
@@ -481,7 +513,11 @@ function scaffold(name: string, templateName: TemplateName, template: TemplateDe
   fs.mkdirSync(targetDir, { recursive: true })
 
   const files: FileTemplate[] = [
-    { relativePath: "plugin.json", content: (pluginName) => pluginJson(pluginName, template.manifest) },
+    {
+      relativePath: "plugin.json",
+      content: (pluginName) =>
+        pluginJson(pluginName, template.manifest, template.minSynergyRange ?? PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE),
+    },
     { relativePath: "package.json", content: (pluginName) => packageJson(pluginName, templateName) },
     { relativePath: "tsconfig.json", content: tsconfigJson },
     { relativePath: "README.md", content: readmeMd },

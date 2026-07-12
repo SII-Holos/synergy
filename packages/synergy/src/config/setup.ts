@@ -798,30 +798,7 @@ export namespace ConfigSetup {
         input: configModel?.limit?.input ?? existingModel?.limit.input,
         output: configModel?.limit?.output ?? existingModel?.limit.output ?? 0,
       },
-      capabilities: {
-        temperature: configModel?.temperature ?? existingModel?.capabilities.temperature ?? false,
-        reasoning: configModel?.reasoning ?? existingModel?.capabilities.reasoning ?? false,
-        attachment: configModel?.attachment ?? existingModel?.capabilities.attachment ?? false,
-        toolcall: configModel?.tool_call ?? existingModel?.capabilities.toolcall ?? true,
-        input: {
-          text: configModel?.modalities?.input?.includes("text") ?? existingModel?.capabilities.input.text ?? true,
-          audio: configModel?.modalities?.input?.includes("audio") ?? existingModel?.capabilities.input.audio ?? false,
-          image: configModel?.modalities?.input?.includes("image") ?? existingModel?.capabilities.input.image ?? false,
-          video: configModel?.modalities?.input?.includes("video") ?? existingModel?.capabilities.input.video ?? false,
-          pdf: configModel?.modalities?.input?.includes("pdf") ?? existingModel?.capabilities.input.pdf ?? false,
-        },
-        output: {
-          text: configModel?.modalities?.output?.includes("text") ?? existingModel?.capabilities.output.text ?? true,
-          audio:
-            configModel?.modalities?.output?.includes("audio") ?? existingModel?.capabilities.output.audio ?? false,
-          image:
-            configModel?.modalities?.output?.includes("image") ?? existingModel?.capabilities.output.image ?? false,
-          video:
-            configModel?.modalities?.output?.includes("video") ?? existingModel?.capabilities.output.video ?? false,
-          pdf: configModel?.modalities?.output?.includes("pdf") ?? existingModel?.capabilities.output.pdf ?? false,
-        },
-        interleaved: configModel?.interleaved ?? existingModel?.capabilities.interleaved ?? false,
-      },
+      capabilities: Provider.mergeModelCapabilities(configModel ?? {}, existingModel?.capabilities),
       release_date: configModel?.release_date ?? existingModel?.release_date ?? "",
       variants: existingModel?.variants ?? {},
     }

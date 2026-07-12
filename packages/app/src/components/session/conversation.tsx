@@ -112,11 +112,9 @@ export function SessionConversation(props: {
       </Show>
       <For each={props.timeline()}>
         {(msg, index) => {
-          if (import.meta.env.DEV) {
-            onMount(() => {
-              navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
-            })
-          }
+          onMount(() => {
+            navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
+          })
 
           const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
           const hasTabs = props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1
@@ -223,7 +221,7 @@ export function SessionConversation(props: {
                   <div class="ml-auto flex items-center gap-1">
                     <button
                       type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-muted hover:bg-background-base hover:text-text"
+                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
                       title={item.mode === "steer" ? "Move back to queue" : "Guide current run"}
                       onClick={() => props.onPendingGuide?.(item)}
                     >
@@ -232,7 +230,7 @@ export function SessionConversation(props: {
                     </button>
                     <button
                       type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-muted hover:bg-background-base hover:text-text"
+                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
                       title="Remove pending message"
                       onClick={() => props.onPendingRemove?.(item)}
                     >

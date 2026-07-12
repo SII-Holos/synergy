@@ -1,0 +1,66 @@
+---
+name: integrate-llm
+description: Add, modify, or review an LLM-backed operation in Synergy. Use for LLM.stream, AI SDK generateText/streamText, hidden internal agents, title/summary/classification/extraction calls, SmartAllow, provider probes, SessionInvoke, Cortex tasks, structured model output, or any decision about whether an LLM call should create or reuse a session.
+---
+
+# Integrate an LLM Call
+
+## Choose the Execution Path First
+
+| Required behavior                                                                                              | Path                                                           |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Derive metadata, classify, summarize, or transform without durable work history                                | Sessionless internal-agent call through the shared `LLM` layer |
+| Continue work already owned by a product session                                                               | `SessionInvoke` / the existing session loop                    |
+| Run bounded delegated or reviewed work with lineage, lifecycle, progress, cancellation, and an output contract | `Cortex.launch()` child session                                |
+| Probe a provider before normal agent/session runtime is available                                              | Narrow direct AI SDK call in setup/probe infrastructure        |
+
+Do not choose by convenience. If users or parent agents must inspect, resume, cancel, audit, or receive the work as a task, it belongs in a session. If the result is only derived data and a transcript would be noise, keep it sessionless.
+
+## Sessionless Internal-Agent Calls
+
+Current sessionless callers resolve a hidden agent and model, then call `LLM.stream()` without creating a durable session or persisting the inference exchange. They may pass an existing or request-scoped session/message identity because the shared API requires context. Examples include title/turn summary, Experience intent/script/reward encoding, SmartAllow classification, and agent generation.
+
+The `callAgent()` in `library/experience-encoder.ts` is currently private to that module; it is not a repository-wide API. Do not copy another local wrapper. When adding a new sessionless caller, reuse or extract a shared internal-agent-call helper and migrate adjacent boilerplate when the scope permits. Until that helper exists, follow the established `LLM.stream()` boundary rather than calling the AI SDK directly.
+
+For every sessionless call:
+
+1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
+2. Resolve it through `Agent.get()`, `Agent.getAvailableModel()`, and `Provider.getModel()` so role configuration and availability remain authoritative.
+3. Use `LLM.stream()` so provider transforms, variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization still apply.
+4. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
+5. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
+6. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
+7. Test model-role fallback, timeout/cancellation, parsing, redaction, and failure semantics without making a live provider call.
+
+A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
+
+## Session and Cortex Calls
+
+Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
+
+Use `Cortex.launch()` for new child-agent work. Cortex owns:
+
+- child session creation and parent lineage
+- agent/model resolution and control-profile inheritance
+- concurrency, progress, cancellation, timeouts, and cleanup
+- summary, final-response, or structured output contracts
+- parent delivery and DAG binding
+
+Do not manually combine `Session.create()` and `SessionInvoke.invoke()` for ordinary delegation. Existing specialized flows such as `look_at` and Chronicler predate or bypass parts of the Cortex contract; treat them as cases to justify or converge when touched, not templates for new child work.
+
+Use a hidden reviewer through Cortex for decisions that must be independently auditable. Do not replace a reviewer task with a sessionless classifier merely because both call a model.
+
+## Direct AI SDK Calls
+
+`config/setup.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy.
+
+## Verify and Document
+
+1. Test the chosen lifecycle boundary as a behavior: no session for sessionless work; explicit child lineage and output for Cortex work.
+2. Run focused agent/provider/session/Cortex/permission tests, then typecheck and `quality:quick`.
+3. Update [LLM loop and compaction](../../../docs/architecture/llm-loop.md) when the shared call pipeline or path-selection contract changes.
+4. Update `add-agent` when a new internal-agent registration pattern or model-role rule emerges.
+
+## Handoff
+
+Report why the operation is sessionless, existing-session, Cortex, or bootstrap; the agent/model role; timeout/retry/tool/output policy; persistence and visibility; redaction; and verification.

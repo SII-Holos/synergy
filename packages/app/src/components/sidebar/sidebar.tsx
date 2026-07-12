@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
-import { FlipList } from "@/components/flip-list"
+import { FlipList } from "./flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -25,6 +25,7 @@ import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
 import { listNavigation, subscribeNavigation, type NavigationEntry } from "@/plugin"
+import { selectAppAttention, type AppAttentionNotice } from "./app-attention"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -74,6 +75,7 @@ export function Sidebar(props: SidebarProps) {
   const location = useLocation()
   const params = useParams()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const productUpdate = useProductUpdate()
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
@@ -89,6 +91,33 @@ export function Sidebar(props: SidebarProps) {
     entry.active?.(location.pathname) ?? location.pathname === entry.path
   const navigationIcon = (entry: NavigationEntry) =>
     entry.icon ?? (entry.iconToken ? getSemanticIcon(entry.iconToken) : getSemanticIcon("plugins.main"))
+  const providerNames = createMemo(() =>
+    Object.fromEntries([
+      ...globalSync.data.provider.all.map((provider) => [provider.id, provider.name]),
+      ["github", "GitHub"],
+    ]),
+  )
+  const attention = createMemo(() =>
+    selectAppAttention({
+      productUpdate: productUpdate.notice(),
+      authHealth: globalSync.data.provider.authHealth ?? {},
+      providerNames: providerNames(),
+    }),
+  )
+
+  const runAttentionAction = (notice: AppAttentionNotice) => {
+    const action = notice.action
+    if (action.type === "product-update") {
+      void productUpdate.runNoticeAction()
+      return
+    }
+    dialog.show(() => (
+      <SettingsDialog
+        initialTab={action.section}
+        providerFocusID={action.section === "providers" ? action.providerID : undefined}
+      />
+    ))
+  }
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
@@ -331,6 +360,7 @@ export function Sidebar(props: SidebarProps) {
             <Tooltip value={entry.label} placement="right">
               <button
                 type="button"
+                aria-label={entry.label}
                 classList={{
                   "sb-global-btn": true,
                   "sb-global-active": isNavigationActive(entry),
@@ -355,6 +385,7 @@ export function Sidebar(props: SidebarProps) {
             <Tooltip value="Projects" placement="right">
               <button
                 type="button"
+                aria-label="Projects"
                 classList={{
                   "sb-icon-btn": true,
                   "sb-projects-flyout-trigger": true,
@@ -568,7 +599,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
-      <SidebarUpdateNotice isExpanded={isExpanded()} />
+      <SidebarAttentionNotice notice={attention()} isExpanded={isExpanded()} onAction={runAttentionAction} />
 
       {/* Bottom: Agent Hub */}
       <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
@@ -611,49 +642,51 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-function SidebarUpdateNotice(props: { isExpanded: boolean }) {
-  const update = useProductUpdate()
-  const notice = update.notice
-  const icon = () =>
-    notice().action === "install" ? getSemanticIcon("product.update.install") : getSemanticIcon("product.update")
-
+function SidebarAttentionNotice(props: {
+  notice?: AppAttentionNotice
+  isExpanded: boolean
+  onAction: (notice: AppAttentionNotice) => void
+}) {
   return (
-    <Show when={notice().visible}>
-      <div
-        classList={{
-          "sb-update-notice": true,
-          "sb-update-notice--collapsed": !props.isExpanded,
-        }}
-        data-tone={notice().tone}
-        aria-live="polite"
-      >
-        <Tooltip value={`${notice().title}${notice().detail ? ` — ${notice().detail}` : ""}`} placement="right">
-          <button
-            type="button"
-            class="sb-update-button"
-            disabled={!notice().action || notice().busy}
-            onClick={() => void update.runNoticeAction()}
-          >
-            <span class="sb-update-icon">
-              <Icon name={icon()} size="small" />
-            </span>
-            <Show when={props.isExpanded}>
-              <span class="sb-update-copy">
-                <span class="sb-update-title">{notice().title}</span>
-                <span class="sb-update-detail">{notice().detail}</span>
+    <Show when={props.notice}>
+      {(notice) => (
+        <div
+          classList={{
+            "sb-attention-notice": true,
+            "sb-attention-notice--collapsed": !props.isExpanded,
+          }}
+          data-tone={notice().tone}
+          aria-live="polite"
+        >
+          <Tooltip value={`${notice().title}${notice().detail ? ` — ${notice().detail}` : ""}`} placement="right">
+            <button
+              type="button"
+              class="sb-attention-button"
+              aria-label={`${notice().title}${notice().detail ? `. ${notice().detail}` : ""}`}
+              disabled={notice().busy}
+              onClick={() => props.onAction(notice())}
+            >
+              <span class="sb-attention-icon">
+                <Icon name={getSemanticIcon(notice().iconToken)} size="small" />
               </span>
-              <Show when={notice().actionLabel}>
-                <span class="sb-update-action">{notice().busy ? "Working..." : notice().actionLabel}</span>
+              <Show when={props.isExpanded}>
+                <span class="sb-attention-copy">
+                  <span class="sb-attention-title">{notice().title}</span>
+                  <span class="sb-attention-detail">{notice().detail}</span>
+                </span>
+                <Show when={notice().actionLabel}>
+                  <span class="sb-attention-action">{notice().busy ? "Working..." : notice().actionLabel}</span>
+                </Show>
               </Show>
-            </Show>
-          </button>
-        </Tooltip>
-        <Show when={notice().progress != null}>
-          <div class="sb-update-progress" aria-hidden="true">
-            <span style={{ "--sb-update-progress": `${notice().progress ?? 0}%` }} />
-          </div>
-        </Show>
-      </div>
+            </button>
+          </Tooltip>
+          <Show when={notice().progress != null}>
+            <div class="sb-attention-progress" aria-hidden="true">
+              <span style={{ "--sb-attention-progress": `${notice().progress ?? 0}%` }} />
+            </div>
+          </Show>
+        </div>
+      )}
     </Show>
   )
 }
@@ -1331,6 +1364,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
       <Tooltip value="Agent" placement="right" inactive={props.isExpanded}>
         <button
           type="button"
+          aria-label="Agent menu"
           classList={{
             "sidebar-account-trigger": true,
             "sidebar-account-trigger--expanded": menuOpen(),

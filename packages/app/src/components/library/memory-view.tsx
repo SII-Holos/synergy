@@ -425,7 +425,7 @@ function MemoryCard(props: {
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -466,7 +466,7 @@ function MemoryCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >

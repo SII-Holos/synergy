@@ -1,5 +1,6 @@
 import { For, createMemo } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { PermissionItem } from "./schema"
 
 interface PermissionDiffListProps {
@@ -23,43 +24,43 @@ const CATEGORY_LABELS: Record<string, CategoryLabel> = {
 
 const MODE_CONFIG = {
   added: {
-    icon: "plus" as const,
+    icon: "action.add" as const,
     prefix: "+",
     iconClass: "text-icon-success-base",
     containerClass: "",
   },
   removed: {
-    icon: "x" as const,
+    icon: "action.remove" as const,
     prefix: "\u2212",
-    iconClass: "text-icon-weak opacity-50",
+    iconClass: "text-icon-weak-base opacity-50",
     containerClass: "",
   },
   unchanged: {
-    icon: "circle" as const,
+    icon: "state.empty" as const,
     prefix: "\u003D",
-    iconClass: "text-icon-weak",
+    iconClass: "text-icon-weak-base",
     containerClass: "",
   },
 } as const
 
-function categoryIcon(category: string) {
+function categoryIcon(category: string): SemanticIconTokenName {
   switch (category) {
     case "tools":
-      return "terminal"
+      return "plugins.permission.tools"
     case "runtime":
-      return "cpu"
+      return "plugins.permission.runtime"
     case "network":
-      return "globe"
+      return "plugins.permission.network"
     case "data":
-      return "file-text"
+      return "plugins.permission.data"
     case "ui":
-      return "panel-left"
+      return "plugins.permission.ui"
     case "files":
-      return "folder"
+      return "plugins.permission.filesystem"
     case "hooks":
-      return "code"
+      return "plugins.permission.hooks"
     default:
-      return "circle"
+      return "state.empty"
   }
 }
 
@@ -91,7 +92,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
 
   const iconCircleClass = (mode: string) =>
     `inline-flex size-5 shrink-0 items-center justify-center rounded-full mt-px ${
-      mode === "added" ? "bg-surface-success-soft" : "bg-surface-muted"
+      mode === "added" ? "bg-surface-success-weak" : "bg-surface-weak"
     }`
 
   const titleClassForMode = (mode: string) =>
@@ -99,7 +100,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
       mode === "removed"
         ? "text-text-weak opacity-50 line-through"
         : mode === "added"
-          ? "text-text-success"
+          ? "text-text-on-success-base"
           : "text-text-base"
     }`
 
@@ -115,7 +116,11 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
           {(group) => (
             <div class="permission-diff-group">
               <div class="flex items-center gap-2 mb-1.5">
-                <Icon name={categoryIcon(group.category)} size="small" class="shrink-0 text-icon-weak" />
+                <Icon
+                  name={getSemanticIcon(categoryIcon(group.category))}
+                  size="small"
+                  class="shrink-0 text-icon-weak-base"
+                />
                 <p class="text-12-medium text-text-weak uppercase tracking-wider">
                   {group.label}
                   <span class="ml-1 normal-case tracking-normal text-text-weaker">({group.items.length})</span>
@@ -126,7 +131,7 @@ export function PermissionDiffList(props: PermissionDiffListProps) {
                   {(item) => (
                     <li class="flex items-start gap-2 rounded-md bg-surface-base px-3 py-2">
                       <span class={iconCircleClass(props.mode)}>
-                        <Icon name={config.icon} size="small" class={config.iconClass} />
+                        <Icon name={getSemanticIcon(config.icon)} size="small" class={config.iconClass} />
                       </span>
                       <div class="min-w-0 flex-1">
                         <p class={titleClassForMode(props.mode)}>{item.title}</p>

@@ -63,7 +63,7 @@ a:active,
 
 .avatar-crop-container .cropper-view-box {
   border-radius: 50%;
-  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline: 1px solid var(--border-weak-base);
   outline-offset: -1px;
 }
 
@@ -252,9 +252,11 @@ a:active,
     .bg-surface-base\/70,
     .bg-surface-base\/62,
     .bg-surface-base\/55,
+    .bg-surface-base\/50,
     .bg-surface-base\/45,
     .bg-surface-base\/38,
-    .bg-surface-base\/34
+    .bg-surface-base\/34,
+    .bg-surface-weak\/40
   ) {
   background-color: var(--workbench-card-bg);
 }
@@ -273,7 +275,7 @@ a:active,
 .synergy-workbench-canvas
   :where(
     .bg-surface-inset-base,
-    .bg-surface-subtle,
+    .bg-surface-weak,
     .bg-surface-base-hover,
     .bg-surface-raised-base-hover,
     .bg-surface-raised-stronger-hover,
@@ -296,6 +298,7 @@ a:active,
     .bg-surface-inset-base\/42,
     .bg-surface-inset-base\/40,
     .bg-surface-inset-base\/35,
+    .bg-background-base\/80,
     .bg-background-base\/90,
     .bg-background-base\/72,
     .bg-background-base\/55,
@@ -311,7 +314,8 @@ a:active,
     .bg-surface-interactive-base\/10,
     .bg-surface-interactive-base\/8,
     .bg-surface-interactive-base\/5,
-    .bg-surface-interactive-selected-weak\/70
+    .bg-surface-interactive-selected-weak\/70,
+    .bg-surface-interactive-selected-weak\/40
   ) {
   background-color: var(--workbench-selected-bg);
 }

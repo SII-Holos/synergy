@@ -6,6 +6,7 @@ import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { CodexProvider } from "../../src/provider/codex"
 import { AccountUsage } from "../../src/provider/usage"
+import { ProviderAuthHealth } from "../../src/provider/auth-health"
 import { ProviderProfile } from "../../src/provider/profile"
 import { Plugin } from "../../src/plugin"
 
@@ -263,8 +264,14 @@ test("provider catalog live discovery supports model catalog metadata and legacy
   ])
   ProviderCatalog.reset()
 
-  const catalog = await ProviderCatalog.resolve({
+  const staticCatalog = await ProviderCatalog.resolve({
     forceRefresh: true,
+    includeLive: false,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  expect(Object.keys(staticCatalog["plugin-live-catalog-provider"].models)).toEqual(["static-model"])
+
+  const catalog = await ProviderCatalog.resolve({
     includeLive: true,
     config: { providerCatalog: { enabled: false, offlineCache: false } },
   })
@@ -440,6 +447,79 @@ test("provider auth pool skips exhausted and dead credentials", async () => {
     cooldownUntil: nowSeconds() - 1,
   })
   expect(await Auth.get("openrouter")).toEqual({ type: "api", key: "primary" })
+})
+
+test("provider auth health exposes product states without treating refreshable oauth expiry as failure", async () => {
+  const expired: Auth.StoreEntry = {
+    providerID: "openai-codex",
+    authKind: "oauth" as const,
+    tokens: { accessToken: "expired-access", refreshToken: "refresh-token" },
+    expiresAt: nowSeconds() - 60,
+    source: "web" as const,
+    updatedAt: Date.now(),
+    pool: [
+      {
+        id: "openai-codex",
+        status: "active" as const,
+        authKind: "oauth" as const,
+        tokens: { accessToken: "expired-access", refreshToken: "refresh-token" },
+        expiresAt: nowSeconds() - 60,
+        source: "web" as const,
+        updatedAt: Date.now(),
+      },
+    ],
+  }
+
+  expect(ProviderAuthHealth.fromEntry("openai-codex", expired)).toMatchObject({
+    providerID: "openai-codex",
+    status: "connected",
+  })
+
+  expired.pool![0].status = "dead"
+  expired.pool![0].failureCode = "token_invalidated"
+  expect(ProviderAuthHealth.fromEntry("openai-codex", expired)).toMatchObject({
+    providerID: "openai-codex",
+    status: "action_required",
+    recovery: "reconnect",
+    failureCode: "token_invalidated",
+  })
+})
+
+test("replacing a selected credential preserves backup pool entries", async () => {
+  await Auth.set("openai-codex", {
+    type: "oauth",
+    access: accessToken(),
+    refresh: "refresh-primary",
+    expires: nowSeconds() + 60,
+  })
+  await Auth.addToPool(
+    "openai-codex",
+    "backup",
+    {
+      type: "oauth",
+      access: accessToken(),
+      refresh: "refresh-backup",
+      expires: nowSeconds() + 120,
+    },
+    { source: "web" },
+  )
+
+  const selected = await Auth.select("openai-codex")
+  await Auth.replaceSelectedCredential(
+    "openai-codex",
+    {
+      type: "oauth",
+      access: accessToken(),
+      refresh: "refresh-rotated",
+      expires: nowSeconds() + 3600,
+    },
+    { credentialID: selected?.credentialID, source: "api" },
+  )
+
+  const entry = (await Auth.entries())["openai-codex"]
+  expect(entry.pool?.map((item) => item.id)).toEqual(["openai-codex", "backup"])
+  expect(entry.pool?.[0].tokens.refreshToken).toBe("refresh-rotated")
+  expect(entry.pool?.[1].tokens.refreshToken).toBe("refresh-backup")
 })
 
 test("usage windows normalize reset timestamps", () => {

@@ -1,84 +1,82 @@
 # Synergy
 
-> Synergy is an open-source AI agent platform built as a Bun monorepo. This file is a routing guide for LLMs and external coding agents. Use it to decide which project documents to read before answering questions or making changes.
+> Synergy is an open-source AI agent workspace built as a Bun and TypeScript monorepo. This file routes LLMs and external coding agents to the current documentation; implementation, schemas, generated contracts, and tests remain authoritative.
 
 ## Start Here
 
-- [README.md](README.md): project overview, install flow, runtime surfaces, development commands, and package map.
-- [CONTRIBUTING.md](CONTRIBUTING.md): source contribution process and repository workflow.
-- [docs/agents/README.md](docs/agents/README.md): audience-specific guidance for external agents, plugin authors, and Synergy source contributors.
+- [README.md](README.md): concise product, installation, source-development, and SII project overview.
+- [docs/README.md](docs/README.md): canonical documentation index and ownership map.
+- [docs/product/overview.md](docs/product/overview.md): product objects, surfaces, workflows, connections, and durable principles.
+- [AGENTS.md](AGENTS.md): repository rules for coding agents and contributors.
+- [CONTRIBUTING.md](CONTRIBUTING.md): contribution and pull-request workflow.
 
-## If You Are Building A Synergy Plugin
+## Understand the Product
 
-Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and the `@ericsanchezok/synergy-plugin` SDK. Read `AGENTS.md` when modifying Synergy source.
+- [Workspaces and sessions](docs/product/workspaces-and-sessions.md): Scope, projects, sessions, history, files, and Browser ownership.
+- [Agents, tools, skills, and commands](docs/product/agents-and-tools.md): built-in, configured, plugin, and external agents; exposure and ACP.
+- [Workflows](docs/product/workflows.md): direct work, Plan, Blueprints, BlueprintLoop, Light Loop, Lattice, delegation, and compaction.
+- [Knowledge](docs/product/knowledge.md): Library, Memory, Experience, Notes, Blueprints, recall, and search.
+- [Activity and statistics](docs/product/activity-and-statistics.md): session, token, cost, model, agent, tool, code-change, and time-series summaries.
+- [Automation](docs/product/automation.md): Agenda schedules, session modes, delivery, recovery, and failure behavior.
+- [Connections](docs/product/connections.md): providers, MCP, Channels, Email, Holos, and Synergy Link.
+- [Browser workspace](docs/product/browser.md): shared human/agent page, native and Web presentations, and safety boundaries.
 
-- [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md): shortest agent-facing plugin authoring path.
-- [docs/plugins/development-kit.md](docs/plugins/development-kit.md): what the Plugin Development Kit includes and when a source checkout is needed.
-- [packages/plugin/README.md](packages/plugin/README.md): SDK API reference and descriptor examples.
-- [docs/plugins/02-manifest-reference.md](docs/plugins/02-manifest-reference.md): `plugin.json` manifest reference.
-- [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy-plugin create/validate/build/pack/sign/publish-market/entry` plus Synergy runtime install commands.
-- [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, registry-reviewed signer trust, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
-- [docs/plugin/runtime-isolation.md](docs/plugin/runtime-isolation.md): in-process, worker, and process runtime behavior.
-- [docs/plugin/permissions-consent.md](docs/plugin/permissions-consent.md): approval and capability model.
-- [docs/plugins/04-tool-renderer-guide.md](docs/plugins/04-tool-renderer-guide.md): Web tool renderer contributions.
-- [docs/plugins/05-workbench-panels.md](docs/plugins/05-workbench-panels.md): workbench and app panel contributions.
-- [docs/plugins/06-settings-themes-icons.md](docs/plugins/06-settings-themes-icons.md): settings, themes, icons, app routes, and commands.
+## Understand the Runtime
 
-## Plugin API Invariants
+- [Architecture overview](docs/architecture/README.md): ownership and cross-cutting runtime flow.
+- [Runtime and Scope](docs/architecture/runtime-and-scope.md): stateless server, global runtime, Scope resolution, and client context.
+- [Workspace and files](docs/architecture/workspace-and-files.md): workspace ownership, search, anchored file tools, formatting, LSP, and snapshots.
+- [Sessions and messages](docs/architecture/session-and-messages.md): canonical message semantics, inbox modes, task grouping, persistence, history, and attachments.
+- [LLM loop and compaction](docs/architecture/llm-loop.md): serial task loop, context construction, model calls, tools, retries, and compaction.
+- [Frontend data sync](docs/architecture/frontend-data-sync.md): reconcile writes, sequence/epoch events, replay, streaming, and eviction.
+- [Execution boundaries](docs/architecture/execution-boundaries.md): taxonomy, control profiles, permission enforcement, sandboxing, and worktree isolation.
+- [Cortex](docs/architecture/cortex.md): delegated child sessions, task lifecycle, outputs, and parent notification.
+- [Workflow engine](docs/architecture/workflows.md): Plan, BlueprintLoop, Light Loop, Lattice, and SuperPlan storage substrate.
+- [Browser runtime](docs/architecture/browser-runtime.md): one-session/one-page ownership, Electron native mode, WebRTC mode, and input lifecycle.
 
-- Use only the object descriptor API: `PluginDescriptor { id, name?, init() }`.
-- Export the descriptor object directly.
-- Keep `PluginDescriptor.id`, `plugin.json.name`, registry id, lockfile key, and approval id identical.
-- `contributes.ui.entry` points to a built JavaScript asset, normally `./dist/ui/index.js`; source files such as `src/ui.tsx` are build inputs.
-- Validate with `synergy-plugin validate --runtime-discovery` before build, pack, or publish.
-- Publish to the official market with `synergy-plugin publish-market`; it prepares release assets and the `SII-Holos/synergy-plugins` PR.
+## Exact Reference
 
-## If You Are Modifying Synergy Source
+- [CLI](docs/reference/cli.md): installed product CLI and source-development distinction.
+- [Configuration](docs/reference/configuration.md): global/project domain files, merge order, discovery, and credentials.
+- [Storage and paths](docs/reference/storage-and-paths.md): `SYNERGY_HOME`, durable data, indexes, auth, Browser, worktrees, and backup.
+- [Package map](docs/reference/packages.md): current monorepo package responsibilities and dependency boundaries.
+- [Development](docs/reference/development.md): source modes, isolated second instance, builds, SDK generation, and tests.
 
-Read `AGENTS.md` before changing this repository. That file is for Synergy source development, not for normal plugin authors.
+## Build a Plugin
 
-- [AGENTS.md](AGENTS.md): repository rules for source contributors and coding agents.
-- [README.md](README.md#running-from-this-repository): local source development commands.
-- [packages/synergy/AGENTS.md](packages/synergy/AGENTS.md): core runtime package guidance.
-- [packages/app/AGENTS.md](packages/app/AGENTS.md): Web app package guidance.
+Use `@ericsanchezok/synergy-plugin-kit` and the public `@ericsanchezok/synergy-plugin` SDK. A Synergy source checkout is not required for normal plugin development.
 
-## Source Code Map
+- [Plugin documentation](docs/plugins/README.md): platform overview and canonical index.
+- [Getting started](docs/plugins/getting-started.md): create, develop, validate, build, test, sign, pack, install, and publish.
+- [Manifest reference](docs/plugins/manifest.md): `plugin.json` contract and contribution families.
+- [Runtime and permissions](docs/plugins/runtime-and-permissions.md): provenance, trust, approval, isolation, bridge, lifecycle, and hooks.
+- [Tools and delegation](docs/plugins/tools-and-delegation.md): public runtime tools, helpers, delegated tasks, attachments, and display metadata.
+- [UI contributions](docs/plugins/ui-contributions.md): renderers, workbench surfaces, settings, slots, themes, icons, and commands.
+- [Marketplace](docs/plugins/marketplace.md): official/local registries, signing, publishing, installation, and update flow.
+- [Security](docs/plugins/security.md): review checklist for authors, reviewers, and distributors.
+- [Plugin SDK reference](packages/plugin/README.md): public TypeScript API reference and examples.
 
-- [packages/synergy](packages/synergy): core runtime, server, CLI, sessions, tools, permissions, plugin loading, plugin runtime isolation, MCP, channels, config, scope, and library.
-- [packages/app](packages/app): Web client and plugin UI host.
-- [packages/plugin](packages/plugin): plugin authoring SDK published as `@ericsanchezok/synergy-plugin`.
-- [packages/sdk/js](packages/sdk/js): generated TypeScript SDK for Synergy server APIs.
-- [packages/ui](packages/ui): shared UI component library.
-- [packages/util](packages/util): shared utilities.
-- [docs/plugins](docs/plugins): plugin platform documentation.
-- [docs/plugin](docs/plugin): plugin toolchain, marketplace, runtime, and permission topics.
+## Operate and Release
 
-## Synergy Terminology
+- [Operations index](docs/operations/README.md): current operational runbooks.
+- [Open-source quality](docs/operations/open-source-quality.md): local gates, CI matrix, package validation, and contributor scenarios.
+- [Desktop release](docs/operations/desktop-release.md): packaging, signing, publishing, updates, and recovery.
+- [Performance observability](docs/operations/performance-observability.md): metrics, traces, diagnostics, storage, and tooling.
 
-- Use `Scope` for workspace/context resolution in source and docs.
-- Use `library` for the memory/knowledge subsystem.
-- The built-in primary orchestrators are `synergy` and `synergy-max`.
-- Built-in primary agent names are `synergy` and `synergy-max`.
+## History and Investigation
 
-## Plugin Verification
+- [Research](docs/research/README.md): measurements and investigations that are not current product contracts.
+- [Migrations](docs/migrations/README.md): historical transitions whose upgrade context remains useful.
 
-- `synergy-plugin validate --runtime-discovery`
-- `synergy-plugin build`
-- `synergy-plugin pack`
-- `synergy-plugin publish-market`
+## Repository Workflows
 
-## Source Verification
+The project-local `.synergy/skill/` files are executable workflows for this repository. Load the relevant workflow instead of copying architecture facts into an agent prompt:
 
-- Full quality suite: `bun run quality` (format:check + lint + typecheck + monorepo:check + package:check + all tests)
-- Default local PR preflight: `bun run quality:quick` (format:check + lint + typecheck + monorepo:check + package:check)
-- Plugin SDK typecheck: `bun run --cwd packages/plugin typecheck`
-- Synergy package tests: `cd packages/synergy && bun test <relevant test files>`
-- Whole monorepo typecheck: `bun run typecheck`
-- Web build: `bun run --cwd packages/app build`
-- SDK regeneration after route/schema changes: `./script/generate.ts`
-- Package publishing validation: `bun run package:check`
-- CI workflow lint: `bun run workflow:check`
-- Secret scanning: `bun run secrets:check`
-- Dead code and dependency hygiene: `bun run deadcode`
-- Monorepo dependency consistency: `bun run monorepo:check`
-- Quality model reference: [docs/open-source-quality.md](docs/open-source-quality.md)
+- `architecture`, `develop-synergy`, `testing-guide`, and `git-guide`
+- `development-standards`, `develop-frontend`, and `integrate-llm`
+- `change-server-api` and `change-persistence`
+- `change-execution-boundaries`, `change-browser-runtime`, and `change-plugin-runtime`
+- `add-agent`, `add-cli-command`, and `add-tool`
+- `find-logs`, `inspect-sessions`, and `release-log-workflow`
+
+Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Current built-in primary agents are `synergy` and `synergy-max`; retired terminology belongs only in migration or research material.

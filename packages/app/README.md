@@ -16,6 +16,8 @@ bun dev app --open
 
 Vite handles hot module replacement, so changes appear in the browser immediately.
 
+Frontend colors and selectable themes follow the repository's [semantic theme contract](../../docs/reference/frontend-theming.md). Product components must consume canonical tokens rather than Tailwind palette colors, literal colors, or component-local theme maps.
+
 ## Build
 
 ```bash

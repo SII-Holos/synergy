@@ -22,7 +22,7 @@ import { withPreambleSection } from "@/agent/prompt/preamble"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
-import { PerformanceSpans } from "@/performance/spans"
+import { ObservabilitySpans } from "@/observability/spans"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -320,7 +320,7 @@ export namespace LLM {
 
     const tools = input.tools
 
-    const llmSpan = PerformanceSpans.start({
+    const llmSpan = ObservabilitySpans.start({
       name: "llm.stream.initialization",
       module: "llm",
       sessionID: input.sessionID,
@@ -332,7 +332,7 @@ export namespace LLM {
       const result = streamText({
         onError(error) {
           streamTextTimer.stop()
-          PerformanceSpans.end(llmSpan, { status: "error", error })
+          ObservabilitySpans.end(llmSpan, { status: "error", error })
           l.error("stream error", {
             error,
           })
@@ -399,11 +399,11 @@ export namespace LLM {
         experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
       })
       streamTextTimer.stop()
-      PerformanceSpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
+      ObservabilitySpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
       return result
     } catch (error) {
       streamTextTimer.stop()
-      PerformanceSpans.end(llmSpan, { status: "error", error })
+      ObservabilitySpans.end(llmSpan, { status: "error", error })
       throw error
     }
   }

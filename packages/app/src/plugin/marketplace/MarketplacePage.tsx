@@ -1,10 +1,11 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js"
 import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { AppPanel } from "@/components/app-panel"
-import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
@@ -155,7 +156,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 />
               </div>
               <div class="plugin-marketplace-search">
-                <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+                <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                 <input
                   type="text"
                   value={query()}
@@ -164,7 +165,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 />
                 <Show when={query()}>
                   <button type="button" aria-label="Clear search" onClick={() => handleInput("")}>
-                    <Icon name="x" size="small" />
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </Show>
               </div>
@@ -312,7 +313,7 @@ function PluginRow(props: {
         <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
         <PermissionRiskBadge risk={props.plugin.risk} />
       </span>
-      <Icon name="chevron-right" size="small" class="plugin-marketplace-row-arrow" />
+      <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />
     </button>
   )
 }
@@ -360,7 +361,7 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
           {disabled() ? "Disabled" : "Installed"}
         </span>
       </span>
-      <Icon name="chevron-right" size="small" class="plugin-marketplace-row-arrow" />
+      <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />
     </button>
   )
 }
@@ -369,7 +370,7 @@ function EmptyState(props: { title: string; description: string }) {
   return (
     <div class="plugin-marketplace-empty">
       <span class="plugin-marketplace-empty-icon">
-        <Icon name="package" size="large" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("plugins.main")} size="large" class="text-icon-weak-base" />
       </span>
       <span class="plugin-marketplace-empty-title">{props.title}</span>
       <span class="plugin-marketplace-empty-description">{props.description}</span>

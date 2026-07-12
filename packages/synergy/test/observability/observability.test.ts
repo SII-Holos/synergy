@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { ObservabilityEvents } from "../../src/observability/events"
+import { ObservabilityStore } from "../../src/observability/store"
 
 const originalTestHome = process.env.SYNERGY_TEST_HOME
 
@@ -9,11 +11,13 @@ describe("observability", () => {
   let home: string
 
   beforeEach(async () => {
+    ObservabilityStore.close()
     home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-observability-"))
     process.env.SYNERGY_TEST_HOME = home
   })
 
   afterEach(async () => {
+    ObservabilityStore.close()
     if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
     else process.env.SYNERGY_TEST_HOME = originalTestHome
     await fs.rm(home, { recursive: true, force: true })
@@ -53,6 +57,20 @@ describe("observability", () => {
     expect(events.length).toBe(1)
     expect(events[0].data?.token).toBe("[redacted]")
     expect(JSON.stringify(events[0].data)).not.toContain("abc.def")
+  })
+
+  test("redacts cwd in emitted events", async () => {
+    await ObservabilityEvents.emit("test.cwd", {
+      cwd: "/Users/someuser/very/private/project",
+      module: "observability",
+    })
+    ObservabilityStore.flush()
+    const events = ObservabilityStore.queryEvents({ type: "test.cwd" })
+    expect(events).toHaveLength(1)
+    expect(events[0].cwd).toBeDefined()
+    expect(events[0].cwd).not.toBeNull()
+    expect(events[0].cwd).not.toContain("/Users/someuser")
+    expect(events[0].cwd!.length).toBeLessThanOrEqual(128)
   })
 
   test("releases server process lock explicitly", async () => {

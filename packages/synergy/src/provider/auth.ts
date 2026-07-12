@@ -14,8 +14,17 @@ import { MiniMaxProvider } from "./minimax"
 import { GitHubProvider } from "./github"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
+import { RuntimeReload } from "@/runtime/reload"
 
 export namespace ProviderAuth {
+  async function reloadProvider(reason: string) {
+    if (ScopeContext.tryScope()) {
+      await RuntimeReload.reload({ targets: ["provider"], reason })
+      return
+    }
+    await Provider.reload()
+  }
+
   const state = ScopedState.create(async () => {
     registerBuiltinProviderProfiles()
     const pluginMethods = pipe(
@@ -196,7 +205,7 @@ export namespace ProviderAuth {
         },
         { source },
       )
-      await Provider.reload()
+      await reloadProvider(`provider credentials connected: ${saveProvider}`)
       return true
     }
     await Auth.set(
@@ -209,7 +218,7 @@ export namespace ProviderAuth {
       },
       { source },
     )
-    await Provider.reload()
+    await reloadProvider(`provider credentials connected: ${saveProvider}`)
     return true
   }
 
@@ -274,7 +283,7 @@ export namespace ProviderAuth {
         },
         { source: "web" },
       )
-      await Provider.reload()
+      await reloadProvider(`provider credentials connected: ${input.providerID}`)
     },
   )
 

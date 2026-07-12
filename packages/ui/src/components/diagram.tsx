@@ -1250,14 +1250,15 @@ export function DiagramTree(props: { document: TreeDocument }) {
 // ── Chart ──
 
 const CHART_COLORS = [
-  "var(--surface-brand-base)",
-  "var(--text-on-success-base)",
-  "#f59e0b",
-  "var(--text-on-critical-base)",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-  "#64748b",
+  "var(--chart-series-1)",
+  "var(--chart-series-2)",
+  "var(--chart-series-3)",
+  "var(--chart-series-4)",
+  "var(--chart-series-5)",
+  "var(--chart-series-6)",
+  "var(--chart-series-7)",
+  "var(--chart-series-8)",
+  "var(--chart-series-9)",
 ]
 
 const CHART_PAD = { top: 16, right: 16, bottom: 32, left: 48 }

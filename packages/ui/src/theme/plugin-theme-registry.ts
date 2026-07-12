@@ -1,9 +1,10 @@
 import { synergyTheme } from "./default-themes"
+import type { Theme } from "./types"
 
 export interface PluginThemeDefinition {
   id: string
   label: string
-  cssUrl?: string
+  theme: Theme
   pluginId?: string
 }
 
@@ -18,6 +19,7 @@ export function registerPluginTheme(theme: PluginThemeDefinition): () => void {
   pluginThemes.set(theme.id, theme)
   notify()
   return () => {
+    if (pluginThemes.get(theme.id) !== theme) return
     pluginThemes.delete(theme.id)
     notify()
   }
@@ -32,7 +34,7 @@ export function getPluginTheme(id: string): PluginThemeDefinition | undefined {
 }
 
 export function listThemeChoices(): PluginThemeDefinition[] {
-  return [{ id: synergyTheme.id, label: synergyTheme.name }, ...listPluginThemes()]
+  return [{ id: synergyTheme.id, label: synergyTheme.name, theme: synergyTheme }, ...listPluginThemes()]
 }
 
 export function subscribePluginThemes(listener: () => void): () => void {

@@ -8,7 +8,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Guarded",
     description:
       "Auto-approve reads, safe edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
-    icon: "shield-check",
+    icon: "permission.guarded",
     iconClass: "text-icon-success-base",
   },
   {
@@ -17,7 +17,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Auto",
     description:
       "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
-    icon: "orbit",
+    icon: "permission.autonomous",
     iconClass: "text-icon-interactive-base",
   },
   {
@@ -25,7 +25,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     label: "Full Access",
     shortLabel: "Full",
     description: "Allow all tool requests without approval prompts or workspace sandboxing.",
-    icon: "shield-alert",
+    icon: "permission.fullAccess",
     iconClass: "text-icon-warning-base",
   },
 ]

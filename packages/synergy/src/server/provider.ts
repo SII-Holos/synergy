@@ -5,125 +5,39 @@ import z from "zod"
 import { mapValues } from "remeda"
 import { Provider } from "../provider/provider"
 import { Config } from "../config/config"
-import { ModelsDev } from "../provider/models"
 import { ProviderAuth } from "../provider/auth"
 import { Log } from "../util/log"
 import { errors } from "./error"
 import { ProviderCatalog } from "@/provider/catalog"
+import { RuntimeReload } from "@/runtime/reload"
 import { ProviderUsage } from "@/provider/usage-service"
 import { AccountUsage } from "@/provider/usage"
 import { Auth } from "@/provider/api-key"
 import { ProviderProfile } from "@/provider/profile"
 import { GitHubProvider } from "@/provider/github"
+import { ProviderAuthHealth } from "@/provider/auth-health"
 
 const log = Log.create({ service: "provider" })
-
-const ProviderAuthHealth = z
-  .object({
-    providerID: z.string(),
-    status: z.enum(["connected", "not_configured", "expired", "exhausted", "dead"]),
-    authKind: z.string().optional(),
-    source: z.string().optional(),
-    updatedAt: z.number().optional(),
-    reloginRequired: z.boolean().optional(),
-    cooldownUntil: z.number().optional(),
-    resetAt: z.number().optional(),
-    failureCode: z.string().optional(),
-  })
-  .meta({ ref: "ProviderAuthHealth" })
 
 const ProviderRuntimeAvailability = z
   .object({
     providerID: z.string(),
     available: z.boolean(),
-    reason: z.enum(["connected", "not_connected", "disabled", "no_models"]).optional(),
+    reason: z
+      .enum([
+        "connected",
+        "not_connected",
+        "disabled",
+        "no_models",
+        "authentication_required",
+        "exhausted",
+        "fallback_unverified",
+      ])
+      .optional(),
     healthCheck: z.enum(["models", "none"]).optional(),
     modelCount: z.number(),
   })
   .meta({ ref: "ProviderRuntimeAvailability" })
-
-async function authHealth(
-  providerID: string,
-  entry: Auth.StoreEntry | undefined,
-): Promise<z.infer<typeof ProviderAuthHealth>> {
-  if (!entry) {
-    return {
-      providerID,
-      status: "not_configured",
-      reloginRequired: false,
-    }
-  }
-  const now = Date.now()
-  const selected = await Auth.select(providerID)
-  if (selected) {
-    const info = selected.auth
-    if (info.type === "oauth" && info.expires * 1000 <= now) {
-      return {
-        providerID,
-        status: "expired",
-        authKind: selected.poolEntry?.authKind ?? entry.authKind,
-        source: selected.poolEntry?.source ?? entry.source,
-        updatedAt: selected.poolEntry?.updatedAt ?? entry.updatedAt,
-        reloginRequired: false,
-      }
-    }
-    return {
-      providerID,
-      status: "connected",
-      authKind: selected.poolEntry?.authKind ?? entry.authKind,
-      source: selected.poolEntry?.source ?? entry.source,
-      updatedAt: selected.poolEntry?.updatedAt ?? entry.updatedAt,
-      reloginRequired: false,
-    }
-  }
-
-  const pool = entry.pool ?? []
-  const dead = pool.find((item) => item.status === "dead")
-  const exhausted = pool.find((item) => item.status === "exhausted")
-  if (dead && pool.every((item) => item.status === "dead")) {
-    return {
-      providerID,
-      status: "dead",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: true,
-      failureCode: dead.failureCode,
-    }
-  }
-  if (exhausted) {
-    return {
-      providerID,
-      status: "exhausted",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: false,
-      cooldownUntil: exhausted.cooldownUntil,
-      resetAt: exhausted.resetAt,
-      failureCode: exhausted.failureCode,
-    }
-  }
-  const info = Auth.infoFromEntry(entry)
-  if (info?.type === "oauth" && info.expires * 1000 <= now) {
-    return {
-      providerID,
-      status: "expired",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: false,
-    }
-  }
-  return {
-    providerID,
-    status: "connected",
-    authKind: entry.authKind,
-    source: entry.source,
-    updatedAt: entry.updatedAt,
-    reloginRequired: false,
-  }
-}
 
 export const ProviderRoute = new Hono()
   .get(
@@ -139,13 +53,13 @@ export const ProviderRoute = new Hono()
             "application/json": {
               schema: resolver(
                 z.object({
-                  all: ModelsDev.Provider.array(),
+                  all: Provider.Info.array(),
                   default: z.record(z.string(), z.string()),
                   connected: z.array(z.string()),
                   configProviders: z.array(z.string()),
                   catalogProviders: z.array(z.string()),
                   profiles: z.record(z.string(), ProviderProfile.Metadata),
-                  authHealth: z.record(z.string(), ProviderAuthHealth),
+                  authHealth: z.record(z.string(), ProviderAuthHealth.Info),
                   runtimeAvailability: z.record(z.string(), ProviderRuntimeAvailability),
                 }),
               ),
@@ -185,37 +99,77 @@ export const ProviderRoute = new Hono()
         ]),
       )
       const entries = await Auth.entries()
+      const healthProviderIDs = new Set([
+        ...Object.keys(providers),
+        ...Object.keys(entries),
+        GitHubProvider.PROVIDER_ID,
+      ])
       const authHealthByProvider = Object.fromEntries(
-        await Promise.all(
-          Object.values(providers).map(async (provider) => [
-            provider.id,
-            await authHealth(provider.id, entries[provider.id]),
-          ]),
-        ),
+        [...healthProviderIDs].map((providerID) => {
+          const health = ProviderAuthHealth.fromEntry(providerID, entries[providerID])
+          if (health.status !== "not_configured") return [providerID, health]
+          const provider = providers[providerID]
+          const profile = ProviderProfile.get(providerID)
+          const githubEnvironment =
+            providerID === GitHubProvider.PROVIDER_ID &&
+            !!(process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim())
+          const runtimeConnected = Object.prototype.hasOwnProperty.call(connected, providerID)
+          if (!runtimeConnected && !githubEnvironment) return [providerID, health]
+          const environment = provider?.env?.some((name) => !!process.env[name]?.trim()) || githubEnvironment
+          return [
+            providerID,
+            {
+              providerID,
+              status: "connected" as const,
+              authKind: profile?.authKind,
+              source: environment ? "env" : profile?.origin === "plugin" ? "plugin" : undefined,
+            },
+          ]
+        }),
       )
       const runtimeAvailability = mapValues(providers, (provider) => {
         const disabledProvider = disabled.has(provider.id)
         const modelCount = Object.keys(provider.models).length
+        const health = authHealthByProvider[provider.id]
+        const authenticationRequired = health?.status === "action_required"
+        const credentialExhausted = health?.status === "exhausted"
         const available =
-          !disabledProvider && Object.prototype.hasOwnProperty.call(connected, provider.id) && modelCount > 0
+          !disabledProvider &&
+          !authenticationRequired &&
+          !credentialExhausted &&
+          Object.prototype.hasOwnProperty.call(connected, provider.id) &&
+          modelCount > 0
         const profile = ProviderProfile.get(provider.id)
+        const fallbackUnverified = ProviderCatalog.liveDiscoveryStatus(provider.id) === "fallback"
         return {
           providerID: provider.id,
           available,
           reason: disabledProvider
             ? ("disabled" as const)
-            : modelCount === 0
-              ? ("no_models" as const)
-              : available
-                ? ("connected" as const)
-                : ("not_connected" as const),
+            : authenticationRequired
+              ? ("authentication_required" as const)
+              : credentialExhausted
+                ? ("exhausted" as const)
+                : modelCount === 0
+                  ? ("no_models" as const)
+                  : fallbackUnverified && available
+                    ? ("fallback_unverified" as const)
+                    : available
+                      ? ("connected" as const)
+                      : ("not_connected" as const),
           healthCheck: profile?.healthCheck ?? "models",
           modelCount,
         }
       })
+      const defaultModels = Object.fromEntries(
+        Object.entries(providers).flatMap(([providerID, provider]) => {
+          const model = Provider.sort(Object.values(provider.models))[0]
+          return model ? [[providerID, model.id]] : []
+        }),
+      )
       return c.json({
         all: Object.values(providers),
-        default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
+        default: defaultModels,
         connected: Object.keys(connected),
         configProviders,
         catalogProviders: Object.keys(filteredProviders),
@@ -337,7 +291,7 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       await GitHubProvider.remove()
-      await Provider.reload()
+      await RuntimeReload.reload({ targets: ["provider"], reason: "GitHub credentials removed" })
       return c.json(true)
     },
   )

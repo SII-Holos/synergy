@@ -1,190 +1,52 @@
 ---
 name: release-log-workflow
-description: "Workflow for analyzing a new Synergy release from git history, drafting release notes, publishing a dedicated Feishu child document under the update-log wiki, and inserting a newest-first summary entry into the update-log index. Use when the user asks to analyze a new version, supplement 飞书更新日志, create a release child doc, update the 更新日志首页, or generate matching Wiki/GitHub release copy. Triggers: '更新日志', 'release notes', '版本更新', '补更新日志', '创建子文档', 'GitHub release', '分析 1.x.x 改动'."
+description: Analyze a Synergy release range, draft user-facing release notes, publish a dedicated Feishu update-log child document, update the newest-first index, or derive Wiki and GitHub Release variants. Use for release notes, 更新日志, version summaries, Feishu release pages, index updates, and GitHub release copy.
 ---
 
-# Release Log Workflow
+# Produce a Release Log
 
-## Goal
+## Set the Scope
 
-For each new release, do this in order:
+1. Confirm the release version, previous comparison point, repository range, date, language, target surfaces, and whether publication is requested.
+2. Read `references/release-checklist.md`. Before any Feishu write, also read `references/feishu-template.md` for the current node, title, and index contract.
+3. Do not publish, edit the index, create a GitHub release, or send an announcement when the user asked only for analysis or a draft.
 
-1. Confirm the git range for the release
-2. Analyze the final user-visible result of the commits
-3. Draft release notes
-4. Create a dedicated Feishu child document under the update-log wiki node
-5. Insert a newest-first summary entry at the top of the update-log index page
-6. Optionally generate Wiki-announcement and GitHub Release variants
-
-## Scope discipline
-
-Prefer the final shipped result over commit-by-commit narration.
-
-Ignore unless user explicitly wants them:
-
-- release script churn
-- pure cleanup / deletion
-- formatting-only changes
-- docs-only changes
-- test-only changes unless they explain a stability fix
-
-If features changed back and forth, summarize the final outcome only.
-
-## Repo-specific constants used in this project
-
-For the concrete Feishu release-log layout and index pattern, see `references/feishu-template.md`.
-For a quick execution checklist before publishing, see `references/release-checklist.md`.
-
-Current Feishu update-log wiki page:
-
-- URL: `https://sii-czxy.feishu.cn/wiki/DUT9wguAFiMl6pkFL8gcHWrmnoc`
-- Wiki node token: `DUT9wguAFiMl6pkFL8gcHWrmnoc`
-- Current doc token for the index page: `OGrmdkSyPoxLdrxLc9xceKH7nfd`
-
-Use those values unless the user tells you they changed.
-
-## Step 1: Confirm the release range
-
-Check recent tags and commit history first.
-
-Typical commands:
+## Establish the Shipped Delta
 
 ```bash
-git tag --list | sort -V | tail -n 20
-git log --oneline --decorate --max-count=40
+git tag --list --sort=-version:refname | head -20
+git log --oneline --decorate <previous>..<release>
+git diff --stat <previous>..<release>
 ```
 
-Then identify the range, typically:
+Inspect ambiguous commits with `git show`, targeted diffs, tests, and current product docs. Group the final shipped behavior by product area. Exclude formatting, release mechanics, tests, docs, and implementation churn unless they explain a user-visible capability, compatibility change, or reliability fix.
 
-- patch release: previous tag..new tag
-- medium release after cross-repo migration: may require combining predecessor and current repo ranges if user explicitly asks
+## Draft Once
 
-## Step 2: Analyze commits
+Create one evidence-backed source note with:
 
-Read:
+- title and short summary
+- at-a-glance changes
+- details grouped by product theme
+- upgrade or migration notes
+- fixes and polish
+- restrained next steps when appropriate
 
-- `git show --stat --summary <commit...>` for candidate commits
-- `git diff --stat <old>..<new>` for scope
-- targeted `grep` / `read` on touched files when commit subjects are not enough
+Describe final behavior rather than commit chronology. Verify product names against [Product overview](../../../docs/product/overview.md) and current terminology against [Documentation](../../../docs/README.md).
 
-Produce findings in product language:
+Derive shorter Wiki-announcement or GitHub Release versions from the same findings; do not re-analyze the range separately.
 
-- new capabilities
-- important bug fixes
-- behavior changes
-- upgrade notes
+## Publish to Feishu When Authorized
 
-For each theme, prefer 1-3 concrete bullets over a giant raw commit dump.
+1. Fetch the current index before writing and preserve every prior entry.
+2. Create a dedicated child document under the configured update-log wiki node using the title format in `feishu-template.md`.
+3. Fetch the child document and verify its title, sections, links, and content.
+4. Insert one date/version/link/summary entry at the top of the full index document.
+5. Overwrite the index only with the complete newest-first content.
+6. Fetch the index again and verify the new entry, prior entries, order, and child link.
 
-## Step 3: Draft the main release note
+Prefer the available Feishu document/knowledge tools. If the environment exposes `lark-cli`, use its document create, fetch, and update commands as shown in the reference. Never treat a successful write response as final verification.
 
-Use this structure unless the user wants a different one:
+## Handoff
 
-- Title
-- Summary
-- At a Glance
-- Details
-- Upgrade Notes
-- Fixes & Polish
-- Next
-
-Tone:
-
-- Chinese by default when the user writes in Chinese
-- medium-to-detailed for `.0` / `.x` releases
-- concise for small patch releases
-
-## Step 4: Publish a Feishu child doc
-
-Before drafting the Feishu child doc, read `references/feishu-template.md` and match the release-note style used in this workspace.
-
-Use `lark-cli docs +create` with `--wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc`.
-
-Pattern:
-
-```bash
-lark-cli docs +create --title "1.2.1-20260413" --wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc --markdown "..."
-```
-
-The title follows `<version>-<YYYYMMDD>` format per `references/feishu-template.md`. Example: `1.2.1-20260413`.
-
-Important:
-
-- Create a dedicated child doc; do NOT paste the full note directly into the update-log index page
-- Capture both `doc_id` and `doc_url`
-- After creation, verify with `lark-cli docs +fetch --doc "<doc_url>" --format pretty`
-
-## Step 5: Update the index page
-
-The update-log homepage is an index, not the full article.
-
-Rules:
-
-- newest entry goes at the top
-- each entry contains:
-  - date + version heading
-  - one clickable doc link
-  - 1-2 sentence summary
-- preserve existing release entries below
-- use stable markdown links if `mention-doc` blocks are flaky
-
-Pattern:
-
-```markdown
-## 2026-04-13 · 1.2.1
-
-[Synergy 1.2.1](https://www.feishu.cn/wiki/...)
-
-一句到两句摘要。
-```
-
-Then overwrite the index page with the full newest-first list via:
-
-```bash
-lark-cli docs +update --doc OGrmdkSyPoxLdrxLc9xceKH7nfd --mode overwrite --markdown "..."
-```
-
-## Step 6: Verify both pages
-
-Always verify:
-
-```bash
-lark-cli docs +fetch --doc "<child_doc_url>" --format pretty
-lark-cli docs +fetch --doc "https://sii-czxy.feishu.cn/wiki/DUT9wguAFiMl6pkFL8gcHWrmnoc" --format pretty
-```
-
-Check for:
-
-- child doc exists and contains the expected sections
-- index page still includes prior release entries
-- newest version is at the top
-- summary text matches the actual release
-
-## Optional deliverables
-
-When requested, derive two more versions from the same analysis:
-
-- Wiki announcement version: more narrative, more announcement-like
-- GitHub Release version: tighter, more structured, more concise
-
-Do not re-analyze from scratch; reuse the same findings.
-
-## Common pitfalls
-
-Avoid these mistakes:
-
-- appending the full release note into the index page
-- forgetting to preserve prior index entries
-- writing only from commit subjects without checking code touch points
-- over-indexing on cleanup / docs churn
-- missing explicit user-priority themes such as memory optimization, Feishu bugs, Meta-Synergy recovery, external agents, or Holos changes
-
-## Recommended final handoff
-
-When done, report:
-
-- analyzed range
-- main release themes
-- child doc URL
-- index page updated status
-- any caveats such as missing release docs or flaky Feishu block rendering
+Report the analyzed range, main themes, excluded noise, draft or published surfaces, child-document URL, index verification, and any missing tag, artifact, or release evidence. Do not expose local paths, private tokens, or unrelated Feishu content.

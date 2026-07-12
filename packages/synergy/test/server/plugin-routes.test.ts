@@ -159,6 +159,11 @@ describe("checkPathContainment (path traversal guard)", () => {
     )
   })
 
+  test("allows contained names that begin with two dots", () => {
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    expect(checkPathContainment(base, "..cache/ui.js")).toBe(path.join(base, "..cache", "ui.js"))
+  })
+
   test("rejects Windows cross-drive paths", () => {
     if (process.platform !== "win32") return
     expect(checkPathContainment("C:\\plugins\\plugin-a", "D:\\plugins\\plugin-a\\dist\\ui.js")).toBeNull()

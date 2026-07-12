@@ -5,8 +5,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { AppPanel } from "@/components/app-panel"
-import { WorkspaceMobileHeader } from "@/components/workspace-mobile-header"
-import { useWorkspaceMobileHeaderClose } from "@/components/workspace-mobile-header-close"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, formatBytes } from "./shared"
 import { StatsView, type LibraryStatsSyncHandle } from "./stats/stats-view"
@@ -112,7 +112,7 @@ export function LibraryPanel() {
               <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
               <Show when={showSearch()}>
                 <div class="library-search-field">
-                  <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak shrink-0" />
+                  <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                   <input
                     type="text"
                     placeholder={

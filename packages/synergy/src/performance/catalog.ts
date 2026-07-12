@@ -16,7 +16,7 @@ export namespace PerformanceCatalog {
     module: PerformanceSchema.Module
     source: PerformanceSchema.Source
     labels: string[]
-    status: "emitted" | "derived" | "deprecated_alias" | "internal"
+    status: "emitted" | "derived" | "internal"
     aliases?: string[]
   }
 
@@ -86,6 +86,21 @@ export namespace PerformanceCatalog {
       "backend",
       ["providerID", "modelID"],
       { aliases: ["llm.output.chars"] },
+    ),
+    metric("llm.stream.chunk_gap", "Average LLM stream chunk gap", "ms", "duration", "p95", "llm", "backend", [
+      "provider",
+      "model",
+      "kind",
+    ]),
+    metric(
+      "llm.stream.output_chars_per_second",
+      "LLM stream character throughput",
+      "count",
+      "rate",
+      "avg",
+      "llm",
+      "backend",
+      ["provider", "model", "kind"],
     ),
     metric("llm.tokens.input", "LLM input tokens", "tokens", "counter", "sum", "llm", "backend", [
       "providerID",
@@ -282,11 +297,6 @@ export namespace PerformanceCatalog {
 
   export function resolveName(name: string) {
     return aliasToName.get(name) ?? name
-  }
-
-  export function storageNamesFor(name: string) {
-    const info = byName.get(name)
-    return [name, ...(info?.aliases ?? [])]
   }
 
   function metric(

@@ -56,7 +56,7 @@ const performanceQueryParameters: Record<string, OpenApiParameter[]> = {
     query("limit", { type: "integer", minimum: 1, maximum: 200 }),
     query("cursor", { type: "string" }),
     query("kind", {
-      enum: ["request", "session", "agent", "tool", "provider", "runtime", "storage", "frontend"],
+      enum: ["request", "session", "tool", "provider", "runtime", "storage", "frontend", "mcp", "plugin", "channel"],
       type: "string",
     }),
     query("status", { $ref: "#/components/schemas/PerfSpanStatus" }),

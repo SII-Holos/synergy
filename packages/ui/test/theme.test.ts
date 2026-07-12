@@ -1,14 +1,22 @@
 import { describe, test, expect } from "bun:test"
-import { resolveThemeVariant, resolveTheme, themeToCss } from "../src/theme/resolve"
+import { resolveThemeVariant, resolveTheme, resolveThemeColor, themeToCss } from "../src/theme/resolve"
 import { synergyTheme } from "../src/theme/default-themes"
 import { getSavedColorScheme, getSystemMode, isColorScheme, resolveColorSchemeMode } from "../src/theme/color-scheme"
+import { THEME_TOKEN_NAMES, type ThemeTokenName } from "../src/theme/tokens"
+import { parseTheme } from "../src/theme/schema"
+import { hexToRgb, withAlpha } from "../src/theme/color"
 import type { ResolvedTheme } from "../src/theme/types"
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function allTokens(theme: ResolvedTheme): string[] {
-  return Object.keys(theme).sort()
+function allTokens(theme: ResolvedTheme): ThemeTokenName[] {
+  return (Object.keys(theme) as ThemeTokenName[]).sort()
 }
+
+test("resolves CSS variable references for imperative consumers", () => {
+  const resolved = resolveTheme(synergyTheme).light
+  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
+})
 
 function luminance(value: string): number {
   const hex = value.trim()
@@ -20,15 +28,28 @@ function luminance(value: string): number {
   return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 }
 
-function expectBrighter(theme: ResolvedTheme, inner: string, outer: string) {
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = luminance(foreground)
+  const backgroundLuminance = luminance(background)
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  )
+}
+
+function expectReadablePair(theme: ResolvedTheme, foreground: ThemeTokenName, background: ThemeTokenName) {
+  expect(contrastRatio(theme[foreground], theme[background])).toBeGreaterThanOrEqual(4.5)
+}
+
+function expectBrighter(theme: ResolvedTheme, inner: ThemeTokenName, outer: ThemeTokenName) {
   expect(luminance(theme[inner])).toBeGreaterThan(luminance(theme[outer]))
 }
 
-function expectAtLeastAsBright(theme: ResolvedTheme, inner: string, outer: string) {
+function expectAtLeastAsBright(theme: ResolvedTheme, inner: ThemeTokenName, outer: ThemeTokenName) {
   expect(luminance(theme[inner])).toBeGreaterThanOrEqual(luminance(theme[outer]))
 }
 
-function expectAtMostAsBright(theme: ResolvedTheme, inner: string, outer: string) {
+function expectAtMostAsBright(theme: ResolvedTheme, inner: ThemeTokenName, outer: ThemeTokenName) {
   expect(luminance(theme[inner])).toBeLessThanOrEqual(luminance(theme[outer]))
 }
 
@@ -149,6 +170,144 @@ describe("resolveTheme (synergy)", () => {
     expect(lightNames).toEqual(darkNames)
   })
 
+  test("resolved variants exactly match the canonical token contract", () => {
+    const resolved = resolveTheme(synergyTheme)
+    expect(allTokens(resolved.light)).toEqual([...THEME_TOKEN_NAMES].sort())
+    expect(allTokens(resolved.dark)).toEqual([...THEME_TOKEN_NAMES].sort())
+  })
+
+  test("a second seed-only theme resolves the complete token contract", () => {
+    const theme = parseTheme({
+      name: "Ember Test",
+      id: "ember-test",
+      light: {
+        seeds: {
+          neutral: "#756f69",
+          primary: "#9a5b32",
+          success: "#34845c",
+          warning: "#a76d19",
+          error: "#b34b42",
+          info: "#557ca7",
+          interactive: "#7556a8",
+          diffAdd: "#34845c",
+          diffDelete: "#b34b42",
+        },
+      },
+      dark: {
+        seeds: {
+          neutral: "#aaa29a",
+          primary: "#d48652",
+          success: "#55b77f",
+          warning: "#d8a44d",
+          error: "#dc7268",
+          info: "#7fa8d2",
+          interactive: "#a98bd4",
+          diffAdd: "#55b77f",
+          diffDelete: "#dc7268",
+        },
+      },
+    })
+    const resolved = resolveTheme(theme)
+    expect(allTokens(resolved.light)).toEqual([...THEME_TOKEN_NAMES].sort())
+    expect(allTokens(resolved.dark)).toEqual([...THEME_TOKEN_NAMES].sort())
+    for (const variant of [resolved.light, resolved.dark]) {
+      expectReadablePair(variant, "text-on-interactive-base", "surface-interactive-solid")
+      expectReadablePair(variant, "text-on-success-base", "surface-success-weak")
+      expectReadablePair(variant, "text-on-warning-base", "surface-warning-weak")
+      expectReadablePair(variant, "text-on-critical-base", "surface-critical-weak")
+    }
+    expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
+    expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")
+    expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
+  })
+
+  test("theme parsing rejects unknown tokens and unsupported color syntax", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          overrides: { ...synergyTheme.light.overrides, "unknown-token": "#ffffff" },
+        },
+      }),
+    ).toThrow()
+
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        dark: {
+          ...synergyTheme.dark,
+          overrides: { ...synergyTheme.dark.overrides, "border-base": "rgba(255, 255, 255, 0.2)" },
+        },
+      }),
+    ).toThrow()
+
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          overrides: { ...synergyTheme.light.overrides, "border-base": "var(--unknown-token)" },
+        },
+      }),
+    ).toThrow()
+  })
+
+  test("theme parsing rejects cyclic token references before registration", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          overrides: { ...synergyTheme.light.overrides, "border-base": "var(--border-base)" },
+        },
+      }),
+    ).toThrow("Cyclic theme token reference")
+  })
+
+  test("theme parsing rejects translucent seed colors", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          seeds: { ...synergyTheme.light.seeds, primary: "#ff000080" },
+        },
+      }),
+    ).toThrow()
+  })
+
+  test("dark status foregrounds remain readable for dark author seeds", () => {
+    const seeds = {
+      ...synergyTheme.dark.seeds,
+      error: "#7f1d1d",
+    }
+    const theme = parseTheme({
+      name: "Dark Red Test",
+      id: "dark-red-test",
+      light: { seeds: synergyTheme.light.seeds },
+      dark: { seeds },
+    })
+    const resolved = resolveTheme(theme)
+    expectReadablePair(resolved.dark, "text-on-critical-base", "surface-critical-weak")
+  })
+
+  test("theme parsing rejects overrides that break required contrast pairs", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        dark: {
+          ...synergyTheme.dark,
+          overrides: {
+            ...synergyTheme.dark.overrides,
+            "surface-critical-weak": "#111111",
+            "text-on-critical-base": "#121212",
+          },
+        },
+      }),
+    ).toThrow("Theme contrast requirement failed")
+  })
+
   // ── Contract: every consumer-referenced token exists ────
 
   for (const token of CONSUMER_REQUIRED_TOKENS) {
@@ -166,7 +325,6 @@ describe("resolveTheme (synergy)", () => {
     for (const [key, value] of Object.entries(resolved.light)) {
       const valid =
         (typeof value === "string" && value.startsWith("#")) ||
-        (typeof value === "string" && value.startsWith("rgba(")) ||
         (typeof value === "string" && value.startsWith("var(--"))
       if (!valid) {
         throw new Error(`light token --${key} has non-conformant value: ${JSON.stringify(value)}`)
@@ -187,7 +345,9 @@ describe("resolveTheme (synergy)", () => {
 
   test("dark variant has at least one color differing from light", () => {
     const resolved = resolveTheme(synergyTheme)
-    const diffs = Object.keys(resolved.light).filter((key) => resolved.light[key] !== resolved.dark[key])
+    const diffs = (Object.keys(resolved.light) as ThemeTokenName[]).filter(
+      (key) => resolved.light[key] !== resolved.dark[key],
+    )
     expect(diffs.length).toBeGreaterThan(3)
   })
 
@@ -227,6 +387,29 @@ describe("resolveTheme (synergy)", () => {
     expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 
+  test("categorical chart series stay complete and visually distinct in both modes", () => {
+    const series = THEME_TOKEN_NAMES.filter((token) => token.startsWith("chart-series-"))
+    expect(series).toHaveLength(9)
+
+    const resolved = resolveTheme(synergyTheme)
+    for (const variant of [resolved.light, resolved.dark]) {
+      const colors = series.map((token) => resolveThemeColor(variant, token))
+      expect(new Set(colors).size).toBeGreaterThanOrEqual(7)
+    }
+  })
+
+  test("semantic foreground and surface pairs meet WCAG AA contrast", () => {
+    const resolved = resolveTheme(synergyTheme)
+    for (const variant of [resolved.light, resolved.dark]) {
+      expectReadablePair(variant, "text-base", "background-base")
+      expectReadablePair(variant, "text-weak", "surface-base")
+      expectReadablePair(variant, "text-on-interactive-base", "surface-interactive-solid")
+      expectReadablePair(variant, "text-on-success-base", "surface-success-weak")
+      expectReadablePair(variant, "text-on-warning-base", "surface-warning-weak")
+      expectReadablePair(variant, "text-on-critical-base", "surface-critical-weak")
+    }
+  })
+
   // ── CSS output ──────────────────────────────────────────
 
   test("themeToCss produces valid CSS custom properties", () => {
@@ -259,5 +442,15 @@ describe("resolveTheme (synergy)", () => {
 
   test("synergyTheme id is 'synergy'", () => {
     expect(synergyTheme.id).toBe("synergy")
+  })
+})
+
+describe("hex color helpers", () => {
+  test("reads RGB channels without shifting eight-digit alpha input", () => {
+    expect(hexToRgb("#ff000080")).toEqual({ r: 1, g: 0, b: 0 })
+  })
+
+  test("writes alpha as canonical eight-digit hex", () => {
+    expect(withAlpha("#ff0000", 0.5)).toBe("#ff000080")
   })
 })

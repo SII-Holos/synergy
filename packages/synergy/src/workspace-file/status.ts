@@ -116,8 +116,12 @@ export namespace WorkspaceFileStatus {
 
   export async function statusForPath(relativePath: string): Promise<WorkspaceFile.GitStatus | undefined> {
     if (!relativePath) return undefined
-    const current = await summary()
-    const exact = current.files.find((file) => file.path === relativePath)
-    return exact?.status
+    await summary()
+    return state().byPath.get(relativePath)
+  }
+
+  export async function statusMap(): Promise<ReadonlyMap<string, WorkspaceFile.GitStatus>> {
+    await summary()
+    return state().byPath
   }
 }

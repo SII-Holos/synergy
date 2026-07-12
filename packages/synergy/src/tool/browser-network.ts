@@ -1,72 +1,61 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BrowserToolHelper } from "./browser-shared"
-import { BrowserPolicy } from "../browser/policy"
-import { BrowserOwner } from "../browser/owner"
+import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
-    "Get network requests from a browser page's network buffer. Returns request details (URL, method, status, MIME type) with sensitive headers stripped. Use this to inspect page loading, API calls, and resource fetches.",
-  parameters: z.object({
-    pageId: z.string().describe("Browser page ID. Uses the session page if omitted.").optional(),
-    maxEntries: z.number().describe("Maximum entries to return (default 20).").default(20).optional(),
-    filter: z.string().describe("Optional regex pattern to filter requests by URL.").optional(),
-  }),
+    "Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific id. Sensitive headers and payload data are redacted by default.",
+  parameters: z
+    .object({
+      action: z.enum(["list", "get", "clear"]).default("list"),
+      id: z.string().max(20_000).optional().describe("Required only for get."),
+      resourceTypes: z.array(z.string().max(1_000)).max(100).optional(),
+      status: z.number().int().optional(),
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(500).optional(),
+      includeBody: z.boolean().optional(),
+      includeSensitive: z.boolean().optional(),
+      maxBodyBytes: z.number().int().min(1).max(200_000).optional(),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (value.action === "get" && !value.id)
+        ctx.addIssue({ code: "custom", path: ["id"], message: "id is required for get." })
+      if (value.action !== "get" && value.id !== undefined)
+        ctx.addIssue({ code: "custom", path: ["id"], message: "id is valid only for get." })
+      if (value.action !== "get" && value.includeBody)
+        ctx.addIssue({ code: "custom", path: ["includeBody"], message: "includeBody is valid only for get." })
+      if (value.action !== "list") {
+        for (const field of ["resourceTypes", "status", "page", "pageSize"] as const) {
+          if (value[field] !== undefined)
+            ctx.addIssue({ code: "custom", path: [field], message: `${field} is valid only for list.` })
+        }
+      }
+      if (value.action !== "get" && value.maxBodyBytes !== undefined)
+        ctx.addIssue({ code: "custom", path: ["maxBodyBytes"], message: "maxBodyBytes is valid only for get." })
+      if (value.action === "clear" && value.includeSensitive !== undefined)
+        ctx.addIssue({
+          code: "custom",
+          path: ["includeSensitive"],
+          message: "includeSensitive is valid only for list or get.",
+        })
+    }),
   async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+    const browserPage = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
+      browserPage,
       "reading",
       "browser_network",
-      "Reading network requests",
+      `${params.action} network`,
       async () => {
-        const result = await BrowserToolHelper.executeControl(owner, {
-          type: "network",
-          pageId: tab.id,
-          maxEntries: params.maxEntries ?? 20,
-        })
-        if (result.type !== "network") throw new Error("Browser network command returned an unexpected result")
-        const requests = result.requests
-
-        let filtered = requests
-        if (params.filter) {
-          let filterRegex: RegExp
-          try {
-            filterRegex = new RegExp(params.filter, "i")
-          } catch {
-            throw new Error(`Invalid regex filter: ${params.filter}`)
-          }
-          filtered = requests.filter((r) => filterRegex.test(r.url))
-        }
-
-        // Strip sensitive headers before formatting output
-        const sanitized = filtered.map((r) => ({
-          ...r,
-          responseHeaders: r.responseHeaders ? BrowserPolicy.sanitizeHeaders(r.responseHeaders) : undefined,
-        }))
-
-        if (sanitized.length === 0) {
-          return {
-            title: `Network requests (0, tab: ${tab.id})`,
-            output: "No network requests captured.",
-            metadata: { requestCount: 0 },
-          }
-        }
-
-        const lines = sanitized.map((req) => {
-          const ts = new Date(req.timestamp).toISOString()
-          const method = req.method.padEnd(7)
-          const status = req.status != null ? String(req.status).padStart(3) : "---"
-          const type = req.mimeType ?? "---"
-          return `[${ts}] ${status} ${method} ${type} ${req.url}`
-        })
-
+        const result = await BrowserToolHelper.execute(ctx, { type: "network", ...params })
+        if (result.type !== "data") throw new Error("Browser network returned an unexpected result.")
+        const formatted = formatBrowserJSON(result.data)
         return {
-          title: `Network requests (${sanitized.length}, tab: ${tab.id})`,
-          output: lines.join("\n"),
-          metadata: { requestCount: sanitized.length },
+          title: `Browser network: ${params.action}`,
+          output: formatted.output,
+          metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
         }
       },
     )

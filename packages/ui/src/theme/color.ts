@@ -1,21 +1,32 @@
 import type { HexColor, OklchColor } from "./types"
+import { HEX_COLOR_REGEX } from "./schema-contract"
+
+function normalizeHex(hex: HexColor): string {
+  const value = hex.slice(1)
+  if (!HEX_COLOR_REGEX.test(hex)) {
+    throw new Error(`Invalid hex color: ${hex}`)
+  }
+  if (value.length === 3 || value.length === 4) {
+    return value
+      .split("")
+      .map((channel) => channel + channel)
+      .join("")
+  }
+  return value
+}
 
 export function hexToRgb(hex: HexColor): { r: number; g: number; b: number } {
-  const h = hex.replace("#", "")
-  const full =
-    h.length === 3
-      ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : h
-
-  const num = parseInt(full, 16)
+  const value = normalizeHex(hex)
   return {
-    r: ((num >> 16) & 255) / 255,
-    g: ((num >> 8) & 255) / 255,
-    b: (num & 255) / 255,
+    r: Number.parseInt(value.slice(0, 2), 16) / 255,
+    g: Number.parseInt(value.slice(2, 4), 16) / 255,
+    b: Number.parseInt(value.slice(4, 6), 16) / 255,
   }
+}
+
+function hexAlpha(hex: HexColor): number {
+  const value = normalizeHex(hex)
+  return value.length === 8 ? Number.parseInt(value.slice(6, 8), 16) / 255 : 1
 }
 
 export function rgbToHex(r: number, g: number, b: number): HexColor {
@@ -96,6 +107,32 @@ export function oklchToHex(oklch: OklchColor): HexColor {
   return rgbToHex(r, g, b)
 }
 
+function relativeLuminance(color: { r: number; g: number; b: number }): number {
+  const channels = [color.r, color.g, color.b].map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+  )
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+export function contrastRatio(foreground: HexColor, background: HexColor): number {
+  if (hexAlpha(background) !== 1) throw new Error(`Contrast background must be opaque: ${background}`)
+
+  const backgroundRgb = hexToRgb(background)
+  const foregroundRgb = hexToRgb(foreground)
+  const foregroundAlpha = hexAlpha(foreground)
+  const composite = {
+    r: foregroundRgb.r * foregroundAlpha + backgroundRgb.r * (1 - foregroundAlpha),
+    g: foregroundRgb.g * foregroundAlpha + backgroundRgb.g * (1 - foregroundAlpha),
+    b: foregroundRgb.b * foregroundAlpha + backgroundRgb.b * (1 - foregroundAlpha),
+  }
+  const foregroundLuminance = relativeLuminance(composite)
+  const backgroundLuminance = relativeLuminance(backgroundRgb)
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  )
+}
+
 export function generateScale(seed: HexColor, isDark: boolean): HexColor[] {
   const base = hexToOklch(seed)
   const scale: HexColor[] = []
@@ -119,6 +156,49 @@ export function generateScale(seed: HexColor, isDark: boolean): HexColor[] {
   }
 
   return scale
+}
+
+function isSrgbColor({ r, g, b }: { r: number; g: number; b: number }) {
+  return r >= 0 && r <= 1 && g >= 0 && g <= 1 && b >= 0 && b <= 1
+}
+
+function oklchToSrgbHex(oklch: OklchColor): HexColor {
+  const direct = oklchToRgb(oklch)
+  if (isSrgbColor(direct)) return rgbToHex(direct.r, direct.g, direct.b)
+
+  let lowerChroma = 0
+  let upperChroma = oklch.c
+  let mapped = oklchToRgb({ ...oklch, c: lowerChroma })
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const chroma = (lowerChroma + upperChroma) / 2
+    const candidate = oklchToRgb({ ...oklch, c: chroma })
+    if (isSrgbColor(candidate)) {
+      lowerChroma = chroma
+      mapped = candidate
+      continue
+    }
+    upperChroma = chroma
+  }
+
+  return rgbToHex(mapped.r, mapped.g, mapped.b)
+}
+
+const CATEGORICAL_LIGHTNESS_OFFSETS = [0, 0.07, -0.06, 0.04, -0.03, 0.09, -0.08, 0.06, -0.04]
+const GOLDEN_ANGLE = 137.507764
+
+export function generateCategoricalPalette(seed: HexColor, isDark: boolean): HexColor[] {
+  const base = hexToOklch(seed)
+  const baseLightness = isDark ? 0.72 : 0.58
+  const chroma = Math.max(0.1, Math.min(base.c, 0.16))
+
+  return CATEGORICAL_LIGHTNESS_OFFSETS.map((lightnessOffset, index) =>
+    oklchToSrgbHex({
+      l: baseLightness + lightnessOffset,
+      c: chroma,
+      h: (base.h + GOLDEN_ANGLE * index) % 360,
+    }),
+  )
 }
 
 export function generateNeutralScale(seed: HexColor, isDark: boolean): HexColor[] {
@@ -170,7 +250,11 @@ export function darken(color: HexColor, amount: number): HexColor {
   })
 }
 
-export function withAlpha(color: HexColor, alpha: number): string {
+export function withAlpha(color: HexColor, alpha: number): HexColor {
   const { r, g, b } = hexToRgb(color)
-  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
+  const opaque = rgbToHex(r, g, b)
+  const alphaHex = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+    .toString(16)
+    .padStart(2, "0")
+  return `${opaque}${alphaHex}` as HexColor
 }

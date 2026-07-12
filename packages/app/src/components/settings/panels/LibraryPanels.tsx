@@ -1,9 +1,16 @@
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { reencodeExperienceConfirm } from "@/components/dialog/confirm-copy"
+
+import { createSignal, Show, For, createMemo } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { SettingsSubsection } from "../components/SettingsPrimitives"
 import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { SettingRow } from "../components/SettingRow"
+import { useGlobalSDK } from "@/context/global-sdk"
+import type { ExperienceDetectResult, ExperienceDetectGroup } from "@ericsanchezok/synergy-sdk/client"
 import type { LibrarySettingsStore } from "../types"
 
 const similarityOptions: SettingsStepOption[] = [
@@ -130,6 +137,334 @@ export function MemoryPanel(props: {
   )
 }
 
+// ── Encoding Health ─────────────────────────────────────────────────────────
+
+function relativeTime(ts: number): string {
+  const delta = Math.floor((Date.now() - ts) / 1000)
+  if (delta < 60) return "just now"
+  if (delta < 3600) return `${Math.floor(delta / 60)} min ago`
+  if (delta < 86400) return `${Math.floor(delta / 3600)} hr ago`
+  return `${Math.floor(delta / 86400)} d ago`
+}
+
+function estimateDuration(count: number): string {
+  const secs = Math.ceil((count * 2) / 5)
+  if (secs < 60) return `~${count} LLM calls, ~${secs} seconds`
+  return `~${count} LLM calls, ~${Math.ceil(secs / 60)}-${Math.ceil(secs / 60) + 1} minutes`
+}
+
+function EncodingHealthSection() {
+  const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
+
+  const [scanning, setScanning] = createSignal(false)
+  const [result, setResult] = createSignal<ExperienceDetectResult | null>(null)
+  const [reencoding, setReencoding] = createSignal<{
+    kind: "intent" | "script"
+    reason?: string
+    total: number
+    completed: number
+    ok: number
+    skipped: number
+    failed: number
+    aborter: AbortController
+  } | null>(null)
+  const [reencodeDone, setReencodeDone] = createSignal<{ ok: number; skipped: number; failed: number } | null>(null)
+
+  const hasIssues = createMemo(() => {
+    const r = result()
+    if (!r) return false
+    return r.intent.total > 0 || r.script.total > 0
+  })
+
+  async function handleScan() {
+    setScanning(true)
+    setReencodeDone(null)
+    try {
+      const res = await globalSDK.client.library.experience.detect()
+      if (res.error) throw res.error
+      setResult(res.data)
+    } catch {
+      // scan fails silently — button re-enabled
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  function handleReencode(kind: "intent" | "script", reason?: string) {
+    if (reencoding()) return
+    const r = result()
+    const total = kind === "intent" ? (r?.intent.total ?? 0) : (r?.script.total ?? 0)
+    confirm.show({
+      ...reencodeExperienceConfirm(kind, total),
+      onConfirm: () => {
+        void startReencode(kind, reason)
+      },
+    })
+  }
+
+  async function startReencode(kind: "intent" | "script", reason?: string) {
+    const aborter = new AbortController()
+    const reenc = {
+      kind,
+      reason,
+      total: 0,
+      completed: 0,
+      ok: 0,
+      skipped: 0,
+      failed: 0,
+      aborter,
+    }
+    setReencoding(reenc)
+    setReencodeDone(null)
+
+    try {
+      const sseResult = await globalSDK.client.library.experience.reencode(
+        { type: kind, reason },
+        {
+          signal: aborter.signal,
+          parseAs: "stream",
+          onSseEvent: (event) => {
+            const d = event.data as Record<string, unknown>
+            if (d.type === "start" && typeof d.total === "number") {
+              setReencoding((prev) => (prev ? { ...prev, total: d.total as number } : prev))
+            } else if (d.type === "progress" && typeof d.completed === "number") {
+              setReencoding((prev) => {
+                if (!prev) return prev
+                const status = d.status as string
+                return {
+                  ...prev,
+                  completed: d.completed as number,
+                  ok: prev.ok + (status === "ok" ? 1 : 0),
+                  skipped: prev.skipped + (status === "skipped" ? 1 : 0),
+                  failed: prev.failed + (status === "failed" ? 1 : 0),
+                }
+              })
+            } else if (d.type === "done") {
+              setReencodeDone({
+                ok: (d.ok as number) ?? 0,
+                skipped: (d.skipped as number) ?? 0,
+                failed: (d.failed as number) ?? 0,
+              })
+              setReencoding(null)
+            } else if (d.type === "error") {
+              throw new Error((d.message as string) ?? "Re-encode failed")
+            }
+          },
+        },
+      )
+      for await (const _ of sseResult.stream) {
+        // no-op: onSseEvent handles progress
+      }
+    } catch {
+      setReencoding(null)
+    }
+  }
+
+  function handleCancel() {
+    reencoding()?.aborter.abort()
+    setReencoding(null)
+  }
+
+  return (
+    <SettingsSection
+      title="Encoding Health"
+      description="Scan the database for records whose intent or script may not have been properly encoded."
+    >
+      {/* Overview bar */}
+      <div class="usage-overview">
+        <div class="usage-overview-metrics">
+          <div class="usage-overview-metric">
+            <span class="usage-overview-value">{result()?.intent.total ?? "—"}</span>
+            <span class="usage-overview-label">Intent issues</span>
+          </div>
+          <div class="usage-overview-metric">
+            <span class="usage-overview-value">{result()?.script.total ?? "—"}</span>
+            <span class="usage-overview-label">Script issues</span>
+          </div>
+          <div class="usage-overview-metric">
+            <span class="usage-overview-value usage-overview-date">
+              {result() ? relativeTime(result()!.scannedAt) : "Not scanned yet"}
+            </span>
+            <span class="usage-overview-label">Last scanned</span>
+          </div>
+        </div>
+        <div class="usage-overview-actions">
+          <Button
+            type="button"
+            variant={result() ? "secondary" : "primary"}
+            size="small"
+            icon={getSemanticIcon(scanning() ? "action.refresh" : "action.search")}
+            disabled={scanning() || reencoding() !== null}
+            onClick={handleScan}
+          >
+            {scanning() ? "Scanning…" : "Scan Now"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Re-encode progress bar */}
+      <Show when={reencoding()}>
+        {(reenc) => {
+          const pct = reenc().total > 0 ? Math.round((reenc().completed / reenc().total) * 100) : 0
+          return (
+            <SettingsSubsection title={`Re-encoding ${reenc().kind} records…`}>
+              <div class="usage-window-meter" style="margin-bottom: 8px;">
+                <span style={{ width: `${pct}%` }} />
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="gap:12px; display:flex;">
+                  <span class="usage-overview-label">
+                    {reenc().completed} / {reenc().total}
+                  </span>
+                  <span class="usage-overview-label">Updated: {reenc().ok}</span>
+                  <span class="usage-overview-label">Skipped: {reenc().skipped}</span>
+                  <span class="usage-overview-label">Failed: {reenc().failed}</span>
+                </div>
+                <Button type="button" variant="ghost" size="small" onClick={handleCancel}>
+                  Cancel
+                </Button>
+              </div>
+            </SettingsSubsection>
+          )
+        }}
+      </Show>
+
+      {/* Re-encode done message */}
+      <Show when={reencodeDone()}>
+        {(done) => (
+          <div class="ds-setting-subsection" style={{ color: "var(--icon-success-base)" }}>
+            <span>
+              Complete: {done().ok} updated, {done().skipped} skipped, {done().failed} failed
+            </span>
+          </div>
+        )}
+      </Show>
+
+      {/* No issues message */}
+      <Show when={!reencoding() && result() && !hasIssues()}>
+        <div
+          class="ds-setting-subsection"
+          style={{ color: "var(--icon-success-base)", "font-weight": "var(--font-weight-medium)" }}
+        >
+          All experience records are healthy.
+        </div>
+      </Show>
+
+      {/* Issue group cards */}
+      <Show when={!reencoding() && result() && hasIssues()}>
+        <ExperienceGroupCards
+          kind="intent"
+          groups={result()!.intent.groups}
+          disabled={reencoding() !== null || scanning()}
+          onReencode={(reason) => handleReencode("intent", reason)}
+        />
+        <ExperienceGroupCards
+          kind="script"
+          groups={result()!.script.groups}
+          disabled={reencoding() !== null || scanning()}
+          onReencode={(reason) => handleReencode("script", reason)}
+        />
+      </Show>
+    </SettingsSection>
+  )
+}
+
+function ExperienceGroupCards(props: {
+  kind: "intent" | "script"
+  groups: ExperienceDetectGroup[]
+  disabled: boolean
+  onReencode: (reason?: string) => void
+}) {
+  if (props.groups.length === 0) return null
+
+  const title = props.kind === "intent" ? "Intent Issues" : "Script Issues"
+  const total = props.groups.reduce((sum, g) => sum + g.count, 0)
+
+  return (
+    <SettingsSubsection title={title}>
+      <For each={props.groups}>
+        {(group) => {
+          const [expanded, setExpanded] = createSignal(false)
+          return (
+            <div style={{ "margin-bottom": "10px" }}>
+              <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between" }}>
+                <div>
+                  <span class="usage-overview-value" style={{ "font-size": "var(--settings-type-body-size)" }}>
+                    {group.label}
+                  </span>
+                  <span class="usage-overview-label" style={{ "margin-left": "8px" }}>
+                    {group.count.toLocaleString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-weaker)",
+                    "font-size": "var(--settings-type-caption-size)",
+                  }}
+                >
+                  <Show when={group.samples.length > 0}>{expanded() ? "▾ Hide samples" : "▸ Show samples"}</Show>
+                </button>
+              </div>
+              <Show when={expanded() && group.samples.length > 0}>
+                <div
+                  style={{
+                    "margin-top": "6px",
+                    "padding-left": "8px",
+                    "border-left": "1px solid var(--settings-border)",
+                  }}
+                >
+                  <For each={group.samples}>
+                    {(sample) => (
+                      <div style={{ "margin-bottom": "4px" }}>
+                        <span
+                          class="usage-overview-label"
+                          style={{ "font-family": "var(--font-mono)", "font-size": "11px" }}
+                        >
+                          {sample.id.slice(0, 12)}…
+                        </span>
+                        <span class="usage-overview-label" style={{ "margin-left": "8px" }}>
+                          {sample.detail}
+                        </span>
+                        <Show when={sample.preview}>
+                          <div class="usage-overview-label" style={{ "font-size": "11px", opacity: 0.7 }}>
+                            {sample.preview}
+                          </div>
+                        </Show>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          )
+        }}
+      </For>
+      <div style={{ "margin-top": "12px" }}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="small"
+          disabled={props.disabled}
+          onClick={() => props.onReencode(undefined)}
+        >
+          Re-encode {props.kind} for all {total.toLocaleString()} records
+        </Button>
+        <span class="usage-overview-label" style={{ "margin-left": "8px" }}>
+          Estimated: {estimateDuration(total)}
+        </span>
+      </div>
+    </SettingsSubsection>
+  )
+}
+
+// ── Experience Panel ─────────────────────────────────────────────────────────
+
 export function ExperiencePanel(props: {
   library: LibrarySettingsStore
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
@@ -185,6 +520,7 @@ export function ExperiencePanel(props: {
           }
         />
       </SettingsSection>
+      <EncodingHealthSection />
     </SettingsPage>
   )
 }
