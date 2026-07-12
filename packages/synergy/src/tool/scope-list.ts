@@ -66,6 +66,13 @@ export const ScopeListTool = Tool.define("scope_list", {
       current: item.scopeID === currentScopeID,
     }))
 
+    entries.sort((a, b) => {
+      // Keep the active scope discoverable even when many historical scopes exist.
+      if (a.current !== b.current) return a.current ? -1 : 1
+      if ((a.id === "home") !== (b.id === "home")) return a.id === "home" ? -1 : 1
+      return b.latestActivityAt - a.latestActivityAt || a.id.localeCompare(b.id)
+    })
+
     if (!params.includeHome) {
       entries = entries.filter((entry) => entry.type !== "home")
     }

@@ -44,13 +44,14 @@ describe("tool.scope_list", () => {
       scope,
       fn: async () => {
         const tool = await ScopeListTool.init()
+        // Default page size is enough once current/home are pinned to the front.
         const result = await tool.execute(listInput() as any, ctx)
 
         expect(result.metadata.total).toBeGreaterThanOrEqual(2)
         expect(result.metadata.currentScopeID).toBe(scope.id)
         expect(result.output).toContain(`[${scope.id}]`)
-        expect(result.output).toContain("[home]")
         expect(result.output).toContain("[current]")
+        expect(result.output).toContain("[home]")
 
         const scopes = result.metadata.scopes as Array<{
           id: string
@@ -58,6 +59,8 @@ describe("tool.scope_list", () => {
           directory: string
           current: boolean
         }>
+        expect(scopes[0]?.current).toBe(true)
+        expect(scopes[0]?.id).toBe(scope.id)
         expect(scopes.some((entry) => entry.id === "home" && entry.type === "home")).toBe(true)
 
         const current = scopes.find((entry) => entry.id === scope.id)
@@ -65,6 +68,10 @@ describe("tool.scope_list", () => {
         expect(current?.type).toBe("project")
         expect(current?.current).toBe(true)
         expect(path.resolve(current?.directory ?? "")).toBe(path.resolve(tmp.path))
+
+        // Home remains discoverable even when filtered by query.
+        const homeOnly = await tool.execute(listInput({ query: "home", includeHome: true }) as any, ctx)
+        expect(homeOnly.metadata.scopes.some((entry: { id: string }) => entry.id === "home")).toBe(true)
       },
     })
   })
@@ -113,6 +120,9 @@ describe("tool.scope_list", () => {
         const page = await tool.execute(listInput({ limit: 1, offset: 0 }) as any, ctx)
         expect(page.metadata.count).toBe(1)
         expect(page.metadata.total).toBeGreaterThanOrEqual(2)
+        // Current scope is sorted first, so the first page should be the active project.
+        expect(page.metadata.scopes[0].id).toBe(scope.id)
+        expect(page.metadata.scopes[0].current).toBe(true)
         expect(page.output).toContain("showing 1-1")
       },
     })
