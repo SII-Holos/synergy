@@ -1119,7 +1119,7 @@ describe.serial("Cortex", () => {
       })
     })
 
-    test("still notifies parent when parent session is mid-turn", async () => {
+    test("defers parent notification until the mid-turn parent releases", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -1140,7 +1140,7 @@ describe.serial("Cortex", () => {
             const parentSession = await Session.create({})
             ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
             const task = await Cortex.launch({
-              description: "Notify mid-turn parent",
+              description: "Defer mid-turn parent notification",
               prompt: "Do something",
               agent: "developer",
               parentSessionID: parentSession.id,
@@ -1151,6 +1151,10 @@ describe.serial("Cortex", () => {
             const completed = await waitUntilCompleted(task.id)
 
             expect(completed?.status).toBe("completed")
+            expect(deliveries).toHaveLength(0)
+
+            await Cortex.flushDeferredParentNotifications(parentSession.id)
+
             expect(deliveries).toHaveLength(1)
             expect(deliveries[0].target).toBe(parentSession.id)
             expect(deliveries[0].mail.metadata?.source).toBe("cortex")
