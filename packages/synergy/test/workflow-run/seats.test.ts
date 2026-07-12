@@ -26,10 +26,12 @@ function run(seats: WorkflowTypes.SeatBinding[], entities: WorkflowTypes.Entity[
     charterRef: { id: "cht_test", version: 1 },
     title: "R",
     status: "active",
+    revision: 0,
     bossSessionID: "ses_boss",
     seats,
     entities,
     gates: [],
+    pendingEffects: [],
     budget: { maxModelCalls: 0, used: 0 },
     time: { created: now, updated: now },
   }
