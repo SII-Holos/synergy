@@ -2873,6 +2873,32 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(caps.every((c: any) => c.nonBypassable === false)).toBe(true)
   })
 
+  test("autonomous allows an explicit topic-branch push from the main checkout", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(false)
+  })
+
+  test("autonomous still denies an explicit protected-branch push from the main checkout", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin dev" })
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(false)
+  })
+
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test",
