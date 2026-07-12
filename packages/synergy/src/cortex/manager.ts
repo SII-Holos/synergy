@@ -33,6 +33,7 @@ export namespace Cortex {
   const acquiredTasks = new Set<string>()
   const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
   const finalizingTasks = new Set<string>()
+  const cancellationRequests = new Set<string>()
   let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
@@ -531,6 +532,14 @@ export namespace Cortex {
     const task = tasks.get(taskID)
     if (!task) return
 
+    // Once cancel() accepts a request, an abort/error callback from the task
+    // processor must not race it into the less precise "error" terminal state.
+    if (cancellationRequests.has(taskID)) {
+      status = "cancelled"
+      error = undefined
+      output = undefined
+    }
+
     if (isTerminal(task.status)) {
       log.info("ignoring task status update for terminal task", { taskID, current: task.status, next: status })
       return
@@ -570,6 +579,24 @@ export namespace Cortex {
         log.error("failed to persist terminal task fields", { taskID, error })
       })
 
+      // Cancellation may arrive while usage/session metadata is being
+      // persisted. Reconcile once more immediately before the synchronous
+      // publication boundary so an accepted cancel cannot surface as error.
+      if (cancellationRequests.has(taskID) && terminalTask.status !== "cancelled") {
+        terminalTask.status = "cancelled"
+        terminalTask.error = undefined
+        terminalTask.output = undefined
+        await Session.update(task.sessionID, (draft) => {
+          if (draft.cortex) {
+            draft.cortex.status = "cancelled"
+            draft.cortex.error = undefined
+            draft.cortex.output = undefined
+          }
+        }).catch((error) => {
+          log.error("failed to persist task cancellation", { taskID, error })
+        })
+      }
+
       if (acquiredTasks.delete(taskID)) {
         CortexConcurrency.release(terminalTask.agent)
       }
@@ -593,9 +620,12 @@ export namespace Cortex {
         }
       }
 
-      tasks.set(taskID, terminalTask)
-      log.info("task status updated", { taskID, status })
-      emitPluginTaskObservability(terminalTask, status)
+      // Keep the task handle returned by launch() live while still publishing
+      // the terminal transition at this single, ordered boundary.
+      Object.assign(task, terminalTask)
+      tasks.set(taskID, task)
+      log.info("task status updated", { taskID, status: terminalTask.status })
+      emitPluginTaskObservability(terminalTask, terminalTask.status)
       publishVisibleTasksUpdate()
 
       if (terminalTask.visibility !== "hidden") {
@@ -654,6 +684,7 @@ export namespace Cortex {
       // Once the terminal state is published, isTerminal() is the durable race
       // guard. Keeping task IDs here would turn this lock into a lifetime leak.
       finalizingTasks.delete(taskID)
+      cancellationRequests.delete(taskID)
     }
   }
 
@@ -870,6 +901,7 @@ export namespace Cortex {
     if (isTerminal(task.status)) return
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
+    cancellationRequests.add(taskID)
     SessionInvoke.cancel(task.sessionID)
     await updateTaskStatus(taskID, "cancelled")
 
@@ -1014,7 +1046,11 @@ export namespace Cortex {
     tasks.clear()
     taskRuns.clear()
     acquiredTasks.clear()
+    finalizingTasks.clear()
+    cancellationRequests.clear()
     deferredParentNotifications.clear()
+    for (const timeout of taskTimeouts.values()) clearTimeout(timeout)
+    taskTimeouts.clear()
     if (progressUpdateTimer) {
       clearTimeout(progressUpdateTimer)
       progressUpdateTimer = undefined
