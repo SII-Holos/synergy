@@ -19,6 +19,7 @@ export interface ConfirmOptions {
   tone: ConfirmTone
   onConfirm: () => void | Promise<void>
   onConfirmed?: () => void
+  onDismiss?: () => void
 }
 
 function errorDescription(error: unknown) {
@@ -30,12 +31,21 @@ function errorDescription(error: unknown) {
 export function ConfirmDialog(props: ConfirmOptions) {
   const dialog = useDialog()
   const [pending, setPending] = createSignal(false)
+  let settled = false
+
+  function dismiss() {
+    if (pending() || settled) return
+    settled = true
+    dialog.close()
+    props.onDismiss?.()
+  }
 
   async function confirm() {
-    if (pending()) return
+    if (pending() || settled) return
     setPending(true)
     try {
       await props.onConfirm()
+      settled = true
       dialog.close()
       props.onConfirmed?.()
     } catch (error) {
@@ -61,7 +71,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
           data-variant="ghost"
           disabled={pending()}
           onClick={() => {
-            if (!pending()) dialog.close()
+            dismiss()
           }}
         >
           <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -69,7 +79,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
       }
     >
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
-        <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dialog.close()}>
+        <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dismiss()}>
           {props.cancelLabel ?? "Cancel"}
         </Button>
         <Button

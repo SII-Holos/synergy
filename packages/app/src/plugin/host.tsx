@@ -27,6 +27,8 @@ import { registerNavigation, type NavigationContentProps } from "./registries/na
 import { registerPartRenderer } from "./registries/part-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { requestPluginHostConfirm } from "./host-confirm"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 export type PluginUIStatus = PluginLifecycleState
@@ -66,6 +68,7 @@ function surfaceContext(input: {
   scopeKey: string
   sessionId?: string
   resource?: { id: string; title?: string; state?: unknown }
+  showConfirm: ReturnType<typeof useConfirm>["show"]
 }): PluginSurfaceContext {
   const pluginId = input.contribution.pluginId
   const requireHostActions = () => {
@@ -169,7 +172,7 @@ function surfaceContext(input: {
       },
       confirm: async (options) => {
         requireHostActions()
-        return window.confirm(`${options.title}\n\n${options.message}`)
+        return requestPluginHostConfirm(input.showConfirm, options)
       },
     },
   }
@@ -181,6 +184,7 @@ function registerPluginSurfaces(input: {
   events: ReturnType<typeof useGlobalSDK>["event"]
   scopeKey: string
   assets: PluginUIAssets
+  showConfirm: ReturnType<typeof useConfirm>["show"]
 }) {
   const disposers: Array<() => void> = []
   const errors: PluginUIError[] = input.assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
@@ -213,6 +217,7 @@ function registerPluginSurfaces(input: {
               scopeKey: input.scopeKey,
               sessionId: session(props),
               resource: resource(props),
+              showConfirm: input.showConfirm,
             }),
           )
         return { default: Wrapper }
@@ -341,6 +346,7 @@ function registerPluginSurfaces(input: {
 export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<string> }>) {
   const server = useServer()
   const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
   const scopeKey = props.scopeKey
   let disposers: Array<() => void> = []
   let reloadGeneration = 0
@@ -369,6 +375,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
         events: globalSDK.event,
         scopeKey: scopeKey(),
         assets,
+        showConfirm: confirm.show,
       })
       disposers = registered.disposers
       batch(() => {
