@@ -29,12 +29,12 @@ bun dev build desktop
 | ------------------- | ------------------------------------------------------------------------- |
 | `server`            | source server on fixed development port 4096 by default                   |
 | `app`               | Vite app against an existing server; default app port 3000                |
-| `web`               | source server plus Vite app                                               |
+| `web`               | source server, Vite app, and remote Browser Host                          |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
 
-Use `--server-port`, `--app-port`, `--hostname`, and `--attach` to avoid conflicts. The orchestrator checks required ports and target health before starting dependent processes. In parallel modes it terminates sibling processes when one exits.
+Use `--server-port`, `--app-port`, `--hostname`, and `--attach` to avoid conflicts. The orchestrator checks required ports and target health before starting dependent processes. In parallel modes it terminates sibling process trees when one exits so package-script wrappers cannot leave servers or Electron hosts running.
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Normal daily Desktop work should use external mode for Vite reload speed.
 

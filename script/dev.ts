@@ -562,17 +562,51 @@ function prefixedStream(
   })()
 }
 
-function spawnDevProcess(spec: DevProcessSpec) {
+export function spawnDevProcess(spec: DevProcessSpec) {
   const proc = Bun.spawn(spec.command, {
     cwd: spec.cwd,
     env: { ...process.env, ...(spec.env ?? {}) },
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",
+    detached: process.platform !== "win32",
   })
   prefixedStream(proc.stdout, spec.label, (chunk) => process.stdout.write(chunk))
   prefixedStream(proc.stderr, spec.label, (chunk) => process.stderr.write(chunk))
   return proc
+}
+
+type DevProcess = ReturnType<typeof spawnDevProcess>
+
+async function taskkill(pid: number): Promise<void> {
+  const command = ["taskkill", "/pid", String(pid), "/t", "/f"]
+  const proc = Bun.spawn(command, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true })
+  await proc.exited
+}
+
+function signalProcessTree(child: DevProcess, signal: "SIGTERM" | "SIGKILL"): void {
+  const pid = child.pid
+  if (!pid) return
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    if (child.exitCode === null) child.kill(signal)
+  }
+}
+
+export async function terminateDevProcesses(children: DevProcess[]): Promise<void> {
+  const active = children.filter((child) => child.exitCode === null)
+  if (process.platform === "win32") {
+    await Promise.all(active.flatMap((child) => (child.pid ? [taskkill(child.pid)] : [])))
+    await Promise.race([Promise.allSettled(children.map((child) => child.exited)), Bun.sleep(1000)])
+    return
+  }
+
+  for (const child of active) signalProcessTree(child, "SIGTERM")
+  const settle = Promise.allSettled(children.map((child) => child.exited))
+  await Promise.race([settle, Bun.sleep(3000)])
+  for (const child of active) signalProcessTree(child, "SIGKILL")
+  await Promise.race([settle, Bun.sleep(1000)])
 }
 
 async function runSerial(processes: DevProcessSpec[]): Promise<number> {
@@ -586,20 +620,9 @@ async function runSerial(processes: DevProcessSpec[]): Promise<number> {
 
 async function runParallel(plan: DevPlan): Promise<number> {
   await assertPreflight(plan)
-  const children: ReturnType<typeof spawnDevProcess>[] = []
+  const children: DevProcess[] = []
   let exiting = false
-  const cleanup = async () => {
-    for (const child of children) {
-      if (child.exitCode === null) child.kill()
-    }
-    // Wait for children to exit gracefully (max 3s), then force-kill stragglers.
-    const settle = Promise.allSettled(children.map((c) => c.exited))
-    const timeout = new Promise<void>((r) => setTimeout(r, 3000))
-    await Promise.race([settle, timeout])
-    for (const child of children) {
-      if (child.exitCode === null) child.kill("SIGKILL")
-    }
-  }
+  const cleanup = () => terminateDevProcesses(children)
   process.once("SIGINT", async () => {
     if (exiting) return
     exiting = true
