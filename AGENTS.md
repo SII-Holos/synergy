@@ -17,13 +17,14 @@ The project-local `architecture` skill provides the code-tracing workflow. It li
 
 The primary checkout, pre-existing checkouts, and active Synergy runtime may be shared by concurrent sessions.
 
-- Inspect `git status` and the worktree list before editing. Repository changes must happen in a task-owned worktree on a topic branch; if the current directory is a primary, shared, or otherwise pre-existing checkout, create or enter the task worktree first.
-- Never run `git checkout` or `git switch`, commit, rebase, or push in the primary/shared checkout. A branch change affects every session using that directory.
-- Reuse a task's existing worktree when it is already on the correct branch; worktrees isolate branches but do not need to be recreated for every edit or feature.
-- Never push directly to protected `dev` or `main`. Publish only the task topic branch and open its PR against `dev`; the release workflow is the only path from `dev` to `main`.
+- Inspect `git status`, the current branch, and the worktree list before editing or performing Git operations. Direct edits in the current checkout are allowed; preserve unrelated dirty and untracked files.
+- Do not run `git checkout`, `git switch`, or rebase a shared or pre-existing checkout unless the user explicitly requests that operation. These commands change repository state observed by every session using that directory.
+- A user may choose to create or use a topic branch directly in the primary checkout. Use a task-owned worktree when concurrent work needs branch or file isolation, not as a prerequisite for every repository change; reuse an existing task worktree when it already owns the branch.
+- Stage and commit only when the user requests it. Local commits on `dev` or `main` are permitted, but they advance a potentially shared branch and must never be pushed directly.
+- Never push directly to protected `dev` or `main`. Publish a topic branch and open its PR against `dev`; the release workflow is the only path from `dev` to `main`.
 - Preserve unrelated dirty and untracked files. Inspect status again before staging and stage only explicit files owned by the current task.
 - Do not use destructive Git commands, force pushes, or hook bypasses without explicit user authority and a reviewed recovery plan.
-- Stage, commit, push, open a PR, or mutate external systems only when the user requests that action.
+- Push, open a PR, or mutate external systems only when the user requests that action.
 - Keep local/runtime paths, session or Scope IDs, logs, credentials, private endpoints, and internal config out of commit messages, PR bodies, comments, and reviews. Project-relative source paths are allowed. Every agent-created commit must use a concise conventional type and end with `Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>`.
 - Never stop, restart, signal, or modify the `SYNERGY_HOME` of the Synergy instance carrying the current task.
 - Run source changes in an isolated second home with explicit alternate ports. Load `develop-synergy` for the exact workflow.

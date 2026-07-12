@@ -129,9 +129,9 @@ Frontend code should use `createSynergyClient()` and generated methods for inter
 
 The development branch is `dev`; `main` is updated by the release workflow. All pull requests target `dev`.
 
-Make repository changes in a task-owned worktree on a topic branch. Do not run `git checkout` or `git switch`, edit, commit, rebase, or publish from the primary/shared checkout. Create or enter the task worktree first, then inspect its status. Reuse that worktree for later changes to the same branch rather than creating a new worktree for every edit.
+Repository changes may be made directly in the current checkout. Treat primary and pre-existing checkouts as potentially shared: preserve unrelated work, and do not switch branches or rebase unless the user explicitly requests it. Use a task-owned worktree when concurrent development needs branch or file isolation, not as a prerequisite for every edit, and reuse an existing task worktree when it already owns the branch.
 
-Never push `dev` or `main` directly. Push only the task topic branch and open its pull request against `dev`; the release workflow is the only path from `dev` to `main`. Preserve unrelated changes, stage explicit task files, and keep local paths, runtime identifiers, logs, credentials, and internal configuration out of commit and GitHub text. See `git-guide` for the commit template, mandatory agent co-author footer, and publication workflow.
+Stage and commit only when requested. Local commits on `dev` or `main` are allowed, but never push either protected branch directly. Push a topic branch and open its pull request against `dev`; the release workflow is the only path from `dev` to `main`. Preserve unrelated changes, stage explicit task files, and keep local paths, runtime identifiers, logs, credentials, and internal configuration out of commit and GitHub text. See `git-guide` for the commit template, mandatory agent co-author footer, and publication workflow.
 
 Keep changes focused, update migrations for persisted schema changes, and update current-state docs plus relevant `.synergy/skill` workflows whenever an agent-facing command, path, tool, or procedure changes.
 
