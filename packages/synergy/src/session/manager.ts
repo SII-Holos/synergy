@@ -398,6 +398,9 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID, error })
     })
 
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.flushDeferredParentNotifications(sessionID)
+
     if (await SessionInbox.hasRunnableItem(sessionID)) {
       scheduleWake(sessionID, "release")
     }
