@@ -140,14 +140,54 @@ export namespace WorkflowRunService {
       }
       return updated
     }
-    // cancel
+    // cancel: stop real execution first, then mark the domain run cancelled.
+    await stopRunExecution(scopeID, run)
     WorkflowModelCalls.clear(runID)
     const updated = await WorkflowRunStore.update(scopeID, runID, (draft) => {
       draft.status = "cancelled"
       draft.time.completed = Date.now()
+      for (const seat of draft.seats) {
+        if (seat.status === "working" || seat.status === "waiting") seat.status = "idle"
+        seat.activeTaskID = undefined
+      }
     })
     await WorkflowRunStore.appendEvent(scopeID, { id: runID }, { kind: "run_cancelled" })
     return updated
+  }
+
+  async function stopRunExecution(scopeID: string, run: WorkflowTypes.Run): Promise<void> {
+    const { Cortex } = await import("../cortex")
+    const { SessionInvoke } = await import("../session/invoke")
+    const { BlueprintLoopStore } = await import("../blueprint/loop-store")
+
+    for (const task of Cortex.list()) {
+      if (task.owner?.kind !== "workflow_run" || task.owner.runID !== run.id) continue
+      if (task.status !== "running" && task.status !== "queued" && task.status !== "pending") continue
+      await Cortex.cancel(task.id).catch(() => undefined)
+    }
+
+    const sessionIDs = new Set<string>([run.bossSessionID])
+    for (const seat of run.seats) {
+      if (seat.sessionID) sessionIDs.add(seat.sessionID)
+    }
+    for (const entity of run.entities) {
+      if (entity.bindings.seatSessionID) sessionIDs.add(entity.bindings.seatSessionID)
+    }
+    for (const sessionID of sessionIDs) {
+      SessionInvoke.cancel(sessionID)
+    }
+
+    const loops = await BlueprintLoopStore.list(scopeID).catch(() => [])
+    for (const loop of loops) {
+      if (loop.source !== "workflow") continue
+      if (loop.status === "completed" || loop.status === "failed" || loop.status === "cancelled") continue
+      const owned = run.entities.some((entity) => entity.bindings.loopID === loop.id)
+      if (!owned) continue
+      await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+        status: "cancelled",
+        error: "workflow run cancelled",
+      }).catch(() => undefined)
+    }
   }
 
   export async function resolveGate(input: {

@@ -181,6 +181,7 @@ export namespace Cortex {
       agent: input.agent,
       executionRole: input.executionRole,
       category: input.category,
+      owner: input.owner,
       dagNodeId: input.dagNodeId,
       status: "queued",
       startedAt: Date.now(),
@@ -462,9 +463,9 @@ export namespace Cortex {
       CortexConcurrency.release(task.agent)
     }
 
-    if (task.visibility !== "hidden") {
-      Bus.publish(Event.TaskCompleted, { task })
-    }
+    // Hidden only controls UI visibility / parent notification. Internal
+    // orchestrators still need a completion lifecycle signal.
+    Bus.publish(Event.TaskCompleted, { task })
     void Plugin.trigger(
       "cortex.task.after",
       {

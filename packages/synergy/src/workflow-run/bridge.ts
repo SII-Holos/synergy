@@ -112,30 +112,36 @@ export namespace WorkflowBridge {
     sessionID?: string
     status: string
     visibility?: string
+    owner?: {
+      kind?: string
+      runID?: string
+      entityID?: string
+      correlationID?: string
+    }
+    output?: { mode?: string; value?: unknown }
   }): Promise<void> {
-    if (task.visibility !== "hidden") return
+    if (task.owner?.kind !== "workflow_run" || !task.owner.runID) return
     if (!task.parentSessionID) return
     const scopeID = await scopeForSession(task.parentSessionID)
     if (!scopeID) return
-    // Find the run whose boss session owns this contractor via the spawn event.
-    const runs = await WorkflowRunStore.list(scopeID)
-    for (const run of runs) {
-      if (run.status !== "active") continue
-      const events = await WorkflowRunStore.listEvents(scopeID, run.id)
-      const spawn = events.find((e) => e.kind === "contractor_spawned" && e.data?.taskID === task.id)
-      if (!spawn) continue
-      await WorkflowRunStore.appendEvent(
-        scopeID,
-        { id: run.id },
-        {
-          kind: "contractor_finished",
-          entityID: spawn.entityID,
-          data: { taskID: task.id, status: task.status },
+    const run = await WorkflowRunStore.getOrUndefined(scopeID, task.owner.runID)
+    if (!run || run.status !== "active") return
+    const entityID = task.owner.entityID
+    await WorkflowRunStore.appendEvent(
+      scopeID,
+      { id: run.id },
+      {
+        kind: "contractor_finished",
+        entityID,
+        data: {
+          taskID: task.id,
+          status: task.status,
+          correlationID: task.owner.correlationID,
+          outputMode: task.output?.mode,
         },
-      )
-      if (spawn.entityID) await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, spawn.entityID)
-      return
-    }
+      },
+    )
+    if (entityID) await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entityID)
   }
 
   async function scopeForSession(sessionID: string): Promise<string | undefined> {

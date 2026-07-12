@@ -1,6 +1,7 @@
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import type { ContinuationKernel } from "../session/continuation-kernel"
+import { SessionInbox } from "../session/inbox"
 import { SessionManager } from "../session/manager"
 import { WorkflowModelCalls } from "./model-calls"
 import { WorkflowRunStore } from "./store"
@@ -70,22 +71,26 @@ async function deliverContinuation(
     `If it is complete, record the outcome with workflow_submit. If blocked, call workflow_block.`,
     `</workflow-continuation>`,
   ].join("\n")
-  await SessionManager.deliver({
-    target: sessionID,
-    mail: {
-      type: "user",
-      summary: { title: `Continue ${entity.title}` },
+  await SessionInbox.deliver({
+    sessionID,
+    mode: "steer",
+    message: {
+      role: "user",
+      origin: { type: "system", detail: "workflow_continuation" },
+      visible: false,
       parts: [
         {
           id: Identifier.ascending("part"),
-          sessionID,
-          messageID: "",
           type: "text",
           text,
-          synthetic: true,
-        },
+          origin: "system",
+        } as any,
       ],
-      metadata: { source: "workflow_continuation", workflowRun: { runID: run.id, entityID: entity.id } },
+      summary: { title: `Continue ${entity.title}` },
+      metadata: { workflowRun: { runID: run.id, entityID: entity.id } },
     },
   }).catch((error) => log.error("workflow continuation delivery failed", { sessionID, error }))
+  if (!SessionManager.isRunning(sessionID)) {
+    SessionManager.scheduleWake(sessionID, "workflow_continuation")
+  }
 }

@@ -86,16 +86,31 @@ export namespace WorkflowMachine {
       return { ok: false, reason: guardResult.reason ?? "guard failed" }
     }
 
-    // Commit the submission + state change atomically.
-    await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-      const e = draft.entities.find((x) => x.id === entity.id)
-      if (!e) return
-      if (input.submission) e.submissions.push(input.submission)
-      e.state = transition.to
-      e.blockedReason = undefined
-      e.time.updated = Date.now()
-      e.time.stateEntered = Date.now()
-    })
+    // Commit the submission + state change under CAS on the source state so two
+    // concurrent intents cannot both transition the same entity.
+    const commit = await WorkflowRunStore.tryUpdate(
+      scopeID,
+      run.id,
+      (draft) => {
+        const e = draft.entities.find((x) => x.id === entity.id)
+        if (!e) return
+        if (input.submission) e.submissions.push(input.submission)
+        e.state = transition.to
+        e.blockedReason = undefined
+        e.time.updated = Date.now()
+        e.time.stateEntered = Date.now()
+      },
+      { expectedEntityState: { entityID: entity.id, state: transition.from } },
+    )
+    if (!commit.ok) {
+      return {
+        ok: false,
+        reason:
+          commit.reason === "conflict"
+            ? `entity ${entity.id} left state '${transition.from}' before transition ${transition.id} committed`
+            : `workflow run ${run.id} not found`,
+      }
+    }
     if (input.submission) {
       await WorkflowRunStore.appendEvent(
         scopeID,

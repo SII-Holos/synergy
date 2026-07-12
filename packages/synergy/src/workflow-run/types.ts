@@ -128,6 +128,7 @@ export namespace WorkflowTypes {
       instance: z.number().int().min(0),
       sessionID: Identifier.schema("session").optional(),
       entityID: Identifier.schema("workflow_entity").optional(),
+      activeTaskID: Identifier.schema("cortex").optional(),
       status: z.enum(["unbound", "idle", "working", "waiting"]).default("unbound"),
       lastEntityIDs: z.array(z.string()).default([]).describe("Recently handled entity ids (for affinity)"),
     })
@@ -196,6 +197,8 @@ export namespace WorkflowTypes {
       title: z.string(),
       status: RunStatus,
       statusReason: z.string().optional(),
+      // Monotonic revision used as a CAS token for concurrent command commits.
+      revision: z.number().int().min(0).default(0),
       bossSessionID: Identifier.schema("session"),
       seats: z.array(SeatBinding),
       entities: z.array(Entity),

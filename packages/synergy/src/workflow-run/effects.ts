@@ -135,25 +135,29 @@ export namespace WorkflowEffects {
   async function deliverBossNotice(scopeID: string, runID: string, message: string): Promise<void> {
     const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
     if (!run) return
-    const part = {
-      id: Identifier.ascending("part"),
+    const { SessionInbox } = await import("../session/inbox")
+    await SessionInbox.deliver({
       sessionID: run.bossSessionID,
-      messageID: Identifier.ascending("message"),
-      type: "text" as const,
-      text: `[workflow ${run.title}] ${message}`,
-      synthetic: true,
-    }
-    await SessionManager.deliver({
-      target: run.bossSessionID,
-      mail: {
-        type: "user",
-        noReply: true,
-        parts: [part],
+      mode: "steer",
+      message: {
+        role: "user",
+        origin: { type: "system", detail: "workflow_boss_notice" },
+        visible: true,
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            type: "text",
+            text: `[workflow ${run.title}] ${message}`,
+            origin: "system",
+          } as any,
+        ],
         summary: { title: `Workflow update: ${run.title}` },
-        metadata: { source: "workflow_boss_notice", workflowRun: { runID } },
+        metadata: { workflowRun: { runID } },
       },
-      waitForProcessing: false,
     }).catch(() => undefined)
+    if (!SessionManager.isRunning(run.bossSessionID)) {
+      SessionManager.scheduleWake(run.bossSessionID, "workflow_boss_notice")
+    }
   }
 
   // --- Built-in effects ----------------------------------------------------
@@ -365,6 +369,12 @@ export namespace WorkflowEffects {
       parentSessionID: boss,
       parentMessageID: Identifier.ascending("message"),
       visibility: "hidden",
+      owner: {
+        kind: "workflow_run",
+        runID: ctx.runID,
+        entityID: ctx.entityID,
+        correlationID: `workflow:${ctx.runID}:entity:${ctx.entityID}:contractor`,
+      },
     }).catch((error) => {
       throw new Error(`contractor launch failed: ${error instanceof Error ? error.message : String(error)}`)
     })

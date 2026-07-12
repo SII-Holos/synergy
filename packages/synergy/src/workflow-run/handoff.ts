@@ -1,5 +1,6 @@
 import z from "zod"
 import { Identifier } from "../id/id"
+import { SessionInbox } from "../session/inbox"
 import { SessionManager } from "../session/manager"
 import { WorkflowTypes } from "./types"
 
@@ -66,22 +67,32 @@ export namespace WorkflowHandoff {
   }
 
   export async function deliver(sessionID: string, handoff: Info, entity: WorkflowTypes.Entity): Promise<void> {
-    const part = {
-      id: Identifier.ascending("part"),
+    const text = render(handoff, entity)
+    // Canonical delivery: explicit task mode + system origin. Feature metadata
+    // only carries domain correlation; it is not a scheduling protocol.
+    await SessionInbox.deliver({
       sessionID,
-      messageID: Identifier.ascending("message"),
-      type: "text" as const,
-      text: render(handoff, entity),
-    }
-    const mail: SessionManager.SessionMail.User = {
-      type: "user",
-      parts: [part],
-      summary: { title: `Handoff: ${entity.title}` },
-      metadata: {
-        source: "workflow_handoff",
-        workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
+      mode: "task",
+      message: {
+        role: "user",
+        origin: { type: "system", detail: "workflow_handoff" },
+        visible: true,
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            type: "text",
+            text,
+            origin: "system",
+          } as any,
+        ],
+        summary: { title: `Handoff: ${entity.title}` },
+        metadata: {
+          workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
+        },
       },
+    })
+    if (!SessionManager.isRunning(sessionID)) {
+      SessionManager.scheduleWake(sessionID, "workflow_handoff")
     }
-    await SessionManager.deliver({ target: sessionID, mail, waitForProcessing: false })
   }
 }

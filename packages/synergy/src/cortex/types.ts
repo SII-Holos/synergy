@@ -60,6 +60,18 @@ export namespace CortexTypes {
   ])
   export type TaskOutput = z.infer<typeof TaskOutput>
 
+  export const TaskOwner = z
+    .object({
+      kind: z.string(),
+      runID: z.string().optional(),
+      entityID: z.string().optional(),
+      seat: z.string().optional(),
+      instance: z.number().int().optional(),
+      correlationID: z.string().optional(),
+    })
+    .meta({ ref: "CortexTaskOwner" })
+  export type TaskOwner = z.infer<typeof TaskOwner>
+
   export const Task = z
     .object({
       id: Identifier.schema("cortex"),
@@ -71,6 +83,7 @@ export namespace CortexTypes {
       agent: z.string(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
+      owner: TaskOwner.optional(),
 
       dagNodeId: z.string().optional(),
       status: TaskStatus,
@@ -93,6 +106,7 @@ export namespace CortexTypes {
     agent: z.string(),
     executionRole: ExecutionRole.optional(),
     category: z.string().optional(),
+    owner: TaskOwner.optional(),
     parentSessionID: Identifier.schema("session"),
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),

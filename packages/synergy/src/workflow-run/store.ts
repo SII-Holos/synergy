@@ -7,10 +7,11 @@ import { WorkflowTypes } from "./types"
 
 /**
  * WorkflowRunStore — runs are keyed by runID (a scope hosts many concurrent
- * runs). Events are an append-only sibling collection; every mutation of the
- * run flows through `update` (read-modify-write is the serialization boundary,
- * same as LatticeStore) so `workflow.run.updated` is published exactly once per
- * committed change.
+ * runs). Events are an append-only sibling collection.
+ *
+ * Mutations go through a single Storage.update lock. Schema validation happens
+ * inside that lock before the write commits, so concurrent editors cannot lose
+ * updates via a second unlocked Storage.write.
  */
 export namespace WorkflowRunStore {
   export type CreateInput = {
@@ -21,6 +22,10 @@ export namespace WorkflowRunStore {
     seats: WorkflowTypes.SeatBinding[]
     maxModelCalls: number
   }
+
+  export type UpdateResult =
+    | { ok: true; run: WorkflowTypes.Run }
+    | { ok: false; reason: "conflict" | "not_found"; run?: WorkflowTypes.Run }
 
   export async function get(scopeID: string, runID: string): Promise<WorkflowTypes.Run> {
     return Storage.read<WorkflowTypes.Run>(StoragePath.workflowRun(Identifier.asScopeID(scopeID), runID))
@@ -50,6 +55,7 @@ export namespace WorkflowRunStore {
       charterRef: input.charterRef,
       title: input.title,
       status: "active",
+      revision: 0,
       bossSessionID: input.bossSessionID,
       seats: input.seats,
       entities: [],
@@ -63,20 +69,74 @@ export namespace WorkflowRunStore {
     return run
   }
 
+  /**
+   * Apply a mutation under the Storage write lock.
+   * Optionally require a CAS revision and/or entity source state.
+   */
   export async function update(
     scopeID: string,
     runID: string,
     editor: (run: WorkflowTypes.Run) => void,
+    options?: {
+      expectedRevision?: number
+      expectedEntityState?: { entityID: string; state: string }
+    },
   ): Promise<WorkflowTypes.Run> {
+    const result = await tryUpdate(scopeID, runID, editor, options)
+    if (!result.ok) {
+      if (result.reason === "not_found") throw new Storage.NotFoundError({ message: `Workflow run ${runID} not found` })
+      throw new Error(
+        options?.expectedEntityState
+          ? `workflow run CAS failed for entity ${options.expectedEntityState.entityID}`
+          : `workflow run CAS conflict on revision ${options?.expectedRevision}`,
+      )
+    }
+    return result.run
+  }
+
+  export async function tryUpdate(
+    scopeID: string,
+    runID: string,
+    editor: (run: WorkflowTypes.Run) => void,
+    options?: {
+      expectedRevision?: number
+      expectedEntityState?: { entityID: string; state: string }
+    },
+  ): Promise<UpdateResult> {
     const sid = Identifier.asScopeID(scopeID)
-    const draft = await Storage.update<WorkflowTypes.Run>(StoragePath.workflowRun(sid, runID), (run) => {
-      editor(run)
-      run.time.updated = Date.now()
-    })
-    const parsed = WorkflowTypes.Run.parse(draft)
-    await Storage.write(StoragePath.workflowRun(sid, runID), parsed)
-    await Bus.publish(WorkflowEvent.RunUpdated, { run: parsed })
-    return parsed
+    let committed: WorkflowTypes.Run | undefined
+    let conflictRun: WorkflowTypes.Run | undefined
+    let conflict = false
+    try {
+      await Storage.update<WorkflowTypes.Run>(StoragePath.workflowRun(sid, runID), (run) => {
+        if (options?.expectedRevision !== undefined && (run.revision ?? 0) !== options.expectedRevision) {
+          conflict = true
+          conflictRun = structuredClone(run)
+          return
+        }
+        if (options?.expectedEntityState) {
+          const entity = run.entities.find((item) => item.id === options.expectedEntityState!.entityID)
+          if (!entity || entity.state !== options.expectedEntityState.state) {
+            conflict = true
+            conflictRun = structuredClone(run)
+            return
+          }
+        }
+        editor(run)
+        run.revision = (run.revision ?? 0) + 1
+        run.time.updated = Date.now()
+        const parsed = WorkflowTypes.Run.parse(run)
+        Object.assign(run, parsed)
+        committed = structuredClone(parsed)
+      })
+    } catch (error) {
+      if (error instanceof Storage.NotFoundError) return { ok: false, reason: "not_found" }
+      throw error
+    }
+    if (conflict) return { ok: false, reason: "conflict", run: conflictRun }
+    if (!committed) return { ok: false, reason: "not_found" }
+    await Bus.publish(WorkflowEvent.RunUpdated, { run: committed })
+    return { ok: true, run: committed }
   }
 
   export async function appendEvent(

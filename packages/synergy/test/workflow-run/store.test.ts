@@ -63,4 +63,64 @@ describe("WorkflowRunStore", () => {
       expect(runs[0].time.created).toBeGreaterThanOrEqual(runs[1].time.created)
     })
   })
+
+  test("concurrent updates do not lose writes", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await makeRun()
+      await Promise.all([
+        WorkflowRunStore.update(scopeID, run.id, (draft) => {
+          draft.title = "A"
+          draft.budget.used = 1
+        }),
+        WorkflowRunStore.update(scopeID, run.id, (draft) => {
+          draft.statusReason = "B"
+          draft.budget.used = (draft.budget.used ?? 0) + 1
+        }),
+      ])
+      const latest = await WorkflowRunStore.get(scopeID, run.id)
+      expect(latest.revision).toBeGreaterThanOrEqual(2)
+      expect(latest.budget.used).toBe(2)
+      expect(latest.title === "A" || latest.statusReason === "B").toBe(true)
+    })
+  })
+
+  test("tryUpdate rejects stale entity state", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await makeRun()
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.entities.push({
+          id: "wfe_1",
+          runID: run.id,
+          title: "E",
+          state: "queued",
+          bindings: {},
+          submissions: [],
+          time: { created: Date.now(), updated: Date.now(), stateEntered: Date.now() },
+        } as any)
+      })
+      const first = await WorkflowRunStore.tryUpdate(
+        scopeID,
+        run.id,
+        (draft) => {
+          const entity = draft.entities.find((item) => item.id === "wfe_1")
+          if (entity) entity.state = "executing"
+        },
+        { expectedEntityState: { entityID: "wfe_1", state: "queued" } },
+      )
+      expect(first.ok).toBe(true)
+      const second = await WorkflowRunStore.tryUpdate(
+        scopeID,
+        run.id,
+        (draft) => {
+          const entity = draft.entities.find((item) => item.id === "wfe_1")
+          if (entity) entity.state = "blocked"
+        },
+        { expectedEntityState: { entityID: "wfe_1", state: "queued" } },
+      )
+      expect(second.ok).toBe(false)
+      if (!second.ok) expect(second.reason).toBe("conflict")
+      const latest = await WorkflowRunStore.get(scopeID, run.id)
+      expect(latest.entities[0]?.state).toBe("executing")
+    })
+  })
 })
