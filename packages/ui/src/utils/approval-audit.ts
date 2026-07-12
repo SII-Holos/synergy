@@ -20,11 +20,7 @@ interface ApprovalMeta {
   audit?: {
     visible?: boolean
   }
-  smartAllow?: {
-    risk?: string
-    reason?: string
-    confidence?: number
-  }
+  smartAllow?: { risk: string; reason: string; confidence: number } | { skipped: true; reason: string }
 }
 
 export interface ApprovalAudit {
@@ -107,6 +103,11 @@ function explain(status: string, mode?: string, risk?: string, reason?: string):
   }
 }
 
+function formatSmartAllow(smartAllow: NonNullable<ApprovalMeta["smartAllow"]>): string {
+  if ("skipped" in smartAllow) return `Smart allow skipped: ${smartAllow.reason}`
+  return `Smart allow: ${smartAllow.risk} risk, ${(smartAllow.confidence * 100).toFixed(0)}% confidence`
+}
+
 export function getApprovalAudit(approval: ApprovalMeta | null | undefined): ApprovalAudit {
   const empty: ApprovalAudit = { icon: null, iconClass: "", tooltip: "" }
   if (!approval) return empty
@@ -136,10 +137,7 @@ export function getApprovalAudit(approval: ApprovalMeta | null | undefined): App
   const riskAdj = risk ? (RISK_ADJECTIVE[risk] ?? risk) : null
   const line1 = riskAdj ? `${label} \u00b7 ${riskAdj} risk` : label
   const line2 = explain(status, mode, risk, reason)
-  const sa = approval.smartAllow
-  const saLine = sa
-    ? `Smart allow: ${sa.risk ?? "unknown"} risk, ${((sa.confidence ?? 0) * 100).toFixed(0)}% confidence`
-    : undefined
+  const saLine = approval.smartAllow ? formatSmartAllow(approval.smartAllow) : undefined
   const parts = [line1, line2, saLine].filter(Boolean) as string[]
   const tooltip = parts.join("\n")
 

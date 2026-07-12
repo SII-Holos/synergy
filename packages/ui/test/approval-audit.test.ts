@@ -75,4 +75,28 @@ describe("getApprovalAudit", () => {
     expect(r.tooltip).toMatch(/^Auto approved · Medium risk/)
     expect(r.tooltip).toContain("\nCustom explanation here")
   })
+
+  test("tooltip includes evaluated SmartAllow risk and confidence", () => {
+    const r = getApprovalAudit({
+      status: "auto_allowed",
+      risk: "low",
+      audit: visible,
+      smartAllow: { risk: "low", reason: "Routine operation", confidence: 0.92 },
+    })
+
+    expect(r.tooltip).toContain("\nSmart allow: low risk, 92% confidence")
+  })
+
+  test("tooltip explains when SmartAllow evaluation was skipped", () => {
+    const r = getApprovalAudit({
+      status: "auto_denied",
+      risk: "high",
+      audit: visible,
+      smartAllow: { skipped: true, reason: "Non-bypassable capability" },
+    })
+
+    expect(r.tooltip).toContain("\nSmart allow skipped: Non-bypassable capability")
+    expect(r.tooltip).not.toContain("unknown risk")
+    expect(r.tooltip).not.toContain("0% confidence")
+  })
 })
