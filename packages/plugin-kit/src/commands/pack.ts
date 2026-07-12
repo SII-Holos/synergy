@@ -41,7 +41,9 @@ export function packPluginProject(pluginDir: string): string {
 
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Packing${UI.Style.TEXT_NORMAL} ${manifest.id} v${manifest.version}`)
   const archiveName = `${safePackageName(manifest.id)}-${manifest.version}.synergy-plugin.tgz`
-  const result = Bun.spawnSync(["tar", "-czf", archiveName, "-C", distDir, "."], { cwd: pluginDir })
+  const entries = fs.readdirSync(distDir).sort()
+  if (entries.length === 0) throw new Error(`Plugin build output is empty: ${distDir}`)
+  const result = Bun.spawnSync(["tar", "-czf", archiveName, "-C", distDir, ...entries], { cwd: pluginDir })
   if (result.exitCode !== 0) {
     throw new Error(`Failed to create plugin archive: ${new TextDecoder().decode(result.stderr)}`)
   }

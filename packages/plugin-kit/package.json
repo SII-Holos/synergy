@@ -44,7 +44,6 @@
   "dependencies": {
     "@babel/core": "catalog:",
     "@ericsanchezok/synergy-plugin": "workspace:*",
-    "@ericsanchezok/synergy-util": "workspace:*",
     "babel-preset-solid": "catalog:",
     "yargs": "18.0.0"
   },

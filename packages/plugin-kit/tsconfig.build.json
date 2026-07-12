@@ -4,7 +4,6 @@
   "compilerOptions": {
     "rootDir": "src",
     "paths": {
-      "@ericsanchezok/synergy-util/*": ["../util/dist/*.d.ts"],
       "@ericsanchezok/synergy-plugin": ["../plugin/dist/index.d.ts"],
       "@ericsanchezok/synergy-plugin/*": ["../plugin/dist/*.d.ts"]
     }
