@@ -10,6 +10,7 @@ import { WorkspaceFileSearch } from "../../src/workspace-file/search"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { LSP } from "../../src/lsp"
+import { Ripgrep } from "../../src/file/ripgrep"
 import { tmpdir } from "../fixture/fixture"
 
 function isSymlinkPrivilegeError(error: unknown) {
@@ -372,6 +373,55 @@ describe("WorkspaceFileSearch", () => {
       },
     )
   })
+
+  test.skipIf(process.platform === "win32")(
+    "content search aborts and returns when the search process ignores SIGTERM",
+    async () => {
+      await using hang = await tmpdir({
+        init: async (dir) => {
+          const script = path.join(dir, "hang-rg.sh")
+          await Bun.write(
+            script,
+            `#!/bin/sh
+trap '' TERM
+# Busy-loop in the shell itself so SIGKILL targets the same process that owns stdout.
+# Response/stream consumers would hang forever if the process is not hard-killed.
+while true; do :; done
+`,
+          )
+          await fs.chmod(script, 0o755)
+        },
+      })
+
+      const hangScript = path.join(hang.path, "hang-rg.sh")
+      const originalFilepath = Ripgrep.filepath
+      ;(Ripgrep as any).filepath = async () => hangScript
+
+      try {
+        await withWorkspace(
+          async (dir) => {
+            await Bun.write(path.join(dir, "src.txt"), "needle\n")
+          },
+          async () => {
+            const controller = new AbortController()
+            const search = WorkspaceFileSearch.search({
+              kind: "content",
+              query: "needle",
+              limit: 10,
+              signal: controller.signal,
+            })
+
+            setTimeout(() => controller.abort(), 50)
+            const started = Date.now()
+            await expect(search).rejects.toMatchObject({ name: "AbortError" })
+            expect(Date.now() - started).toBeLessThan(5_000)
+          },
+        )
+      } finally {
+        ;(Ripgrep as any).filepath = originalFilepath
+      }
+    },
+  )
 
   test("reports symbol search unavailable when no LSP client is active", async () => {
     await withWorkspace(
