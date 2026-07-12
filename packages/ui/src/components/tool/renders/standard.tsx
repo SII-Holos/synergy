@@ -134,6 +134,33 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "scope_list",
+  render(props) {
+    const total = () => props.metadata?.total as number | undefined
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "folder-tree",
+          title: "Scopes",
+          subtitle: props.input.query || "",
+          tags:
+            total() != null ? [`${total()} scope${total() === 1 ? "" : "s"}`].map((l) => ({ label: l })) : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "session_read",
   render(props) {
     return (

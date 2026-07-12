@@ -918,6 +918,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Sessions",
         subtitle: input.scope,
       }
+    case "scope_list":
+      return {
+        icon: "folder-tree",
+        title: "Scopes",
+        subtitle: (input.query as string) || undefined,
+      }
     case "session_read":
       return {
         icon: "message-square",

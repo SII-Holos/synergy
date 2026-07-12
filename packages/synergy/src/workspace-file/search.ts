@@ -125,10 +125,72 @@ async function searchContent(input: {
   const signal = input.signal
     ? AbortSignal.any([input.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)])
     : AbortSignal.timeout(SEARCH_TIMEOUT_MS)
-  const kill = () => proc.kill()
-  signal.addEventListener("abort", kill, { once: true })
-  const text = await new Response(proc.stdout).text().finally(() => signal.removeEventListener("abort", kill))
-  await proc.exited.catch(() => {})
+
+  const reader = proc.stdout.getReader()
+  let stoppedEarly = false
+  let terminatePromise: Promise<void> | undefined
+  const requestTerminate = () => {
+    terminatePromise ??= Ripgrep.terminate(proc)
+    return terminatePromise
+  }
+  const onAbort = () => {
+    stoppedEarly = true
+    void reader.cancel().catch(() => {})
+    void requestTerminate()
+  }
+  signal.addEventListener("abort", onAbort, { once: true })
+  if (signal.aborted) onAbort()
+
+  const decoder = new TextDecoder()
+  let text = ""
+  let reachedEnd = false
+  try {
+    while (true) {
+      if (signal.aborted) {
+        stoppedEarly = true
+        break
+      }
+      const { done, value } = await reader.read()
+      if (done) {
+        reachedEnd = !stoppedEarly && !signal.aborted
+        break
+      }
+      if (signal.aborted) {
+        stoppedEarly = true
+        break
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+    if (!signal.aborted) text += decoder.decode()
+  } finally {
+    if (!reachedEnd) {
+      stoppedEarly = true
+      void reader.cancel().catch(() => {})
+      await requestTerminate()
+    }
+    try {
+      reader.releaseLock()
+    } catch {
+      // Reader may already be released after cancel.
+    }
+    try {
+      if (reachedEnd) await proc.exited.catch(() => {})
+    } finally {
+      signal.removeEventListener("abort", onAbort)
+    }
+  }
+
+  if (stoppedEarly || signal.aborted) {
+    if (input.signal?.aborted) {
+      throw input.signal.reason ?? new DOMException("Search aborted", "AbortError")
+    }
+    return {
+      kind: "content",
+      query: input.query,
+      items: [],
+      truncated: false,
+    }
+  }
 
   const offset = parseCursor(input.cursor)
   const items: WorkspaceFile.ContentSearchItem[] = []

@@ -3,6 +3,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { setToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import { useProductUpdate } from "@/context/product-update"
 import type { DesktopUpdateMode } from "@/context/platform"
@@ -24,6 +25,7 @@ import {
   type GeneralStore,
   type ToastType,
 } from "../types"
+import { nextMutedToasts, toastConfigFromPreferences } from "../toast-preferences"
 
 const colorSchemeOptions: Array<{
   value: ColorScheme
@@ -56,18 +58,19 @@ export function GeneralPanel(props: {
     theme.setThemeId(themeId)
   }
 
-  function toggleMutedToast(type: ToastType, enabled: boolean) {
-    const next = enabled
-      ? [...props.general.mutedToasts, type]
-      : props.general.mutedToasts.filter((item) => item !== type)
-    props.onGeneralChange("mutedToasts", Array.from(new Set(next)))
+  function toggleMutedToast(type: ToastType, mutedEnabled: boolean) {
+    const next = nextMutedToasts(props.general.mutedToasts, type, mutedEnabled)
+    props.onGeneralChange("mutedToasts", next)
+    setToastConfig(toastConfigFromPreferences(next, props.general.toastDurations))
   }
 
   function setToastDuration(type: ToastType, value: string) {
-    props.onGeneralChange("toastDurations", {
+    const next = {
       ...props.general.toastDurations,
       [type]: value,
-    })
+    }
+    props.onGeneralChange("toastDurations", next)
+    setToastConfig(toastConfigFromPreferences(props.general.mutedToasts, next))
   }
 
   return (
@@ -298,12 +301,12 @@ function ToastPreferenceRow(props: {
       </div>
 
       <div class="settings-toast-controls">
-        <label class="settings-muted-toggle">
-          <span>Mute</span>
+        <div class="settings-muted-toggle">
+          <span aria-hidden="true">Mute</span>
           <Switch checked={props.muted} hideLabel onChange={props.onMutedChange}>
             Mute {copy().label}
           </Switch>
-        </label>
+        </div>
 
         <div class="settings-duration-control">
           <div class="settings-duration-header">

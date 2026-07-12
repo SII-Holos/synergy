@@ -25,6 +25,7 @@ import { resolveWorkspaceTransition } from "./workspace-transition"
 import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planBucketEviction } from "./message-eviction"
+import { describeToolPartApply } from "./session-sync-plan"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import {
   createPlanBlueprintOfferFromPart,
@@ -1056,9 +1057,31 @@ function createGlobalSync() {
         const part = event.properties.part
         const parts = store.part[part.messageID]
         if (!parts) {
+          if (part.type === "tool") {
+            console.debug("[sync] tool.part.apply", {
+              action: describeToolPartApply({ hasBucket: false, found: false }),
+              sessionID: part.sessionID,
+              messageID: part.messageID,
+              partID: part.id,
+              callID: (part as any).callID,
+              tool: (part as any).tool,
+              status: (part as any).state?.status,
+            })
+          }
           setStore("part", part.messageID, [part])
         } else {
           const result = Binary.search(parts, part.id, (p) => p.id)
+          if (part.type === "tool") {
+            console.debug("[sync] tool.part.apply", {
+              action: describeToolPartApply({ hasBucket: true, found: result.found }),
+              sessionID: part.sessionID,
+              messageID: part.messageID,
+              partID: part.id,
+              callID: (part as any).callID,
+              tool: (part as any).tool,
+              status: (part as any).state?.status,
+            })
+          }
           if (result.found) {
             // reconcile so a streaming text/tool part only touches changed
             // leaves instead of re-rendering the whole part on every delta.

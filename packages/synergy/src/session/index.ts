@@ -1004,6 +1004,21 @@ export namespace Session {
       // do not need to advance the cache — the terminal write for each part does.
       SessionMessageCache.upsertPart(part.sessionID, part)
     }
+    if (part.type === "tool") {
+      // Tool parts are published as unsequenced streaming events. Keep a
+      // durable breadcrumb so missing frontend cards can be correlated with
+      // backend settlement (issue #509).
+      const tool = part as MessageV2.ToolPart
+      log.info("tool.part.publish", {
+        sessionID: tool.sessionID,
+        messageID: tool.messageID,
+        partID: tool.id,
+        callID: tool.callID,
+        tool: tool.tool,
+        status: tool.state.status,
+        durable: delta === undefined,
+      })
+    }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,

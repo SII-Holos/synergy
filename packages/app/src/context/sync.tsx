@@ -9,6 +9,7 @@ import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/s
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
+import { planSessionSyncReload } from "./session-sync-plan"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -33,13 +34,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       loading: {} as Record<string, boolean>,
       messageLoad: {} as Record<string, SessionMessageLoadState>,
     })
-    // Track the reconnectVersion at the time of each session's last explicit
-    // load, so we can force a re-fetch after a backend restart — whose
-    // in-memory state the server cannot replay via events. Follows the same
-    // pattern as blueprint loop refetch (issue #331). Without this, a session
-    // that was already in the store before the restart short-circuits
-    // sync.session.sync() and never refreshes persisted metadata such as
-    // workflow kind (plan/lightloop/lattice), causing mode chips to disappear.
+    // Track the reconnectVersion at the time of each session's last successful
+    // message/part snapshot load. After reconnect, force both session metadata
+    // and durable message/part reloads: tool parts publish as unsequenced
+    // streaming events, so event replay alone cannot restore a missed tool card
+    // (issue #509). Session metadata still follows the same restart pattern as
+    // blueprint loop refetch (issue #331).
     const sessionReconnectVersions = new Map<string, number>()
 
     const getSession = (sessionID: string) => {
@@ -107,8 +107,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       await retry(() => sdk.client.session.get({ sessionID })).then((session) => {
         if (!session.data) return
         upsertSession(session.data)
-        sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
       })
+    }
+
+    const markSessionSynced = (sessionID: string) => {
+      sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
     }
 
     type SessionMessagesResponse = Awaited<ReturnType<(typeof sdk.client.session)["messages"]>>
@@ -158,11 +161,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     })
 
     const loadMessages = (sessionID: string, limit: number, options?: { force?: boolean }) =>
-      messageLoader.load(sessionID, {
-        force: options?.force,
-        hasSnapshot: store.message[sessionID] !== undefined,
-        input: { limit },
-      })
+      messageLoader
+        .load(sessionID, {
+          force: options?.force,
+          hasSnapshot: store.message[sessionID] !== undefined,
+          input: { limit },
+        })
+        .then(() => {
+          markSessionSynced(sessionID)
+        })
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -321,37 +328,37 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 setStore("permission", sessionID, reconcile(entries, { key: "id" }))
               })
               .catch(() => {})
-
-          // Force a session reload after a backend restart, whose in-memory
-          // state the server cannot replay via events (same pattern as issue
-          // #331 for blueprint loops). Without this, sync() short-circuits
-          // because hasSession is true from the stale pre-restart store copy,
-          // and persisted fields such as workflow kind (plan/lightloop/lattice)
-          // never refresh — causing mode chips to disappear.
+          // Force session/message reloads after reconnect or backend restart.
+          // Session metadata alone is not enough: tool parts publish as
+          // unsequenced streaming events, so reconnect recovery must re-fetch
+          // durable message/part snapshots too (issue #509 / #331).
           const currentReconnectVersion = globalSync.reconnectVersion()
-          const versionStale = sessionReconnectVersions.get(sessionID) !== currentReconnectVersion
-
           const session = getSession(sessionID)
-          const hasSession = session !== undefined && !versionStale
-          const needsDerivedHistoryRefresh = session?.history?.rollback?.canUnrollback === true
           hydrateMessages(sessionID)
-
-          const hasMessages = store.message[sessionID] !== undefined
-          const ready = hasSession && hasMessages && !needsDerivedHistoryRefresh
-          const pending = ready ? undefined : inflight.get(sessionID)
+          const plan = planSessionSyncReload({
+            hasSessionRecord: session !== undefined,
+            hasMessages: store.message[sessionID] !== undefined,
+            reconnectVersion: currentReconnectVersion,
+            lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
+            canUnrollback: session?.history?.rollback?.canUnrollback === true,
+          })
+          const pending = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq =
             pending ??
-            (ready
+            (plan.ready
               ? Promise.resolve()
               : (() => {
                   const limit = meta.limit[sessionID] ?? chunk
-                  const sessionReq =
-                    hasSession && !needsDerivedHistoryRefresh
-                      ? Promise.resolve()
-                      : loadSession(sessionID, { force: needsDerivedHistoryRefresh || versionStale })
-                  const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
+                  const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
+                  const messagesReq = plan.forceMessages
+                    ? loadMessages(sessionID, limit, { force: true })
+                    : Promise.resolve()
                   const promise = Promise.all([sessionReq, messagesReq])
-                    .then(() => {})
+                    .then(() => {
+                      // Session-only reloads (no message fetch) still advance the
+                      // reconnect watermark so later sync() calls can short-circuit.
+                      if (!plan.forceMessages) markSessionSynced(sessionID)
+                    })
                     .finally(() => {
                       inflight.delete(sessionID)
                     })

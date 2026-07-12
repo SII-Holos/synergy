@@ -6,7 +6,7 @@ import { ExperienceRecall } from "./experience-recall"
 import { Intent } from "./intent"
 import { Script } from "./script"
 import { Agent } from "../agent/agent"
-import { INTENT_MAX_CHARS } from "./encoder-constants"
+import { ENCODER_LLM_TIMEOUT_MS, ENCODER_MAX_OUTPUT_CHARS, INTENT_MAX_CHARS } from "./encoder-constants"
 import { Provider } from "../provider/provider"
 import { LLM } from "../session/llm"
 import { Turn } from "../session/turn"
@@ -15,6 +15,7 @@ import { Scope } from "../scope"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { Plugin } from "../plugin"
+import { withTimeout } from "../util/timeout"
 import { createHash } from "crypto"
 
 export namespace ExperienceEncoder {
@@ -453,6 +454,37 @@ export namespace ExperienceEncoder {
     learning: Required<Config.Learning>
   }
 
+  export class EncoderStreamError extends Error {
+    readonly code: "timeout" | "oversized" | "aborted" | "stream"
+
+    constructor(code: EncoderStreamError["code"], message: string) {
+      super(message)
+      this.name = "EncoderStreamError"
+      this.code = code
+    }
+  }
+
+  export async function collectBoundedText(input: {
+    textStream: AsyncIterable<string>
+    maxChars: number
+    abort?: AbortController
+  }): Promise<string> {
+    let text = ""
+    for await (const chunk of input.textStream) {
+      if (!chunk) continue
+      text += chunk
+      if (text.length > input.maxChars) {
+        input.abort?.abort()
+        throw new EncoderStreamError("oversized", `encoder stream exceeded ${input.maxChars} characters`)
+      }
+    }
+    return text
+  }
+
+  export async function callAgentForTest(agentName: string, ctx: AgentContext, content: string): Promise<string> {
+    return callAgent(agentName, ctx, content)
+  }
+
   async function callAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
     const agent = await Agent.get(agentName)
     if (!agent || !ctx.userMsg) return ""
@@ -461,19 +493,48 @@ export namespace ExperienceEncoder {
     const model = agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : ctx.model
     if (!model) return ""
 
-    const stream = await LLM.stream({
-      agent,
-      user: ctx.userMsg,
-      tools: {},
-      model,
-      small: true,
-      messages: [{ role: "user" as const, content }],
-      abort: new AbortController().signal,
-      sessionID: ctx.sessionID,
-      system: [],
-      retries: ctx.learning.encoderRetries,
-    })
-    return (await stream.text.catch(() => "")) ?? ""
+    const timeoutMs = ctx.learning.encoderTimeoutMs ?? ENCODER_LLM_TIMEOUT_MS
+    const maxChars = ctx.learning.encoderMaxOutputChars ?? ENCODER_MAX_OUTPUT_CHARS
+    const abort = new AbortController()
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const onTimeout = () => abort.abort()
+    timeout.addEventListener("abort", onTimeout, { once: true })
+
+    try {
+      const stream = await LLM.stream({
+        agent,
+        user: ctx.userMsg,
+        tools: {},
+        model,
+        small: true,
+        messages: [{ role: "user" as const, content }],
+        abort: abort.signal,
+        sessionID: ctx.sessionID,
+        system: [],
+        retries: ctx.learning.encoderRetries,
+      })
+
+      const textStream =
+        stream.textStream ??
+        (async function* () {
+          yield await stream.text
+        })()
+
+      return await withTimeout(collectBoundedText({ textStream, maxChars, abort }), timeoutMs, {
+        message: `encoder ${agentName} timed out after ${timeoutMs}ms`,
+      })
+    } catch (error) {
+      if (error instanceof EncoderStreamError) throw error
+      if (abort.signal.aborted || timeout.aborted) {
+        throw new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`)
+      }
+      if (error instanceof Error && /timed out/i.test(error.message)) {
+        throw new EncoderStreamError("timeout", error.message)
+      }
+      throw error
+    } finally {
+      timeout.removeEventListener("abort", onTimeout)
+    }
   }
 
   async function generateIntent(ctx: AgentContext, history: string | undefined, userInput: string): Promise<string> {
