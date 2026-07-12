@@ -833,6 +833,18 @@ export const Learning = z
       .min(0)
       .optional()
       .describe("LLM retry count for intent/script/reward generation (default: 3)"),
+    encoderTimeoutMs: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)"),
+    encoderMaxOutputChars: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Maximum characters collected from one encoder model stream before abort (default: 16000)"),
     digestToolOutputBudget: z
       .number()
       .int()
@@ -914,6 +926,8 @@ export const LEARNING_DEFAULTS = {
   snapThreshold: 0.5,
   legacyRewardConfidence: 0.3,
   encoderRetries: 3,
+  encoderTimeoutMs: 60_000,
+  encoderMaxOutputChars: 16_000,
   digestToolOutputBudget: 800,
   encoderToolFieldBudget: 500,
   encoderToolOutputBudget: 300,
