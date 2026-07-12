@@ -1,7 +1,7 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getToastConfig, showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { discardSettingsConfirm } from "@/components/dialog/confirm-copy"
 import { groupPatchByDomain, strategyForPatch } from "../domain-routing"
@@ -96,11 +96,13 @@ export function useSettingsSave(ctx: SaveContext) {
       bgResetTimer = setTimeout(() => {
         if (saveGen === gen) setBgStatus("idle")
       }, 2000)
-      showToast({
-        type: "success",
-        title: `Saved ${ctx.editingLabel()}`,
-        description: `Updated: ${Object.keys(patch).join(", ")}`,
-      })
+      if (!getToastConfig()?.muted?.includes("success")) {
+        showToast({
+          type: "success",
+          title: `Saved ${ctx.editingLabel()}`,
+          description: `Updated: ${Object.keys(patch).join(", ")}`,
+        })
+      }
     } catch (error: any) {
       if (saveGen !== gen) return
       setBgStatus("error")
