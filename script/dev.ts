@@ -594,6 +594,24 @@ function signalProcessTree(child: DevProcess, signal: "SIGTERM" | "SIGKILL"): vo
   }
 }
 
+function processGroupExists(pid: number): boolean {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForProcessGroupExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (processGroupExists(pid)) {
+    if (Date.now() >= deadline) return false
+    await Bun.sleep(25)
+  }
+  return true
+}
+
 export async function terminateDevProcesses(children: DevProcess[]): Promise<void> {
   const active = children.filter((child) => child.exitCode === null)
   if (process.platform === "win32") {
@@ -604,8 +622,11 @@ export async function terminateDevProcesses(children: DevProcess[]): Promise<voi
 
   for (const child of active) signalProcessTree(child, "SIGTERM")
   const settle = Promise.allSettled(children.map((child) => child.exited))
-  await Promise.race([settle, Bun.sleep(3000)])
-  for (const child of active) signalProcessTree(child, "SIGKILL")
+  await Promise.all(active.flatMap((child) => (child.pid ? [waitForProcessGroupExit(child.pid, 3000)] : [])))
+  for (const child of active) {
+    if (child.pid && processGroupExists(child.pid)) signalProcessTree(child, "SIGKILL")
+  }
+  await Promise.all(active.flatMap((child) => (child.pid ? [waitForProcessGroupExit(child.pid, 1000)] : [])))
   await Promise.race([settle, Bun.sleep(1000)])
 }
 
