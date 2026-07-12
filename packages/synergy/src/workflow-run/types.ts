@@ -186,6 +186,18 @@ export namespace WorkflowTypes {
     .meta({ ref: "WorkflowGateInstance" })
   export type GateInstance = z.infer<typeof GateInstance>
 
+  export const PendingEffect = z
+    .object({
+      id: z.string(),
+      transitionEventID: z.string(),
+      transitionID: z.string(),
+      entityID: Identifier.schema("workflow_entity"),
+      effects: z.array(EffectRef),
+      nextIndex: z.number().int().min(0).default(0),
+    })
+    .meta({ ref: "WorkflowPendingEffect" })
+  export type PendingEffect = z.infer<typeof PendingEffect>
+
   export const RunStatus = z.enum(["active", "paused", "completed", "failed", "cancelled"])
   export type RunStatus = z.infer<typeof RunStatus>
 
@@ -203,6 +215,7 @@ export namespace WorkflowTypes {
       seats: z.array(SeatBinding),
       entities: z.array(Entity),
       gates: z.array(GateInstance),
+      pendingEffects: z.array(PendingEffect).default([]),
       budget: z.object({ maxModelCalls: z.number(), used: z.number() }),
       time: z.object({ created: z.number(), updated: z.number(), completed: z.number().optional() }),
     })

@@ -60,6 +60,7 @@ export namespace WorkflowRunStore {
       seats: input.seats,
       entities: [],
       gates: [],
+      pendingEffects: [],
       budget: { maxModelCalls: input.maxModelCalls, used: 0 },
       time: { created: now, updated: now },
     })
@@ -143,6 +144,7 @@ export namespace WorkflowRunStore {
     scopeID: string,
     run: Pick<WorkflowTypes.Run, "id">,
     input: {
+      id?: string
       kind: WorkflowTypes.EventKind
       entityID?: string
       seat?: string
@@ -153,7 +155,7 @@ export namespace WorkflowRunStore {
   ): Promise<WorkflowTypes.EventInfo> {
     const sid = Identifier.asScopeID(scopeID)
     const event = WorkflowTypes.EventInfo.parse({
-      id: Identifier.ascending("workflow_event"),
+      id: input.id ?? Identifier.ascending("workflow_event"),
       runID: run.id,
       scopeID,
       kind: input.kind,

@@ -35,7 +35,7 @@ describe("workflow tool visibility", () => {
     }
   })
 
-  test("implementation tools are hidden from a boss session", () => {
+  test("implementation tools are hidden from a boss session by taxonomy", () => {
     const bossHidden = [
       "task",
       "task_cancel",
@@ -47,6 +47,9 @@ describe("workflow tool visibility", () => {
       "save_file",
       "note_write",
       "note_edit",
+      "bash",
+      "edit",
+      "write",
     ]
     for (const tool of bossHidden) {
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole("boss") })).toBeDefined()

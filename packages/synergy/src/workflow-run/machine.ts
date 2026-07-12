@@ -1,3 +1,4 @@
+import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { CharterStore } from "./charter-store"
 import { WorkflowEffects } from "./effects"
@@ -86,8 +87,11 @@ export namespace WorkflowMachine {
       return { ok: false, reason: guardResult.reason ?? "guard failed" }
     }
 
-    // Commit the submission + state change under CAS on the source state so two
-    // concurrent intents cannot both transition the same entity.
+    // Commit state + pending-effect outbox under CAS on the source state so two
+    // concurrent intents cannot both transition the same entity, and a crash
+    // after commit still leaves recoverable pending effects.
+    const pendingEffectID = Identifier.ascending("workflow_event")
+    const transitionEventID = Identifier.ascending("workflow_event")
     const commit = await WorkflowRunStore.tryUpdate(
       scopeID,
       run.id,
@@ -99,6 +103,17 @@ export namespace WorkflowMachine {
         e.blockedReason = undefined
         e.time.updated = Date.now()
         e.time.stateEntered = Date.now()
+        if (transition.effects.length > 0) {
+          draft.pendingEffects = draft.pendingEffects ?? []
+          draft.pendingEffects.push({
+            id: pendingEffectID,
+            transitionEventID,
+            transitionID: transition.id,
+            entityID: entity.id,
+            effects: transition.effects,
+            nextIndex: 0,
+          })
+        }
       },
       { expectedEntityState: { entityID: entity.id, state: transition.from } },
     )
@@ -123,10 +138,11 @@ export namespace WorkflowMachine {
         },
       )
     }
-    const transitionEvent = await WorkflowRunStore.appendEvent(
+    await WorkflowRunStore.appendEvent(
       scopeID,
       { id: run.id },
       {
+        id: transitionEventID,
         kind: "entity_transitioned",
         entityID: entity.id,
         transitionID: transition.id,
@@ -134,18 +150,20 @@ export namespace WorkflowMachine {
       },
     )
 
-    // Effects run after commit.
-    await WorkflowEffects.runAll(
-      {
-        scopeID,
-        runID: run.id,
-        entityID: entity.id,
-        charter,
-        transitionID: transition.id,
-        transitionEventID: transitionEvent.id,
-      },
-      transition.effects,
-    )
+    // Effects run from the outbox after commit.
+    if (transition.effects.length > 0) {
+      await WorkflowEffects.runPending(
+        {
+          scopeID,
+          runID: run.id,
+          entityID: entity.id,
+          charter,
+          transitionID: transition.id,
+          transitionEventID,
+        },
+        pendingEffectID,
+      )
+    }
     return { ok: true }
   }
 

@@ -1,5 +1,3 @@
-import { Identifier } from "../id/id"
-import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { SessionInteraction } from "../session/interaction"
@@ -17,8 +15,6 @@ import { WorkflowTypes } from "./types"
  * SessionManager directly.
  */
 export namespace WorkflowSeats {
-  const log = Log.create({ service: "workflow.seats" })
-
   export function find(run: WorkflowTypes.Run, seat: string, instance: number): WorkflowTypes.SeatBinding | undefined {
     return run.seats.find((s) => s.seat === seat && s.instance === instance)
   }
@@ -46,7 +42,6 @@ export namespace WorkflowSeats {
       scope: bossSession.scope,
       parentID: run.bossSessionID,
       title: `${run.title} · ${seat}#${instance}`,
-      controlProfile: def.controlProfile,
       agentOverride: def.agent,
       interaction:
         def.interaction === "unattended"
@@ -54,18 +49,20 @@ export namespace WorkflowSeats {
           : SessionInteraction.interactive("workflow_run"),
     })
 
-    let sessionID = session.id
-    await Session.update(sessionID, (draft) => {
+    const sessionID = session.id
+    // Child sessions inherit controlProfile through the parent chain by default.
+    // SeatDef.controlProfile is an explicit worker contract, so set it on the
+    // seat session itself after create (Session.create clears controlProfile for
+    // parented sessions).
+    await Session.updateControlProfile(sessionID, def.controlProfile, (draft) => {
       draft.workflowRun = { runID, role: "seat", seat, instance }
+      if (def.model) draft.modelOverride = def.model
     })
 
-    // Per-seat worktree when the policy asks for one.
+    // shared/per_entity worktree is required for executor isolation. Failure is
+    // hard — continuing in the boss/main workspace would silently mis-route work.
     if (def.worktree === "per_entity" || def.worktree === "shared") {
-      try {
-        await createSeatWorktree(sessionID, `${run.title}-${seat}-${instance}`.slice(0, 60))
-      } catch (error) {
-        log.warn("seat worktree create failed", { runID, seat, instance, error })
-      }
+      await createSeatWorktree(sessionID, `${run.title}-${seat}-${instance}`.slice(0, 60))
     }
 
     await WorkflowRunStore.update(scopeID, runID, (draft) => {

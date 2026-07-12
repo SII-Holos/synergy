@@ -102,7 +102,7 @@ export interface BossPanelSDK {
   }
 }
 
-export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
+export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconnectVersion?: number }) {
   const [runs, setRuns] = createSignal<WorkflowRun[]>([])
   const [selectedRunID, setSelectedRunID] = createSignal<string | undefined>()
   const [charter, setCharter] = createSignal<WorkflowCharter | null>(null)
@@ -139,7 +139,21 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
   }
 
   createEffect(() => {
+    // Re-fetch authoritative snapshot after websocket reconnect so missed
+    // run.created / run.updated / event.appended envelopes cannot leave the
+    // panel permanently stale.
+    void props.reconnectVersion
     void loadRuns()
+    const unsubCreated = props.sdk.event.on("workflow.run.created", (event) => {
+      const created = event.properties.run
+      if (!created) return
+      setRuns((prev) => {
+        const next = prev.filter((r) => r.id !== created.id)
+        if (BossData.isActive(created)) next.push(created)
+        return next
+      })
+      if (!selectedRunID() && BossData.isActive(created)) setSelectedRunID(created.id)
+    })
     const unsubRun = props.sdk.event.on("workflow.run.updated", (event) => {
       const updated = event.properties.run
       if (!updated) return
@@ -156,13 +170,16 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string }) {
       setEvents((prev) => BossData.mergeEvents(prev, [appended]))
     })
     onCleanup(() => {
+      unsubCreated()
       unsubRun()
       unsubEvent()
     })
   })
 
-  // Load the (separate) charter + event log whenever the selected run changes.
+  // Load the (separate) charter + event log whenever the selected run changes
+  // or after reconnect.
   createEffect(() => {
+    void props.reconnectVersion
     const r = run()
     if (r) void loadCharterAndEvents(r)
   })

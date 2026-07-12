@@ -75,23 +75,16 @@ export namespace SessionModePolicy {
   // anywhere) so they are intentionally not gated here.
 
   /**
-   * Tools a Boss session must never use — these are implementation tools that
-   * belong to seat sessions. The Boss is the control plane: it observes,
-   * unblocks, and makes gate decisions. It does not write code, execute
-   * commands, or dispatch subagents itself. Work should be enqueued as
-   * entities with workflow_entity_add so seat sessions pick it up.
+   * Boss is the control plane. Block implementation-shaped tools by taxonomy
+   * kind rather than a growing name blacklist so new write/execute/dispatch
+   * tools stay covered by default.
    */
-  const BOSS_HIDDEN_TOOLS = new Set([
-    "task",
-    "task_cancel",
-    "task_list",
-    "task_output",
-    "dagwrite",
-    "dagpatch",
-    "revise_file",
-    "save_file",
-    "note_write",
-    "note_edit",
+  const BOSS_BLOCKED_KINDS = new Set([
+    "code.write",
+    "code.execute",
+    "orchestration.task",
+    "orchestration.dag",
+    "knowledge.note",
   ])
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "plan"
@@ -263,15 +256,19 @@ export namespace SessionModePolicy {
     // tools. Work should be enqueued as entities via workflow_entity_add so
     // seat sessions pick it up. This is a technical gate, not just a prompt
     // suggestion.
-    if (role === "boss" && BOSS_HIDDEN_TOOLS.has(toolName)) {
-      return {
-        code: "tool_unavailable",
-        toolName,
-        message: [
-          `The "${toolName}" tool is unavailable in a workflow Boss session.`,
-          "You are the control plane — you observe, unblock, and decide at gates.",
-          "Do not implement yourself. Enqueue the work as an entity with workflow_entity_add so a seat session picks it up.",
-        ].join("\n"),
+    if (role === "boss") {
+      const taxonomy = ToolTaxonomy.classify(toolName)
+      if (BOSS_BLOCKED_KINDS.has(taxonomy.kind)) {
+        return {
+          code: "tool_unavailable",
+          toolName,
+          message: [
+            `The "${toolName}" tool is unavailable in a workflow Boss session.`,
+            "You are the control plane — you observe, unblock, and decide at gates.",
+            "Do not implement yourself. Enqueue the work as an entity with workflow_entity_add so a seat session picks it up.",
+          ].join("\n"),
+          metadata: { kind: taxonomy.kind, domain: taxonomy.domain },
+        }
       }
     }
 

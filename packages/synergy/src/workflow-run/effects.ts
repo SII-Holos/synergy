@@ -46,44 +46,75 @@ export namespace WorkflowEffects {
   /** Execute a transition's effects in order, with idempotency + failure blocking. */
   export async function runAll(ctx: Context, refs: WorkflowTypes.EffectRef[]): Promise<void> {
     for (let index = 0; index < refs.length; index++) {
-      const ref = refs[index]
-      const effectKey = `${ctx.transitionEventID}:${index}`
-      if (await WorkflowRunStore.effectAlreadyExecuted(ctx.scopeID, ctx.runID, effectKey)) continue
+      const advanced = await runOne(ctx, refs, index)
+      if (!advanced) return
+    }
+  }
 
-      const effect = registry.get(ref.name)
-      if (!effect) {
-        await blockEntity(ctx, `unknown effect '${ref.name}'`)
-        return
-      }
-      try {
-        await effect(ctx, ref.args)
-        await WorkflowRunStore.appendEvent(
-          ctx.scopeID,
-          { id: ctx.runID },
-          {
-            kind: "effect_executed",
-            entityID: ctx.entityID,
-            transitionID: ctx.transitionID,
-            message: ref.name,
-            data: { effectKey },
-          },
-        )
-      } catch (error) {
-        log.error("effect failed", { runID: ctx.runID, effect: ref.name, error })
-        await WorkflowRunStore.appendEvent(
-          ctx.scopeID,
-          { id: ctx.runID },
-          {
-            kind: "effect_failed",
-            entityID: ctx.entityID,
-            transitionID: ctx.transitionID,
-            message: `${ref.name}: ${error instanceof Error ? error.message : String(error)}`,
-            data: { effectKey },
-          },
-        )
-        await blockEntity(ctx, `effect '${ref.name}' failed: ${error instanceof Error ? error.message : String(error)}`)
-        return
-      }
+  /**
+   * Drain a pending-effect outbox entry. Safe after crash recovery because each
+   * effect is keyed and skipped once `effect_executed` is recorded.
+   */
+  export async function runPending(ctx: Context, pendingEffectID: string): Promise<void> {
+    const run = await WorkflowRunStore.get(ctx.scopeID, ctx.runID)
+    const pending = (run.pendingEffects ?? []).find((item) => item.id === pendingEffectID)
+    if (!pending) return
+    for (let index = pending.nextIndex; index < pending.effects.length; index++) {
+      const advanced = await runOne(ctx, pending.effects, index)
+      await WorkflowRunStore.update(ctx.scopeID, ctx.runID, (draft) => {
+        const item = (draft.pendingEffects ?? []).find((entry) => entry.id === pendingEffectID)
+        if (!item) return
+        if (advanced) item.nextIndex = index + 1
+        if (!advanced || item.nextIndex >= item.effects.length) {
+          draft.pendingEffects = (draft.pendingEffects ?? []).filter((entry) => entry.id !== pendingEffectID)
+        }
+      })
+      if (!advanced) return
+    }
+    await WorkflowRunStore.update(ctx.scopeID, ctx.runID, (draft) => {
+      draft.pendingEffects = (draft.pendingEffects ?? []).filter((entry) => entry.id !== pendingEffectID)
+    })
+  }
+
+  async function runOne(ctx: Context, refs: WorkflowTypes.EffectRef[], index: number): Promise<boolean> {
+    const ref = refs[index]
+    const effectKey = `${ctx.transitionEventID}:${index}`
+    if (await WorkflowRunStore.effectAlreadyExecuted(ctx.scopeID, ctx.runID, effectKey)) return true
+
+    const effect = registry.get(ref.name)
+    if (!effect) {
+      await blockEntity(ctx, `unknown effect '${ref.name}'`)
+      return false
+    }
+    try {
+      await effect(ctx, ref.args)
+      await WorkflowRunStore.appendEvent(
+        ctx.scopeID,
+        { id: ctx.runID },
+        {
+          kind: "effect_executed",
+          entityID: ctx.entityID,
+          transitionID: ctx.transitionID,
+          message: ref.name,
+          data: { effectKey },
+        },
+      )
+      return true
+    } catch (error) {
+      log.error("effect failed", { runID: ctx.runID, effect: ref.name, error })
+      await WorkflowRunStore.appendEvent(
+        ctx.scopeID,
+        { id: ctx.runID },
+        {
+          kind: "effect_failed",
+          entityID: ctx.entityID,
+          transitionID: ctx.transitionID,
+          message: `${ref.name}: ${error instanceof Error ? error.message : String(error)}`,
+          data: { effectKey },
+        },
+      )
+      await blockEntity(ctx, `effect '${ref.name}' failed: ${error instanceof Error ? error.message : String(error)}`)
+      return false
     }
   }
 
