@@ -11,6 +11,8 @@ import { showToast, Toast, toaster, setToastConfig } from "@ericsanchezok/synerg
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { toastConfigFromServerToast } from "@/components/settings/toast-preferences"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
@@ -50,20 +52,12 @@ export default function Layout(props: ParentProps) {
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
   const { pickProjectDirectories } = useProjectDirectoryPicker()
-  // Wire toast config from serialized config, watching the current directory's config.
+  // Wire toast config from the active scope (project directory or home).
   createEffect(() => {
-    const dir = params.dir ? base64Decode(params.dir) : undefined
-    if (!dir) return
-    const [store] = globalSync.ensureScopeState(dir)
-    const cfg = (store.config as any)?.toast
-    setToastConfig(
-      cfg
-        ? {
-            muted: cfg.muted,
-            durationOverrides: cfg.durationOverrides,
-          }
-        : undefined,
-    )
+    const scopeKey = params.dir ? base64Decode(params.dir) : HOME_SCOPE_KEY
+    const [store] = globalSync.ensureScopeState(scopeKey)
+    if (store.status === "loading") return
+    setToastConfig(toastConfigFromServerToast(store.config.toast))
   })
 
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
