@@ -2098,6 +2098,14 @@ export type LearningConfig = {
    */
   encoderRetries?: number
   /**
+   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
+   */
+  encoderTimeoutMs?: number
+  /**
+   * Maximum characters collected from one encoder model stream before abort (default: 16000)
+   */
+  encoderMaxOutputChars?: number
+  /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
   digestToolOutputBudget?: number

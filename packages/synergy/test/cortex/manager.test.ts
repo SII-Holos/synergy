@@ -1119,6 +1119,88 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("publishes the terminal task before an idle parent processes its completion notice", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const originalLoop = SessionInvoke.loop
+          let parentSessionID = ""
+          let taskID = ""
+          let resolveObservedOutput!: (output: string) => void
+          const observedOutput = new Promise<string>((resolve) => {
+            resolveObservedOutput = resolve
+          })
+
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "final prose")
+            },
+          )
+          ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+            if (sessionID === parentSessionID && taskID) {
+              resolveObservedOutput(await Cortex.output(taskID, "full"))
+            }
+          })
+
+          try {
+            const parentSession = await Session.create({})
+            parentSessionID = parentSession.id
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID: parentSession.id,
+              time: { created: Date.now() },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID,
+            } as any)
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: rootID,
+              sessionID: parentSession.id,
+              type: "text",
+              text: "parent root",
+            })
+
+            const { createdTask, launchPromise } = await launchAndCaptureCreatedTask(
+              () =>
+                Cortex.launch({
+                  description: "Notify idle parent with terminal output",
+                  prompt: "Do something",
+                  agent: "developer",
+                  parentSessionID: parentSession.id,
+                  parentMessageID: rootID,
+                  model: { providerID: "test-provider", modelID: "test-model" },
+                  output: { mode: "final_response" },
+                }),
+              (task) => task.parentSessionID === parentSession.id,
+            )
+            taskID = createdTask.id
+            await launchPromise
+
+            const output = await Promise.race([
+              observedOutput,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Parent session was not woken for the Cortex completion notice")
+              }),
+            ])
+
+            expect(output).toContain("Status: completed")
+            expect(output).toContain("--- Result ---")
+            expect(output).toContain("final prose")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            ;(SessionInvoke.loop as any) = originalLoop
+            if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+          }
+        },
+      })
+    })
+
     test("defers parent notification until the mid-turn parent releases", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

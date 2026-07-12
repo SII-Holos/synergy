@@ -605,8 +605,9 @@ export namespace Cortex {
       if (!waiters?.size && terminalTask.notifyParentOnComplete !== false) {
         // Register a deferred notification before exposing the terminal state.
         // release() can then never observe "completed" without also seeing the
-        // pending wake. For an idle parent, finish delivery before publishing the
-        // terminal state so callers observe one coherent completion boundary.
+        // pending wake. For an idle parent, enqueue the notification before
+        // publishing the terminal state, then process it asynchronously so the
+        // parent cannot re-enter while the in-memory task still looks active.
         if (SessionManager.isRunning(terminalTask.parentSessionID)) {
           deferParentNotification(terminalTask)
         } else {
@@ -773,6 +774,7 @@ export namespace Cortex {
     try {
       await SessionManager.deliver({
         target: task.parentSessionID,
+        waitForProcessing: false,
         mail: {
           type: "user",
           metadata: { source: "cortex", sourceSessionID: task.sessionID },
