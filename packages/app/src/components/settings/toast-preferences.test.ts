@@ -4,6 +4,7 @@ import {
   parseToastDurationOverrides,
   toastConfigFromPreferences,
   toastConfigFromServerToast,
+  toastPatchFromPreferences,
 } from "./toast-preferences"
 import { emptyToastDurationOverrides } from "./types"
 
@@ -24,6 +25,23 @@ describe("toast preference helpers", () => {
       durationOverrides: { warning: 2000 },
     })
     expect(toastConfigFromPreferences([], emptyToastDurationOverrides())).toBeUndefined()
+  })
+
+  test("domain patch always includes muted so unmute can clear mergeDeep state", () => {
+    expect(toastPatchFromPreferences([], emptyToastDurationOverrides())).toEqual({
+      muted: [],
+    })
+
+    const durations = emptyToastDurationOverrides()
+    durations.warning = "2500"
+    expect(toastPatchFromPreferences([], durations)).toEqual({
+      muted: [],
+      durationOverrides: { warning: 2000 },
+    })
+    expect(toastPatchFromPreferences(["info"], durations)).toEqual({
+      muted: ["info"],
+      durationOverrides: { warning: 2000 },
+    })
   })
 
   test("parses only valid positive toast duration overrides", () => {

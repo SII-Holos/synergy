@@ -1,6 +1,6 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
-import { toastConfigFromPreferences } from "../toast-preferences"
+import { normalizeServerToast, toastPatchFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
 
 export type BuildPatchParams = {
@@ -38,9 +38,11 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const theme = general.theme.trim()
   if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
 
-  const toast = toastConfigFromPreferences(general.mutedToasts, general.toastDurations) ?? {}
-  if (JSON.stringify(toast) !== JSON.stringify(cfg.toast ?? {})) {
-    patch.toast = Object.keys(toast).length ? toast : undefined
+  const toast = toastPatchFromPreferences(general.mutedToasts, general.toastDurations)
+  const current = normalizeServerToast(cfg.toast) ?? { muted: [] }
+  // Always include muted so domain mergeDeep can replace/clear the array.
+  if (JSON.stringify(toast) !== JSON.stringify(current)) {
+    patch.toast = toast
   }
 }
 

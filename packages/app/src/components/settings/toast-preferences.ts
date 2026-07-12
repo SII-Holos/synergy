@@ -1,6 +1,11 @@
 import type { ToastConfig, ToastType as RuntimeToastType } from "@ericsanchezok/synergy-ui/toast"
 import { TOAST_TYPES, snapToastDuration, type ToastDurationOverrides, type ToastType } from "./types"
 
+export type ToastPatch = {
+  muted: RuntimeToastType[]
+  durationOverrides?: ToastConfig["durationOverrides"]
+}
+
 export function isToastType(value: string): value is ToastType {
   return (TOAST_TYPES as readonly string[]).includes(value)
 }
@@ -27,14 +32,48 @@ export function toastConfigFromPreferences(
   muted: readonly string[],
   durations: ToastDurationOverrides,
 ): ToastConfig | undefined {
+  const patch = toastPatchFromPreferences(muted, durations)
+  if (!patch.muted.length && !patch.durationOverrides) return undefined
+  return {
+    ...(patch.muted.length ? { muted: patch.muted } : {}),
+    ...(patch.durationOverrides ? { durationOverrides: patch.durationOverrides } : {}),
+  }
+}
+
+/** Domain-update payload that always carries `muted` so mergeDeep can clear it. */
+export function toastPatchFromPreferences(muted: readonly string[], durations: ToastDurationOverrides): ToastPatch {
   const normalizedMuted = muted.filter(isToastType) as RuntimeToastType[]
   const durationOverrides = parseToastDurationOverrides(durations)
-  if (!normalizedMuted.length && !Object.keys(durationOverrides).length) return undefined
   return {
-    ...(normalizedMuted.length ? { muted: normalizedMuted } : {}),
+    muted: normalizedMuted,
     ...(Object.keys(durationOverrides).length
       ? { durationOverrides: durationOverrides as ToastConfig["durationOverrides"] }
       : {}),
+  }
+}
+
+export function normalizeServerToast(
+  toast:
+    | {
+        muted?: readonly string[]
+        durationOverrides?: Partial<Record<string, number>>
+      }
+    | undefined
+    | null,
+): ToastPatch | undefined {
+  if (!toast) return undefined
+  const muted = (toast.muted ?? []).filter(isToastType) as RuntimeToastType[]
+  const durationOverrides: Partial<Record<RuntimeToastType, number>> = {}
+  for (const type of TOAST_TYPES) {
+    const value = toast.durationOverrides?.[type]
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      durationOverrides[type] = snapToastDuration(value)
+    }
+  }
+  if (!muted.length && !Object.keys(durationOverrides).length) return undefined
+  return {
+    muted,
+    ...(Object.keys(durationOverrides).length ? { durationOverrides } : {}),
   }
 }
 
@@ -47,18 +86,10 @@ export function toastConfigFromServerToast(
     | undefined
     | null,
 ): ToastConfig | undefined {
-  if (!toast) return undefined
-  const muted = (toast.muted ?? []).filter(isToastType) as RuntimeToastType[]
-  const durationOverrides: Partial<Record<RuntimeToastType, number>> = {}
-  for (const type of TOAST_TYPES) {
-    const value = toast.durationOverrides?.[type]
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      durationOverrides[type] = snapToastDuration(value)
-    }
-  }
-  if (!muted.length && !Object.keys(durationOverrides).length) return undefined
+  const normalized = normalizeServerToast(toast)
+  if (!normalized) return undefined
   return {
-    ...(muted.length ? { muted } : {}),
-    ...(Object.keys(durationOverrides).length ? { durationOverrides } : {}),
+    ...(normalized.muted.length ? { muted: normalized.muted } : {}),
+    ...(normalized.durationOverrides ? { durationOverrides: normalized.durationOverrides } : {}),
   }
 }

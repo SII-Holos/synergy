@@ -166,8 +166,49 @@ describe("settings config patch", () => {
     })
   })
 
-  test("clears toast config when mute and duration overrides return to defaults", () => {
+  test("unmuting the last toast type sends muted:[] so domain merge can clear it", () => {
     const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+    })
+  })
+
+  test("unmuting one type while duration overrides remain still clears that muted entry", () => {
+    const state = defaultSettingsState("enter")
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+            durationOverrides: { warning: 2000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("does not emit toast patch when mute and duration preferences are unchanged", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["error"]
+    state.general.toastDurations.info = "1000"
 
     expect(
       buildPatch({
