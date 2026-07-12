@@ -655,7 +655,21 @@ export namespace Server {
               for (const [client, mode] of globalEventClients) {
                 try {
                   client.send(mode === "delta" ? deltaEncoding() : fullEncoding())
-                } catch {
+                } catch (error) {
+                  const payload = event?.payload
+                  const part = payload?.properties?.part
+                  if (payload?.type === "message.part.updated" && part?.type === "tool") {
+                    log.warn("global event ws tool part send failed", {
+                      sessionID: part.sessionID,
+                      messageID: part.messageID,
+                      partID: part.id,
+                      callID: part.callID,
+                      tool: part.tool,
+                      status: part.state?.status,
+                      mode,
+                      error,
+                    })
+                  }
                   globalEventClients.delete(client)
                 }
               }
