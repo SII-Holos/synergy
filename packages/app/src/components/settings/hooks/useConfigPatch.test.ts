@@ -148,4 +148,38 @@ describe("settings config patch", () => {
       }).experimental,
     ).toEqual({ coauthor_reminder: true })
   })
+
+  test("persists toast mute and duration preferences on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["info", "success"]
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: ["info", "success"],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("clears toast config when mute and duration overrides return to defaults", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["error"],
+            durationOverrides: { info: 1000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toBeUndefined()
+  })
 })

@@ -129,6 +129,10 @@ export function setToastConfig(config: ToastConfig | undefined) {
   toastConfig = config
 }
 
+export function getToastConfig(): ToastConfig | undefined {
+  return toastConfig
+}
+
 export interface ToastOptions {
   type?: ToastType
   title?: string

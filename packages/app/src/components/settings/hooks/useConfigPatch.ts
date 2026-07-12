@@ -1,5 +1,6 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
-import { MODEL_ROLES, TOAST_TYPES, UI_DEFAULTS, resolvePermissionForUi, snapToastDuration } from "../types"
+import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
+import { toastConfigFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
 
 export type BuildPatchParams = {
@@ -37,7 +38,7 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const theme = general.theme.trim()
   if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
 
-  const toast = buildToastPatch(general.mutedToasts, general.toastDurations)
+  const toast = toastConfigFromPreferences(general.mutedToasts, general.toastDurations) ?? {}
   if (JSON.stringify(toast) !== JSON.stringify(cfg.toast ?? {})) {
     patch.toast = Object.keys(toast).length ? toast : undefined
   }
@@ -376,31 +377,6 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
   nextLibrary.autonomy = library.autonomy !== "false"
 
   patch.library = nextLibrary
-}
-
-function buildToastPatch(
-  muted: string[],
-  durations: SettingsState["general"]["toastDurations"],
-): Record<string, unknown> {
-  const toast: Record<string, unknown> = {}
-  const normalizedMuted = muted.filter((value) => ["info", "success", "warning", "error"].includes(value))
-  if (normalizedMuted.length) toast.muted = normalizedMuted
-  const durationOverrides = parseToastDurations(durations)
-  if (Object.keys(durationOverrides).length) toast.durationOverrides = durationOverrides
-  return toast
-}
-
-function parseToastDurations(durations: SettingsState["general"]["toastDurations"]): Record<string, number> {
-  const result: Record<string, number> = {}
-  for (const type of TOAST_TYPES) {
-    const raw = durations[type]
-    if (!raw.trim()) continue
-    const parsed = Number(raw)
-    if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed > 0 && parsed <= 30000) {
-      result[type] = snapToastDuration(parsed)
-    }
-  }
-  return result
 }
 
 function parseList(value: string): string[] {
