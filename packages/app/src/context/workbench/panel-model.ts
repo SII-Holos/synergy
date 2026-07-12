@@ -33,6 +33,7 @@ export function createWorkbenchTab(input: {
     resourceId: input.init?.resourceId,
     title: input.init?.title,
     source: input.init?.source,
+    state: input.init?.state,
   }
 }
 
@@ -52,6 +53,10 @@ function updateWorkbenchTab(tab: WorkbenchPanelTab, init?: WorkbenchPanelTabInit
   }
   if (init.source !== undefined && init.source !== tab.source) {
     next.source = init.source
+    changed = true
+  }
+  if (init.state !== undefined && init.state !== tab.state) {
+    next.state = init.state
     changed = true
   }
 

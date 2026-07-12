@@ -15335,11 +15335,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
+                "$ref": "#/components/schemas/PluginConfigUpdate"
               }
             }
           }
@@ -33144,6 +33140,13 @@
         },
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
+      },
+      "PluginConfigUpdate": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
       },
       "PluginStatus": {
         "type": "object",

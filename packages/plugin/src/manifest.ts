@@ -45,6 +45,10 @@ const ToolContribution = ContributionBase.extend({
   input: JsonSchema,
   exposure: z.record(z.string(), z.unknown()).optional(),
   display: z.record(z.string(), z.unknown()).optional(),
+  enabledWhen: z
+    .object({ setting: z.string().min(1), equals: z.union([z.string(), z.number(), z.boolean()]) })
+    .strict()
+    .optional(),
 }).strict()
 
 const HookContribution = ContributionBase.extend({
@@ -108,6 +112,10 @@ const WorkbenchPanelContribution = UIBase.extend({
   surface: z.enum(["side", "bottom"]),
   cardinality: z.enum(["exclusive", "singleton", "multi"]),
   requiresSession: z.boolean().optional(),
+  defaultResource: z
+    .object({ id: z.string().min(1), title: z.string().min(1), state: z.unknown().optional() })
+    .strict()
+    .optional(),
 }).strict()
 
 const NavigationItemContribution = UIBase.extend({
@@ -201,6 +209,11 @@ export const PluginManifest = z
   .superRefine((manifest, context) => {
     const ids = new Set<string>()
     const capabilities = new Set(manifest.capabilities.map((item) => item.id))
+    const settings = manifest.contributions.find((item) => item.kind === "ui.settings")
+    const settingProperties =
+      settings?.formSchema && typeof settings.formSchema.properties === "object" && settings.formSchema.properties
+        ? (settings.formSchema.properties as Record<string, unknown>)
+        : {}
     for (const contribution of manifest.contributions) {
       if (ids.has(contribution.id)) {
         context.addIssue({
@@ -218,6 +231,24 @@ export const PluginManifest = z
             message: `Undeclared capability ${required}`,
           })
         }
+      }
+      if (
+        contribution.kind === "tool" &&
+        contribution.enabledWhen &&
+        !(contribution.enabledWhen.setting in settingProperties)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "enabledWhen", "setting"],
+          message: `Undeclared plugin setting ${contribution.enabledWhen.setting}`,
+        })
+      }
+      if (contribution.kind === "tool" && contribution.input.type !== "object") {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "input", "type"],
+          message: "Plugin tool input must be a top-level JSON Schema object",
+        })
       }
       if (
         contribution.kind.startsWith("ui.") &&

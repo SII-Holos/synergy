@@ -11,6 +11,7 @@ import { Plugin } from "@/plugin"
 import { PluginToolId } from "../plugin/ids.js"
 import { toolCapabilities, toolRisk } from "../plugin/capability"
 import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
+import { markContributionDegraded } from "../plugin/loader"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -202,6 +203,13 @@ export namespace ToolResolver {
   }
 
   type RegistryTool = Awaited<ReturnType<typeof ToolRegistry.tools>>[number]
+
+  export function registryInputSchema(item: {
+    parameters: z.ZodType
+    inputSchema?: Record<string, unknown>
+  }): JSONSchema7 {
+    return (item.inputSchema ?? z.toJSONSchema(item.parameters)) as JSONSchema7
+  }
 
   export interface Availability {
     visible: Definition[]
@@ -1300,7 +1308,7 @@ export namespace ToolResolver {
     const source = item.source
     const message =
       source?.type === "plugin"
-        ? `Plugin tool ${item.id} uses an incompatible input schema. Plugin tools must define args with zod >=4.`
+        ? `Plugin tool ${item.id} declares an invalid JSON Schema input: ${errorMessage(error)}`
         : `Tool ${item.id} has an invalid input schema: ${errorMessage(error)}`
     const metadata: Record<string, unknown> = {
       source,
@@ -1418,10 +1426,14 @@ export namespace ToolResolver {
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       let schema: JSONSchema7
       try {
-        schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
+        schema = ProviderTransform.schema(input.model, registryInputSchema(item) as any, {
           tool: item.id,
         }) as JSONSchema7
       } catch (error) {
+        if (item.source?.type === "plugin") {
+          const plugin = await Plugin.get(item.source.pluginId)
+          if (plugin) markContributionDegraded(plugin, item.source.toolId, error)
+        }
         const diagnostic = toolSchemaDiagnostic(item, error)
         log.warn("tool skipped due to schema failure", {
           tool: item.id,

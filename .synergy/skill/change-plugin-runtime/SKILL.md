@@ -18,13 +18,14 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 2. Keep plugin ID identical across manifest, registry, lockfile, approval, runtime generation, asset URL, and UI surface namespace.
 3. Validate generated metadata, paths, hashes, and approval before importing executable code.
 4. Keep contribution kinds flat and adapter-owned. Adding a kind means adding its public type/schema, adapter, validation, lifecycle disposal, and tests—not a branch in a central registration loop.
-5. External plugins use `process`; only trusted built-ins may use `inProcess`. Do not restore worker mode or describe the process boundary as an OS sandbox.
-6. One active generation is shared across enabled Scopes. Inject Scope/Session per invocation and reject stale-generation responses.
-7. Expose Synergy internals only through capability-gated Host Services. Do not pass a raw SDK client, server URL, token, or mutable current Scope into plugin code.
-8. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
-9. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
-10. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
-11. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
+5. Treat generated tool input JSON Schema as canonical model metadata. Tool inputs must be top-level objects; AJV-backed execution validation must not round-trip the schema through Zod. Settings-gated tools are filtered for the current Scope and checked again at dispatch.
+6. External plugins use `process`; only trusted built-ins may use `inProcess`. Do not restore worker mode or describe the process boundary as an OS sandbox.
+7. One active generation is shared across enabled Scopes. Inject Scope/Session per invocation and reject stale-generation responses.
+8. Expose Synergy internals only through capability-gated Host Services. Do not pass a raw SDK client, server URL, token, or mutable current Scope into plugin code.
+9. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
+10. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
+11. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
+12. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
 
 ## Verify
 

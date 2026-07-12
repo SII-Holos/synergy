@@ -11,6 +11,7 @@ export type PluginOperationErrorCode =
   | "PLUGIN_DISABLED"
   | "PLUGIN_UNAVAILABLE"
   | "CONTRIBUTION_NOT_FOUND"
+  | "CONTRIBUTION_DISABLED"
   | "INPUT_INVALID"
   | "OUTPUT_INVALID"
   | "CAPABILITY_DENIED"
@@ -113,8 +114,12 @@ export async function invokePluginOperation(input: {
     if (error instanceof PluginOperationError) throw error
     markContributionDegraded(plugin, operation.id, error)
     if (error instanceof PluginRuntimeError) {
-      if ((error as PluginRuntimeError & { domainCode?: string }).domainCode === "CONFLICT") {
+      const domainCode = (error as PluginRuntimeError & { domainCode?: string }).domainCode
+      if (domainCode === "CONFLICT") {
         throw new PluginOperationError("CONFLICT", error.message, undefined, { cause: error })
+      }
+      if (domainCode === "CONTRIBUTION_DISABLED") {
+        throw new PluginOperationError("CONTRIBUTION_DISABLED", error.message, undefined, { cause: error })
       }
       const code =
         error.code === "TIMEOUT" || error.code === "CANCELLED" || error.code === "PLUGIN_UNAVAILABLE"
@@ -125,6 +130,12 @@ export async function invokePluginOperation(input: {
     const domainCode = error && typeof error === "object" && "code" in error ? String(error.code) : undefined
     if (domainCode === "CONFLICT") {
       throw new PluginOperationError("CONFLICT", error instanceof Error ? error.message : "Plugin command conflict")
+    }
+    if (domainCode === "CONTRIBUTION_DISABLED") {
+      throw new PluginOperationError(
+        "CONTRIBUTION_DISABLED",
+        error instanceof Error ? error.message : "Plugin contribution is disabled",
+      )
     }
     throw new PluginOperationError("RUNTIME_ERROR", error instanceof Error ? error.message : String(error), undefined, {
       cause: error,

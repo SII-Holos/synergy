@@ -640,8 +640,10 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   async function updateValues(next: Record<string, unknown>) {
     const pluginId = section().pluginId
     if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({ pluginId, body: next })
-    mutate(result.data ?? next)
+    const result = await globalSDK.client.plugin.updateConfig({ pluginId, pluginConfigUpdate: next })
+    const saved = result.data ?? next
+    mutate(saved)
+    window.dispatchEvent(new CustomEvent("synergy:plugin-config-changed", { detail: { pluginId, values: saved } }))
   }
 
   onMount(() => {

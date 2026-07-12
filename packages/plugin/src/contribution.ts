@@ -6,6 +6,11 @@ import type { ToolDisplay, ToolResult } from "./tool.js"
 export type PluginJsonSchema = Record<string, unknown>
 export type PluginSchema<T = unknown> = z.ZodType<T> | PluginJsonSchema
 
+export interface PluginSettingCondition {
+  setting: string
+  equals: string | number | boolean
+}
+
 export interface ContributionBase<Kind extends string> {
   kind: Kind
   id: string
@@ -30,6 +35,7 @@ export interface ToolContribution<Input = unknown> extends ContributionBase<"too
   input: PluginSchema<Input>
   exposure?: Record<string, unknown>
   display?: ToolDisplay
+  enabledWhen?: PluginSettingCondition
   handler(input: Input, context: PluginInvocationContext): Promise<string | ToolResult>
 }
 
@@ -98,6 +104,7 @@ export interface WorkbenchPanelContribution extends UISurfaceContributionBase<"u
   surface: "side" | "bottom"
   cardinality: "exclusive" | "singleton" | "multi"
   requiresSession?: boolean
+  defaultResource?: { id: string; title: string; state?: unknown }
 }
 
 export interface NavigationItemContribution extends UISurfaceContributionBase<"ui.navigationItem"> {

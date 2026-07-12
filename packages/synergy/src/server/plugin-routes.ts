@@ -24,6 +24,7 @@ import { PluginStatusSchema } from "../plugin/status"
 import { isPathContained } from "../util/path-contain"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
+import { ToolRegistry } from "../tool/registry"
 
 const JsonValue = z.any()
 const UIContribution = z.object({
@@ -38,6 +39,7 @@ const UIContribution = z.object({
 })
 
 const InvokeBody = z.object({ input: JsonValue.optional(), sessionId: z.string().optional() })
+const PluginConfigUpdate = z.record(z.string(), z.unknown()).meta({ ref: "PluginConfigUpdate" })
 const ApprovalBody = z.object({
   pluginId: z.string(),
   manifest: JsonValue,
@@ -65,7 +67,7 @@ function uiContributions(plugin: Plugin.LoadedPlugin) {
 
 function operationStatus(code: PluginOperationError["code"]): 400 | 403 | 404 | 408 | 409 | 503 {
   if (code === "PLUGIN_NOT_FOUND" || code === "CONTRIBUTION_NOT_FOUND") return 404
-  if (code === "CAPABILITY_DENIED" || code === "PLUGIN_DISABLED") return 403
+  if (code === "CAPABILITY_DENIED" || code === "PLUGIN_DISABLED" || code === "CONTRIBUTION_DISABLED") return 403
   if (code === "TIMEOUT" || code === "CANCELLED") return 408
   if (code === "CONFLICT") return 409
   if (code === "PLUGIN_UNAVAILABLE") return 503
@@ -208,13 +210,13 @@ export const PluginRoute = new Hono()
       operationId: "plugin.updateConfig",
       responses: { 200: { description: "Plugin settings" }, ...errors(404) },
     }),
-    validator("json", z.record(z.string(), z.unknown())),
+    validator("json", PluginConfigUpdate),
     async (context) => {
       const plugin = await Plugin.get(context.req.param("pluginId"))
       if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      return context.json(
-        await replacePluginConfig(plugin.id, context.req.valid("json"), { manifest: plugin.manifest }),
-      )
+      const values = await replacePluginConfig(plugin.id, context.req.valid("json"), { manifest: plugin.manifest })
+      await ToolRegistry.reload()
+      return context.json(values)
     },
   )
   .get(

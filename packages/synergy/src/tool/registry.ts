@@ -205,8 +205,30 @@ export namespace ToolRegistry {
     const result = z.custom((value) => validate(value), {
       error: () => ({ message: new Ajv2020().errorsText(validate.errors) }),
     })
-    result._zod.toJSONSchema = () => schema as never
     return result
+  }
+
+  export function matchesSettingCondition(
+    condition: { setting: string; equals: string | number | boolean },
+    values: Record<string, unknown>,
+  ): boolean {
+    return values[condition.setting] === condition.equals
+  }
+
+  async function conditionEnabled(
+    pluginId: string,
+    condition: { setting: string; equals: string | number | boolean },
+  ): Promise<boolean> {
+    const domain = await Config.domainGet("plugins")
+    const values = domain.pluginConfig?.[pluginId]
+    if (!values || typeof values !== "object" || Array.isArray(values)) return false
+    return matchesSettingCondition(condition, values as Record<string, unknown>)
+  }
+
+  async function enabled(tool: Tool.Info): Promise<boolean> {
+    if (!tool.enabledWhen) return true
+    if (tool.source?.type !== "plugin") return false
+    return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
   }
 
   function fromRuntimePlugin(
@@ -225,10 +247,17 @@ export namespace ToolRegistry {
         pluginDir: plugin.pluginDir,
         runtimeMode: "process",
       },
+      inputSchema: contribution.input,
+      enabledWhen: contribution.enabledWhen,
       init: async (initCtx) => ({
         parameters: manifestParameters(contribution.input),
         description: contribution.description,
         execute: async (args, ctx) => {
+          if (contribution.enabledWhen && !(await conditionEnabled(plugin.id, contribution.enabledWhen))) {
+            throw Object.assign(new Error(`Plugin tool ${fullId} is disabled by plugin settings.`), {
+              code: "CONTRIBUTION_DISABLED",
+            })
+          }
           await ensureRuntime(plugin)
           const raw = await pluginRuntimeManager.invoke({
             pluginId: plugin.id,
@@ -415,18 +444,21 @@ export namespace ToolRegistry {
   }
 
   export async function ids() {
-    return all().then((x) => x.map((t) => t.id))
+    const tools = await all()
+    return (await Promise.all(tools.map(async (tool) => ((await enabled(tool)) ? tool.id : undefined)))).filter(
+      (id): id is string => Boolean(id),
+    )
   }
 
   const findCache = new Map<string, { id: string; description: string; parameters: any; execute: Function }>()
 
   export async function find(id: string) {
-    const cached = findCache.get(id)
-    if (cached) return cached
-
     const tools = await all()
     const tool = tools.find((t) => t.id === id)
     if (!tool) return undefined
+    if (!(await enabled(tool))) return undefined
+    const cached = findCache.get(id)
+    if (cached) return cached
     const def = await tool.init()
     const result = { id: tool.id, ...def }
     findCache.set(id, result)
@@ -434,7 +466,10 @@ export namespace ToolRegistry {
   }
 
   export async function tools(providerID: string, agent?: Agent.Info) {
-    const tools = await all()
+    const allTools = await all()
+    const tools = (await Promise.all(allTools.map(async (tool) => ((await enabled(tool)) ? tool : undefined)))).filter(
+      (tool): tool is Tool.Info => Boolean(tool),
+    )
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {
@@ -445,6 +480,7 @@ export namespace ToolRegistry {
           exposure: ToolExposure.normalize(t.id, t.exposure),
           display: t.display,
           source: t.source,
+          inputSchema: t.inputSchema,
           ...def,
         }
       }),

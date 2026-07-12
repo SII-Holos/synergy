@@ -5917,6 +5917,10 @@ export type BrowserControlRequest = {
   traceId?: string
 }
 
+export type PluginConfigUpdate = {
+  [key: string]: unknown
+}
+
 export type PluginStatus = {
   id: string
   name: string
@@ -14105,9 +14109,7 @@ export type PluginGetConfigResponses = {
 }
 
 export type PluginUpdateConfigData = {
-  body?: {
-    [key: string]: unknown
-  }
+  body?: PluginConfigUpdate
   path: {
     pluginId: string
   }

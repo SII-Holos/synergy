@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import z from "zod"
 import {
   PLUGIN_API_VERSION,
+  PluginManifest,
   capability,
   compilePluginManifest,
   definePlugin,
@@ -9,6 +10,7 @@ import {
   hasUnlinkedSolidRuntimeImport,
   hasUnsupportedSolidRuntimeImport,
   operation,
+  settings,
   rewritePluginSolidImports,
   tool,
   workbenchPanel,
@@ -52,6 +54,7 @@ describe("definePlugin", () => {
           label: "Research",
           surface: "side",
           cardinality: "singleton",
+          defaultResource: { id: "map", title: "Research map", state: { view: "map" } },
           component: { source: "./src/ui.tsx", exportName: "ResearchPanel" },
         }),
       ],
@@ -80,10 +83,90 @@ describe("definePlugin", () => {
       output: { type: "object" },
     })
     expect(manifest.contributions[2]).toMatchObject({
+      defaultResource: { id: "map", title: "Research map", state: { view: "map" } },
       component: { entry: "ui/index.js", exportName: "ResearchPanel" },
     })
     expect(JSON.stringify(manifest)).not.toContain("handler")
     expect(JSON.stringify(manifest)).not.toContain("src/ui.tsx")
+  })
+
+  test("compiles setting-gated tools against a declared setting", () => {
+    const plugin = definePlugin({
+      id: "diagnostics",
+      version: "1.0.0",
+      description: "Setting-gated diagnostics",
+      contributions: [
+        tool({
+          id: "inspect",
+          description: "Inspect diagnostics",
+          input: z.object({}),
+          enabledWhen: { setting: "diagnosticsEnabled", equals: true },
+          handler: async () => "ok",
+        }),
+        settings({
+          id: "settings",
+          label: "Diagnostics",
+          group: "Plugins",
+          formSchema: {
+            type: "object",
+            properties: { diagnosticsEnabled: { type: "boolean", default: false } },
+            additionalProperties: false,
+          },
+        }),
+      ],
+    })
+
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-1",
+      runtime: { entry: "runtime/index.js", sha256: "runtime-hash" },
+    })
+    expect(manifest.contributions[0]).toMatchObject({
+      kind: "tool",
+      enabledWhen: { setting: "diagnosticsEnabled", equals: true },
+    })
+  })
+
+  test("rejects a tool condition that references an undeclared setting", () => {
+    expect(() =>
+      definePlugin({
+        id: "diagnostics",
+        version: "1.0.0",
+        description: "Invalid setting condition",
+        contributions: [
+          tool({
+            id: "inspect",
+            description: "Inspect diagnostics",
+            input: z.object({}),
+            enabledWhen: { setting: "missing", equals: true },
+            handler: async () => "ok",
+          }),
+        ],
+      }),
+    ).toThrow('Tool contribution "inspect" references undeclared setting "missing"')
+  })
+
+  test("rejects plugin tools without a top-level object schema", () => {
+    const plugin = definePlugin({
+      id: "invalid-schema",
+      version: "1.0.0",
+      description: "Invalid tool schema",
+      contributions: [
+        tool({
+          id: "broken",
+          description: "Broken tool",
+          input: { type: "string" },
+          handler: async () => "ok",
+        }),
+      ],
+    })
+    expect(() =>
+      PluginManifest.parse(
+        compilePluginManifest(plugin, {
+          generation: "generation-1",
+          runtime: { entry: "runtime/index.js", sha256: "runtime-hash" },
+        }),
+      ),
+    ).toThrow("Plugin tool input must be a top-level JSON Schema object")
   })
 
   test("rejects duplicate contribution ids", () => {

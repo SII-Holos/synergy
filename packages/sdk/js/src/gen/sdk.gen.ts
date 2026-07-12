@@ -317,6 +317,7 @@ import type {
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
+  PluginConfigUpdate,
   PluginGetConfigErrors,
   PluginGetConfigResponses,
   PluginInvokeOperationErrors,
@@ -8571,9 +8572,7 @@ export class Plugin extends HeyApiClient {
       pluginId: string
       directory?: string
       scopeID?: string
-      body?: {
-        [key: string]: unknown
-      }
+      pluginConfigUpdate?: PluginConfigUpdate
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8585,7 +8584,7 @@ export class Plugin extends HeyApiClient {
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body" },
+            { key: "pluginConfigUpdate", map: "body" },
           ],
         },
       ],

@@ -74,6 +74,19 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     if (handlerId) handlerIds.push(handlerId)
   }
 
+  const settings = input.contributions.find((item) => item.kind === "ui.settings")
+  const properties =
+    settings?.formSchema && typeof settings.formSchema.properties === "object" && settings.formSchema.properties
+      ? (settings.formSchema.properties as Record<string, unknown>)
+      : {}
+  for (const contribution of input.contributions) {
+    if (contribution.kind === "tool" && contribution.enabledWhen && !(contribution.enabledWhen.setting in properties)) {
+      throw new Error(
+        `Tool contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
+      )
+    }
+  }
+
   return { ...input, capabilities, handlerIds }
 }
 
@@ -120,6 +133,7 @@ function compileContribution(
         input: schemaToJsonSchema(contribution.input),
         ...(contribution.exposure ? { exposure: contribution.exposure } : {}),
         ...(contribution.display ? { display: contribution.display as unknown as Record<string, unknown> } : {}),
+        ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
       }
     case "hook":
       return { ...base, kind: "hook", point: contribution.point, priority: contribution.priority }
@@ -146,6 +160,7 @@ function compileContribution(
         surface: contribution.surface,
         cardinality: contribution.cardinality,
         requiresSession: contribution.requiresSession,
+        defaultResource: contribution.defaultResource,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
       }
     case "ui.navigationItem":

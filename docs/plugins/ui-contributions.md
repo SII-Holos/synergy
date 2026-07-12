@@ -25,7 +25,8 @@ workbenchPanel({
   id: "research-map",
   label: "Research map",
   surface: "side",
-  cardinality: "singleton",
+  cardinality: "multi",
+  defaultResource: { id: "map", title: "Research map", state: { view: "map" } },
   component: { source: "./src/ui/research-map.tsx" },
 })
 ```
@@ -41,7 +42,11 @@ interface PluginSurfaceContext {
   pluginId: string
   scopeId: string
   sessionId?: string
-  surface: { kind: string; id: string }
+  surface: {
+    kind: string
+    id: string
+    resource?: { id: string; title?: string; state?: JsonValue }
+  }
   operations: {
     query(id: string, input?: unknown): Promise<unknown>
     command(id: string, input?: unknown): Promise<unknown>
@@ -49,13 +54,27 @@ interface PluginSurfaceContext {
   events: {
     subscribe(eventId: string, listener: (event: unknown) => void): () => void
   }
+  settings: {
+    get(): Promise<Record<string, JsonValue>>
+    subscribe(listener: (settings: Record<string, JsonValue>) => void): () => void
+  }
   host: PluginUIHostActions
 }
 ```
 
 The operation client is bound to the component's own plugin. It can call only declared operations of the requested type. It never exposes a server URL or raw SDK client.
 
-Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup.
+Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup. `settings` is read-only from the surface; changes continue to use the host-rendered settings page.
+
+## Resource Tabs
+
+`openWorkbenchPanel(panelId, resource)` preserves the opaque resource `id`, `title`, and JSON `state`. The host reuses an existing tab for the same `panelId + resource.id` and opens a separate tab for a different resource. The component reads the exact resource from `context.surface.resource`; it must not infer resource identity from a global variable or private route.
+
+This supports one contribution with multiple stable views, such as a map, one tab per entity, and a diagnostics page. `defaultResource` is used when the workbench opens the panel without an explicit resource.
+
+## Declarative Settings
+
+Object-form settings are rendered with the host's design system. Boolean fields use `SettingRow` and `Switch`; strings, numbers, and enums use host form controls and semantic tokens. The schema's top-level description is shown as page help. Saves are optimistic and roll back with a host notification if persistence fails. A plugin component should not reproduce the settings page chrome or form layout.
 
 ## Host Actions
 

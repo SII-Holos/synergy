@@ -65,6 +65,7 @@ function surfaceContext(input: {
   events: ReturnType<typeof useGlobalSDK>["event"]
   scopeKey: string
   sessionId?: string
+  resource?: { id: string; title?: string; state?: unknown }
 }): PluginSurfaceContext {
   const pluginId = input.contribution.pluginId
   const requireHostActions = () => {
@@ -98,7 +99,11 @@ function surfaceContext(input: {
     pluginId,
     scopeId: input.contribution.scopeId,
     sessionId: input.sessionId,
-    surface: { kind: input.kind, id: input.contributionId },
+    surface: {
+      kind: input.kind,
+      id: input.contributionId,
+      ...(input.resource ? { resource: input.resource } : {}),
+    },
     operations: {
       query: (id, value) => invoke("query", id, value),
       command: (id, value) => invoke("command", id, value),
@@ -115,6 +120,23 @@ function surfaceContext(input: {
           )
             listener(value)
         })
+      },
+    },
+    settings: {
+      async get() {
+        const response = await fetch(`${input.serverUrl}/plugin/${encodeURIComponent(pluginId)}/config`, {
+          headers: { "x-synergy-scope-id": encodeURIComponent(input.contribution.scopeId) },
+        })
+        if (!response.ok) throw new Error(`Plugin settings request failed (${response.status})`)
+        return (await response.json()) as Record<string, unknown>
+      },
+      subscribe(listener) {
+        const onChange = (event: Event) => {
+          const detail = (event as CustomEvent<{ pluginId?: string; values?: Record<string, unknown> }>).detail
+          if (detail?.pluginId === pluginId && detail.values) listener(detail.values)
+        }
+        window.addEventListener("synergy:plugin-config-changed", onChange)
+        return () => window.removeEventListener("synergy:plugin-config-changed", onChange)
       },
     },
     host: {
@@ -169,6 +191,7 @@ function registerPluginSurfaces(input: {
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
+      resource: (props: Props) => { id: string; title?: string; state?: unknown } | undefined = () => undefined,
     ) => {
       if (!("component" in item) || !item.component) return undefined
       return async () => {
@@ -189,6 +212,7 @@ function registerPluginSurfaces(input: {
               events: input.events,
               scopeKey: input.scopeKey,
               sessionId: session(props),
+              resource: resource(props),
             }),
           )
         return { default: Wrapper }
@@ -197,7 +221,18 @@ function registerPluginSurfaces(input: {
 
     const adapters = {
       "ui.workbenchPanel": (item: Extract<PluginManifestContribution, { kind: "ui.workbenchPanel" }>) => {
-        const loader = componentLoader<WorkbenchPanelContentProps>(item)
+        const loader = componentLoader<WorkbenchPanelContentProps>(
+          item,
+          () => currentSessionId(),
+          (props) =>
+            props.tab.resourceId
+              ? {
+                  id: props.tab.resourceId,
+                  ...(props.tab.title ? { title: props.tab.title } : {}),
+                  ...(props.tab.state !== undefined ? { state: props.tab.state } : {}),
+                }
+              : undefined,
+        )
         if (!loader) {
           fail(plugin.pluginId, `Workbench panel ${item.id} has no trusted component`)
           return
@@ -213,6 +248,22 @@ function registerPluginSurfaces(input: {
             requiresSession: item.requiresSession,
             pluginId: plugin.pluginId,
             loader,
+            defaultResource: item.defaultResource
+              ? {
+                  resourceId: item.defaultResource.id,
+                  title: item.defaultResource.title,
+                  state: item.defaultResource.state,
+                  source: "plugin",
+                }
+              : undefined,
+            createTab: item.defaultResource
+              ? () => ({
+                  resourceId: item.defaultResource!.id,
+                  title: item.defaultResource!.title,
+                  state: item.defaultResource!.state,
+                  source: "plugin",
+                })
+              : undefined,
           }),
         )
       },
