@@ -1119,6 +1119,50 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("still notifies parent when parent session is mid-turn", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const originalDeliver = SessionManager.deliver
+          const originalIsRunning = SessionManager.isRunning
+          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+            deliveries.push(input)
+          })
+          try {
+            const parentSession = await Session.create({})
+            ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
+            const task = await Cortex.launch({
+              description: "Notify mid-turn parent",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+            })
+
+            const completed = await waitUntilCompleted(task.id)
+
+            expect(completed?.status).toBe("completed")
+            expect(deliveries).toHaveLength(1)
+            expect(deliveries[0].target).toBe(parentSession.id)
+            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            ;(SessionManager.deliver as any) = originalDeliver
+            ;(SessionManager.isRunning as any) = originalIsRunning
+          }
+        },
+      })
+    })
+
     test("suppresses parent notification when notifyParentOnComplete is false", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

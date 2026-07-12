@@ -2,6 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { EventWire } from "./event-wire"
+import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -163,7 +164,7 @@ export namespace Server {
   let _appMounted = false
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: Map<any, "full" | "delta"> | undefined
+  let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -628,37 +629,23 @@ export namespace Server {
         .get(
           "/global/event/ws",
           (() => {
-            // client -> wire mode. "delta" clients opt into the compact streaming
-            // protocol (message.part.delta frames + periodic checkpoints, #350 D1);
-            // "full" clients receive the legacy full-part-on-every-delta stream.
-            const globalEventClients = new Map<any, "full" | "delta">()
+            // Track clients by stable raw socket identity. Hono's Bun adapter
+            // constructs a fresh WSContext wrapper per callback, so Map keys based
+            // on the wrapper leak across reconnects (#551). The registry also
+            // applies send backpressure limits so a slow UI cannot hard-stall the
+            // event loop (#524).
+            const globalEventClients = GlobalEventClients.createRegistry()
             // One encoder shared by all delta clients on this route: they receive
             // identical frames, so the checkpoint throttle is shared correctly.
             const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              let fullData: string | undefined
-              const fullEncoding = () => {
-                if (fullData !== undefined) return fullData
-                fullData = JSON.stringify(event)
-                return fullData
-              }
-              // Compute the delta-mode encoding at most once per event (shared
-              // across all delta clients) instead of per-client stringify.
-              let deltaData: string | undefined
-              const deltaEncoding = () => {
-                if (deltaData !== undefined) return deltaData
+              globalEventClients.broadcast((mode) => {
+                if (mode === "full") return JSON.stringify(event)
                 const dp = wire.deltaPayload(event.payload)
-                deltaData =
-                  dp === event.payload ? fullEncoding() : JSON.stringify({ directory: event.directory, payload: dp })
-                return deltaData
-              }
-              for (const [client, mode] of globalEventClients) {
-                try {
-                  client.send(mode === "delta" ? deltaEncoding() : fullEncoding())
-                } catch {
-                  globalEventClients.delete(client)
-                }
-              }
+                return dp === event.payload
+                  ? JSON.stringify(event)
+                  : JSON.stringify({ directory: event.directory, payload: dp })
+              })
             }
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
@@ -669,13 +656,7 @@ export namespace Server {
               },
             })
             const heartbeat = setInterval(() => {
-              for (const client of globalEventClients.keys()) {
-                try {
-                  client.send(heartbeatData)
-                } catch {
-                  globalEventClients.delete(client)
-                }
-              }
+              globalEventClients.heartbeat(heartbeatData)
             }, 30000)
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
@@ -684,7 +665,7 @@ export namespace Server {
               return {
                 onOpen(_event, ws) {
                   log.info("global event ws connected", { mode })
-                  globalEventClients.set(ws, mode)
+                  globalEventClients.add(ws, mode)
                   ws.send(
                     JSON.stringify({
                       payload: {
@@ -695,11 +676,11 @@ export namespace Server {
                   )
                 },
                 onClose(_event, ws) {
-                  globalEventClients.delete(ws)
+                  globalEventClients.remove(ws)
                   log.info("global event ws disconnected")
                 },
                 onError(_event, ws) {
-                  globalEventClients.delete(ws)
+                  globalEventClients.remove(ws)
                 },
                 onMessage(_event, ws) {
                   try {
