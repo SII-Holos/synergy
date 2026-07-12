@@ -486,11 +486,10 @@ export namespace Cortex {
       taskWaiters.delete(taskID)
       log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
     } else if (task.notifyParentOnComplete !== false) {
-      if (SessionManager.isRunning(task.parentSessionID)) {
-        log.info("skipping parent notification: session is mid-turn", { taskID: task.id })
-      } else {
-        notifyParentSession(task)
-      }
+      // Always enqueue the completion mail. SessionManager.deliver already queues
+      // when the parent is mid-turn, so skipping here permanently lost background
+      // task results (#550).
+      notifyParentSession(task)
     } else {
       log.info("task parent notification suppressed", { taskID })
     }
