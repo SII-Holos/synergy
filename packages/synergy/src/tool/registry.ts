@@ -41,6 +41,7 @@ import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
+import { ScopeListTool } from "./scope-list"
 import { AgendaScheduleTool } from "./agenda-schedule"
 import { AgendaWatchTool } from "./agenda-watch"
 import { AgendaListTool } from "./agenda-list"
@@ -407,6 +408,7 @@ export namespace ToolRegistry {
       SessionSearchTool,
       SessionSendTool,
       SessionControlTool,
+      ScopeListTool,
       AgendaScheduleTool,
       AgendaWatchTool,
       AgendaListTool,

@@ -1,0 +1,19 @@
+List available Synergy scopes (projects + home) so you can choose a valid `scopeID`.
+
+Each entry includes:
+- `id`: stable scope ID to pass to `session_control create` as `scopeID`
+- `type`: `home` or `project`
+- `name` / `directory`: human-readable project identity
+- optional activity stats (`sessionCount`, `latestActivityAt`)
+
+Use this before creating a session in another project. Workflow:
+1. Call `scope_list` (optionally with `query` to filter by name/path/id)
+2. Pick the matching `id`
+3. Call `session_control` with `action: "create"` and `scopeID: "<id>"`
+
+If you already know the absolute project path but not the scope ID, you may pass `directory` to `session_control create` instead.
+
+Parameters:
+- `query`: optional case-insensitive filter over id, name, and directory
+- `includeHome`: include the home scope (default true)
+- `limit` / `offset`: pagination (max 100 per page)

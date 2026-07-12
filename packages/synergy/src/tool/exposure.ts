@@ -100,10 +100,11 @@ export namespace ToolExposure {
     {
       id: "session",
       title: "Session",
-      description: "Browse, search, read, control, and message Synergy sessions across scopes and channels.",
+      description:
+        "Browse, search, read, control, and message Synergy sessions across scopes and channels. Includes scope discovery for cross-project session creation.",
       whenToExpand:
-        "Expand when the task depends on previous conversations, session history, another active session, channel delivery, or session control actions.",
-      tools: ["session_list", "session_read", "session_search", "session_send", "session_control"],
+        "Expand when the task depends on previous conversations, session history, another active session, channel delivery, session control actions, or choosing a scopeID for cross-project session creation.",
+      tools: ["session_list", "session_read", "session_search", "session_send", "session_control", "scope_list"],
     },
     {
       id: "note",
