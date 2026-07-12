@@ -108,6 +108,7 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "light_loop_reject":
         return "Reviewing Light Loop"
       case "session_list":
+      case "scope_list":
       case "session_read":
       case "session_search":
         return "Browsing sessions"
