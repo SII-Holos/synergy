@@ -1,7 +1,7 @@
 import path from "path"
 import fs from "fs/promises"
 import Ajv2020 from "ajv/dist/2020"
-import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { PluginHostServiceErrorCode, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceInvocationInput } from "../plugin-runtime/manager"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
@@ -30,6 +30,10 @@ const capabilityByMethod = {
   "secrets.delete": "secrets",
   "tool.invoke": "tool.invoke",
 } as const
+
+function pluginHostServiceError(code: string, message: string) {
+  return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
+}
 
 const validators = new Map<string, ReturnType<Ajv2020["compile"]>>()
 const sequences = new Map<string, number>()
@@ -171,10 +175,18 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
             : undefined
       const messageID =
         typeof parent?.messageId === "string" ? parent.messageId : actor.type === "agent" ? actor.messageId : undefined
-      if (!sessionID || !messageID) throw new Error("task.start requires a parent Session and message")
+      if (!sessionID || !messageID) {
+        throw pluginHostServiceError(
+          PluginHostServiceErrorCode.TASK_PARENT_REQUIRED,
+          "task.start requires a parent Session and message",
+        )
+      }
       const parentSession = await Session.get(sessionID)
       if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
-        throw new Error("task.start parent Session does not belong to the active Scope")
+        throw pluginHostServiceError(
+          PluginHostServiceErrorCode.TASK_PARENT_SCOPE_MISMATCH,
+          "task.start parent Session does not belong to the active Scope",
+        )
       }
       return startPluginTask({
         pluginId: input.pluginId,

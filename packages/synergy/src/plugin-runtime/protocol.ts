@@ -78,5 +78,23 @@ export interface SerializedPluginRuntimeError {
   code?: string
 }
 
+export function serializePluginRuntimeError(error: unknown): SerializedPluginRuntimeError {
+  if (!(error instanceof Error)) return { name: "Error", message: String(error) }
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    code: "code" in error && error.code !== undefined ? String(error.code) : undefined,
+  }
+}
+
+export function deserializePluginRuntimeError(error: SerializedPluginRuntimeError): Error & { code?: string } {
+  return Object.assign(new Error(error.message), {
+    name: error.name,
+    stack: error.stack,
+    ...(error.code ? { code: error.code } : {}),
+  })
+}
+
 export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 4
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

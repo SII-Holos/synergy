@@ -58,6 +58,8 @@ Every executable call receives a fresh `PluginInvocationContext` with request ID
 
 Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/get/cancel`; non-agent callers must provide an explicit parent Session/message in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of model prompts and the native `task` tool; the owner plugin can launch it only through an approved `task.delegate` allowlist, and execution still uses native Cortex and child Sessions. `tool.invoke` remains agent-only.
 
+`task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
+
 ## Trusted UI
 
 Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.

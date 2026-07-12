@@ -62,6 +62,10 @@ The capability constrains allowed subagents and maximum runtime. Targets use Syn
 
 After target authorization, the normal control profile, permission policy, Scope ownership, cancellation, task ownership, Session loop, and Cortex lifecycle apply. A plugin must not implement a second Agent registry or task runner.
 
+`task.delegate` and `task` are deliberately different contracts. `task.delegate` is the approved plugin Host Service capability recorded in the manifest. `task` is the runtime permission evaluated by the active Synergy control profile for one concrete delegation. The Host first validates `task.delegate`, then asks/evaluates `task`; it never looks for a manifest capability named `task`.
+
+Parent Session failures use stable Host Service error codes: `PLUGIN_TASK_PARENT_REQUIRED` and `PLUGIN_TASK_PARENT_SCOPE_MISMATCH`. Error name, message, stack, and code survive process-runtime IPC so a plugin can distinguish rebinding from policy, workflow, or runtime failures instead of parsing text.
+
 ## Exposure and Display
 
 `exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. `display` supplies host-owned presentation metadata. Both are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.

@@ -166,7 +166,7 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     category: "tools",
     severity: "low",
     title: "Delegate tasks to subagents",
-    description: "Can launch approved Synergy subagents from plugin tools.",
+    description: "Runtime control-profile permission to launch an approved Synergy subagent.",
   },
   prompt_transform: {
     category: "hooks",

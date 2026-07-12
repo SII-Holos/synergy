@@ -13,7 +13,6 @@ import { ScopeContext } from "@/scope/context"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionProcessor } from "@/session/processor"
-import { permissionCapability } from "@ericsanchezok/synergy-util/capability"
 import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
@@ -208,18 +207,17 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
 export async function assertPluginManifestCapability(input: {
   pluginDir?: string
   toolId?: string
-  permission: string
+  capability: string
 }) {
   if (!input.pluginDir) return
   const manifest = await readPluginManifest(input.pluginDir)
-  const capability = permissionCapability(input.permission)
   const shortToolId = normalizePluginToolId(input.toolId)
   const declaredCapabilities = shortToolId ? toolCapabilities(manifest, shortToolId) : baseCapabilities(manifest)
 
-  if (declaredCapabilities.includes(capability)) return
+  if (declaredCapabilities.includes(input.capability)) return
 
   const scope = shortToolId ? `tool "${shortToolId}"` : "plugin"
-  throw new Error(`Plugin manifest does not allow capability "${capability}" for ${scope}`)
+  throw new Error(`Plugin manifest does not allow capability "${input.capability}" for ${scope}`)
 }
 
 async function assertTaskPermission(pluginDir: string, request: PluginTaskStartInput) {
@@ -246,17 +244,22 @@ async function askForTask(context: RuntimeContext, request: PluginTaskStartInput
     subagent_type: request.subagent,
     source: "plugin",
   }
-  await requestPluginPermission(context, { permission: "task", patterns: [request.subagent], metadata })
+  await requestPluginPermission(context, {
+    capability: "task.delegate",
+    permission: "task",
+    patterns: [request.subagent],
+    metadata,
+  })
 }
 
 export async function requestPluginPermission(
   context: RuntimeContext,
-  request: { permission: string; patterns: string[]; metadata?: Record<string, any> },
+  request: { capability: string; permission: string; patterns: string[]; metadata?: Record<string, any> },
 ) {
   await assertPluginManifestCapability({
     pluginDir: context.pluginDir,
     toolId: context.toolId,
-    permission: request.permission,
+    capability: request.capability,
   })
 
   const agent = await Agent.get(context.agent)

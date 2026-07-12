@@ -67,6 +67,12 @@ export type PluginTaskParent = {
   messageId: string
 }
 
+export const PluginHostServiceErrorCode = {
+  TASK_PARENT_REQUIRED: "PLUGIN_TASK_PARENT_REQUIRED",
+  TASK_PARENT_SCOPE_MISMATCH: "PLUGIN_TASK_PARENT_SCOPE_MISMATCH",
+} as const
+export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
+
 export type PluginTaskStartInput = {
   subagent: string
   description: string
