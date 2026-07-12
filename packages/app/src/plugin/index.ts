@@ -60,6 +60,8 @@ export { PluginComposerSlotBridge, PluginThemeConfigBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { PluginRouteScope } from "./route-scope"
+export { resolvePluginScopeKey } from "./scope-key"
 export { fetchUIContributions } from "./api"
 export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 

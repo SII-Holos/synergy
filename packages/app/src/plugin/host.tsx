@@ -1,4 +1,5 @@
 import {
+  type Accessor,
   batch,
   createComponent,
   createContext,
@@ -26,9 +27,7 @@ import { registerNavigation, type NavigationContentProps } from "./registries/na
 import { registerPartRenderer } from "./registries/part-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
-import { useLocation, useParams } from "@solidjs/router"
-import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -288,16 +287,10 @@ function registerPluginSurfaces(input: {
   return { disposers, errors }
 }
 
-export function PluginHostProvider(props: ParentProps) {
+export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<string> }>) {
   const server = useServer()
   const globalSDK = useGlobalSDK()
-  const params = useParams()
-  const location = useLocation()
-  const scopeKey = () => {
-    if (params.dir) return base64Decode(params.dir)
-    const encoded = new URLSearchParams(location.search).get("_scope")
-    return encoded ? base64Decode(encoded) : HOME_SCOPE_KEY
-  }
+  const scopeKey = props.scopeKey
   let disposers: Array<() => void> = []
   let reloadGeneration = 0
   let reloadController: AbortController | undefined
