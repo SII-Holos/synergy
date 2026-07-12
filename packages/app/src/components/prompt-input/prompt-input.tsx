@@ -32,7 +32,7 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
-import { useWorkbenchPanels } from "@/context/workbench-panels"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { useGlobalSync } from "@/context/global-sync"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
