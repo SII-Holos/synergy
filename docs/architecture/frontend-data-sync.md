@@ -130,9 +130,11 @@ For `ok`, the frontend applies replayed events through the same event reducer an
 
 Resources outside the normalized store, including BlueprintLoop feature state, observe `reconnectVersion` and refetch after connection recovery.
 
+Active session message/part snapshots also observe reconnect recovery. Because tool-part updates are published as unsequenced streaming events, reconnect replay alone cannot restore a missed tool card. After a reconnect, `sync.session.sync()` force-reloads the viewed session's durable message/part snapshot in addition to volatile collections.
+
 ### Current recovery limitation
 
-Reconnect replay starts from the watermark retained before the disconnect and is the reliable missed-event recovery path.
+Reconnect replay starts from the watermark retained before the disconnect and is the reliable missed-event recovery path for sequenced state events.
 
 The live gap detector currently adopts the newly received sequence before it starts `replayOrResync()`. A replay triggered only by that gap therefore starts at the new watermark rather than the pre-gap value. Maintainers must not describe live gap detection as proven backfill until the reducer retains the prior watermark for that request.
 

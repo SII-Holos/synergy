@@ -639,13 +639,28 @@ export namespace Server {
             // identical frames, so the checkpoint throttle is shared correctly.
             const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              globalEventClients.broadcast((mode) => {
+              const result = globalEventClients.broadcast((mode) => {
                 if (mode === "full") return JSON.stringify(event)
                 const dp = wire.deltaPayload(event.payload)
                 return dp === event.payload
                   ? JSON.stringify(event)
                   : JSON.stringify({ directory: event.directory, payload: dp })
               })
+              const payload = event?.payload
+              const part = payload?.properties?.part
+              if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
+                log.warn("global event ws tool part send failed", {
+                  sessionID: part.sessionID,
+                  messageID: part.messageID,
+                  partID: part.id,
+                  callID: part.callID,
+                  tool: part.tool,
+                  status: part.state?.status,
+                  dropped: result.dropped,
+                  removed: result.removed,
+                  clients: result.clients,
+                })
+              }
             }
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
