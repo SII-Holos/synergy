@@ -478,7 +478,7 @@ describe("git worktree integration", () => {
     })
   })
 
-  test("list includes dirty and diskBytes for managed worktrees", async () => {
+  test("list includes dirty for managed worktrees", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -496,8 +496,6 @@ describe("git worktree integration", () => {
           const managed = listed.find((item) => item.id === created.id)
           expect(managed).toBeDefined()
           expect(managed!.dirty).toBe(false)
-          expect(typeof managed!.diskBytes).toBe("number")
-          expect(managed!.diskBytes!).toBeGreaterThanOrEqual(0)
 
           await Worktree.remove({ target: created.id, force: true })
         })(),

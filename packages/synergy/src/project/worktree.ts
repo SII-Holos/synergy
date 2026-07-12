@@ -429,14 +429,10 @@ export namespace Worktree {
 
     return Promise.all(
       result.map(async (item) => {
-        const [dirty, diskBytes] = await Promise.all([
-          item.stale ? Promise.resolve(undefined) : isDirty(item.path).catch(() => undefined),
-          directorySize(item.path).catch(() => undefined),
-        ])
+        const dirty = item.stale ? undefined : await isDirty(item.path).catch(() => undefined)
         return {
           ...item,
           dirty,
-          diskBytes,
         }
       }),
     )
@@ -446,28 +442,6 @@ export namespace Worktree {
     const status = await $`git status --porcelain`.quiet().nothrow().cwd(directory)
     if (status.exitCode !== 0) return true
     return outputText(status.stdout).length > 0
-  }
-
-  async function directorySize(directory: string) {
-    if (!(await exists(directory))) return undefined
-    let total = 0
-    const queue = [directory]
-    while (queue.length > 0) {
-      const current = queue.pop()!
-      const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => [])
-      for (const entry of entries) {
-        if (entry.name === ".git") continue
-        const full = path.join(current, entry.name)
-        if (entry.isDirectory()) {
-          queue.push(full)
-          continue
-        }
-        if (!entry.isFile()) continue
-        const stat = await fs.stat(full).catch(() => undefined)
-        if (stat) total += stat.size
-      }
-    }
-    return total
   }
 
   async function setupInfo(repoRoot: string) {
