@@ -115,6 +115,13 @@ describe("OpenAPI spec generation", () => {
     expect(spec.paths["/workspace/files/status"]?.get?.operationId).toBe("workspace.files.status")
   })
 
+  test("worktree removal does not expose a session override", async () => {
+    const spec = await Server.openapi()
+    const schema = spec.components?.schemas?.WorktreeRemoveInput
+    expect(schema).toBeDefined()
+    expect(schema && "properties" in schema ? schema.properties : undefined).not.toHaveProperty("sessionID")
+  })
+
   test("includes performance observability routes with stable operation IDs", async () => {
     const spec = await Server.openapi()
     expect(spec.paths["/global/performance/summary"]?.get?.operationId).toBe("performance.summary")

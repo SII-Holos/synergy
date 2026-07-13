@@ -602,16 +602,12 @@ export namespace Cortex {
       }
 
       const waiters = taskWaiters.get(taskID)
-      if (!waiters?.size && terminalTask.notifyParentOnComplete !== false) {
-        // Register a deferred notification before exposing the terminal state.
-        // release() can then never observe "completed" without also seeing the
-        // pending wake. For an idle parent, finish delivery before publishing the
-        // terminal state so callers observe one coherent completion boundary.
-        if (SessionManager.isRunning(terminalTask.parentSessionID)) {
-          deferParentNotification(terminalTask)
-        } else {
-          await notifyParentSession(terminalTask)
-        }
+      const shouldNotifyParent = !waiters?.size && terminalTask.notifyParentOnComplete !== false
+      if (shouldNotifyParent) {
+        // Register the pending delivery before publishing terminal state so a
+        // concurrent parent release cannot miss it. The inbox notification is
+        // flushed only after task readers can observe the terminal result.
+        deferParentNotification(terminalTask)
       } else {
         if (waiters?.size) {
           log.info("task result has waiters, skipping mail", { taskID, waiterCount: waiters.size })
@@ -630,6 +626,9 @@ export namespace Cortex {
 
       if (terminalTask.visibility !== "hidden") {
         Bus.publish(Event.TaskCompleted, { task: terminalTask })
+      }
+      if (shouldNotifyParent && !SessionManager.isRunning(terminalTask.parentSessionID)) {
+        await flushDeferredParentNotifications(terminalTask.parentSessionID)
       }
       const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
       if (pluginSnapshot) {
@@ -773,6 +772,7 @@ export namespace Cortex {
     try {
       await SessionManager.deliver({
         target: task.parentSessionID,
+        waitForProcessing: false,
         mail: {
           type: "user",
           metadata: { source: "cortex", sourceSessionID: task.sessionID },

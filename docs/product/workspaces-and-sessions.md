@@ -29,6 +29,8 @@ A session belongs to a Scope and can also carry a workspace binding. The normal 
 
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 
+Settings lists worktrees for Git projects, including their branch, binding, lifecycle, dirty state, and managed-checkout size. Main and externally owned worktrees are informational. Deleting a Synergy-managed worktree requires confirmation, refuses active session use, returns idle bound sessions to the main checkout, and can clean an already-missing stale record. If one project has moved or is temporarily unreadable, its failure does not hide worktrees from the other projects.
+
 The Web workspace browses, previews, and searches files through Scope-contained APIs. Agents use governed file tools; the anchored coding harness can require a current file tag and proof that the edited lines were actually displayed. Formatting, LSP diagnostics, file events, snapshots, and runtime reload checks run around file changes without creating a second write boundary. See [Workspace and file operations](../architecture/workspace-and-files.md).
 
 ## Sessions
@@ -106,6 +108,7 @@ See [Browser workspace](browser.md).
 
 - The server owns runtime state; clients select context for each operation.
 - Scope is explicit and uses the selected directory without upward project discovery.
+- Managed worktree deletion never removes a checkout while a session is executing in it.
 - A session is durable and has one active writer.
 - One root message owns one task and remains the parent anchor for its assistant messages.
 - Scheduling, visibility, model inclusion, and provenance are independent semantics.
