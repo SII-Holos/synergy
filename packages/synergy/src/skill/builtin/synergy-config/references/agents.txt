@@ -240,6 +240,7 @@ Synergy ships with these agents. You can override any of them via config.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `model` | string | scope default | `provider/model` format |
+| `modelRole` | enum | — | Resolve the agent model through the `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, or `creative` role. An explicit `model` wins. |
 | `description` | string | — | When to use this agent. Required for selection UI and routing. |
 | `mode` | enum | `"all"` | `"primary"`, `"subagent"`, or `"all"` |
 | `prompt` | string | — | System prompt. For markdown agents, this is the body. |
@@ -247,10 +248,37 @@ Synergy ships with these agents. You can override any of them via config.
 | `top_p` | number | — | Top-p sampling (0-1) |
 | `color` | string | — | Hex color (e.g., `"#FF5733"`). Must be `#` + 6 hex digits. |
 | `steps` | int | — | Max agentic iterations before forcing text-only response |
+| `maxSteps` | int | — | Deprecated. Use `steps`; legacy values are still converted when config is loaded. |
 | `hidden` | bool | `false` | Hide from autocomplete (subagent mode only) |
+| `visibleTo` | string[] | all callers | Agent names or delegation-group identities allowed to delegate to this subagent. Missing or empty means unrestricted visibility. |
+| `delegationGroups` | string[] | `[]` | Additional identities this agent receives when resolving which subagents it may delegate to. |
 | `disable` | bool | `false` | Disable the agent entirely |
 | `permission` | object | top-level | Permission overrides. Merges with and overrides top-level permission. |
+| `tools` | object | — | Deprecated. Use `permission`; legacy boolean tool entries are converted to permission rules. |
+| `controlProfile` | enum | inherited | Agent-level `guarded`, `autonomous`, or `full_access` profile. An explicit session or parent-session profile takes precedence. |
+| `defaultVariant` | string | role default | Default model variant for this agent. A per-request variant wins; otherwise this overrides `role_variant`. |
 | `options` | object | `{}` | Additional key-value options passed through to the agent |
+
+Example with role-based model selection, delegation visibility, and agent-level execution defaults:
+
+```jsonc
+{
+  "agent": {
+    "review-coordinator": {
+      "modelRole": "thinking",
+      "defaultVariant": "high",
+      "controlProfile": "autonomous",
+      "delegationGroups": ["reviewers"]
+    },
+    "security-reviewer": {
+      "mode": "subagent",
+      "visibleTo": ["review-coordinator", "reviewers"]
+    }
+  }
+}
+```
+
+Here `review-coordinator` can see agents whose `visibleTo` includes either its own name or `reviewers`.
 
 ## Options passthrough
 

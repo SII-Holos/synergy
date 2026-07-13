@@ -397,7 +397,16 @@ export namespace ObservabilityStore {
   }
 
   export function queryIssues(
-    opts: { status?: string; severity?: string; module?: string; scopeID?: string; limit?: number } = {},
+    opts: {
+      status?: string
+      severity?: string
+      module?: string
+      scopeID?: string
+      tool?: string
+      since?: number
+      until?: number
+      limit?: number
+    } = {},
   ) {
     flush()
     const conn = open()
@@ -415,6 +424,18 @@ export namespace ObservabilityStore {
     if (opts.module) {
       filters.push("module = ?")
       params.push(opts.module)
+    }
+    if (opts.tool) {
+      filters.push("json_extract(evidence_json, '$.tool') = ?")
+      params.push(opts.tool)
+    }
+    if (opts.since !== undefined) {
+      filters.push("last_seen_time >= ?")
+      params.push(opts.since)
+    }
+    if (opts.until !== undefined) {
+      filters.push("last_seen_time < ?")
+      params.push(opts.until)
     }
     if (opts.scopeID) {
       filters.push("(scope_id = ? OR json_extract(evidence_json, '$.scopeID') = ?)")
