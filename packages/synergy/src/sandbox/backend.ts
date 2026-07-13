@@ -176,6 +176,7 @@ export namespace SandboxBackend {
     "COMSPEC",
     "PATHEXT",
     "BUN_INSTALL",
+    "SILICONFLOW_API_KEY",
     "NODE_PATH",
     "npm_config_cache",
     "PYTHONPATH",
