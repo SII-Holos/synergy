@@ -264,6 +264,85 @@ describe.serial("Cortex", () => {
     test("does nothing for non-existent task", async () => {
       await Cortex.cancel("ctx_nonexistent")
     })
+
+    test("publishes cancellation while completion finalization is in progress", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const originalMessages = Session.messages
+          const childMayFinish = Promise.withResolvers<void>()
+          const usageReadStarted = Promise.withResolvers<void>()
+          const releaseUsageRead = Promise.withResolvers<void>()
+          const terminalPublished = Promise.withResolvers<CortexTypes.Task>()
+          let taskID = ""
+          let childSessionID = ""
+          const unsubscribe = Bus.subscribe(Cortex.Event.TaskCompleted, (event) => {
+            if (event.properties.task.id === taskID) terminalPublished.resolve(event.properties.task)
+          })
+
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await childMayFinish.promise
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          ;(Session.messages as any) = mock(async (input: Parameters<typeof Session.messages>[0]) => {
+            if (input.sessionID === childSessionID && input.raw) {
+              usageReadStarted.resolve()
+              await releaseUsageRead.promise
+            }
+            return originalMessages(input)
+          })
+
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Cancel during completion finalization",
+              prompt: "Complete immediately",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_cancel_finalize_race",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+            taskID = task.id
+            childSessionID = task.sessionID
+            childMayFinish.resolve()
+
+            await Promise.race([
+              usageReadStarted.promise,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Task completion did not reach usage finalization")
+              }),
+            ])
+
+            await Cortex.cancel(task.id)
+
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+
+            releaseUsageRead.resolve()
+            const terminalTask = await Promise.race([
+              terminalPublished.promise,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Cancelled task did not finish finalization")
+              }),
+            ])
+            expect(terminalTask.status).toBe("cancelled")
+            expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
+          } finally {
+            childMayFinish.resolve()
+            releaseUsageRead.resolve()
+            await Promise.race([terminalPublished.promise, Bun.sleep(1_000)])
+            unsubscribe()
+            ;(Session.messages as any) = originalMessages
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
   })
 
   describe("cancelAll", () => {
