@@ -120,7 +120,7 @@ export namespace SessionInvoke {
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
-    return SessionManager.run(input.sessionID, async () => {
+    return SessionManager.run(input.sessionID, async (lease) => {
       const message = await createUserMessage(input)
       if (input.ephemeralTools?.length) {
         ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
@@ -136,7 +136,7 @@ export namespace SessionInvoke {
       }
 
       try {
-        return await loopBody(input.sessionID)
+        return await loopBody(input.sessionID, lease)
       } catch (error) {
         await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
           log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
@@ -188,21 +188,21 @@ export namespace SessionInvoke {
     return undefined
   }
 
-  export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    return SessionManager.run(sessionID, () => loopBody(sessionID))
-  })
-
-  async function loopBody(sessionID: string): Promise<MessageV2.WithParts> {
-    ContinuationKernel.init()
-    LatticeBridge.init()
-    SessionManager.registerRuntime(sessionID)
-    const abort = SessionManager.acquire(sessionID)
-    if (!abort) {
+  export const loop = fn(Identifier.schema("session"), (sessionID) => {
+    const lease = SessionManager.acquire(sessionID)
+    if (!lease) {
       const runtime = SessionManager.registerRuntime(sessionID)
       return new Promise<MessageV2.WithParts>((onComplete, onCancel) => {
         runtime.waiters.push({ onComplete, onCancel })
       })
     }
+    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), { lease })
+  })
+
+  async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
+    ContinuationKernel.init()
+    LatticeBridge.init()
+    const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
     // the session it is the sole writer (I1), so the assembled history can be
@@ -214,7 +214,6 @@ export namespace SessionInvoke {
       if (LatticeModelCalls.peek(sessionID) > 0) {
         await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
       }
-      await SessionManager.release(sessionID)
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)
@@ -1028,9 +1027,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
       })
     }
-    for (const q of runtime.waiters) {
-      q.onComplete(resultMessage)
-    }
+    SessionManager.completeWaiters(lease, resultMessage)
     return resultMessage
   }
 
@@ -1804,7 +1801,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       // message is incomplete (time.completed == null) and no runtime is
       // active, repair it so working.ts stops reporting "recovering".
       const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
-      if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.getRuntime(sessionID)?.abort) {
+      if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.isRunning(sessionID)) {
         log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
         await repairIncompleteAssistant(sessionID).catch((err) => {
           log.error("auto-repair failed", { sessionID, error: err })

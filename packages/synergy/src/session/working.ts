@@ -14,8 +14,8 @@ const log = Log.create({ service: "session.working" })
 
 export async function resolve(sessionID: string): Promise<WorkingInfo | undefined> {
   const runtime = SessionManager.getRuntime(sessionID)
-  if (runtime?.abort) {
-    const s = runtime.status
+  if (SessionManager.isRunning(sessionID)) {
+    const s = runtime!.status
     if (s.type === "busy") return { status: "busy", description: s.description }
     if (s.type === "retry") return { status: "retry", attempt: s.attempt, message: s.message, next: s.next }
   }

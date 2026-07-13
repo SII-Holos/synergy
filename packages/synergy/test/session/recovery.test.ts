@@ -207,7 +207,7 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
         const status = await SessionWorking.resolve(session.id)
         expect(status).toEqual({ status: "recovering" })
         const runtime = SessionManager.getRuntime(session.id)
-        expect(runtime?.abort).toBeUndefined()
+        expect(runtime?.owner).toBeUndefined()
         expect(runtime?.status).toEqual({ type: "idle" })
       },
     })
@@ -378,7 +378,7 @@ describe("SessionWorking resolution after restart", () => {
 
         // Verify no runtime was spun up
         const runtime = SessionManager.getRuntime(session.id)
-        expect(runtime?.abort).toBeUndefined()
+        expect(runtime?.owner).toBeUndefined()
       },
     })
   })
@@ -407,7 +407,7 @@ describe("SessionWorking resolution after restart", () => {
         expect(result.status).toBe("recovering")
 
         const runtime = SessionManager.getRuntime(session.id)
-        expect(runtime?.abort).toBeUndefined()
+        expect(runtime?.owner).toBeUndefined()
       },
     })
   })

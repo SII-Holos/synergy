@@ -1291,7 +1291,7 @@ describe.serial("Cortex", () => {
           const observedOutput = Promise.withResolvers<string>()
           let parentSessionID = ""
           let taskID = ""
-
+          let parentLease: SessionManager.LoopLease | undefined
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               await childMayFinish.promise
@@ -1301,7 +1301,8 @@ describe.serial("Cortex", () => {
           const unsubscribe = Bus.subscribe(SessionInbox.Event.Updated, async (event) => {
             if (event.properties.sessionID !== parentSessionID || !taskID) return
             if (!event.properties.items.some((item) => item.message?.metadata?.source === "cortex")) return
-            expect(SessionManager.acquire(parentSessionID)).toBeDefined()
+            parentLease = SessionManager.acquire(parentSessionID)
+            expect(parentLease).toBeDefined()
             observedOutput.resolve(await Cortex.output(taskID, "full"))
           })
 
@@ -1354,6 +1355,7 @@ describe.serial("Cortex", () => {
             childMayFinish.resolve()
             unsubscribe()
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            if (parentLease) await SessionManager.release(parentLease)
             if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
           }
         },
