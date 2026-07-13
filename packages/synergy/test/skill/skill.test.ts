@@ -387,6 +387,37 @@ description: A skill in the .claude/skills directory.
     })
   })
 
+  test("synergy-config documents canonical agent and model settings", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = await Skill.get("synergy-config")
+        if (!skill?.content) throw new Error("Expected the built-in synergy-config skill to have content")
+
+        const agents = skill.references?.["references/agents.txt"]
+        if (!agents) throw new Error("Expected synergy-config to include its agents reference")
+        for (const field of ["modelRole", "visibleTo", "delegationGroups", "controlProfile", "defaultVariant"]) {
+          expect(agents.split("\n").some((line) => line.startsWith(`| \`${field}\` |`))).toBe(true)
+        }
+        for (const field of ["tools", "maxSteps"]) {
+          const row = agents.split("\n").find((line) => line.startsWith(`| \`${field}\` |`))
+          expect(row).toContain("Deprecated")
+        }
+
+        const modelsDomain = skill.content.split("\n").find((line) => line.startsWith("| `10-models.jsonc` |"))
+        expect(modelsDomain).toContain("`quick_switcher`")
+
+        const models = skill.references?.["references/models.txt"]
+        if (!models) throw new Error("Expected synergy-config to include its models reference")
+        expect(models).toContain("## Role variants")
+        expect(models).toContain('"role_variant"')
+        expect(models).toContain('"thinking": "high"')
+      },
+    })
+  })
+
   test("reload discovers project-local skill created after initial config state", async () => {
     await using tmp = await tmpdir({ git: true })
 
