@@ -49,7 +49,9 @@ describe("EventWire encoder", () => {
     wire.deltaPayload(partUpdated(p, "a"), 1000) // checkpoint @1000
     const mid = wire.deltaPayload(partUpdated({ ...p, text: "ab" }, "b"), 1500)
     expect((mid as EventWire.DeltaFrame).type).toBe("message.part.delta")
-    const cp = wire.deltaPayload(partUpdated({ ...p, text: "abc" }, "c"), 2000) // >= 1000ms later
+    const stillDelta = wire.deltaPayload(partUpdated({ ...p, text: "abc" }, "c"), 2000)
+    expect((stillDelta as EventWire.DeltaFrame).type).toBe("message.part.delta")
+    const cp = wire.deltaPayload(partUpdated({ ...p, text: "abcd" }, "d"), 6000) // >= CHECKPOINT_MS later
     expect(cp).toBe(cp) // full payload returned
     expect((cp as any).type).toBe("message.part.updated")
   })

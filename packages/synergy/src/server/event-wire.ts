@@ -26,7 +26,7 @@
 // transports would let one consumer's checkpoint decision corrupt another's.
 
 export namespace EventWire {
-  export const CHECKPOINT_MS = 1000
+  export const CHECKPOINT_MS = 5000
 
   export interface DeltaFrame {
     type: "message.part.delta"

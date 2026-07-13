@@ -910,6 +910,14 @@ export namespace Provider {
           }
 
           let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+          let readerReleased = false
+          const releaseReader = () => {
+            if (!reader || readerReleased) return
+            readerReleased = true
+            try {
+              reader.releaseLock()
+            } catch {}
+          }
           const wrappedStream = new ReadableStream({
             // Pull-based so provider bytes stay bounded by downstream demand
             // (AI SDK / SessionProcessor). The previous eager start() pump could
@@ -921,6 +929,7 @@ export namespace Provider {
                 const { done, value } = await Promise.race([reader.read(), idleAborted])
                 if (done) {
                   if (idleTimer) clearTimeout(idleTimer)
+                  releaseReader()
                   controller.close()
                   return
                 }
@@ -932,11 +941,17 @@ export namespace Provider {
                 try {
                   await reader.cancel(err)
                 } catch {}
+                releaseReader()
               }
             },
-            cancel() {
+            async cancel(reason) {
               if (idleTimer) clearTimeout(idleTimer)
-              return originalBody.cancel()
+              if (!reader) return originalBody.cancel(reason)
+              try {
+                await reader.cancel(reason)
+              } finally {
+                releaseReader()
+              }
             },
           })
 

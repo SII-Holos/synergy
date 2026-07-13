@@ -165,6 +165,7 @@ export namespace Server {
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
   let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
+  const GLOBAL_EVENT_WS_BACKPRESSURE_LIMIT = 4 * 1024 * 1024
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -1602,7 +1603,11 @@ export namespace Server {
       hostname: opts.hostname,
       idleTimeout: 0,
       fetch: App().fetch,
-      websocket: websocket,
+      websocket: {
+        ...websocket,
+        backpressureLimit: GLOBAL_EVENT_WS_BACKPRESSURE_LIMIT,
+        closeOnBackpressureLimit: true,
+      },
     } as const
     const tryServe = (port: number) => {
       try {
