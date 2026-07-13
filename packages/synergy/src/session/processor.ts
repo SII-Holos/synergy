@@ -172,6 +172,7 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const executions = new Map<string, ToolExecutionSlotInternal>()
+    const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
     const generatingAccum: Record<string, string> = {}
@@ -296,6 +297,7 @@ export namespace SessionProcessor {
       return {
         activeToolCallCount: Object.keys(toolcalls).length,
         activeExecutionCount: executions.size,
+        executionCallbackCount: executionCallbacks.size,
         settledToolCallCount: settledToolCalls.size,
         settlementPromiseCount: settlementPromises.size,
         ...(callID
@@ -305,6 +307,7 @@ export namespace SessionProcessor {
               partStatus: part?.state.status,
               hasPart: Boolean(part),
               hasSlot: Boolean(slot),
+              hasExecutionCallback: executionCallbacks.has(callID),
               slotStatus: slot?.status,
               hasOutcome: Boolean(slot?.outcome),
               hasSettlementPromise: settlementPromises.has(callID),
@@ -322,6 +325,7 @@ export namespace SessionProcessor {
                   partStatus: part?.state.status,
                   hasPart: Boolean(part),
                   hasSlot: Boolean(slot),
+                  hasExecutionCallback: executionCallbacks.has(id),
                   slotStatus: slot?.status,
                   hasOutcome: Boolean(slot?.outcome),
                   registeredAt: slot?.registeredAt,
@@ -669,10 +673,28 @@ export namespace SessionProcessor {
       return slot
     }
 
+    function executeOnce<T>(callID: string, execute: () => Promise<T>): Promise<T> {
+      const existing = executionCallbacks.get(callID)
+      if (existing) {
+        log.warn("reusing tool execution callback", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        return existing as Promise<T>
+      }
+
+      const execution = Promise.resolve().then(execute)
+      executionCallbacks.set(callID, execution)
+      return execution
+    }
+
     function dispose(reason = "manual") {
       const before = toolSettlementSnapshot(undefined, true)
       for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
       executions.clear()
+      executionCallbacks.clear()
       settlementPromises.clear()
       settledToolCalls.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
@@ -693,6 +715,7 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       beginExecution,
+      executeOnce,
       dispose,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
