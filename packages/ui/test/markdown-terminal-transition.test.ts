@@ -8,13 +8,16 @@ import {
 
 type NodeLike = {
   dataset: Record<string, string>
+  attributes: Record<string, string>
   childNodes: NodeLike[]
   html: string
   text: string
+  inert: boolean
   append: (...nodes: NodeLike[]) => void
   replaceChildren: (...nodes: NodeLike[]) => void
   querySelector: (selector: string) => NodeLike | null
   getAttribute: (name: string) => string | null
+  setAttribute: (name: string, value: string) => void
   getBoundingClientRect: () => { width: number; height: number }
   get innerHTML(): string
   set innerHTML(value: string)
@@ -24,11 +27,14 @@ type NodeLike = {
 
 function createNode(html = "", text = html.replaceAll(/<[^>]+>/g, "")): NodeLike {
   const dataset: Record<string, string> = {}
+  const attributes: Record<string, string> = {}
   const node: NodeLike = {
     dataset,
+    attributes,
     childNodes: [],
     html,
     text,
+    inert: false,
     get innerHTML() {
       return this.html
     },
@@ -75,10 +81,13 @@ function createNode(html = "", text = html.replaceAll(/<[^>]+>/g, "")): NodeLike
       }
       return visit(this)
     },
+    setAttribute(name: string, value: string) {
+      this.attributes[name] = value
+    },
     getAttribute(name: string) {
       if (name === "data-active") return this.dataset.active ?? null
       if (name === "data-slot") return this.dataset.slot ?? null
-      return null
+      return this.attributes[name] ?? null
     },
     getBoundingClientRect() {
       return { width: 1, height: 1 }
@@ -89,11 +98,14 @@ function createNode(html = "", text = html.replaceAll(/<[^>]+>/g, "")): NodeLike
 
 function createLeaf(html: string, text: string): NodeLike {
   const dataset: Record<string, string> = {}
+  const attributes: Record<string, string> = {}
   return {
     dataset,
+    attributes,
     childNodes: [],
     html,
     text,
+    inert: false,
     get innerHTML() {
       return this.html
     },
@@ -117,8 +129,11 @@ function createLeaf(html: string, text: string): NodeLike {
     querySelector() {
       return null
     },
-    getAttribute() {
-      return null
+    setAttribute(name: string, value: string) {
+      this.attributes[name] = value
+    },
+    getAttribute(name: string) {
+      return this.attributes[name] ?? null
     },
     getBoundingClientRect() {
       return { width: 1, height: 1 }
@@ -217,6 +232,9 @@ describe("applyMarkdownTerminalCrossfade", () => {
     expect(container.querySelector('[data-slot="markdown-terminal-to"]')?.innerHTML).toBe(
       "<p><strong>final</strong></p>",
     )
+    const previous = container.querySelector<HTMLElement>('[data-slot="markdown-terminal-from"]')
+    expect(previous?.getAttribute("aria-hidden")).toBe("true")
+    expect(previous?.inert).toBe(true)
     expect(enhanceLive).toBe(1)
     expect(enhancedRoots).toHaveLength(1)
 

@@ -60,6 +60,8 @@ Internal and developer settings such as formatter, lsp, and observability should
 
 Settings typography should use the global semantic UI type tokens, not local pixel sizes or historical `text-12-*` utility classes. Page titles, section titles, row titles, body copy, control text, and captions should map to fixed rem-based roles with regular, medium, and semibold weights only. Keep the density close to Manus: comfortable enough to read as product settings, still efficient enough for a daily developer tool.
 
+Worktree settings should aggregate only Git projects, preserve readable project results when another repository fails, and keep main or external worktrees informational. Managed deletion is a confirmed lifecycle action: show dirty and bound-session consequences, refuse active use, and refresh the list after the backend has migrated idle bindings or cleaned a stale record.
+
 Library settings should explain learning, memory recall, and experience reuse as product preferences. Use switch controls for binary learning behavior and discrete guided scales for recall or exploration thresholds; do not present cosine similarity, top-k, or epsilon choices as raw debug parameters.
 
 Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
@@ -109,7 +111,7 @@ Copy controls should use the shared clipboard capability and shared copied/faile
 
 Markdown code blocks in the message stream are document content surfaces, not form controls. In light mode they should stay close to the white workbench surface with a hairline border and low-emphasis copy control; in dark mode they may keep the inward-brighter relationship.
 
-Session timeline spacing should follow semantic rhythm: compact spacing for consecutive text, tighter grouping for consecutive tool events, and more breathing room when moving between prose and tool/media blocks. Avoid stacking narrow one-off adjacent selectors that make reasoning, text, and tools feel randomly packed.
+Session timeline spacing should follow semantic rhythm: compact spacing for consecutive text, tighter grouping for consecutive tool events, and more breathing room when moving between prose and tool/media blocks. Once adjacent timeline items mount, Markdown settlement and item entrance effects must preserve their measured gap. Avoid stacking narrow one-off adjacent selectors that make reasoning, text, and tools feel randomly packed.
 
 Conversation attachment display should be owned by each attachment's presentation policy. Tool metadata may hide or show the tool card, but must not choose primary attachments, promote media results, or override attachment sizing outside the persisted part order. Media such as memes should render as message content at a bounded conversational size, while screenshots and documents can opt into larger or file-style presentation through attachment-level fields.
 Image preview is a grounded modal viewer for previewable image attachments, with quiet metadata, separated viewer controls, zoom/pan/rotate, load failure fallback, and gallery navigation that preserves the owning attachment scope and order. Composer image attachments share one prompt-local gallery before send; sent attachment galleries keep their message-local scope.
