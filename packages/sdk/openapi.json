@@ -1118,8 +1118,8 @@
     "/global/performance/issues": {
       "get": {
         "operationId": "performance.issues.list",
-        "summary": "List performance issues",
-        "description": "List open or historical performance issues.",
+        "summary": "List filtered performance issues",
+        "description": "List open or historical performance issues filtered by scope, tool, or last-seen time range.",
         "responses": {
           "200": {
             "description": "Performance issues",
@@ -19603,6 +19603,50 @@
         },
         "required": ["id", "label", "value", "unit"]
       },
+      "PerfToolFailureCategory": {
+        "type": "object",
+        "properties": {
+          "errorClass": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["errorClass", "count"]
+      },
+      "PerfToolFailureItem": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "callCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errorCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfToolFailureCategory"
+            }
+          }
+        },
+        "required": ["tool", "callCount", "errorCount", "errorRate", "categories"]
+      },
       "PerfIssueSeverity": {
         "type": "string",
         "enum": ["info", "warning", "error", "critical"]
@@ -20048,6 +20092,12 @@
                   "$ref": "#/components/schemas/PerfRankedItem"
                 }
               },
+              "toolFailures": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfToolFailureItem"
+                }
+              },
               "slowProviders": {
                 "type": "array",
                 "items": {
@@ -20083,6 +20133,7 @@
               "slowRoutes",
               "slowSessions",
               "slowTools",
+              "toolFailures",
               "slowProviders",
               "slowStorage",
               "slowLibrary",

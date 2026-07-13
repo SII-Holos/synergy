@@ -98,13 +98,25 @@ export namespace ObservabilityIssues {
   }
 
   export function list(
-    input: { status?: string; severity?: string; module?: string; scopeID?: string; limit?: number } = {},
+    input: {
+      status?: string
+      severity?: string
+      module?: string
+      scopeID?: string
+      tool?: string
+      since?: number
+      until?: number
+      limit?: number
+    } = {},
   ) {
     return ObservabilityStore.queryIssues({
       status: input.status ?? "open",
       severity: input.severity,
       module: input.module,
       scopeID: input.scopeID,
+      tool: input.tool,
+      since: input.since,
+      until: input.until,
       limit: input.limit,
     }).map(fromRow)
   }
