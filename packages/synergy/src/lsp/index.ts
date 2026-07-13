@@ -15,6 +15,7 @@ import { Flag } from "@/flag/flag"
 import { LSPPid } from "./pid"
 import { Shell } from "../util/shell"
 import { LSPSchema } from "./schema"
+import { ProcessAttribution } from "@/process/attribution"
 
 export namespace LSP {
   const log = Log.create({ service: "lsp" })
@@ -75,16 +76,34 @@ export namespace LSP {
   // next request. Disabled with SYNERGY_DISABLE_LSP_REAP.
   const lastUsedAt = new WeakMap<LSPClient.Info, number>()
   const worktreeClients = new WeakSet<LSPClient.Info>()
-  const LSP_IDLE_MS = 30 * 60 * 1000
-  const LSP_WORKTREE_IDLE_MS = 5 * 60 * 1000
-  const LSP_SWEEP_MS = 5 * 60 * 1000
+  const LSP_IDLE_MS = readMsEnv("SYNERGY_LSP_IDLE_MS", 30 * 60 * 1000)
+  const LSP_WORKTREE_IDLE_MS = readMsEnv("SYNERGY_LSP_WORKTREE_IDLE_MS", 5 * 60 * 1000)
+  const LSP_SWEEP_MS = readMsEnv("SYNERGY_LSP_SWEEP_MS", 60 * 1000)
   const LSP_MAX_CLIENTS_PER_SERVER = Math.max(
     1,
     Number.parseInt(process.env.SYNERGY_LSP_MAX_CLIENTS_PER_SERVER ?? "2", 10) || 2,
   )
   // A capacity eviction only targets clients idle at least this long, so a
   // client actively serving a concurrent session is never shut down mid-request.
-  const LSP_CAPACITY_REAP_MIN_IDLE_MS = 30 * 1000
+  const LSP_CAPACITY_REAP_MIN_IDLE_MS = readMsEnv("SYNERGY_LSP_CAPACITY_REAP_MIN_IDLE_MS", 30 * 1000)
+  const LSP_MEMORY_REAP_MIN_IDLE_MS = readMsEnv("SYNERGY_LSP_MEMORY_REAP_MIN_IDLE_MS", 30 * 1000)
+  const LSP_MAX_CLIENT_RSS_BYTES = readByteEnv("SYNERGY_LSP_MAX_CLIENT_RSS_BYTES", 1024 * 1024 * 1024)
+  const LSP_MAX_TOTAL_RSS_BYTES = readByteEnv("SYNERGY_LSP_MAX_TOTAL_RSS_BYTES", 2 * 1024 * 1024 * 1024)
+  const LSP_TOTAL_RSS_TARGET_RATIO = 0.8
+
+  function readMsEnv(name: string, fallback: number) {
+    const value = Number.parseInt(process.env[name] ?? "", 10)
+    return Number.isFinite(value) && value > 0 ? value : fallback
+  }
+
+  function readByteEnv(name: string, fallback: number) {
+    const raw = process.env[name]
+    if (raw === undefined) return fallback
+    const value = Number.parseInt(raw, 10)
+    if (!Number.isFinite(value)) return fallback
+    return value <= 0 ? Infinity : value
+  }
+
   function touchClient(client: LSPClient.Info) {
     lastUsedAt.set(client, Date.now())
   }
@@ -156,11 +175,14 @@ export namespace LSP {
       const sweeper = Flag.SYNERGY_DISABLE_LSP_REAP
         ? undefined
         : setInterval(() => {
-            const now = Date.now()
-            for (const client of [...clients]) {
-              if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
-              void reapClient(clients, client, "idle")
-            }
+            void (async () => {
+              const now = Date.now()
+              await reapForMemory(clients, now)
+              for (const client of [...clients]) {
+                if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
+                await reapClient(clients, client, "idle")
+              }
+            })()
           }, LSP_SWEEP_MS)
       sweeper?.unref()
 
@@ -348,7 +370,62 @@ export namespace LSP {
     await reapClient(clients, oldest, "capacity")
   }
 
-  async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: "idle" | "capacity") {
+  type ReapReason = "idle" | "capacity" | "memory-client" | "memory-total"
+
+  function collectClientMemory(clients: LSPClient.Info[]) {
+    const withPid = clients.filter((client): client is LSPClient.Info & { pid: number } => Boolean(client.pid))
+    const memoryByPid = ProcessAttribution.memoryByRoot(withPid.map((client) => client.pid))
+    return withPid.map((client) => {
+      const memory = memoryByPid.get(client.pid)
+      return {
+        client,
+        rssBytes: (memory?.rootRssBytes ?? 0) + (memory?.childRssBytes ?? 0),
+        childCount: memory?.childCount ?? 0,
+        pid: client.pid,
+      }
+    })
+  }
+
+  async function reapForMemory(clients: LSPClient.Info[], now = Date.now()) {
+    if (!Number.isFinite(LSP_MAX_CLIENT_RSS_BYTES) && !Number.isFinite(LSP_MAX_TOTAL_RSS_BYTES)) return
+    let memory = collectClientMemory(clients)
+
+    for (const item of memory) {
+      if (item.rssBytes < LSP_MAX_CLIENT_RSS_BYTES) continue
+      if (now - (lastUsedAt.get(item.client) ?? now) < LSP_MEMORY_REAP_MIN_IDLE_MS) continue
+      log.warn("reaping oversized LSP client", {
+        serverID: item.client.serverID,
+        root: item.client.root,
+        pid: item.pid,
+        rssBytes: item.rssBytes,
+        childCount: item.childCount,
+        limitBytes: LSP_MAX_CLIENT_RSS_BYTES,
+      })
+      await reapClient(clients, item.client, "memory-client")
+    }
+
+    memory = collectClientMemory(clients)
+    let total = memory.reduce((sum, item) => sum + item.rssBytes, 0)
+    if (total < LSP_MAX_TOTAL_RSS_BYTES) return
+
+    const target = LSP_MAX_TOTAL_RSS_BYTES * LSP_TOTAL_RSS_TARGET_RATIO
+    for (const item of memory.toSorted((a, b) => b.rssBytes - a.rssBytes)) {
+      if (total <= target) break
+      if (now - (lastUsedAt.get(item.client) ?? now) < LSP_MEMORY_REAP_MIN_IDLE_MS) continue
+      log.warn("reaping LSP client for total memory pressure", {
+        serverID: item.client.serverID,
+        root: item.client.root,
+        pid: item.pid,
+        rssBytes: item.rssBytes,
+        totalRssBytes: total,
+        limitBytes: LSP_MAX_TOTAL_RSS_BYTES,
+      })
+      await reapClient(clients, item.client, "memory-total")
+      total -= item.rssBytes
+    }
+  }
+
+  async function reapClient(clients: LSPClient.Info[], client: LSPClient.Info, reason: ReapReason) {
     const idx = clients.indexOf(client)
     if (idx !== -1) clients.splice(idx, 1)
     const pid = client.pid
