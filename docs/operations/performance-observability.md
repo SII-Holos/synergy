@@ -8,7 +8,7 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 
 - health status, health score, and open performance issues;
 - HTTP request count, error rate, and p50/p95/p99 latency;
-- session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues;
+- session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
 - CPU, memory, event-loop lag, and app-owned disk IO;
 - registered tool child process count, RSS total, and top child process memory contributors;
 - session runtime counts and retained Cortex task counts, including retained prompt/output/error character totals;

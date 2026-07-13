@@ -39,6 +39,7 @@ import { Observability } from "@/observability"
 import { SessionModePolicy } from "./tool-mode-policy"
 import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
 import { ObservabilityIssues } from "@/observability/issues"
+import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { ObservabilitySpans } from "@/observability/spans"
@@ -815,45 +816,6 @@ export namespace ToolResolver {
     }
   }
 
-  function recordToolFailureIssue(input: {
-    tool: string
-    sessionID: string
-    messageID: string
-    callID: string
-    traceId?: string
-    spanId?: string
-    scopeID?: string
-    phase: string
-    error: unknown
-    owner: "builtin" | "mcp" | "ephemeral"
-  }) {
-    const errorClass = input.error instanceof Error ? input.error.name : "UnknownError"
-    const signature = [input.scopeID ?? input.sessionID, input.tool, errorClass, input.phase, input.owner].join(":")
-    ObservabilityIssues.raise({
-      code: "PERF_TOOL_EXECUTION_FAILED",
-      severity: "error",
-      module: "tool",
-      title: "Tool execution failed",
-      message: `${input.tool} failed during ${input.phase}`,
-      recommendation: "Inspect the tool trace, failure signature, and permission/sandbox metadata before retrying.",
-      traceId: input.traceId,
-      spanId: input.spanId,
-      scopeID: input.scopeID,
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      callID: input.callID,
-      fingerprint: `tool-failure:${signature}`,
-      evidence: {
-        tool: input.tool,
-        phase: input.phase,
-        retryable: errorClass !== "PolicyDenied" && errorClass !== "SandboxBlocked" && errorClass !== "BoundaryHit",
-        errorClass,
-        owner: input.owner,
-        callID: input.callID,
-      },
-    })
-  }
-
   function formatErrorForModel(error: unknown): string {
     if (error instanceof ToolDiagnosticError) {
       return error.message
@@ -1292,6 +1254,17 @@ export namespace ToolResolver {
             attemptedInput: args as Record<string, unknown>,
           },
         })
+        ObservabilityToolFailures.record({
+          tool: diagnostic.toolName,
+          sessionID: input.sessionID,
+          messageID: input.processor.message.id,
+          callID: options.toolCallId,
+          scopeID: ScopeContext.current.scope.id,
+          phase: "tool.availability",
+          error,
+          errorClass: diagnostic.code,
+          owner: "diagnostic",
+        })
         slot.fail(args, error.message, ToolDiagnostic.metadata(error.diagnostic))
         throw error
       },
@@ -1394,7 +1367,7 @@ export namespace ToolResolver {
               } catch (error) {
                 await toolTrace?.error(error, { phase: "tool.execute" })
                 const message = error instanceof Error ? error.message : String(error)
-                recordToolFailureIssue({
+                ObservabilityToolFailures.raiseIssue({
                   tool: item.id,
                   sessionID: runtimeInput.sessionID,
                   messageID: runtimeInput.processor.message.id,
@@ -1663,7 +1636,7 @@ export namespace ToolResolver {
                   callID: options.toolCallId,
                   error,
                 })
-                recordToolFailureIssue({
+                ObservabilityToolFailures.raiseIssue({
                   tool: item.id,
                   sessionID: runtimeInput.sessionID,
                   messageID: runtimeInput.processor.message.id,
@@ -1910,7 +1883,7 @@ export namespace ToolResolver {
                     callID: opts.toolCallId,
                     error,
                   })
-                  recordToolFailureIssue({
+                  ObservabilityToolFailures.raiseIssue({
                     tool: key,
                     sessionID: runtimeInput.sessionID,
                     messageID: runtimeInput.processor.message.id,
