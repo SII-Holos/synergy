@@ -41,6 +41,7 @@ export namespace SessionProcessor {
           title: string
           metadata: Record<string, any>
           attachments?: MessageV2.AttachmentPart[]
+          afterPersist?: () => Promise<void> | void
         }
       }
     | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
@@ -257,6 +258,7 @@ export namespace SessionProcessor {
             attachments: outcome.result.attachments,
           },
         })
+        await outcome.result.afterPersist?.()
       } else {
         await Session.updatePart({
           ...part,
