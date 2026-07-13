@@ -151,7 +151,7 @@
 }
 
 [data-component="compaction-card"] [data-slot="collapsible-content"][data-expanded] {
-  animation: compaction-card-expand var(--motion-duration-base) var(--motion-ease-emphasized) both;
+  animation: compaction-card-expand var(--motion-duration-base) var(--motion-ease-emphasized);
 }
 
 [data-slot="compaction-card-content"] {

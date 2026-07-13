@@ -203,6 +203,13 @@ describe("app production build contract", () => {
         expectRootRule(css, contract)
       }
 
+      const expandedCompactionBodies = collectRootRuleBodies(
+        css,
+        "[data-component=compaction-card] [data-slot=collapsible-content][data-expanded]",
+      )
+      expect(expandedCompactionBodies.length, "Missing expanded compaction card CSS rule").toBeGreaterThan(0)
+      expect(expandedCompactionBodies.join(";")).not.toContain(" both")
+
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
       expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
         expect.stringMatching(/^BlexMonoNerdFontMono-Bold-/),
