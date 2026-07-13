@@ -8,8 +8,10 @@ function contribution(pluginId: string, themeId = "theme"): PluginContribution {
     pluginId,
     name: pluginId,
     version: "1.0.0",
-    permissions: { ui: true },
-    ui: { themes: [{ id: themeId, label: pluginId, path: `./${themeId}.json` }] },
+    generation: "generation-one",
+    scopeId: "scope-one",
+    capabilities: [],
+    contributions: [{ kind: "ui.theme", id: themeId, label: pluginId, path: `./${themeId}.json` }],
   }
 }
 
@@ -34,7 +36,7 @@ describe("plugin UI asset loading", () => {
 
   test("loads themes and icons before registration", async () => {
     const input = contribution("assets")
-    input.ui!.icons = [{ name: "mark", path: "./mark.svg" }]
+    input.contributions.push({ kind: "ui.icon", id: "mark", path: "./mark.svg" })
     const result = await loadPluginUIAssets([input], {
       fetcher: async (url) =>
         url.endsWith(".svg") ? new Response("<svg></svg>") : Response.json({ ...synergyTheme, id: "theme" }),
@@ -54,10 +56,8 @@ describe("plugin UI asset loading", () => {
   test("keeps same-named icons from different plugins distinct", async () => {
     const one = contribution("one")
     const two = contribution("two")
-    one.ui!.themes = []
-    two.ui!.themes = []
-    one.ui!.icons = [{ name: "logo", path: "./logo.svg" }]
-    two.ui!.icons = [{ name: "logo", path: "./logo.svg" }]
+    one.contributions = [{ kind: "ui.icon", id: "logo", path: "./logo.svg" }]
+    two.contributions = [{ kind: "ui.icon", id: "logo", path: "./logo.svg" }]
 
     const result = await loadPluginUIAssets([one, two], {
       fetcher: async () => new Response("<svg></svg>"),
@@ -86,8 +86,7 @@ describe("plugin UI asset loading", () => {
 
   test("reports empty icon assets before registration", async () => {
     const input = contribution("empty-icon")
-    input.ui!.themes = []
-    input.ui!.icons = [{ name: "mark", path: "./mark.svg" }]
+    input.contributions = [{ kind: "ui.icon", id: "mark", path: "./mark.svg" }]
     const result = await loadPluginUIAssets([input], {
       fetcher: async () => new Response(""),
     })
@@ -101,6 +100,6 @@ describe("plugin UI asset loading", () => {
       fetcher: async () => Response.json({ ...synergyTheme, id: "different" }),
     })
     expect(result.themes.size).toBe(0)
-    expect(result.errors[0]?.message).toContain('does not match manifest id "theme"')
+    expect(result.errors[0]?.message).toContain('does not match contribution id "theme"')
   })
 })

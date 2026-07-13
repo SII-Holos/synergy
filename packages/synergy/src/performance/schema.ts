@@ -250,12 +250,12 @@ export namespace PerformanceSchema {
         }),
         cortexTasks: z.object({
           totalCount: z.number().int(),
-          pendingCount: z.number().int(),
           queuedCount: z.number().int(),
           runningCount: z.number().int(),
           completedCount: z.number().int(),
           errorCount: z.number().int(),
           cancelledCount: z.number().int(),
+          interruptedCount: z.number().int(),
           retainedPromptChars: z.number().int(),
           retainedOutputChars: z.number().int(),
           retainedErrorChars: z.number().int(),

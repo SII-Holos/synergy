@@ -43,6 +43,8 @@ import { PermissionNext } from "@/permission/next"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
+import { pluginTaskSnapshotFromSession } from "@/cortex/plugin-task"
+import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
@@ -1825,13 +1827,51 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       log.warn("reconciling interrupted Cortex delegation", { sessionID, status: session.cortex.status })
       await repairAfterAbort(sessionID)
       const completedAt = Date.now()
+      const interruption = "Server restarted before this delegated task completed."
       await Session.update(sessionID, (draft) => {
         if (!draft.cortex) return
         if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
-        draft.cortex.status = "cancelled"
+        draft.cortex.status = "interrupted"
         draft.cortex.completedAt ??= completedAt
-        draft.cortex.error ??= "Server restarted before this delegated task completed."
+        draft.cortex.error ??= interruption
         draft.pendingReply = undefined
+      })
+      const updated = await Session.get(sessionID)
+      if (!updated?.cortex) continue
+      const snapshot = pluginTaskSnapshotFromSession(
+        { taskId: updated.cortex.taskID, sessionId: updated.id },
+        updated.cortex,
+      )
+      if (!snapshot) continue
+      void Observability.emit("plugin.task.interrupted", {
+        traceId: snapshot.owner.correlationId,
+        sessionID: snapshot.sessionId,
+        scopeID: snapshot.owner.scopeId,
+        level: "error",
+        data: {
+          pluginId: snapshot.owner.pluginId,
+          pluginGeneration: snapshot.owner.pluginGeneration,
+          correlationId: snapshot.owner.correlationId,
+          taskId: snapshot.taskId,
+          status: snapshot.status,
+          agent: snapshot.agent,
+          model: snapshot.model,
+          startedAt: snapshot.startedAt,
+          completedAt: snapshot.completedAt,
+          durationMs: snapshot.completedAt ? snapshot.completedAt - snapshot.startedAt : undefined,
+          usage: snapshot.usage,
+        },
+      })
+      await ScopeContext.provide({
+        scope: updated.scope,
+        fn: () =>
+          Plugin.triggerForPlugin(
+            snapshot.owner.pluginId,
+            snapshot.owner.pluginGeneration,
+            "cortex.task.after",
+            { task: snapshot },
+            {},
+          ),
       })
     }
   }

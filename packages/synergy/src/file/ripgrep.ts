@@ -26,7 +26,7 @@ export namespace Ripgrep {
     ])
   }
 
-  async function terminate(proc: RipgrepProcess) {
+  export async function terminate(proc: RipgrepProcess) {
     proc.kill()
     if (await waitExited(proc, TERMINATE_GRACE_MS)) return
 

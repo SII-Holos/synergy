@@ -1,187 +1,222 @@
 import { describe, expect, test } from "bun:test"
 import { Config } from "../../src/config/config"
+import { readApprovals, writeApprovals, type PluginApprovalRecord } from "../../src/plugin/consent/approval-store"
+import { IncompatiblePluginStore } from "../../src/plugin/incompatible-store"
+import { PluginInstallationTransaction, selectPluginRegistrationSpecs } from "../../src/plugin/installation-transaction"
 import * as Lockfile from "../../src/plugin/lockfile"
-import { PluginInstallationTransaction } from "../../src/plugin/installation-transaction"
-import type { ResolvedPluginSpec } from "../../src/plugin/spec-resolver"
-import type { LoadedPlugin } from "../../src/plugin/loader"
-import { getEvents } from "../../src/plugin/audit"
 
-function resolved(spec: string, version: string): ResolvedPluginSpec {
+describe("plugin uninstall registration selection", () => {
+  test("removes every duplicate of an explicitly registered spec", async () => {
+    const target = "file:///plugins/focus"
+    const result = await selectPluginRegistrationSpecs({
+      pluginId: "focus",
+      specs: [target, "npm:other", target],
+      knownSpecs: [target],
+      resolvePluginId: async () => null,
+    })
+
+    expect(result).toEqual({
+      kept: ["npm:other"],
+      removed: [target, target],
+    })
+  })
+
+  test("removes every configured spec that resolves to the same plugin id", async () => {
+    const ids = new Map([
+      ["file:///plugins/focus", "focus"],
+      ["file:///archives/focus.tgz", "focus"],
+      ["npm:other", "other"],
+    ])
+    const result = await selectPluginRegistrationSpecs({
+      pluginId: "focus",
+      specs: [...ids.keys()],
+      knownSpecs: [],
+      resolvePluginId: async (spec) => ids.get(spec) ?? null,
+    })
+
+    expect(result).toEqual({
+      kept: ["npm:other"],
+      removed: ["file:///plugins/focus", "file:///archives/focus.tgz"],
+    })
+  })
+
+  test("does not remove unrelated unresolved registrations", async () => {
+    const result = await selectPluginRegistrationSpecs({
+      pluginId: "focus",
+      specs: ["file:///broken-one", "file:///broken-two"],
+      knownSpecs: ["file:///broken-one"],
+      resolvePluginId: async () => null,
+    })
+
+    expect(result).toEqual({
+      kept: ["file:///broken-two"],
+      removed: ["file:///broken-one"],
+    })
+  })
+})
+
+function approval(pluginId: string): PluginApprovalRecord {
   return {
-    spec,
-    pkg: "demo-plugin",
-    version,
-    source: "local",
-    pluginDir: `/tmp/${version}`,
-    entryPath: `/tmp/${version}/runtime/index.js`,
-    manifest: {
-      name: "demo-plugin",
-      version,
-      main: "./runtime/index.js",
-      description: "Demo plugin",
-    },
+    pluginId,
+    source: "official",
+    version: "1.0.0",
+    manifestHash: "manifest",
+    capabilitiesHash: "capabilities",
+    approvedAt: 1,
+    approvedBy: "user",
+    trustTier: "declarative",
+    approvedCapabilities: [],
+    risk: "low",
+    status: "approved",
   }
 }
 
-function loaded(version: string): LoadedPlugin {
-  return {
-    id: "demo-plugin",
-    name: "Demo Plugin",
-    hooks: {},
-    manifest: {
-      name: "demo-plugin",
-      version,
-      main: "./runtime/index.js",
-      description: "Demo plugin",
-    },
-    pluginDir: `/tmp/${version}`,
-    entryPath: `/tmp/${version}/runtime/index.js`,
-    source: "local",
-    runtimeMode: "process",
-  }
-}
+describe("plugin uninstall transaction", () => {
+  test("removes config, lock, approval and incompatible records as one plugin identity", async () => {
+    const pluginId = `remove-${crypto.randomUUID()}`
+    const archive = `file:///${pluginId}.tgz`
+    const duplicate = `file:///${pluginId}-copy.tgz`
+    const unrelated = "npm:unrelated"
+    const previousDomain = await Config.domainGet("plugins")
+    const previousLockfile = await Lockfile.read()
+    const previousApprovals = await readApprovals()
+    const previousIncompatible = await IncompatiblePluginStore.read()
+    let prepared = 0
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          plugin: [...(previousDomain.plugin ?? []), archive, archive, duplicate, unrelated],
+          pluginConfig: { ...(previousDomain.pluginConfig ?? {}), [pluginId]: { enabled: true } },
+        },
+        { mode: "replace-domain" },
+      )
+      const locked = Lockfile.addEntry(previousLockfile, pluginId, {
+        spec: archive,
+        source: "official",
+        version: "1.0.0",
+        apiVersion: "3.0",
+        generation: "generation",
+        resolved: archive,
+        manifestHash: "manifest",
+        approvalId: pluginId,
+      })
+      locked.plugins[`${pluginId}-old-key`] = {
+        ...locked.plugins[pluginId]!,
+        spec: duplicate,
+      }
+      await Lockfile.write(locked)
+      await writeApprovals([...previousApprovals, approval(pluginId)])
+      await IncompatiblePluginStore.write([
+        ...previousIncompatible,
+        { pluginId, spec: archive, reason: "reinstallRequired" },
+        { pluginId, spec: duplicate, reason: "reinstallRequired" },
+      ])
 
-async function resetPluginState() {
-  await Config.domainUpdate(
-    "plugins",
-    {
-      plugin: [],
-      pluginMarketplace: { enabled: false },
-    } as any,
-    { mode: "replace-domain" },
-  )
-  await Lockfile.write({ version: 1, plugins: {} })
-}
+      await PluginInstallationTransaction.remove({
+        pluginId,
+        knownSpecs: [archive],
+        resolvePluginId: async (spec) => (spec === duplicate ? pluginId : null),
+        beforeCommit: async () => {
+          prepared++
+        },
+        reload: async () => undefined,
+      })
 
-describe("PluginInstallationTransaction.upsert", () => {
-  test("commits config and lockfile together while preserving plugin domain settings", async () => {
-    await resetPluginState()
-    await Config.domainUpdate(
-      "plugins",
-      {
-        ...(await Config.domainGet("plugins")),
-        plugin: ["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"],
-      } as any,
-      { mode: "replace-domain" },
-    )
-
-    const plugin = await PluginInstallationTransaction.upsert({
-      spec: "file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz",
-      pluginId: "demo-plugin",
-      resolved: resolved("file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz", "1.1.0"),
-      lockEntry: {
-        spec: "file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz",
-        version: "1.1.0",
-        resolved: "/tmp/1.1.0/runtime/index.js",
-        runtimeMode: "process",
-      },
-      reload: async () => {},
-      getLoaded: async () => [loaded("1.1.0")],
-      resolvePluginId: async (spec) => (spec.includes("demo-plugin") ? "demo-plugin" : null),
-    })
-
-    expect(plugin.id).toBe("demo-plugin")
-    const domain = await Config.domainGet("plugins")
-    expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz"])
-    expect(domain.pluginMarketplace?.enabled).toBe(false)
-    const lockfile = await Lockfile.read()
-    expect(lockfile.plugins["demo-plugin"]?.version).toBe("1.1.0")
+      const domain = await Config.domainGet("plugins")
+      expect(domain.plugin).not.toContain(archive)
+      expect(domain.plugin).not.toContain(duplicate)
+      expect(domain.plugin).toContain(unrelated)
+      expect(domain.pluginConfig?.[pluginId]).toBeUndefined()
+      expect((await Lockfile.read()).plugins[pluginId]).toBeUndefined()
+      expect((await Lockfile.read()).plugins[`${pluginId}-old-key`]).toBeUndefined()
+      expect((await readApprovals()).some((record) => record.pluginId === pluginId)).toBe(false)
+      expect((await IncompatiblePluginStore.read()).some((record) => record.pluginId === pluginId)).toBe(false)
+      expect(prepared).toBe(1)
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Lockfile.write(previousLockfile)
+      await writeApprovals(previousApprovals)
+      await IncompatiblePluginStore.write(previousIncompatible)
+    }
   })
 
-  test("replaces stale specs using lockfile identity when the old path no longer resolves", async () => {
-    await resetPluginState()
-    await Config.domainUpdate(
-      "plugins",
-      {
-        ...(await Config.domainGet("plugins")),
-        plugin: ["file:///tmp/demo-plugin-0.1.0.synergy-plugin.tgz"],
-      } as any,
-      { mode: "replace-domain" },
-    )
-    await Lockfile.write({
-      version: 1,
-      plugins: {
-        "demo-plugin": {
-          spec: "file:///tmp/demo-plugin-0.1.0.synergy-plugin.tgz",
-          version: "0.1.0",
-          resolved: "/tmp/missing/runtime/index.js",
-          runtimeMode: "process",
-        },
-      },
-    })
+  test("restores every host record when reload fails", async () => {
+    const pluginId = `rollback-${crypto.randomUUID()}`
+    const spec = `file:///${pluginId}.tgz`
+    const previousDomain = await Config.domainGet("plugins")
+    const previousLockfile = await Lockfile.read()
+    const previousApprovals = await readApprovals()
+    const previousIncompatible = await IncompatiblePluginStore.read()
+    try {
+      const configured = { ...previousDomain, plugin: [...(previousDomain.plugin ?? []), spec] }
+      const locked = Lockfile.addEntry(previousLockfile, pluginId, {
+        spec,
+        source: "local",
+        version: "1.0.0",
+        apiVersion: "3.0",
+        generation: "generation",
+        resolved: spec,
+        manifestHash: "manifest",
+        approvalId: pluginId,
+      })
+      const approvals = [...previousApprovals, approval(pluginId)]
+      const incompatible = [...previousIncompatible, { pluginId, spec, reason: "reinstallRequired" as const }]
+      await Config.domainUpdate("plugins", configured, { mode: "replace-domain" })
+      await Lockfile.write(locked)
+      await writeApprovals(approvals)
+      await IncompatiblePluginStore.write(incompatible)
 
-    await PluginInstallationTransaction.upsert({
-      spec: "file:///tmp/demo-plugin-0.2.0.synergy-plugin.tgz",
-      pluginId: "demo-plugin",
-      resolved: resolved("file:///tmp/demo-plugin-0.2.0.synergy-plugin.tgz", "0.2.0"),
-      lockEntry: {
-        spec: "file:///tmp/demo-plugin-0.2.0.synergy-plugin.tgz",
-        version: "0.2.0",
-        resolved: "/tmp/0.2.0/runtime/index.js",
-        runtimeMode: "process",
-      },
-      reload: async () => {},
-      getLoaded: async () => [loaded("0.2.0")],
-      resolvePluginId: () => null,
-    })
+      await expect(
+        PluginInstallationTransaction.remove({
+          pluginId,
+          knownSpecs: [spec],
+          resolvePluginId: async () => null,
+          reload: async () => {
+            throw new Error("reload failed")
+          },
+        }),
+      ).rejects.toThrow("reload failed")
 
-    const domain = await Config.domainGet("plugins")
-    expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-0.2.0.synergy-plugin.tgz"])
-    const lockfile = await Lockfile.read()
-    expect(lockfile.plugins["demo-plugin"]?.version).toBe("0.2.0")
+      expect(await Config.domainGet("plugins")).toEqual(configured)
+      expect(await Lockfile.read()).toEqual(locked)
+      expect(await readApprovals()).toEqual(approvals)
+      expect(await IncompatiblePluginStore.read()).toEqual(incompatible)
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Lockfile.write(previousLockfile)
+      await writeApprovals(previousApprovals)
+      await IncompatiblePluginStore.write(previousIncompatible)
+    }
   })
 
-  test("rolls back config and lockfile when reload verification fails", async () => {
-    await resetPluginState()
-    await Config.domainUpdate(
-      "plugins",
-      {
-        ...(await Config.domainGet("plugins")),
-        plugin: ["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"],
-      } as any,
-      { mode: "replace-domain" },
-    )
-    await Lockfile.write({
-      version: 1,
-      plugins: {
-        "demo-plugin": {
-          spec: "file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz",
-          version: "1.0.0",
-          resolved: "/tmp/1.0.0/runtime/index.js",
-          runtimeMode: "process",
-        },
-      },
-    })
+  test("does not touch host records or reload when uninstall preparation fails", async () => {
+    const pluginId = `prepare-${crypto.randomUUID()}`
+    const spec = `file:///${pluginId}`
+    const previousDomain = await Config.domainGet("plugins")
+    const configured = { ...previousDomain, plugin: [...(previousDomain.plugin ?? []), spec] }
+    let reloads = 0
+    try {
+      await Config.domainUpdate("plugins", configured, { mode: "replace-domain" })
+      await expect(
+        PluginInstallationTransaction.remove({
+          pluginId,
+          knownSpecs: [spec],
+          resolvePluginId: async () => null,
+          beforeCommit: async () => {
+            throw new Error("cleanup failed")
+          },
+          reload: async () => {
+            reloads++
+          },
+        }),
+      ).rejects.toThrow("cleanup failed")
 
-    await expect(
-      PluginInstallationTransaction.upsert({
-        spec: "file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz",
-        pluginId: "demo-plugin",
-        resolved: resolved("file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz", "1.1.0"),
-        lockEntry: {
-          spec: "file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz",
-          version: "1.1.0",
-          resolved: "/tmp/1.1.0/runtime/index.js",
-          runtimeMode: "process",
-        },
-        reload: async () => {},
-        getLoaded: async () => [],
-        resolvePluginId: async (spec) => (spec.includes("demo-plugin") ? "demo-plugin" : null),
-      }),
-    ).rejects.toThrow("failed to load")
-
-    const domain = await Config.domainGet("plugins")
-    expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"])
-    const lockfile = await Lockfile.read()
-    expect(lockfile.plugins["demo-plugin"]?.version).toBe("1.0.0")
-    const rollbackEvents = await getEvents("demo-plugin")
-    expect(
-      rollbackEvents.some(
-        (event) =>
-          event.type === "update_failed_rolled_back" &&
-          event.details.oldVersion === "1.0.0" &&
-          event.details.newVersion === "1.1.0",
-      ),
-    ).toBe(true)
+      expect(await Config.domainGet("plugins")).toEqual(configured)
+      expect(reloads).toBe(0)
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+    }
   })
 })

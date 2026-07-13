@@ -1,8 +1,6 @@
 /**
- * Shared helper used by both the plugin build toolchain and the Synergy server
- * to rewrite Solid runtime imports in plugin UI bundles so they resolve against
- * the host's shared Solid runtime instead of being bundled or resolved as npm
- * package paths.
+ * Shared build contract for binding compiled plugin UI to the host's Solid
+ * runtime instead of shipping a private reactive runtime.
  */
 
 export const PLUGIN_SOLID_RUNTIME_KEY = "__SYNERGY_PLUGIN_SOLID_RUNTIME__"
@@ -11,9 +9,6 @@ export const SHARED_SOLID_IMPORTS: Record<string, string> = {
   "solid-js": "solid",
   "solid-js/web": "web",
   "solid-js/store": "store",
-  "solid-js/h": "h",
-  "solid-js/h/jsx-runtime": "jsx",
-  "solid-js/h/jsx-dev-runtime": "jsx",
 }
 
 function runtimeAccessor(name: string) {
@@ -29,7 +24,7 @@ function namedBindings(specifier: string) {
     .map((part) => {
       const match = /^(.*?)\s+as\s+(.*?)$/.exec(part)
       if (!match) return part
-      return `${match[1].trim()}: ${match[2].trim()}`
+      return `${match[1]!.trim()}: ${match[2]!.trim()}`
     })
     .join(", ")
 }
@@ -71,7 +66,7 @@ function rewriteImportClause(clause: string | undefined, runtimeName: string) {
  */
 export function rewritePluginSolidImports(source: string): string {
   return source.replace(
-    /(^|\n)([ \t]*)import\s+(type\s+)?(?:([^"';]+?)\s+from\s+)?["'](solid-js(?:\/web|\/store|\/h|\/h\/jsx-runtime|\/h\/jsx-dev-runtime)?)["']\s*;?/g,
+    /(^|\n)([ \t]*)import\s+(type\s+)?(?:([^"';]+?)\s+from\s+)?["'](solid-js(?:\/web|\/store)?)["'][ \t]*;?/g,
     (
       statement,
       lineStart: string,
@@ -94,9 +89,13 @@ export function rewritePluginSolidImports(source: string): string {
  * imports that the host cannot resolve.
  */
 export function hasUnsupportedSolidRuntimeImport(source: string) {
-  return /(?:from\s+["']solid-js\/(?!web["']|store["']|h["']|h\/jsx-runtime["']|h\/jsx-dev-runtime["'])|import\s+["']solid-js\/(?!web["']|store["']|h["']|h\/jsx-runtime["']|h\/jsx-dev-runtime["'])|import\s*\(\s*["']solid-js(?:\/|["']))/.test(
+  return /(?:from\s+["']solid-js\/(?!web["']|store["'])|import\s+["']solid-js\/(?!web["']|store["'])|import\s*\(\s*["']solid-js(?:\/|["']))/.test(
     source,
   )
+}
+
+export function hasUnlinkedSolidRuntimeImport(source: string) {
+  return /(?:from\s+["']solid-js(?:\/web|\/store)?["']|import\s+["']solid-js(?:\/web|\/store)?["'])/.test(source)
 }
 
 /**

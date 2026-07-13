@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { createDevPlan } from "../../../../script/dev"
+import { createDevPlan, spawnDevProcess, terminateDevProcesses } from "../../../../script/dev"
 
 const options = { repoRoot: "/repo", cwd: "/workspace", bunPath: "/bun" }
 
@@ -112,3 +112,54 @@ describe("dev orchestrator planner", () => {
     expect(plan.message).toContain("bun dev build app|desktop")
   })
 })
+
+describe("dev orchestrator process lifecycle", () => {
+  test("terminates descendants started by a development command", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-process-"))
+    const childPidPath = path.join(directory, "child.pid")
+    const parent = spawnDevProcess({
+      label: "build",
+      command: [
+        process.execPath,
+        "-e",
+        `const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); await Bun.write(process.env.CHILD_PID_PATH, String(child.pid)); setInterval(() => {}, 1000)`,
+      ],
+      cwd: directory,
+      env: { CHILD_PID_PATH: childPidPath },
+    })
+
+    try {
+      const childPid = await waitForPid(childPidPath)
+
+      await terminateDevProcesses([parent])
+
+      expect(isProcessRunning(parent.pid)).toBe(false)
+      expect(isProcessRunning(childPid)).toBe(false)
+    } finally {
+      await terminateDevProcesses([parent])
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+})
+
+async function waitForPid(file: string): Promise<number> {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    const value = await Bun.file(file)
+      .text()
+      .catch(() => "")
+    const pid = Number(value)
+    if (Number.isInteger(pid) && pid > 0) return pid
+    await Bun.sleep(25)
+  }
+  throw new Error("Timed out waiting for child process PID")
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}

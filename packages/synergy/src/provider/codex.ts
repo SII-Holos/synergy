@@ -8,7 +8,7 @@ import path from "path"
 import z from "zod"
 import type { ModelsDev } from "./models"
 import type { ProviderProfile } from "./profile"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { AccountUsage } from "./usage"
 import { ProviderAuthRecovery } from "./auth-recovery"
 

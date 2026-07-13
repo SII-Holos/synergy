@@ -2,8 +2,26 @@ import z from "zod"
 import { Identifier } from "../id/id"
 
 export namespace CortexTypes {
-  export const TaskStatus = z.enum(["pending", "queued", "running", "completed", "error", "cancelled"])
+  export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
+
+  export const PluginTaskOwner = z.object({
+    pluginId: z.string(),
+    pluginGeneration: z.string(),
+    scopeId: z.string(),
+    correlationId: z.string(),
+  })
+  export type PluginTaskOwner = z.infer<typeof PluginTaskOwner>
+
+  export const TaskUsage = z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    reasoningTokens: z.number(),
+    cacheReadTokens: z.number(),
+    cacheWriteTokens: z.number(),
+    cost: z.number(),
+  })
+  export type TaskUsage = z.infer<typeof TaskUsage>
 
   export const TaskToolProgress = z.object({
     id: z.string(),
@@ -69,6 +87,12 @@ export namespace CortexTypes {
       description: z.string(),
       prompt: z.string(),
       agent: z.string(),
+      model: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
 
@@ -83,6 +107,9 @@ export namespace CortexTypes {
       tools: z.record(z.string(), z.boolean()).optional(),
       outputConfig: OutputConfig.optional(),
       output: TaskOutput.optional(),
+      owner: PluginTaskOwner.optional(),
+      timeoutMs: z.number().int().positive().optional(),
+      usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>
@@ -114,6 +141,8 @@ export namespace CortexTypes {
     visibility: z.enum(["visible", "hidden"]).optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     output: OutputConfig.optional(),
+    owner: PluginTaskOwner.optional(),
+    timeoutMs: z.number().int().positive().optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>
 }

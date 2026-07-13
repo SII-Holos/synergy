@@ -1,110 +1,98 @@
-import type { LoadedPlugin } from "./loader"
-import { recordEvent } from "./audit.js"
 import path from "path"
 import fs from "fs/promises"
-import z from "zod"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { Config } from "../config/config"
-import { Log } from "../util/log"
-import { BunProc } from "../util/bun"
-import { PluginSpec } from "../util/plugin-spec"
 import { Installation } from "../global/installation"
-import * as Lockfile from "./lockfile"
-import { resolveSpecPluginDir, state, specToPluginId } from "./loader"
-import { reload } from "./lifecycle"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
-import { resolvePluginSpec } from "./spec-resolver"
-import { PluginInstallationTransaction } from "./installation-transaction"
 import { ScopeContext } from "../scope/context"
+import { Log } from "../util/log"
+import { PluginSpec } from "../util/plugin-spec"
+import { riskForCapabilities } from "./capability"
 import {
-  type PluginApprovalRecord,
-  computePermissionsHash,
   computeManifestHash,
+  computePermissionsHash,
   getApproval,
+  type PluginApprovalRecord,
   verifyApproval,
 } from "./consent/approval-store"
+import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
+import { reload } from "./lifecycle"
+import * as Lockfile from "./lockfile"
+import { PluginInstallationTransaction } from "./installation-transaction"
+import { pluginRuntimeManager } from "./runtime"
+import { resolvePluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
-import { evaluatePolicy } from "./consent/policy"
-import { type PluginApprovalPolicy, PLUGIN_APPROVAL_POLICY_DEFAULTS } from "../config/schema"
-import * as Signature from "./signature"
 
 const log = Log.create({ service: "plugin.install" })
 
-// ---------------------------------------------------------------------------
-// Semver helper for plugin engines.synergy checks
-// ---------------------------------------------------------------------------
+export class PluginApprovalRequiredError extends Error {
+  readonly code = "approval_required"
 
-function parseVersion(input: string): [number, number, number] | null {
-  const match = input
-    .trim()
-    .replace(/^v/, "")
-    .match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/)
-  if (!match) return null
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
-}
-
-function compareVersion(current: string, required: string): number | null {
-  const a = parseVersion(current)
-  const b = parseVersion(required)
-  if (!a || !b) return null
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return 1
-    if (a[i] < b[i]) return -1
+  constructor(
+    readonly pluginId: string,
+    readonly version: string,
+    readonly manifest: LoadedPlugin["manifest"],
+    readonly capabilities: string[],
+    readonly risk: "low" | "medium" | "high",
+  ) {
+    super(`Plugin ${pluginId}@${version} requires approval before installation`)
+    this.name = "PluginApprovalRequiredError"
   }
-  return 0
 }
-
-function satisfiesSynergyComparator(current: string, comparator: string): boolean {
-  const match = comparator.trim().match(/^(>=|>|<=|<|=)?\s*(v?\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?)$/)
-  if (!match) return false
-  const op = match[1] ?? "="
-  const required = match[2]
-  const compared = compareVersion(current, required)
-  if (compared === null) return false
-  if (op === ">=") return compared >= 0
-  if (op === ">") return compared > 0
-  if (op === "<=") return compared <= 0
-  if (op === "<") return compared < 0
-  return compared === 0
-}
-
-export function satisfiesSynergyEngine(current: string, range: string): boolean {
-  const comparators = range.trim().split(/\s+/).filter(Boolean)
-  if (comparators.length === 0) return false
-  return comparators.every((comparator) => satisfiesSynergyComparator(current, comparator))
-}
-
-// ---------------------------------------------------------------------------
-// Add / remove
-// ---------------------------------------------------------------------------
 
 export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
-  const mapped = specToPluginId.get(spec)
-  if (mapped) return mapped
-
   try {
-    const resolved = await resolvePluginSpec(spec, {
-      cwd: process.cwd(),
-      install: false,
-      refresh: false,
-    })
-    return resolved.manifest.name
+    return (await resolvePluginSpec(spec, { cwd: process.cwd(), install: false })).manifest.id
   } catch {
     return null
   }
 }
 
+function trustedUI(manifest: LoadedPlugin["manifest"]) {
+  return manifest.contributions.some(
+    (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
+  )
+}
+
+async function prepareUpgrade(input: {
+  oldPlugin?: LoadedPlugin
+  resolved: Awaited<ReturnType<typeof resolvePluginSpec>>
+}) {
+  const oldPlugin = input.oldPlugin
+  const manifest = input.resolved.manifest
+  const upgrade = manifest.contributions.find((item) => item.kind === "lifecycle.upgrade")
+  if (!oldPlugin || oldPlugin.manifest.version === manifest.version || !upgrade || !input.resolved.entryPath)
+    return undefined
+  const prepared = await pluginRuntimeManager.start({
+    manifest,
+    pluginDir: input.resolved.pluginDir,
+    entryPath: input.resolved.entryPath,
+    activate: false,
+  })
+  try {
+    await pluginRuntimeManager.invoke({
+      pluginId: manifest.id,
+      handlerId: `lifecycle.upgrade:${upgrade.id}`,
+      value: { fromVersion: oldPlugin.manifest.version, toVersion: manifest.version },
+      context: {
+        scopeId: ScopeContext.current.scope.id,
+        directory: ScopeContext.current.directory,
+        actor: { type: "lifecycle" },
+      },
+      pluginDir: input.resolved.pluginDir,
+      manifest,
+      runtimeKey: prepared.key,
+    })
+    return prepared
+  } catch (error) {
+    await pluginRuntimeManager.stopGeneration(prepared.key).catch(() => undefined)
+    throw error
+  }
+}
+
 export async function add(
   spec: string,
-  opts: { autoReload?: boolean; skipConsent?: boolean; source?: PluginSource } = {},
+  options: { autoReload?: boolean; skipConsent?: boolean; source?: PluginSource } = {},
 ): Promise<LoadedPlugin> {
-  const parsedSpec = spec.startsWith("file://") ? { pkg: spec, version: "latest" } : PluginSpec.parse(spec)
-  const { pkg, version } = parsedSpec
-  let stagedDir: string | undefined
-
-  // Audit: install requested
-  void recordEvent({ pluginId: spec, type: "install_requested", details: { spec, version } })
-
+  let stagingDir: string | undefined
+  let preparedKey: string | undefined
   try {
     const resolved = await resolvePluginSpec(spec, {
       cwd: process.cwd(),
@@ -112,280 +100,127 @@ export async function add(
       refresh: !spec.startsWith("file://"),
       stageLocalArchive: spec.startsWith("file://"),
     })
-    stagedDir = resolved.stagingDir
-    const pluginDir = resolved.pluginDir
-    const manifestData: z.infer<typeof PluginManifest> = resolved.manifest
-    const canonicalPluginId = manifestData.name
-    log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
+    stagingDir = resolved.stagingDir
+    const manifest = resolved.manifest
+    const source = options.source ?? resolved.source
+    const capabilities = manifest.capabilities.map((item) => item.id)
+    const risk = riskForCapabilities(capabilities)
+    const manifestHash = computeManifestHash(manifest)
+    const capabilitiesHash = computePermissionsHash(manifest, capabilities)
+    const existingApproval = await getApproval(manifest.id, manifest)
+    const automaticallyApproved =
+      options.skipConsent === true || source === "builtin" || (Installation.CHANNEL === "local" && source === "local")
 
-    const synergyEngine = manifestData.engines?.synergy?.trim()
-    if (synergyEngine && Installation.VERSION !== "local") {
-      const currentVersion = Installation.VERSION
-      if (!satisfiesSynergyEngine(currentVersion, synergyEngine)) {
-        throw new Error(
-          `Plugin ${spec} requires plugin.json engines.synergy "${synergyEngine}", but current Synergy version is ${currentVersion}`,
-        )
+    let approval: PluginApprovalRecord
+    if (existingApproval && verifyApproval(existingApproval, manifest, capabilities)) {
+      approval = existingApproval
+    } else if (automaticallyApproved) {
+      approval = {
+        pluginId: manifest.id,
+        source,
+        version: manifest.version,
+        manifestHash,
+        capabilitiesHash,
+        approvedAt: Date.now(),
+        approvedBy: options.skipConsent ? "policy" : source === "builtin" ? "builtin" : "policy",
+        trustTier: trustedUI(manifest) ? "trusted-import" : "declarative",
+        approvedCapabilities: capabilities,
+        risk,
+        status: "approved",
       }
+    } else {
+      throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities, risk)
     }
 
-    // -----------------------------------------------------------------------
-    // Signature: read signature file (verify later when hashes are available)
-    // -----------------------------------------------------------------------
-    let sigMeta: Signature.SignatureMetadata | null = null
-    if (!spec.startsWith("file://")) {
-      const sigPath = path.join(pluginDir, "plugin.sig")
-      sigMeta = Signature.readSignatureFile(sigPath)
-      if (sigMeta) {
-        log.info("plugin signature file found", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
-      }
-    }
+    const oldPlugin = await state()
+      .then((current) => current.loaded.find((plugin) => plugin.id === manifest.id))
+      .catch(() => undefined)
+    const prepared = await prepareUpgrade({ oldPlugin, resolved })
+    preparedKey = prepared?.key
 
-    let permissionsHash: string | undefined
-    let manifestHash: string | undefined
-    let risk: "low" | "medium" | "high" = "low"
-    let approvalRecord: PluginApprovalRecord | undefined
-    const config = await Config.current()
-
-    // Derive plugin source from spec (does not depend on manifest)
-    const source: PluginSource = opts.source ?? resolved.source
-    const devMode = Installation.CHANNEL === "local"
-
-    const preApprovalPolicy = resolvePluginPolicyDecision({
-      manifest: manifestData,
-      source,
-      userTrusted: false,
-      verifiedIntegrity: sigMeta != null,
-      devMode,
-      policy: config.pluginRuntimePolicy,
-    })
-    const capabilities = preApprovalPolicy.capabilities
-    risk = preApprovalPolicy.risk
-    permissionsHash = computePermissionsHash(manifestData, capabilities)
-    manifestHash = computeManifestHash(manifestData)
-
-    // Verify signature against computed hashes
-    if (sigMeta && permissionsHash && manifestHash) {
-      const valid = await Signature.verifySignatureFromHashes(sigMeta, manifestHash, permissionsHash)
-      if (valid) {
-        log.info("plugin signature verified", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
-      } else {
-        log.warn("plugin signature verification failed", {
-          plugin: spec,
-          signer: sigMeta.signer.slice(0, 16) + "...",
-        })
-        sigMeta = null
-      }
-    }
-
-    const trust = preApprovalPolicy.trust
-    const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
-
-    const runtimeModeForConsent = preApprovalPolicy.runtimeMode
-
-    // Evaluate policy — may deny or auto-approve before consent
-    const decision = evaluatePolicy({
-      source,
-      verified: sigMeta != null,
-      risk,
-      runtimeMode: runtimeModeForConsent,
-      trustTier: trust.tier,
-      signed: sigMeta != null,
-      policy,
-    })
-
-    if (!decision.allowed) {
-      throw new Error(`Plugin ${spec} installation denied by policy: ${decision.reason}`)
-    }
-
-    const autoApprove =
-      decision.autoApproved ||
-      opts.skipConsent === true ||
-      (devMode && source === "local") ||
-      trust.tier === "trusted-import"
-
-    if (!autoApprove) {
-      // Check for existing approval
-      const existingApproval = await getApproval(canonicalPluginId)
-      if (existingApproval && verifyApproval(existingApproval, manifestData, capabilities)) {
-        log.info("plugin consent: existing approval matches", { plugin: spec })
-      } else {
-        throw new Error(
-          `Plugin ${spec} requires approval before installation. ` +
-            `Use \`synergy plugin approve ${spec}\` or the consent API first.`,
-        )
-      }
-    }
-
-    const approvedPolicy = resolvePluginPolicyDecision({
-      manifest: manifestData,
-      source,
-      userTrusted: true,
-      verifiedIntegrity: sigMeta != null || source === "official",
-      devMode,
-      policy: config.pluginRuntimePolicy,
-    })
-
-    const approvedBy: PluginApprovalRecord["approvedBy"] =
-      opts.skipConsent === true
-        ? "policy"
-        : devMode && source === "local"
-          ? "policy"
-          : approvedPolicy.trust.tier === "trusted-import"
-            ? "builtin"
-            : "user"
-    approvalRecord = {
-      pluginId: canonicalPluginId,
-      source,
-      version: manifestData.version ?? version,
-      manifestHash,
-      permissionsHash,
-      approvedAt: Date.now(),
-      approvedBy,
-      trustTier: approvedPolicy.trust.tier,
-      approvedCapabilities: capabilities,
-      approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
-      approvedUISurfaces: [],
-      risk,
-    }
-    log.info("plugin consent: approval recorded", { plugin: spec, risk, approvedBy })
-
-    // Install declared dependencies
-    if (manifestData.dependencies && Object.keys(manifestData.dependencies).length > 0) {
-      for (const [depName, depVersion] of Object.entries(manifestData.dependencies)) {
-        await BunProc.install(depName, depVersion)
-        log.info("plugin dependency installed", { plugin: spec, dependency: depName, version: depVersion })
-      }
-    }
-
-    const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
-    const runtimeMode = approvedPolicy.runtimeMode
-    const lockEntry = {
+    const resolvedFile = resolved.entryPath ?? path.join(resolved.pluginDir, "plugin.json")
+    const integrity = await Lockfile.computeIntegrity(resolvedFile)
+    const lockEntry: import("./lockfile-schema").PluginLockEntry = {
       spec,
       source,
-      version: manifestData.version ?? version,
-      resolved: resolved.entryPath,
+      version: manifest.version,
+      apiVersion: manifest.apiVersion,
+      generation: manifest.artifacts.generation,
+      resolved: resolvedFile,
       ...(integrity ? { integrity } : {}),
-      ...(permissionsHash ? { permissionsHash } : {}),
-      ...(manifestHash ? { manifestHash } : {}),
-      ...(sigMeta ? { signature: Signature.toLockfileSignature(sigMeta) } : {}),
-      runtimeMode,
-      approvalId: canonicalPluginId,
-    } satisfies import("./lockfile-schema").PluginLockEntry
-
+      manifestHash,
+      approvalId: manifest.id,
+    }
     const plugin = await PluginInstallationTransaction.upsert({
       spec,
-      pluginId: canonicalPluginId,
+      pluginId: manifest.id,
       resolved,
       lockEntry,
-      approval: approvalRecord,
-      autoReload: opts.autoReload,
+      approval,
+      autoReload: options.autoReload,
       reload,
-      getLoaded: async () => state().then((x) => x.loaded),
+      getLoaded: async () => state().then((current) => current.loaded),
       resolvePluginId: resolveConfiguredPluginId,
     })
-    stagedDir = undefined
-    specToPluginId.set(spec, plugin.id)
-
-    // Audit: install approved
-    void recordEvent({ pluginId: plugin.id, type: "install_approved", details: { spec, version } })
-
-    // Auto-start runtime if the plugin needs process/worker isolation
-    // This is a fire-and-forget — failures are logged but never block install.
-    autoStartRuntime({
-      pluginId: plugin.id,
-      mode: runtimeMode,
-      source,
-      entryPath: plugin.entryPath ?? lockEntry.resolved,
-      pluginDir: plugin.pluginDir,
-    }).catch((err) => {
-      log.warn("autoStartRuntime promise rejection (should not happen)", {
-        pluginId: plugin.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    })
-    return plugin
-  } catch (err) {
-    // Audit: install blocked
-    void recordEvent({
-      pluginId: spec,
-      type: "install_blocked",
-      details: { spec, version, error: err instanceof Error ? err.message : String(err) },
-    })
-    throw err
-  } finally {
-    if (stagedDir) {
-      await fs.rm(stagedDir, { recursive: true, force: true }).catch(() => {})
+    stagingDir = undefined
+    for (const [registeredSpec, pluginId] of specToPluginId) {
+      if (pluginId === plugin.id) specToPluginId.delete(registeredSpec)
     }
+    specToPluginId.set(spec, plugin.id)
+    if (prepared) await pluginRuntimeManager.activate(prepared.key)
+    preparedKey = undefined
+    return plugin
+  } catch (error) {
+    if (preparedKey) await pluginRuntimeManager.stopGeneration(preparedKey).catch(() => undefined)
+    throw error
+  } finally {
+    if (stagingDir) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
-export async function remove(pluginId: string, opts: { autoReload?: boolean } = {}): Promise<void> {
-  const current = await state().catch(() => null)
-  const plugin = current?.loaded.find((p) => p.id === pluginId)
-  const disabled = current?.disabled.find((p) => p.pluginId === pluginId)
-  if (!plugin && !disabled) {
-    throw new Error(`Plugin not found: ${pluginId}`)
-  }
+export async function remove(pluginId: string, options: { force?: boolean } = {}): Promise<void> {
+  const current = await state()
+  const plugin = current.loaded.find((item) => item.id === pluginId)
+  const disabled = current.disabled.find((item) => item.pluginId === pluginId)
+  if (!plugin && !disabled) throw new Error(`Plugin not found: ${pluginId}`)
 
-  // Dispose the plugin
-  if (plugin?.hooks.dispose) {
-    await plugin.hooks.dispose().catch((err) => {
-      log.error("plugin dispose error during remove", { id: pluginId, err })
-    })
-  }
-
-  for (const [key, value] of specToPluginId) {
-    if (value === pluginId) {
-      specToPluginId.delete(key)
-    }
-  }
   await PluginInstallationTransaction.remove({
     pluginId,
-    pluginDir: plugin?.pluginDir ?? disabled!.pluginDir ?? "",
-    autoReload: opts.autoReload,
+    knownSpecs: [plugin?.spec, disabled?.spec].filter((spec): spec is string => Boolean(spec)),
     reload,
-    resolveSpecPluginDir,
+    resolvePluginId: resolveConfiguredPluginId,
+    beforeCommit: async () => {
+      if (plugin) await runPluginUninstallLifecycle(plugin, Boolean(options.force))
+    },
   })
+  await pluginRuntimeManager
+    .stop(pluginId)
+    .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
+  forgetPlugin(pluginId)
 }
 
-// ---------------------------------------------------------------------------
-// Auto-start runtime after install
-// ---------------------------------------------------------------------------
-
-export interface AutoStartRuntimeInput {
-  pluginId: string
-  mode: string
-  source: import("../plugin/trust").PluginSource
-  entryPath: string
-  pluginDir: string
-}
-
-/**
- * Start a plugin runtime after install, unless the plugin runs in-process.
- * Returns true if the runtime was started, false if skipped or if start failed.
- * Failures are logged as warnings — they never block the install.
- */
-export async function autoStartRuntime(input: AutoStartRuntimeInput): Promise<boolean> {
-  if (input.mode === "in-process") return false
-
-  try {
-    const { startRuntime } = await import("../plugin-runtime/supervisor.js")
-    const scope = ScopeContext.tryScope()
-    await startRuntime(input.pluginId, {
-      mode: input.mode as "worker" | "process",
-      source: input.source,
-      entryPath: input.entryPath,
-      pluginDir: input.pluginDir,
-      ...(scope ? { scope } : {}),
-    })
-    log.info("plugin runtime auto-started", { pluginId: input.pluginId, mode: input.mode })
-    return true
-  } catch (err) {
-    log.warn("plugin runtime start failed (non-blocking)", {
-      pluginId: input.pluginId,
-      mode: input.mode,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return false
-  }
+export async function runPluginUninstallLifecycle(
+  plugin: LoadedPlugin,
+  force: boolean,
+  services: {
+    ensureRuntime(plugin: LoadedPlugin): Promise<unknown>
+    invoke(input: Parameters<typeof pluginRuntimeManager.invoke>[0]): Promise<unknown>
+  } = { ensureRuntime, invoke: (input) => pluginRuntimeManager.invoke(input) },
+) {
+  if (force) return
+  const uninstall = plugin.manifest.contributions.find((item) => item.kind === "lifecycle.uninstall")
+  if (!uninstall) return
+  await services.ensureRuntime(plugin)
+  await services.invoke({
+    pluginId: plugin.id,
+    handlerId: `lifecycle.uninstall:${uninstall.id}`,
+    value: {},
+    context: {
+      scopeId: ScopeContext.current.scope.id,
+      directory: ScopeContext.current.directory,
+      actor: { type: "lifecycle" },
+    },
+    pluginDir: plugin.pluginDir,
+    manifest: plugin.manifest,
+  })
 }

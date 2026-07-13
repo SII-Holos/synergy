@@ -1559,6 +1559,38 @@ async function migrateCortexTaskOutputContract(progress: (current: number, total
   log.info("cortex task output contract migration complete", { total: tasks.length, changed })
 }
 
+async function migrateCortexTaskIdentity(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
+  const allScopeIDs = Array.from(new Set(["home", ...scopeIDs]))
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of allScopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const info = await Storage.read<any>(StoragePath.sessionInfo(scope, sid)).catch(() => undefined)
+    const cortex = asRecord(info?.cortex)
+    if (info && cortex && typeof cortex.taskID !== "string") {
+      await Storage.write(StoragePath.sessionInfo(scope, sid), {
+        ...info,
+        cortex: { ...cortex, taskID: `ctx_migrated_${sessionID}` },
+      })
+      changed++
+    }
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("cortex task identity migration complete", { total: tasks.length, changed })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -2116,6 +2148,13 @@ export const migrations: Migration[] = [
     async up(progress) {
       await migrateSessionWorkflowFields(progress)
       await migrateWorkflowMessageMetadataFields(progress)
+    },
+  },
+  {
+    id: "20260711-cortex-task-identity",
+    description: "Persist Cortex task IDs for durable delegated-task handles",
+    async up(progress) {
+      await migrateCortexTaskIdentity(progress)
     },
   },
 ]

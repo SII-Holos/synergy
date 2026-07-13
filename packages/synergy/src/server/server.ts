@@ -2,6 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { EventWire } from "./event-wire"
+import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -163,7 +164,7 @@ export namespace Server {
   let _appMounted = false
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: Map<any, "full" | "delta"> | undefined
+  let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -196,8 +197,8 @@ export namespace Server {
       pathname.startsWith("/holos/") ||
       pathname === "/channel" ||
       pathname.startsWith("/channel/") ||
-      pathname === "/plugin" ||
-      pathname.startsWith("/plugin/") ||
+      pathname === "/plugin/assets" ||
+      pathname.startsWith("/plugin/assets/") ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||
@@ -354,6 +355,10 @@ export namespace Server {
     (): Hono =>
       app
         .onError((err, c) => {
+          if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
+          if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+            return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
+          }
           log.error("failed", {
             method: c.req.method,
             route: ObservabilityRedaction.routePath(c.req.path),
@@ -361,8 +366,7 @@ export namespace Server {
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof Storage.NotFoundError) status = 404
-            else if (err instanceof Provider.ModelNotFoundError) status = 400
+            if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
             else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else if (err.name.startsWith("ProviderAuth")) status = 400
@@ -628,36 +632,37 @@ export namespace Server {
         .get(
           "/global/event/ws",
           (() => {
-            // client -> wire mode. "delta" clients opt into the compact streaming
-            // protocol (message.part.delta frames + periodic checkpoints, #350 D1);
-            // "full" clients receive the legacy full-part-on-every-delta stream.
-            const globalEventClients = new Map<any, "full" | "delta">()
+            // Track clients by stable raw socket identity. Hono's Bun adapter
+            // constructs a fresh WSContext wrapper per callback, so Map keys based
+            // on the wrapper leak across reconnects (#551). The registry also
+            // applies send backpressure limits so a slow UI cannot hard-stall the
+            // event loop (#524).
+            const globalEventClients = GlobalEventClients.createRegistry()
             // One encoder shared by all delta clients on this route: they receive
             // identical frames, so the checkpoint throttle is shared correctly.
             const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              let fullData: string | undefined
-              const fullEncoding = () => {
-                if (fullData !== undefined) return fullData
-                fullData = JSON.stringify(event)
-                return fullData
-              }
-              // Compute the delta-mode encoding at most once per event (shared
-              // across all delta clients) instead of per-client stringify.
-              let deltaData: string | undefined
-              const deltaEncoding = () => {
-                if (deltaData !== undefined) return deltaData
+              const result = globalEventClients.broadcast((mode) => {
+                if (mode === "full") return JSON.stringify(event)
                 const dp = wire.deltaPayload(event.payload)
-                deltaData =
-                  dp === event.payload ? fullEncoding() : JSON.stringify({ directory: event.directory, payload: dp })
-                return deltaData
-              }
-              for (const [client, mode] of globalEventClients) {
-                try {
-                  client.send(mode === "delta" ? deltaEncoding() : fullEncoding())
-                } catch {
-                  globalEventClients.delete(client)
-                }
+                return dp === event.payload
+                  ? JSON.stringify(event)
+                  : JSON.stringify({ directory: event.directory, payload: dp })
+              })
+              const payload = event?.payload
+              const part = payload?.properties?.part
+              if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
+                log.warn("global event ws tool part send failed", {
+                  sessionID: part.sessionID,
+                  messageID: part.messageID,
+                  partID: part.id,
+                  callID: part.callID,
+                  tool: part.tool,
+                  status: part.state?.status,
+                  dropped: result.dropped,
+                  removed: result.removed,
+                  clients: result.clients,
+                })
               }
             }
             GlobalBus.on("event", broadcastHandler)
@@ -669,13 +674,7 @@ export namespace Server {
               },
             })
             const heartbeat = setInterval(() => {
-              for (const client of globalEventClients.keys()) {
-                try {
-                  client.send(heartbeatData)
-                } catch {
-                  globalEventClients.delete(client)
-                }
-              }
+              globalEventClients.heartbeat(heartbeatData)
             }, 30000)
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
@@ -684,7 +683,7 @@ export namespace Server {
               return {
                 onOpen(_event, ws) {
                   log.info("global event ws connected", { mode })
-                  globalEventClients.set(ws, mode)
+                  globalEventClients.add(ws, mode)
                   ws.send(
                     JSON.stringify({
                       payload: {
@@ -695,11 +694,11 @@ export namespace Server {
                   )
                 },
                 onClose(_event, ws) {
-                  globalEventClients.delete(ws)
+                  globalEventClients.remove(ws)
                   log.info("global event ws disconnected")
                 },
                 onError(_event, ws) {
-                  globalEventClients.delete(ws)
+                  globalEventClients.remove(ws)
                 },
                 onMessage(_event, ws) {
                   try {

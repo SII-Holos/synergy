@@ -1,5 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeRisk } from "@ericsanchezok/synergy-util/capability"
+import { riskForCapabilities } from "../capability"
 import { generatePermissionItems } from "./summary"
 import type { PermissionChange, PermissionItem, PluginPermissionDiff } from "./schema"
 
@@ -23,13 +23,13 @@ export function diffPermissions(
 
   // New plugin install: everything is added
   if (oldManifest === null) {
-    const items = generatePermissionItems(newManifest, newCapabilities)
+    const items = generatePermissionItems(newCapabilities)
     return {
       pluginId,
       fromVersion: undefined,
       toVersion,
       riskBefore: undefined,
-      riskAfter: computeRisk(newCapabilities, newManifest),
+      riskAfter: riskForCapabilities(newCapabilities),
       added: items,
       removed: [],
       unchanged: [],
@@ -48,8 +48,8 @@ export function diffPermissions(
   const unchangedCaps = [...newSet].filter((c) => oldSet.has(c))
 
   // Generate items from both manifests
-  const oldItems = generatePermissionItems(oldManifest, oldCapabilities)
-  const newItems = generatePermissionItems(newManifest, newCapabilities)
+  const oldItems = generatePermissionItems(oldCapabilities)
+  const newItems = generatePermissionItems(newCapabilities)
 
   const oldByKey = new Map(oldItems.map((i) => [i.key, i]))
   const newByKey = new Map(newItems.map((i) => [i.key, i]))
@@ -72,31 +72,8 @@ export function diffPermissions(
     }
   }
 
-  // Diff non-capability items (UI, hooks, data) between old and new manifests.
-  // These have keys starting with "ui.", "data.", or "hooks." and are not in
-  // the capability sets.
-  const nonCapKeys = new Set([
-    ...oldItems.filter((i) => !oldSet.has(i.key)).map((i) => i.key),
-    ...newItems.filter((i) => !newSet.has(i.key)).map((i) => i.key),
-  ])
-  for (const key of nonCapKeys) {
-    const oldItem = oldByKey.get(key)
-    const newItem = newByKey.get(key)
-    if (oldItem && !newItem) {
-      removed.push(oldItem)
-    } else if (!oldItem && newItem) {
-      added.push(newItem)
-    } else if (oldItem && newItem && oldItem.severity !== newItem.severity) {
-      changed.push({
-        key,
-        before: oldItem.severity,
-        after: newItem.severity,
-      })
-    }
-  }
-
-  const riskBefore = computeRisk(oldCapabilities, oldManifest)
-  const riskAfter = computeRisk(newCapabilities, newManifest)
+  const riskBefore = riskForCapabilities(oldCapabilities)
+  const riskAfter = riskForCapabilities(newCapabilities)
   const requiresApproval = added.length > 0 || removed.length > 0 || changed.length > 0 || riskBefore !== riskAfter
 
   return {

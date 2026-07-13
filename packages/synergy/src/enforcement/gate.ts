@@ -699,14 +699,6 @@ export namespace EnforcementGate {
           risk = "shell"
         }
 
-        // git push from the main checkout is never safe to auto-allow — even
-        // a "publishable" feature-branch push can land in the wrong remote.
-        // Upgrade to shell_remote_write (already denied in autonomous) on
-        // main; worktrees keep shell_remote_publish for normal workflow.
-        if (risk === "shell_remote_publish" && workspaceType !== "worktree") {
-          risk = "shell_remote_write"
-        }
-
         if (risk === "shell_hardline") {
           caps.push({
             class: "shell_hardline",

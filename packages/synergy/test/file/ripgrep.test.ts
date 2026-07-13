@@ -9,6 +9,7 @@ function rgAvailable(): boolean {
   }
 }
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { tmpdir } from "../fixture/fixture"
@@ -117,5 +118,39 @@ describe("Ripgrep.files", () => {
 
     // Generator completed without throwing — abort path was exercised.
     expect(controller.signal.aborted).toBe(true)
+  })
+})
+
+describe("Ripgrep.terminate", () => {
+  test.skipIf(process.platform === "win32")("escalates to SIGKILL when the process ignores SIGTERM", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const script = path.join(dir, "ignore-term.sh")
+        await Bun.write(
+          script,
+          `#!/bin/sh
+trap '' TERM
+# Busy-loop in the shell itself so SIGKILL targets the same process that owns stdout.
+while true; do :; done
+`,
+        )
+        await fs.chmod(script, 0o755)
+      },
+    })
+
+    const script = path.join(tmp.path, "ignore-term.sh")
+    const proc = Bun.spawn([script], {
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+
+    const started = Date.now()
+    await Ripgrep.terminate(proc)
+    const code = await proc.exited
+    const elapsed = Date.now() - started
+
+    expect(elapsed).toBeLessThan(5_000)
+    expect(code === null || code !== 0).toBe(true)
+    expect(proc.killed || code !== 0).toBe(true)
   })
 })

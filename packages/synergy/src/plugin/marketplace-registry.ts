@@ -4,11 +4,7 @@ import {
   normalizePluginArchiveEntry,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import {
-  SYNERGY_CAPABILITY_DETAILS,
-  permissionCategoryForKey,
-  pluginRisk,
-} from "@ericsanchezok/synergy-util/capability"
+import { SYNERGY_CAPABILITY_DETAILS, permissionCategoryForKey } from "@ericsanchezok/synergy-util/capability"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -19,6 +15,7 @@ import { PLUGIN_MARKETPLACE_DEFAULTS, PluginMarketplace as PluginMarketplaceConf
 import { Global } from "../global"
 import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
+import { riskForCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
 import { defaultPluginTrustDecision } from "./trust"
@@ -30,7 +27,7 @@ export namespace PluginMarketplaceRegistry {
   export const DEFAULT_REGISTRY_URL: string = PLUGIN_MARKETPLACE_DEFAULTS.registryUrl
 
   const Risk = z.enum(["low", "medium", "high"])
-  const RuntimeMode = z.enum(["in-process", "worker", "process"])
+  const RuntimeMode = z.literal("process")
   const Author = z.object({
     name: z.string(),
     email: z.string().optional(),
@@ -130,7 +127,7 @@ export namespace PluginMarketplaceRegistry {
     downloadUrl?: string
     integrity: string
     risk: "low" | "medium" | "high"
-    runtimeMode?: "in-process" | "worker" | "process"
+    runtimeMode?: "process"
     permissionsSummary: Array<{ key: string; description: string; risk: "low" | "medium" | "high"; granted?: boolean }>
     tools?: string[]
     uiSurfaces?: string[]
@@ -155,8 +152,8 @@ export namespace PluginMarketplaceRegistry {
     createdAt: number
     updatedAt: number
     risk: "low" | "medium" | "high"
-    trustTier: "declarative" | "trusted-import" | "sandbox"
-    runtimeMode: "in-process" | "worker" | "process"
+    trustTier: "declarative" | "trusted-import"
+    runtimeMode: "process"
     permissionsSummary: Array<{ key: string; category: string; severity: string; title: string; description: string }>
     uiSurfaces: string[]
     tools: string[]
@@ -182,8 +179,8 @@ export namespace PluginMarketplaceRegistry {
     latestVersion?: string
     updatedAt: number
     risk: "low" | "medium" | "high"
-    trustTier: "declarative" | "trusted-import" | "sandbox"
-    runtimeMode: "in-process" | "worker" | "process"
+    trustTier: "declarative" | "trusted-import"
+    runtimeMode: "process"
     uiSurfaces: string[]
     tools: string[]
     downloads: number
@@ -674,7 +671,7 @@ export namespace PluginMarketplaceRegistry {
         cacheKey: `official:${id}@${version}:${tarballHash}`,
         manifest,
         capabilities,
-        risk: pluginRisk(manifest, { scope: "install" }),
+        risk: riskForCapabilities(capabilities),
         signature,
       }
     } catch (err) {

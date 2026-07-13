@@ -138,7 +138,8 @@
       "project": ["src/**/*.ts"],
     },
     "packages/plugin-kit": {
-      "project": ["src/**/*.ts"],
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
     },
     "packages/util": {
       "entry": ["src/**/*.ts"],

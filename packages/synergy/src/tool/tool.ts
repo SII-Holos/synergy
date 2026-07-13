@@ -5,6 +5,7 @@ import type { PermissionNext } from "../permission/next"
 import { Truncate } from "./truncation"
 import { ToolExposure } from "./exposure"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import type { PluginJsonSchema, PluginSettingCondition } from "@ericsanchezok/synergy-plugin"
 
 export namespace Tool {
   interface Metadata {
@@ -21,7 +22,7 @@ export namespace Tool {
         pluginId: string
         toolId: string
         pluginDir?: string
-        runtimeMode: "in-process" | "worker" | "process"
+        runtimeMode: "inProcess" | "process"
       }
     | {
         type: "local"
@@ -42,6 +43,8 @@ export namespace Tool {
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
+    inputSchema?: PluginJsonSchema
+    enabledWhen?: PluginSettingCondition
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters

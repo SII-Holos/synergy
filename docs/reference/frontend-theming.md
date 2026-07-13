@@ -93,25 +93,22 @@ cd ocean-theme
 bun install
 ```
 
-`theme-icon` is the scaffold name for declarative theme and optional SVG icon assets; it is not a separate theme format. For a theme-only plugin, remove the generated icon file and its `contributes.ui.icons` entry.
-
-Structured themes require Synergy 2.4.4 or later. The current scaffold writes that minimum to `engines.synergy`; preserve it when editing the manifest manually.
+`theme-icon` is the scaffold name for declarative theme and optional SVG icon assets; it is not a separate theme format. For a theme-only plugin, remove the generated `icon(...)` contribution and SVG file.
 
 Then:
 
 1. Edit the generated `themes/default.json` with complete light and dark seeds.
-2. Keep the theme asset `id` identical to the `contributes.ui.themes[].id` value in `plugin.json`.
-3. Keep `permissions.ui: true`; a theme needs no JavaScript UI entry.
-4. Add overrides only after seed-only visual inspection shows a real semantic exception.
-5. Validate, build, and package the plugin:
+2. Keep the theme asset `id` identical to the source `theme({ id: ... })` contribution ID.
+3. Add overrides only after seed-only visual inspection shows a real semantic exception.
+4. Validate, build, and package the plugin:
 
 ```bash
-synergy-plugin validate
 synergy-plugin build
+synergy-plugin validate
 synergy-plugin pack
 ```
 
-Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#commands-themes-and-icons) for the manifest and full JSON example.
+Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-and-icons) for the current contribution contract.
 
 ### Modifying the built-in Synergy theme
 

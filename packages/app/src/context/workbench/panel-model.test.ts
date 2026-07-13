@@ -115,6 +115,44 @@ describe("openWorkbenchPanelTab", () => {
     expect(result.created).toBeUndefined()
   })
 
+  test("resource tabs preserve opaque plugin state and keep distinct resources separate", () => {
+    const first = openWorkbenchPanelTab({
+      panelId: "plugin:truthward:research-map",
+      cardinality: "multi",
+      tabs: [],
+      init: { resourceId: "map", title: "Research map", state: { view: "map" } },
+      createId: () => "map-tab",
+    })
+    const second = openWorkbenchPanelTab({
+      panelId: "plugin:truthward:research-map",
+      cardinality: "multi",
+      tabs: first.tabs,
+      init: {
+        resourceId: "node:N01_InterpretResearchIntent",
+        title: "Interpret research intent",
+        state: { view: "node", nodeID: "N01_InterpretResearchIntent" },
+      },
+      createId: () => "node-tab",
+    })
+
+    expect(second.tabs).toEqual([
+      {
+        id: "map-tab",
+        panelId: "plugin:truthward:research-map",
+        resourceId: "map",
+        title: "Research map",
+        state: { view: "map" },
+      },
+      {
+        id: "node-tab",
+        panelId: "plugin:truthward:research-map",
+        resourceId: "node:N01_InterpretResearchIntent",
+        title: "Interpret research intent",
+        state: { view: "node", nodeID: "N01_InterpretResearchIntent" },
+      },
+    ])
+  })
+
   test("resource panels can replace an empty tab in place", () => {
     const tabs = [
       { id: "file:empty", panelId: "file", title: "Open file" },

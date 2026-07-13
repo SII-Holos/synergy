@@ -1,37 +1,39 @@
 ---
 name: change-plugin-runtime
-description: Add, modify, or review Synergy's public plugin manifest/SDK, plugin-kit build and packaging, installation transaction, signatures and trust, approval and capability ceilings, runtime mode/isolation, host bridge and hooks, marketplace, or Web UI contribution lifecycle. Use across packages/plugin, plugin-kit, synergy plugin/plugin-runtime/server routes, app plugin host, and UI registries.
+description: Add, modify, or review Synergy Plugin API 3 definitions, generated manifests, plugin-kit builds, installation transactions, capability approval, process runtimes, operations/events/hooks, marketplace behavior, or trusted UI contribution lifecycle.
 ---
 
 # Change the Plugin Runtime
 
-## Trace the Public-to-Host Contract
+## Trace the Single Contract
 
-1. Read [Plugin documentation](../../../docs/plugins/README.md), then the relevant manifest, runtime/permissions, security, tool/delegation, or UI-contribution document.
-2. Start with the public schema and types in `packages/plugin`, authoring/build behavior in `packages/plugin-kit`, host installation/runtime ownership in `packages/synergy/src/plugin` and `plugin-runtime`, server contracts, and Web host registries/lifecycle under `packages/app/src/plugin`.
-3. Trace manifest declaration → validation → resolved artifact/path → signature/trust → approval hash/diff → installation transaction and lockfile → runtime mode/process/worker → host bridge/hooks → UI contribution loading and disposer.
-4. Load `change-execution-boundaries` for capabilities/approval, `change-server-api` for routes/SDK, `change-persistence` for lock/approval/audit/runtime state, `add-tool` for first-party tool presentation, and `develop-frontend` for built-in host UI.
+1. Read [Plugin documentation](../../../docs/plugins/README.md) and the focused contract for the affected area.
+2. Start with source types in `packages/plugin`, then plugin-kit build output, host discovery/install under `packages/synergy/src/plugin`, runtime generation/dispatch under `plugin-runtime`, server routes, and the Web host under `packages/app/src/plugin`.
+3. Trace `definePlugin()` → generated manifest/artifacts → metadata-only validation → approval → installation transaction → contribution adapter → lazy runtime generation → invocation context/Host Service → disposer or lifecycle cleanup.
+4. Load `change-execution-boundaries` for host capability enforcement, `change-server-api` for routes/SDK, `change-persistence` for lock/approval/config migration, and `develop-frontend` for the Web host.
 
-## Preserve Plugin Boundaries
+## Preserve the Architecture
 
-1. Keep public packages independent from private runtime modules. A plugin imports the published SDK; the host may consume the public contract, never the reverse.
-2. Keep plugin IDs consistent across manifest, resolved spec, artifact, lockfile, approval, audit, runtime state, bridge namespace, asset URL, and Web surface IDs.
-3. Validate and approve the declared capability ceiling before importing executable code. Effective runtime permissions may narrow that ceiling but must not silently exceed it.
-4. Preserve transactional install/update rollback across staged artifacts, signature and trust checks, approval, lockfile/registry writes, runtime start, audit, and failure cleanup.
-5. Keep in-process, worker, and process runtime modes explicit. Preserve supervisor health, timeouts, logs, bridge method allowlists, failure isolation, and removal/reload cleanup.
-6. Namespace plugin config, auth, cache, tools, hooks, assets, commands, and UI surfaces. Keep credentials out of config, logs, bundles, diagnostics, and browser-local storage.
-7. For UI contributions, enforce UI API-major compatibility, shared Solid externalization, named exports, asset packaging, declarative fallbacks, host-owned accessibility/layout, and one disposer per registration. Built-in host UI uses semantic icons; plugin-declared icons stay in the plugin icon registry.
-8. When a contribution changes how the host interprets a packaged asset, raise the owning compatibility floor and make scaffolds emit that range. A migration guide does not make a new artifact compatible with an older released host.
-9. Keep plugin icon manifest references local to the plugin while namespacing registry entries and host-owned surface references as `<plugin-id>:<icon-name>`.
-10. Theme contributions are packaged structured JSON themes with light/dark seeds and typed canonical-token overrides. Validate them through the shared theme schema and resolver; do not load arbitrary CSS as a product theme. Keep plugin-kit scaffolds, copied assets, host registration, and migration guidance aligned.
+1. `definePlugin()` is the only source of identity, capabilities, contributions, and handlers. Do not add a source manifest, handler map, nested permission tree, or compatibility reader.
+2. Keep plugin ID identical across manifest, registry, lockfile, approval, runtime generation, asset URL, and UI surface namespace.
+3. Validate generated metadata, paths, hashes, and approval before importing executable code.
+4. Keep contribution kinds flat and adapter-owned. Adding a kind means adding its public type/schema, adapter, validation, lifecycle disposal, and tests—not a branch in a central registration loop.
+5. Treat generated tool input JSON Schema as canonical model metadata. Tool inputs must be top-level objects; AJV-backed execution validation must not round-trip the schema through Zod. Settings-gated tools are filtered for the current Scope and checked again at dispatch.
+6. External plugins use `process`; only trusted built-ins may use `inProcess`. Do not restore worker mode or describe the process boundary as an OS sandbox.
+7. One active generation is shared across enabled Scopes. Inject Scope/Session per invocation and reject stale-generation responses.
+8. Expose Synergy internals only through capability-gated Host Services. Do not pass a raw SDK client, server URL, token, or mutable current Scope into plugin code.
+9. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
+10. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
+11. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
+12. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
 
-## Verify and Publish Contracts
+## Verify
 
-1. Write the failing test at the owning boundary: public schema, plugin-kit validation/build/pack, installation transaction, consent diff, capability consistency, runtime host/bridge, server route, or Web registry lifecycle.
-2. Test upgrade and rollback, invalid signatures/artifacts, approval changes, duplicate IDs, mode fallback, crash/restart, bridge denial, missing UI exports, reload disposal, and uninstall cleanup where relevant.
-3. Build and typecheck the public plugin and plugin-kit packages; inspect packed artifacts rather than relying on source layout. Run focused host/runtime/server/Web tests and `bun run quality:quick`.
-4. Update public plugin docs and migration guidance in the same change. Regenerate SDK/OpenAPI only when host routes or visible schemas change.
+1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle.
+2. Cover duplicate IDs, undeclared capabilities, handler mismatch, invalid schemas/hashes, disabled Scope, timeout/cancel/crash, stale generation, trusted UI export/runtime mismatch, upgrade failure, and force uninstall when relevant.
+3. Run public package typecheck/build, inspect a packed artifact, run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
+4. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
 
 ## Handoff
 
-Report public schema/API effects, ID and capability consistency, trust/approval behavior, transaction and rollback, runtime isolation/bridge, UI lifecycle, package artifacts, migrations, tests, and documentation updated.
+Report public contract changes, generated artifacts, capability/approval effects, runtime/generation behavior, Host Services, operation/event/hook behavior, UI lifecycle, transaction/migration effects, tests, and docs.

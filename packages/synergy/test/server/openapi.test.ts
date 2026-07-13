@@ -152,4 +152,11 @@ describe("OpenAPI spec generation", () => {
     expect(paths.some((path) => path === "/file" || path.startsWith("/file/"))).toBe(false)
     expect(paths.some((path) => path === "/find" || path.startsWith("/find/"))).toBe(false)
   })
+
+  test("exposes the unified plugin operation route and no interact route", async () => {
+    const spec = await Server.openapi()
+    const paths = spec.paths as Record<string, unknown>
+    expect(paths).toHaveProperty("/plugin/{pluginId}/operations/{operationId}/invoke")
+    expect(Object.keys(paths).some((route) => route.includes("/interact"))).toBe(false)
+  })
 })

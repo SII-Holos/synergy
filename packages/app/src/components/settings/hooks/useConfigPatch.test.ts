@@ -188,4 +188,78 @@ describe("settings config patch", () => {
       fallbackPolicy: "warn",
     })
   })
+  test("persists toast mute and duration preferences on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["info", "success"]
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: ["info", "success"],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("unmuting the last toast type sends muted:[] so domain merge can clear it", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+    })
+  })
+
+  test("unmuting one type while duration overrides remain still clears that muted entry", () => {
+    const state = defaultSettingsState("enter")
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+            durationOverrides: { warning: 2000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("does not emit toast patch when mute and duration preferences are unchanged", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["error"]
+    state.general.toastDurations.info = "1000"
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["error"],
+            durationOverrides: { info: 1000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toBeUndefined()
+  })
 })

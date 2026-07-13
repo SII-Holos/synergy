@@ -317,6 +317,7 @@ describe("SessionWorking", () => {
           const child = await Session.create({
             parentID: parent.id,
             cortex: {
+              taskID: "cortex-interrupted-test",
               parentSessionID: parent.id,
               parentMessageID,
               description: "Interrupted child task",
@@ -348,7 +349,7 @@ describe("SessionWorking", () => {
           await SessionInvoke.resumePending()
 
           const refreshed = await Session.get(child.id)
-          expect(refreshed.cortex?.status).toBe("cancelled")
+          expect(refreshed.cortex?.status).toBe("interrupted")
           expect(refreshed.cortex?.completedAt).toBeNumber()
           expect(refreshed.cortex?.error).toContain("Server restarted")
           expect(refreshed.pendingReply).toBeUndefined()

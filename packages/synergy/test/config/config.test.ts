@@ -625,8 +625,8 @@ test("loads plugin runtime limits from plugin config domain", async () => {
           pluginRuntimePolicy: {
             limits: {
               toolInvocationTimeoutMs: 135000,
+              hostServiceRequestTimeoutMs: 90000,
               taskRunTimeoutMs: 135000,
-              memoryMb: 384,
             },
           },
         }),
@@ -641,8 +641,8 @@ test("loads plugin runtime limits from plugin config domain", async () => {
       const limits = (await Config.current()).pluginRuntimePolicy?.limits
 
       expect(limits?.toolInvocationTimeoutMs).toBe(135000)
+      expect(limits?.hostServiceRequestTimeoutMs).toBe(90000)
       expect(limits?.taskRunTimeoutMs).toBe(135000)
-      expect(limits?.memoryMb).toBe(384)
     },
   })
 })

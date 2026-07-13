@@ -1,61 +1,36 @@
 # Synergy Plugin Platform
 
-Plugins extend the Synergy runtime and Web workbench through declared, versioned contracts. A plugin can contribute runtime tools, agents, skills, commands, MCP servers, provider behavior, hooks, configuration, and UI surfaces without importing private Synergy modules.
-
-The platform has four parts:
-
-- `@ericsanchezok/synergy-plugin` — public runtime, manifest, tool, hook, policy, and UI types
-- `@ericsanchezok/synergy-plugin-kit` / `synergy-plugin` — standalone create, validate, develop, build, test, sign, pack, and publish commands
-- the Synergy runtime — discovery, install, approval, isolation, bridge, lifecycle, and health
-- the Web plugin host — versioned Solid UI contribution loading
-
-Normal plugin development does not require a Synergy source checkout.
+Synergy Plugin API 3 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
 
 ## Start Here
 
-| Task                                                                                     | Document                                                           |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Create, run, validate, and package a plugin                                              | [Getting started](getting-started.md)                              |
-| Define `plugin.json`                                                                     | [Manifest reference](manifest.md)                                  |
-| Understand source trust, approval, runtime isolation, hooks, and host bridge             | [Runtime and permissions](runtime-and-permissions.md)              |
-| Build tools, internal helpers, delegated tasks, attachments, and display behavior        | [Tools and delegation](tools-and-delegation.md)                    |
-| Add workbench panels, navigation, settings, renderers, slots, themes, icons, or commands | [UI contributions](ui-contributions.md)                            |
-| Publish to the official or local marketplace                                             | [Marketplace and registry](marketplace.md)                         |
-| Review a plugin before distribution                                                      | [Security checklist](security.md)                                  |
-| Look up TypeScript APIs and hooks                                                        | [`packages/plugin` SDK reference](../../packages/plugin/README.md) |
+| Task                                                                                      | Document                                                       |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Create, build, validate, run, and package a plugin                                        | [Getting started](getting-started.md)                          |
+| Understand the generated `plugin.json` contract                                           | [Generated manifest](manifest.md)                              |
+| Understand capabilities, Host Services, runtime generations, hooks, events, and lifecycle | [Runtime and capabilities](runtime-and-permissions.md)         |
+| Contribute agent-callable tools and delegated work                                        | [Tools and delegation](tools-and-delegation.md)                |
+| Add workbench, navigation, renderer, settings, theme, or icon contributions               | [UI contributions](ui-contributions.md)                        |
+| Browse, publish, install, update, or remove packages                                      | [Marketplace](marketplace.md)                                  |
+| Review trust and operational boundaries                                                   | [Security](security.md)                                        |
+| Look up TypeScript APIs                                                                   | [`packages/plugin` reference](../../packages/plugin/README.md) |
 
-## Canonical Identity
+## One Contract
 
-One plugin ID must be used everywhere:
+The source definition owns plugin identity, capabilities, declarations, and handlers. Authors do not maintain a source `plugin.json`, a separate handler map, or a permission tree. `plugin.json` is build output.
 
-- runtime descriptor `id`
-- `plugin.json.name`
-- configuration and auth namespace
-- lockfile entry
-- approval record
-- registry entry and signature payload
+Every contribution has a plugin-local unique `id` and a discriminating `kind`. Executable contributions are operations, tools, hooks, auth providers, and lifecycle handlers. Agents, skills, MCP servers, and UI metadata are declarative. Host adapters register each kind with its owning Synergy subsystem.
 
-An identity mismatch fails validation or loading. Changing the ID creates a new installation and trust boundary rather than renaming an existing approval.
+The plugin ID remains identical across the definition, generated manifest, registry entry, lockfile, approval, runtime generation, asset URLs, and UI surface IDs. A mismatch is an error, not an alias.
 
-## Extension Contract
+## Runtime and Data Ownership
 
-The source plugin exports a `PluginDescriptor` with `id` and `init()`. The manifest declares everything the host must know before importing that runtime: identity, compatibility, permissions, contributions, lifecycle commands, runtime preference, and limits.
+External plugins run in a separate process for crash, timeout, and cleanup isolation. Trusted built-ins may run in process. There is no plugin worker mode, iframe tier, or claim that the process boundary is an OS security sandbox.
 
-Validation compares runtime discovery with the manifest. Packaging produces a normalized manifest, compiled runtime entry, permission summary, integrity map, and declared assets. Installation evaluates source provenance, signature/integrity, risk, requested capabilities, consent, and runtime isolation before enabling the plugin.
+One active `pluginId + version + generation` runtime is shared by every Scope that enables the plugin. Scope, Session, actor, cancellation, logger, events, and capability-gated Host Services are injected into each invocation. Plugins never receive a raw Synergy client, server URL, or token.
 
-Runtime tool calls and bridge operations still cross Synergy's execution boundary. UI contributions load only when `permissions.ui` is declared and their requested UI API version is compatible with the host.
+Synergy stores installation metadata, approval, per-Scope enablement, declarative settings, and plugin credentials. A plugin owns its business data, schema, concurrency, backup, upgrade, and deletion policy.
 
-## Current Contribution Families
+## UI Model
 
-- runtime tools and tool display metadata
-- skills and agents
-- local or remote MCP servers
-- CLI and configured Synergy commands
-- plugin-scoped configuration schema and defaults
-- provider auth and provider runtime/catalog profiles
-- event, chat, permission, tool, session, Cortex, Agenda, Note, Library, and experimental hooks
-- tool and part renderers
-- side/bottom workbench panels and navigation pages
-- settings sections, message/composer slots, UI commands, themes, and icons
-
-The manifest and public SDK are authoritative for exact fields.
+Simple metadata is rendered by the host. Complex surfaces are trusted Solid components loaded only after approval. plugin-kit compiles TSX and binds it to the host's shared Solid runtime. Every trusted component receives one `PluginSurfaceContext`; it reads complete state through query operations, sends intent through command operations, and treats events as scoped invalidation or small state-change notifications.

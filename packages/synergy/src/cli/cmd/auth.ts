@@ -9,9 +9,10 @@ import os from "os"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
+import { authHook } from "../../plugin/auth-provider"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
-import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
+import type { AuthHook } from "@ericsanchezok/synergy-plugin/auth"
 import { CodexProvider } from "@/provider/codex"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderRecommendation } from "@/provider/recommendation"
@@ -19,10 +20,10 @@ import { AnthropicOAuthProvider } from "@/provider/anthropic-oauth"
 import { CopilotProvider } from "@/provider/copilot"
 import { MiniMaxProvider } from "@/provider/minimax"
 import { GitHubProvider } from "@/provider/github"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { ProviderUsage } from "@/provider/usage-service"
 
-type PluginAuth = NonNullable<PluginHooks["auth"]>
+type PluginAuth = AuthHook
 
 function providerDisplayName(database: Record<string, { name?: string }>, providerID: string) {
   if (providerID === GitHubProvider.PROVIDER_ID) return "GitHub"
@@ -621,9 +622,11 @@ export const AuthLoginCommand = cmd({
           if (handled) return
         }
 
-        const plugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
-        if (plugin && plugin.auth) {
-          const handled = await handlePluginAuth({ auth: plugin.auth }, provider)
+        const plugin = await Plugin.authProviderEntries().then((entries) =>
+          entries.find((entry) => entry.contribution.id === provider),
+        )
+        if (plugin) {
+          const handled = await handlePluginAuth({ auth: authHook(plugin.plugin, plugin.contribution) }, provider)
           if (handled) return
         }
 
@@ -637,9 +640,14 @@ export const AuthLoginCommand = cmd({
           if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
           // Check if a plugin provides auth for this custom provider
-          const customPlugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
-          if (customPlugin && customPlugin.auth) {
-            const handled = await handlePluginAuth({ auth: customPlugin.auth }, provider)
+          const customPlugin = await Plugin.authProviderEntries().then((entries) =>
+            entries.find((entry) => entry.contribution.id === provider),
+          )
+          if (customPlugin) {
+            const handled = await handlePluginAuth(
+              { auth: authHook(customPlugin.plugin, customPlugin.contribution) },
+              provider,
+            )
             if (handled) return
           }
 

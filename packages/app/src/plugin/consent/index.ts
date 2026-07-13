@@ -1,4 +1,3 @@
-export { PermissionDiffList } from "./PermissionDiffList"
 export { PermissionRiskBadge } from "./PermissionRiskBadge"
 export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./schema"
 

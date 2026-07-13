@@ -5,6 +5,7 @@ import { WorkspaceFile } from "../workspace-file/types"
 import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
+import { errors } from "./error"
 
 const BoolString = z.enum(["true", "false"]).optional()
 
@@ -47,6 +48,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(
@@ -87,6 +89,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(
@@ -129,6 +132,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(

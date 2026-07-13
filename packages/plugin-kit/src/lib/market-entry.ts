@@ -12,13 +12,6 @@ import {
   githubRepoSlug as sharedGithubRepoSlug,
   normalizeGitHubRepoUrl,
 } from "@ericsanchezok/synergy-plugin/market"
-import {
-  baseCapabilities,
-  pluginRisk,
-  publicToolNames,
-  registryPermissionSummary,
-} from "@ericsanchezok/synergy-plugin/permissions"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
 import { computeManifestHash, computePermissionsHash } from "./hash.js"
 import { readSignatureFile } from "./signature.js"
 import { sha256File } from "./crypto.js"
@@ -52,7 +45,7 @@ export interface RegistryEntry {
     manifestHash: string
     permissionsHash: string
     risk: "low" | "medium" | "high"
-    runtimeMode: "in-process" | "worker" | "process"
+    runtimeMode: "process"
     permissionsSummary: Array<{ key: string; description: string; risk: string }>
     tools: string[]
     uiSurfaces: string[]
@@ -185,30 +178,15 @@ function iconForManifest(manifest: PluginManifestType, extractedDir: string): Re
   if (!fs.existsSync(iconPath)) throw new Error(`Marketplace icon not found in tarball: ${manifest.icon}`)
   const stat = fs.statSync(iconPath)
   if (!stat.isFile()) throw new Error(`Marketplace icon must be a file: ${manifest.icon}`)
-  return { type: "registry-svg", path: registryIconPath(manifest.name) }
+  return { type: "registry-svg", path: registryIconPath(manifest.id) }
 }
 
 function compatibilityForManifest(manifest: PluginManifestType): RegistryEntry["compatibility"] {
-  const synergy = manifest.engines?.synergy?.trim()
-  if (!synergy) throw new Error("Marketplace registry entry requires plugin.json engines.synergy")
-  return { synergy }
+  return { synergy: `plugin-api:${manifest.apiVersion}` }
 }
 
 export function uiSurfaces(manifest: PluginManifestType): string[] {
-  const ui = manifest.contributes?.ui
-  if (!ui) return []
-  const surfaces: string[] = []
-  if (ui.toolRenderers?.length) surfaces.push("toolRenderers")
-  if (ui.partRenderers?.length) surfaces.push("partRenderers")
-  if (ui.workbenchPanels?.length) surfaces.push("workbenchPanels")
-  if (ui.navigation?.length) surfaces.push("navigation")
-  if (ui.settings?.length) surfaces.push("settings")
-  if (ui.messageSlots?.length) surfaces.push("messageSlots")
-  if (ui.composerSlots?.length) surfaces.push("composerSlots")
-  if (ui.themes?.length) surfaces.push("themes")
-  if (ui.icons?.length) surfaces.push("icons")
-  if (ui.commands?.length) surfaces.push("commands")
-  return surfaces
+  return [...new Set(manifest.contributions.filter((item) => item.kind.startsWith("ui.")).map((item) => item.kind))]
 }
 
 export function registryEntry(input: {
@@ -243,22 +221,19 @@ export function registryEntry(input: {
     releaseTagTemplate: input.releaseTagTemplate,
   })
 
-  const capabilities = baseCapabilities(manifest)
-  const tools = publicToolNames(manifest)
-  const risk = pluginRisk(manifest, { scope: "agent" })
-  const policy = resolvePluginPolicyDecision({
-    manifest,
-    source: "official",
-    userTrusted: true,
-    verifiedIntegrity: true,
-    risk,
-  })
+  const capabilities = manifest.capabilities.map((item) => item.id)
+  const tools = manifest.contributions.filter((item) => item.kind === "tool").map((item) => item.id)
+  const risk = capabilities.some((item) => item === "workspace.write" || item === "secrets" || item === "task.delegate")
+    ? ("high" as const)
+    : capabilities.length
+      ? ("medium" as const)
+      : ("low" as const)
   const integrity = `sha256-${sha256File(input.tarballPath)}`
   const manifestHash = computeManifestHash(manifest)
   const permissionsHash = computePermissionsHash(manifest, capabilities)
   const signature = readSignatureFile(input.tarballPath)
   if (!signature) throw new Error(`Signature file not found or invalid: ${input.tarballPath}.sig`)
-  if (signature.pluginId !== manifest.name) throw new Error("Signature pluginId does not match manifest name")
+  if (signature.pluginId !== manifest.id) throw new Error("Signature pluginId does not match manifest id")
   if (signature.version !== manifest.version) throw new Error("Signature version does not match manifest version")
   if (signature.payload.tarballHash !== integrity.slice("sha256-".length)) {
     throw new Error("Signature tarball hash does not match artifact integrity")
@@ -272,7 +247,7 @@ export function registryEntry(input: {
 
   return {
     schemaVersion: 1,
-    id: manifest.name,
+    id: manifest.id,
     name: manifest.name,
     description: manifest.description,
     repo,
@@ -296,8 +271,8 @@ export function registryEntry(input: {
         manifestHash,
         permissionsHash,
         risk,
-        runtimeMode: policy.runtimeMode,
-        permissionsSummary: registryPermissionSummary(manifest, capabilities),
+        runtimeMode: "process",
+        permissionsSummary: capabilities.map((key) => ({ key, description: `Synergy host capability ${key}`, risk })),
         tools,
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),

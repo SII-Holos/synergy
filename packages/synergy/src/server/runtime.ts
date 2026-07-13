@@ -16,6 +16,8 @@ import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
 import { Observability, ObservabilityResources, ObservabilityStore } from "../observability"
 import { Session } from "../session"
+import { Plugin } from "../plugin"
+import { PluginSpec } from "../util/plugin-spec"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -73,17 +75,21 @@ export async function run(options: RuntimeOptions) {
   const server = Server.listen(options.network)
   const statuses: StartupReporter.StatusRow[] = []
 
-  await StartupReporter.provide(reporter, async () => {
-    await GlobalRuntime.start()
-    if (options.printChannelStatus) {
-      statuses.push(
-        ...(await ScopeContext.provide({
-          scope: Scope.home(),
-          fn: connectionStatusRows,
-        })),
-      )
-    }
-  })
+  await GlobalRuntime.start()
+  statuses.push(
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => pluginStatusRow(await Plugin.getLoaded(), await Plugin.getDisabled()),
+    }),
+  )
+  if (options.printChannelStatus) {
+    statuses.push(
+      ...(await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: connectionStatusRows,
+      })),
+    )
+  }
 
   if (options.printBanner) {
     if (
@@ -139,6 +145,19 @@ function renderBanner(input: {
 
 export function startupScopeLabel() {
   return Flag.SYNERGY_CWD || process.cwd()
+}
+
+export function pluginStatusRow(
+  loaded: Array<{ id: string; name: string }>,
+  disabled: Array<{ pluginId: string }>,
+): StartupReporter.StatusRow {
+  if (loaded.length === 0 && disabled.length === 0) {
+    return { label: "Plugins", value: "none configured", kind: "muted" }
+  }
+  const names = loaded.map((plugin) => plugin.name).join(", ")
+  if (disabled.length === 0) return { label: "Plugins", value: names, kind: "success" }
+  const unavailable = `${disabled.length} unavailable: ${disabled.map((plugin) => PluginSpec.displayName(plugin.pluginId)).join(", ")}`
+  return { label: "Plugins", value: names ? `${names}; ${unavailable}` : unavailable, kind: "error" }
 }
 
 async function hasNoModelConfigured() {

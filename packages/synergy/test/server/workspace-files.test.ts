@@ -81,4 +81,14 @@ describe("GET /workspace/files", () => {
     const find = await app.request(`/find/file?directory=${encodeURIComponent(tmp.path)}&query=src`)
     expect(find.status).toBe(404)
   })
+
+  test("returns a stable 404 when a persisted explorer directory no longer exists", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await Server.App().request(workspaceUrl("children", tmp.path, { path: "deleted/directory" }))
+
+    expect(response.status).toBe(404)
+    const body = await response.json()
+    expect(body.name).toBe("NotFoundError")
+    expect(JSON.stringify(body)).not.toContain(tmp.path)
+  })
 })

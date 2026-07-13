@@ -24,12 +24,10 @@ import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
 import {
-  PluginToolBridge,
-  PluginCommandBridge,
-  PluginMessageSlotBridge,
   PluginComposerSlotBridge,
   PluginThemeConfigBridge,
   PluginHostProvider,
+  PluginRouteScope,
   BuiltinNavigationPage,
   PluginNavigationPage,
 } from "@/plugin"
@@ -211,52 +209,50 @@ function ConnectedApp() {
                     </span>
                   </div>
                 </Show>
-                <PluginHostProvider>
-                  <GlobalSyncProvider>
-                    <PluginToolBridge />
-                    <PluginMessageSlotBridge />
-                    <PluginComposerSlotBridge />
-                    <PluginThemeConfigBridge />
-                    <Router
-                      base={proxyPrefix()}
-                      root={(props) => (
-                        <LayoutProvider>
-                          <NotificationProvider>
-                            <CommandProvider>
-                              <PluginCommandBridge />
-                              <Layout>{props.children}</Layout>
-                            </CommandProvider>
-                          </NotificationProvider>
-                        </LayoutProvider>
+                <Router
+                  base={proxyPrefix()}
+                  root={(props) => (
+                    <PluginRouteScope>
+                      {(scopeKey) => (
+                        <PluginHostProvider scopeKey={scopeKey}>
+                          <GlobalSyncProvider>
+                            <PluginComposerSlotBridge />
+                            <PluginThemeConfigBridge />
+                            <LayoutProvider>
+                              <NotificationProvider>
+                                <CommandProvider>
+                                  <Layout>{props.children}</Layout>
+                                </CommandProvider>
+                              </NotificationProvider>
+                            </LayoutProvider>
+                          </GlobalSyncProvider>
+                        </PluginHostProvider>
                       )}
-                    >
-                      <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
-                      <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
-                      <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
-                      <Route
-                        path="/performance"
-                        component={() => <BuiltinNavigationPage navigationId="performance" />}
-                      />
-                      <Route
-                        path="/plugins/marketplace"
-                        component={() => <BuiltinNavigationPage navigationId="plugins" />}
-                      />
-                      <Route path="/plugins/:pluginId/:navigationId" component={PluginNavigationPage} />
-                      <Route path="/plugins/:pluginId" component={PluginDetailPage} />
-                      <Route path="/:dir" component={DirectoryLayout}>
-                        <Route path="/" component={() => <Navigate href="session" />} />
-                        <Route
-                          path="/session/:id?"
-                          component={() => (
-                            <Suspense fallback={<Loading />}>
-                              <Session />
-                            </Suspense>
-                          )}
-                        />
-                      </Route>
-                    </Router>
-                  </GlobalSyncProvider>
-                </PluginHostProvider>
+                    </PluginRouteScope>
+                  )}
+                >
+                  <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
+                  <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
+                  <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
+                  <Route path="/performance" component={() => <BuiltinNavigationPage navigationId="performance" />} />
+                  <Route
+                    path="/plugins/marketplace"
+                    component={() => <BuiltinNavigationPage navigationId="plugins" />}
+                  />
+                  <Route path="/plugins/:pluginId/:navigationId" component={PluginNavigationPage} />
+                  <Route path="/plugins/:pluginId" component={PluginDetailPage} />
+                  <Route path="/:dir" component={DirectoryLayout}>
+                    <Route path="/" component={() => <Navigate href="session" />} />
+                    <Route
+                      path="/session/:id?"
+                      component={() => (
+                        <Suspense fallback={<Loading />}>
+                          <Session />
+                        </Suspense>
+                      )}
+                    />
+                  </Route>
+                </Router>
               </Match>
             </Switch>
           </InputProvider>

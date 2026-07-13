@@ -369,6 +369,55 @@
   }
 }
 
+[data-component="markdown"] [data-slot="markdown-terminal-crossfade"] {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-from"],
+[data-component="markdown"] [data-slot="markdown-terminal-to"] {
+  grid-area: 1 / 1;
+  min-width: 0;
+  transition:
+    opacity 280ms ease,
+    transform 280ms ease;
+  will-change: opacity;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-from"] {
+  opacity: 1;
+  z-index: 1;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-to"] {
+  opacity: 0;
+  z-index: 2;
+  transform: translateY(2px);
+}
+
+[data-component="markdown"]
+  [data-slot="markdown-terminal-crossfade"][data-active="true"]
+  [data-slot="markdown-terminal-from"] {
+  opacity: 0;
+}
+
+[data-component="markdown"]
+  [data-slot="markdown-terminal-crossfade"][data-active="true"]
+  [data-slot="markdown-terminal-to"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="markdown"] [data-slot="markdown-terminal-from"],
+  [data-component="markdown"] [data-slot="markdown-terminal-to"] {
+    transition: none;
+    transform: none;
+  }
+}
+
 :root[data-color-scheme="light"] [data-component="markdown"] [data-slot="markdown-code-block"] {
   background-color: color-mix(in srgb, var(--surface-base) 92%, var(--surface-inset-base));
 }

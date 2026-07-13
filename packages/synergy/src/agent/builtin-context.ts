@@ -124,6 +124,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     blueprint_loop_approve: "allow",
     blueprint_loop_reject: "allow",
     session_list: "allow",
+    scope_list: "allow",
     session_read: "allow",
     session_search: "allow",
     agenda_list: "allow",
@@ -185,6 +186,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
       classicReadTools(),
       PermissionNext.fromConfig({
         session_list: "allow",
+        scope_list: "allow",
         session_read: "allow",
         session_search: "allow",
         session_send: "deny",
