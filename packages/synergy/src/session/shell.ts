@@ -2,13 +2,11 @@ import path from "path"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
-import { BusyError } from "./error"
 import { Session } from "."
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { ulid } from "ulid"
 import { spawn } from "child_process"
-import { defer } from "../util/defer"
 import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
@@ -39,20 +37,12 @@ export const ShellInput = z.object({
 export type ShellInput = z.infer<typeof ShellInput>
 
 export async function shell(input: ShellInput) {
-  return SessionManager.run(input.sessionID, async () => shellInSession(input))
+  return SessionManager.run(input.sessionID, (lease) => shellInSession(input, lease))
 }
 
-async function shellInSession(input: ShellInput) {
+async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease) {
   const directory = ScopeContext.current.directory
-
-  SessionManager.registerRuntime(input.sessionID)
-  const abort = SessionManager.acquire(input.sessionID)
-  if (!abort) {
-    throw new BusyError(input.sessionID)
-  }
-  using _ = defer(() => {
-    SessionManager.release(input.sessionID).catch(() => {})
-  })
+  const abort = lease.signal
 
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))

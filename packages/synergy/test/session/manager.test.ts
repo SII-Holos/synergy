@@ -153,7 +153,8 @@ describe("SessionManager.getSession", () => {
       try {
         SessionManager.registerRuntime(userSessionID)
         const child = SessionManager.registerChildRuntime(childSessionID)
-        child.abort = new AbortController()
+        const lease = SessionManager.acquire(childSessionID)
+        expect(lease).toBeDefined()
         child.waiters = [{ onComplete: () => {}, onCancel: () => {} }]
 
         const stats = SessionManager.runtimeStats()
@@ -164,6 +165,7 @@ describe("SessionManager.getSession", () => {
         expect(stats.userCount).toBe(before.userCount + 1)
         expect(stats.waiterCount).toBe(before.waiterCount + 1)
       } finally {
+        SessionManager.signalAbort(childSessionID)
         SessionManager.unregisterRuntime(userSessionID)
         SessionManager.unregisterRuntime(childSessionID)
       }
@@ -181,13 +183,14 @@ describe("SessionManager.getSession", () => {
           })
 
           try {
-            SessionManager.acquire(session.id)
+            const lease = SessionManager.acquire(session.id)
+            expect(lease).toBeDefined()
             await Session.update(session.id, (draft) => {
               draft.pendingReply = true
             })
             expect(updated.at(-1)?.working?.status).toBe("busy")
 
-            await SessionManager.release(session.id)
+            await SessionManager.release(lease!)
 
             expect(updated.at(-1)?.working).toBeUndefined()
           } finally {
@@ -286,10 +289,11 @@ describe("SessionManager.getSession", () => {
               type: "text",
               text: "parent root",
             })
-            SessionManager.acquire(parentSession.id)
+            const parentLease = SessionManager.acquire(parentSession.id)
+            expect(parentLease).toBeDefined()
             ;(SessionManager.isRunning as any) = mock((sessionID: string) => {
               if (sessionID !== parentSession.id) return originalIsRunning(sessionID)
-              return !!SessionManager.getRuntime(sessionID)?.abort
+              return SessionManager.getRuntime(sessionID)?.owner !== undefined
             })
 
             const task = await Cortex.launch({
@@ -310,7 +314,7 @@ describe("SessionManager.getSession", () => {
             expect(deliveries).toHaveLength(0)
             expect(SessionManager.isRunning(parentSession.id)).toBe(true)
 
-            await SessionManager.release(parentSession.id)
+            await SessionManager.release(parentLease!)
             await Bun.sleep(20)
 
             expect(deliveries).toHaveLength(1)
@@ -331,17 +335,124 @@ describe("SessionManager.getSession", () => {
   })
 })
 
+describe("loop ownership", () => {
+  test("reserves ownership before async session setup can yield", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        let observedSignal: AbortSignal | undefined
+        const run = SessionManager.run(session.id, async (lease) => {
+          observedSignal = lease.signal
+        })
+
+        expect(SessionManager.isRunning(session.id)).toBe(true)
+        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("starting")
+        expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+        expect(SessionManager.isRunning(session.id)).toBe(true)
+        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
+
+        await run
+
+        expect(observedSignal?.aborted).toBe(true)
+        expect(SessionManager.isRunning(session.id)).toBe(false)
+      },
+    })
+  })
+
+  test("keeps the stopping owner exclusive until release", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
+        expect(SessionManager.activate(lease!)).toBe(true)
+        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("running")
+
+        expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+        expect(lease!.signal.aborted).toBe(true)
+        expect(SessionManager.getRuntime(session.id)?.owner?.phase).toBe("stopping")
+        expect(SessionManager.acquire(session.id)).toBeUndefined()
+        expect(SessionManager.isRunning(session.id)).toBe(true)
+
+        expect(await SessionManager.release(lease!)).toBe(true)
+        expect(SessionManager.isRunning(session.id)).toBe(false)
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("ignores a stale release without aborting the replacement owner", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const first = SessionManager.acquire(session.id)
+        expect(first).toBeDefined()
+        expect(await SessionManager.release(first!)).toBe(true)
+
+        const second = SessionManager.acquire(session.id)
+        expect(second).toBeDefined()
+        expect(second!.generation).not.toBe(first!.generation)
+        expect(second!.signal.aborted).toBe(false)
+
+        expect(await SessionManager.release(first!)).toBe(false)
+        expect(second!.signal.aborted).toBe(false)
+        expect(SessionManager.isRunning(session.id)).toBe(true)
+
+        expect(await SessionManager.release(second!)).toBe(true)
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("settles waiters once and rejects stale owner completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const first = SessionManager.acquire(session.id)
+        expect(first).toBeDefined()
+        expect(await SessionManager.release(first!)).toBe(true)
+
+        const second = SessionManager.acquire(session.id)
+        expect(second).toBeDefined()
+        const runtime = SessionManager.getRuntime(session.id)!
+        const onComplete = mock(() => {})
+        const onCancel = mock(() => {})
+        runtime.waiters.push({ onComplete, onCancel })
+        const result = { info: { id: "msg_result" }, parts: [] } as any
+
+        expect(SessionManager.completeWaiters(first!, result)).toBe(false)
+        expect(onComplete).not.toHaveBeenCalled()
+        expect(SessionManager.completeWaiters(second!, result)).toBe(true)
+        expect(SessionManager.completeWaiters(second!, result)).toBe(true)
+        expect(onComplete).toHaveBeenCalledTimes(1)
+        expect(onComplete).toHaveBeenCalledWith(result)
+        expect(onCancel).not.toHaveBeenCalled()
+        expect(runtime.waiters).toEqual([])
+
+        expect(await SessionManager.release(second!)).toBe(true)
+        expect(onCancel).not.toHaveBeenCalled()
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+})
+
 describe("signalAbort", () => {
-  test("aborts the active controller and notifies all waiters", () => {
+  test("aborts the active owner, cancels waiters, and retains ownership", () => {
     const sessionID = "ses_signal_abort_1"
     SessionManager.unregisterRuntime(sessionID)
-    const runtime = SessionManager.registerRuntime(sessionID)
+    const lease = SessionManager.acquire(sessionID)
+    expect(lease).toBeDefined()
+    const runtime = SessionManager.getRuntime(sessionID)!
     try {
-      // Simulate an acquired (busy) runtime
-      const controller = new AbortController()
-      runtime.abort = controller
-      runtime.status = { type: "busy" }
-
       const onCancel1 = mock(() => {})
       const onCancel2 = mock(() => {})
       const onComplete = mock(() => {})
@@ -349,55 +460,65 @@ describe("signalAbort", () => {
         { onComplete, onCancel: onCancel1 },
         { onComplete, onCancel: onCancel2 },
       ]
-      ;(SessionManager as any).signalAbort(sessionID)
 
-      expect(controller.signal.aborted).toBe(true)
+      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
+
+      expect(lease!.signal.aborted).toBe(true)
       expect(onCancel1).toHaveBeenCalledTimes(1)
       expect(onCancel2).toHaveBeenCalledTimes(1)
       expect(onComplete).not.toHaveBeenCalled()
       expect(runtime.waiters).toEqual([])
-      expect(runtime.abort).toBeUndefined()
+      expect(runtime.owner?.lease).toBe(lease)
+      expect(runtime.owner?.phase).toBe("stopping")
+      expect(SessionManager.isRunning(sessionID)).toBe(true)
+    } finally {
+      SessionManager.unregisterRuntime(sessionID)
+    }
+  })
+
+  test("reports repeated abort without canceling new waiters", () => {
+    const sessionID = "ses_signal_abort_repeat"
+    SessionManager.unregisterRuntime(sessionID)
+    const lease = SessionManager.acquire(sessionID)
+    expect(lease).toBeDefined()
+    const runtime = SessionManager.getRuntime(sessionID)!
+    try {
+      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
+      const onCancel = mock(() => {})
+      runtime.waiters.push({ onComplete: () => {}, onCancel })
+
+      expect(SessionManager.signalAbort(sessionID)).toBe("already_stopping")
+      expect(onCancel).not.toHaveBeenCalled()
+      expect(runtime.waiters).toHaveLength(1)
     } finally {
       SessionManager.unregisterRuntime(sessionID)
     }
   })
 
   test("does not change the runtime status", () => {
-    const sessionID = "ses_signal_abort_2"
+    const sessionID = "ses_signal_abort_status"
     SessionManager.unregisterRuntime(sessionID)
-    const runtime = SessionManager.registerRuntime(sessionID)
+    const lease = SessionManager.acquire(sessionID)
+    expect(lease).toBeDefined()
+    const runtime = SessionManager.getRuntime(sessionID)!
     try {
-      runtime.abort = new AbortController()
       runtime.status = { type: "busy", description: "thinking..." }
-      ;(SessionManager as any).signalAbort(sessionID)
 
-      // Status must remain unchanged: signalAbort only signals, it does not
-      // transition the runtime to idle. This is the core invariant that prevents
-      // the race condition where session.status(idle) SSE arrives before
-      // message.updated(time.completed).
+      expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
       expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
     } finally {
       SessionManager.unregisterRuntime(sessionID)
     }
   })
 
-  test("returns safely when no runtime exists", () => {
-    expect(() => {
-      ;(SessionManager as any).signalAbort("ses_nonexistent")
-    }).not.toThrow()
-  })
-
-  test("returns safely when runtime exists but has no active abort controller", () => {
-    const sessionID = "ses_signal_abort_4"
+  test("distinguishes missing and idle runtimes", () => {
+    const sessionID = "ses_signal_abort_idle"
     SessionManager.unregisterRuntime(sessionID)
+    expect(SessionManager.signalAbort(sessionID)).toBe("not_found")
+
     SessionManager.registerRuntime(sessionID)
     try {
-      // Runtime exists but is idle (abort is undefined: normal idle state
-      // after a previous release, or before acquire)
-
-      expect(() => {
-        ;(SessionManager as any).signalAbort(sessionID)
-      }).not.toThrow()
+      expect(SessionManager.signalAbort(sessionID)).toBe("idle")
     } finally {
       SessionManager.unregisterRuntime(sessionID)
     }

@@ -232,8 +232,8 @@ describe("git worktree integration", () => {
           const app = Server.App()
           const session = await Session.create({ title: "Busy Session" })
           const created = await Worktree.create({ name: "busy-enter", bind: false, baseRef: "current" })
-          SessionManager.registerRuntime(session.id)
-          SessionManager.acquire(session.id)
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
 
           try {
             const create = await app.request(`/experimental/worktree?directory=${encodeURIComponent(scope.worktree)}`, {
@@ -262,7 +262,7 @@ describe("git worktree integration", () => {
             expect(leave.status).toBe(400)
             expect((await leave.json()).name).toBe("WorktreeSessionBusyError")
           } finally {
-            await SessionManager.release(session.id)
+            await SessionManager.release(lease!)
             await Worktree.remove({ sessionID: "none", target: created.id, force: true }).catch(() => undefined)
             await Session.remove(session.id)
           }
@@ -279,8 +279,8 @@ describe("git worktree integration", () => {
       fn: () =>
         using(async () => {
           const session = await Session.create({ title: "Running Core Worktree" })
-          SessionManager.registerRuntime(session.id)
-          SessionManager.acquire(session.id)
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
 
           let created: Worktree.Info | undefined
           try {
@@ -295,7 +295,7 @@ describe("git worktree integration", () => {
             await Worktree.leave(session.id)
             expect((await Session.get(session.id)).workspace?.type).toBe("main")
           } finally {
-            await SessionManager.release(session.id)
+            await SessionManager.release(lease!)
             if (created) await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
             await Session.remove(session.id)
           }

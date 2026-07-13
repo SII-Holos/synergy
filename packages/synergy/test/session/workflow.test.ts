@@ -166,8 +166,8 @@ describe("BlueprintLoop workflow source gates", () => {
         title: "Manual Loop",
         sessionID: session.id,
       })
-      SessionManager.registerRuntime(session.id)
-      SessionManager.acquire(session.id)
+      const lease = SessionManager.acquire(session.id)
+      expect(lease).toBeDefined()
 
       try {
         await expect(BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")).rejects.toThrow()
@@ -175,7 +175,7 @@ describe("BlueprintLoop workflow source gates", () => {
         expect(updated.workflow).toEqual({ kind: "plan" })
         expect(updated.blueprint?.loopID).toBeUndefined()
       } finally {
-        await SessionManager.release(session.id)
+        await SessionManager.release(lease!)
         SessionManager.unregisterRuntime(session.id)
       }
     })

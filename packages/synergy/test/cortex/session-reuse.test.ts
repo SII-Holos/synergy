@@ -53,10 +53,8 @@ describe("Cortex session reuse", () => {
           const parentSession = await Session.create({})
           const childSession = await Session.create({ parentID: parentSession.id })
 
-          // Make the child session appear busy
-          SessionManager.registerRuntime(childSession.id)
-          const runtime = SessionManager.registerRuntime(childSession.id)
-          runtime.abort = new AbortController()
+          const lease = SessionManager.acquire(childSession.id)
+          expect(lease).toBeDefined()
 
           try {
             await expect(
@@ -70,8 +68,7 @@ describe("Cortex session reuse", () => {
               }),
             ).rejects.toThrow(BusyError)
           } finally {
-            // Clean up runtime
-            runtime.abort = undefined
+            await SessionManager.release(lease!)
             SessionManager.unregisterRuntime(childSession.id)
           }
         },
