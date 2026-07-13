@@ -6,6 +6,7 @@ import {
   deleteLibraryItemsConfirm,
   deleteNoteConfirm,
   deleteSkillConfirm,
+  deleteWorktreeConfirm,
   discardSettingsConfirm,
   leaveWorktreeConfirm,
   overwriteImportConfirm,
@@ -43,6 +44,31 @@ describe("confirm copy", () => {
     expect(copy.confirmLabel).toBe("Leave worktree")
     expect(copy.cancelLabel).toBe("Stay in worktree")
     expect(copy.tone).toBe("warning")
+  })
+
+  test("confirms worktree deletion and mentions bound sessions", () => {
+    const clean = deleteWorktreeConfirm({
+      name: "feature-one",
+      dirty: false,
+      bindings: ["ses_a", "ses_b"],
+    })
+    const dirty = deleteWorktreeConfirm({
+      name: "feature-dirty",
+      dirty: true,
+      bindings: [],
+    })
+
+    expect(clean.title).toBe("Delete worktree?")
+    expect(clean.description).toContain("feature-one")
+    expect(clean.description).toContain("2 bound sessions")
+    expect(clean.description).toContain("main checkout")
+    expect(clean.confirmLabel).toBe("Delete")
+    expect(clean.tone).toBe("danger")
+
+    expect(dirty.title).toBe("Force-remove dirty worktree?")
+    expect(dirty.description).toContain("uncommitted changes")
+    expect(dirty.confirmLabel).toBe("Force remove")
+    expect(dirty.tone).toBe("danger")
   })
 
   test("uses warning tone for import overwrite conflicts", () => {

@@ -149,6 +149,45 @@ describe("settings config patch", () => {
     ).toEqual({ coauthor_reminder: true })
   })
 
+  test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
+    const state = defaultSettingsState("enter")
+    state.safety.sandboxEnabled = "true"
+    state.safety.sandboxFallbackPolicy = "warn"
+
+    const patch = buildPatch({
+      cfg: {
+        sandbox: {
+          enabled: true,
+          fallbackPolicy: "warn",
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("sandbox")
+  })
+
+  test("persists sandbox only when values actually change", () => {
+    const state = defaultSettingsState("enter")
+    state.safety.sandboxEnabled = "false"
+
+    const patch = buildPatch({
+      cfg: {
+        sandbox: {
+          enabled: true,
+          fallbackPolicy: "warn",
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.sandbox).toEqual({
+      enabled: false,
+      fallbackPolicy: "warn",
+    })
+  })
   test("persists toast mute and duration preferences on the general domain", () => {
     const state = defaultSettingsState("enter")
     state.general.mutedToasts = ["info", "success"]
