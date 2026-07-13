@@ -71,6 +71,8 @@ export function applyMarkdownTerminalCrossfade(input: {
   const previous = document.createElement("div")
   previous.dataset.slot = "markdown-terminal-from"
   previous.replaceChildren(...Array.from(input.container.childNodes))
+  previous.setAttribute("aria-hidden", "true")
+  previous.inert = true
 
   const next = document.createElement("div")
   next.dataset.slot = "markdown-terminal-to"
