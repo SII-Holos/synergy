@@ -318,8 +318,7 @@ export function isBundledBwrapAvailable(): boolean {
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
-  // Empty map is intentional until release — no helper will be trusted.
+  [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-linux")]: "9f8dabba6e2b7b9b4b6cb8fbc8c4d9997f80abde33d95b84def3c5ba2176696c",
 }
 
 /**
