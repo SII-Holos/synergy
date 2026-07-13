@@ -508,6 +508,33 @@ test("logged-in Codex provider applies fallback context when live metadata omits
   expect(codex.models["gpt-5.3-codex-spark"].limit.input).toBe(128_000)
 })
 
+test("provider catalog caches static and live Codex models independently", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider-cache",
+    expires: nowSeconds() + 60 * 60,
+  })
+  let discoveryCalls = 0
+  globalThis.fetch = asFetch(async () => {
+    discoveryCalls += 1
+    return jsonResponse({
+      models: [{ slug: "account-live-only-model", priority: 1 }],
+    })
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+
+  const staticCatalog = await ProviderCatalog.resolve({ config, includeLive: false })
+  const liveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  const cachedLiveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  expect(staticCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeUndefined()
+  expect(liveCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeDefined()
+  expect(cachedLiveCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeDefined()
+  expect(discoveryCalls).toBe(1)
+})
+
 test("provider auth registry exposes built-in Codex OAuth method", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
