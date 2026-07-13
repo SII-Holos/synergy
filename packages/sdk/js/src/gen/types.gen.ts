@@ -450,6 +450,19 @@ export type PerfRankedItem = {
   pid?: number
 }
 
+export type PerfToolFailureCategory = {
+  errorClass: string
+  count: number
+}
+
+export type PerfToolFailureItem = {
+  tool: string
+  callCount: number
+  errorCount: number
+  errorRate: number
+  categories: Array<PerfToolFailureCategory>
+}
+
 export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
 
 export type PerfIssueStatus = "open" | "resolved" | "suppressed"
@@ -566,6 +579,7 @@ export type PerfDashboardSummary = {
     slowRoutes: Array<PerfRankedItem>
     slowSessions: Array<PerfRankedItem>
     slowTools: Array<PerfRankedItem>
+    toolFailures: Array<PerfToolFailureItem>
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
     slowLibrary: Array<PerfRankedItem>
@@ -7588,6 +7602,10 @@ export type PerformanceIssuesListData = {
     status?: PerfIssueStatus
     severity?: PerfIssueSeverity
     module?: PerfModule
+    scopeID?: string
+    tool?: string
+    since?: number
+    until?: number
     limit?: number
   }
   url: "/global/performance/issues"

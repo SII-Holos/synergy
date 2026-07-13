@@ -545,6 +545,16 @@ export namespace Cortex {
       return
     }
     if (finalizingTasks.has(taskID)) {
+      if (status === "cancelled") {
+        task.status = "cancelled"
+        task.completedAt ??= Date.now()
+        task.error = undefined
+        task.output = undefined
+        tasks.set(taskID, task)
+        publishVisibleTasksUpdate()
+        log.info("published cancellation during concurrent task finalization", { taskID })
+        return
+      }
       log.info("ignoring concurrent task finalization", { taskID, next: status })
       return
     }

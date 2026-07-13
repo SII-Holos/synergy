@@ -361,41 +361,28 @@ describe("WorkspacePolicy — original checkout boundary", () => {
 
 describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
   test("classifyPath(originalCheckoutFile) returns outside with high confidence", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-
-    await ScopeContext.provide({
-      scope,
-      fn: () =>
-        using(async () => {
-          const worktreePath = path.join(scope.directory, "..", "worktree-classify")
-          const ws = {
-            type: "git_worktree",
-            path: Filesystem.sanitizePath(worktreePath),
-            scopeID: scope.id,
-            originalCheckout: scope.directory,
-          }
-          const session = await Session.create({ workspace: ws })
-          const policy = await WorkspacePolicy.fromSession(session)
-
-          const targetPath = path.join(scope.directory, "src", "index.ts")
-
-          if (typeof (policy as any).classifyPath !== "function") {
-            // RED: This will fail until classifyPath is implemented
-            expect(typeof (policy as any).classifyPath).toBe("function")
-            return
-          }
-
-          const result = (policy as any).classifyPath(targetPath)
-          expect(result.boundary).toBe("outside")
-          expect(result.confidence).toBe("high")
-          expect(typeof result.reason).toBe("string")
-
-          const insidePath = path.join(ws.path, "src", "lib.ts")
-          const insideResult = (policy as any).classifyPath(insidePath)
-          expect(insideResult.boundary).toBe("inside")
-        })(),
+    await using tmp = await tmpdir()
+    const originalCheckout = tmp.path
+    const worktreePath = path.join(originalCheckout, "..", "worktree-classify")
+    const policy = WorkspacePolicy.create({
+      activeRoot: Filesystem.sanitizePath(worktreePath),
+      workspaceType: "git_worktree",
+      scopeID: "test-scope",
+      originalCheckout,
     })
+
+    const targetPath = path.join(originalCheckout, "src", "index.ts")
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    await fs.writeFile(targetPath, "content")
+
+    const result = policy.classifyPath(targetPath)
+    expect(result.boundary).toBe("outside")
+    expect(result.confidence).toBe("high")
+    expect(typeof result.reason).toBe("string")
+
+    const insidePath = path.join(worktreePath, "src", "lib.ts")
+    const insideResult = policy.classifyPath(insidePath)
+    expect(insideResult.boundary).toBe("inside")
   })
 
   test("classifyPath for worktree symlink targeting original checkout returns outside", async () => {

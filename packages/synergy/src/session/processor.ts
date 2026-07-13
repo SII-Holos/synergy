@@ -22,6 +22,7 @@ import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
 import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
@@ -110,21 +111,23 @@ export namespace SessionProcessor {
     )
   }
 
-  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+  function streamToolDiagnostic(toolName: string, error: unknown): ToolDiagnostic {
     const rawMessage = error instanceof Error ? error.message : String(error)
     const errorName = error instanceof Error ? error.name : undefined
-    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool/i.test(rawMessage)
-    const diagnostic = {
+    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool|no.?such.?tool/i.test(
+      `${errorName ?? ""} ${rawMessage}`,
+    )
+    return {
       code: unavailable ? "unknown_tool" : "invalid_arguments",
-      toolName: part.tool,
+      toolName,
       message: unavailable
         ? [
-            `The model tried to call unavailable tool "${part.tool}".`,
+            `The model tried to call unavailable tool "${toolName}".`,
             "This tool is not available in the current session, mode, or permission context. Do not retry the same hidden tool.",
             rawMessage,
           ].join("\n")
         : [
-            `The "${part.tool}" tool call could not be accepted.`,
+            `The "${toolName}" tool call could not be accepted.`,
             "Rewrite the tool input so it satisfies the current schema, or choose another available tool.",
             rawMessage,
           ].join("\n"),
@@ -133,8 +136,11 @@ export namespace SessionProcessor {
         errorName,
         rawMessage,
       },
-    } satisfies ToolDiagnostic
+    }
+  }
 
+  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+    const diagnostic = streamToolDiagnostic(part.tool, error)
     return {
       status: "error",
       input:
@@ -1014,8 +1020,24 @@ export namespace SessionProcessor {
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
                       const match = toolcalls[value.toolCallId]
+                      const slot = executions.get(value.toolCallId)
+                      const rejected =
+                        value.error instanceof PermissionNext.RejectedError ||
+                        value.error instanceof Question.RejectedError
+                      if (!slot && !rejected && !settledToolCalls.has(value.toolCallId)) {
+                        const diagnostic = streamToolDiagnostic(value.toolName, value.error)
+                        ObservabilityToolFailures.record({
+                          tool: value.toolName,
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          callID: value.toolCallId,
+                          phase: "llm.tool_call",
+                          error: value.error,
+                          errorClass: diagnostic.code,
+                          owner: "llm",
+                        })
+                      }
                       if (match && match.state.status === "running") {
-                        const slot = executions.get(value.toolCallId)
                         if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
                         const settlement = settleTrackedExecution(value.toolCallId)
                         if (settlement) {
@@ -1025,12 +1047,7 @@ export namespace SessionProcessor {
                           delete toolcalls[value.toolCallId]
                         }
                       }
-                      if (
-                        value.error instanceof PermissionNext.RejectedError ||
-                        value.error instanceof Question.RejectedError
-                      ) {
-                        blocked = shouldBreak
-                      }
+                      if (rejected) blocked = shouldBreak
                       break
                     }
                     case "error":

@@ -25,6 +25,7 @@ import {
 } from "./chart-model"
 import { usePerformance } from "./use-performance"
 import { runtimeSupportItems } from "./runtime-support"
+import { toolFailureCategories, type ToolFailureItem } from "./tool-failure-model"
 import type {
   BrowserMetricSample,
   PerformanceIssue,
@@ -236,6 +237,8 @@ export function PerformanceDashboard() {
           onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
         />
       </div>
+
+      <ToolFailures items={summary()?.top.toolFailures ?? []} />
 
       <TopRankings
         summary={summary()}
@@ -527,6 +530,42 @@ function IssueList(props: { issues: PerformanceIssue[]; onTrace: (issue: Perform
                 <div class="performance-card-soft rounded-lg p-3">{content}</div>
               )
             }}
+          </For>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+function ToolFailures(props: { items: ToolFailureItem[] }) {
+  return (
+    <div class="performance-card rounded-xl p-4">
+      <div class="mb-3 flex items-center gap-2">
+        <Icon name={getSemanticIcon("performance.tools")} size="small" class="text-icon-weak-base" />
+        <div>
+          <h3 class="text-14-semibold text-text-strong">Tool failures</h3>
+          <p class="mt-1 text-11-regular text-text-weak">
+            Failures, call volume, and error categories in the selected range
+          </p>
+        </div>
+      </div>
+      <Show when={props.items.length > 0} fallback={<EmptyState label="No tool failures in this range" />}>
+        <div class="flex flex-col gap-1.5">
+          <For each={props.items}>
+            {(item) => (
+              <div class="performance-card-soft flex items-start gap-3 rounded-lg px-3 py-2">
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-12-medium text-text-strong">{item.tool}</div>
+                  <div class="mt-0.5 truncate text-11-regular text-text-weaker">{toolFailureCategories(item)}</div>
+                </div>
+                <div class="shrink-0 text-right tabular-nums">
+                  <div class="text-11-medium text-text-weak">
+                    {item.errorCount} failed · {formatChartPercent(item.errorRate * 100)}
+                  </div>
+                  <div class="mt-0.5 text-11-regular text-text-weaker">{item.callCount} calls</div>
+                </div>
+              </div>
+            )}
           </For>
         </div>
       </Show>

@@ -9,6 +9,7 @@ import {
   type ChartDatasetSpec,
 } from "./chart-model"
 import { runtimeSupportItems } from "./runtime-support"
+import { toolFailureCategories } from "./tool-failure-model"
 import type { PerformanceSummary, PerformanceTimeline } from "./types"
 
 function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSummary {
@@ -52,6 +53,7 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
       slowRoutes: [],
       slowSessions: [],
       slowTools: [],
+      toolFailures: [],
       slowProviders: [],
       slowStorage: [],
       slowLibrary: [],
@@ -214,6 +216,29 @@ describe("performance chart model", () => {
       "Summary is partial because the metric volume exceeded the dashboard cap.",
     )
     expect(summaryQualityMessage(baseSummary)).toBeUndefined()
+  })
+})
+
+describe("performance dashboard tool failures", () => {
+  test("formats ranked error categories without exposing error messages", () => {
+    expect(
+      toolFailureCategories({
+        tool: "websearch",
+        callCount: 4,
+        errorCount: 2,
+        errorRate: 0.5,
+        categories: [
+          { errorClass: "TimeoutError", count: 2 },
+          { errorClass: "PolicyDenied", count: 1 },
+        ],
+      }),
+    ).toBe("TimeoutError ×2 · PolicyDenied ×1")
+  })
+
+  test("reports a quiet fallback when no error category was captured", () => {
+    expect(toolFailureCategories({ tool: "bash", callCount: 0, errorCount: 1, errorRate: 1, categories: [] })).toBe(
+      "No error category reported",
+    )
   })
 })
 
