@@ -83,6 +83,22 @@ Models can have variants (e.g., different reasoning effort levels). Variants are
 }
 ```
 
+## Role variants
+
+Use `role_variant` in `10-models.jsonc` to select a default variant for each model role. Valid role keys are `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, and `creative`; `default` applies to agents without a `modelRole`. Variant names are model-specific, so the model resolved for that role must expose the configured variant.
+
+```jsonc
+{
+  "role_variant": {
+    "default": "medium",
+    "thinking": "high",
+    "creative": "low"
+  }
+}
+```
+
+Variant precedence is: per-request selection → agent `defaultVariant` → `role_variant` for the agent's `modelRole` (or `default`). If the resolved model does not expose the selected variant, Synergy logs a warning and runs without that variant.
+
 ## How each model role affects your experience
 
 | Role | What changes when you set it |

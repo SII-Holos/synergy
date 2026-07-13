@@ -3421,6 +3421,7 @@ export type Worktree = {
   managed?: boolean
   stale?: boolean
   dirty?: boolean
+  diskBytes?: number
   owner?:
     | {
         type: "session"
@@ -3718,6 +3719,11 @@ export type Session = {
 }
 
 export type WorktreeEnterInput = {
+  target: string
+  force?: boolean
+}
+
+export type WorktreeRemoveInput = {
   target: string
   force?: boolean
 }
@@ -8950,6 +8956,38 @@ export type WorktreeLeaveResponses = {
 }
 
 export type WorktreeLeaveResponse = WorktreeLeaveResponses[keyof WorktreeLeaveResponses]
+
+export type WorktreeRemoveData = {
+  body?: WorktreeRemoveInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/remove"
+}
+
+export type WorktreeRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeRemoveError = WorktreeRemoveErrors[keyof WorktreeRemoveErrors]
+
+export type WorktreeRemoveResponses = {
+  /**
+   * Worktree removed
+   */
+  200: Worktree
+}
+
+export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
 export type VcsGetData = {
   body?: never

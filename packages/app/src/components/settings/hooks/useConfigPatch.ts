@@ -156,12 +156,15 @@ function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<strin
   const sandbox: Record<string, unknown> = {}
   const sandboxEnabled = safety.sandboxEnabled === "true"
   const currentEnabled = cfg.sandbox?.enabled !== false
-  if (sandboxEnabled !== currentEnabled || cfg.sandbox?.enabled !== undefined) sandbox.enabled = sandboxEnabled
+  if (sandboxEnabled !== currentEnabled) sandbox.enabled = sandboxEnabled
   if (safety.sandboxFallbackPolicy !== (cfg.sandbox?.fallbackPolicy ?? UI_DEFAULTS.sandboxFallbackPolicy)) {
     sandbox.fallbackPolicy = safety.sandboxFallbackPolicy
   }
   if (Object.keys(sandbox).length) {
-    patch.sandbox = { ...(cfg.sandbox ?? {}), ...sandbox }
+    const nextSandbox = { ...(cfg.sandbox ?? {}), ...sandbox }
+    if (JSON.stringify(nextSandbox) !== JSON.stringify(cfg.sandbox ?? {})) {
+      patch.sandbox = nextSandbox
+    }
   }
 }
 
