@@ -28,7 +28,7 @@ cp -R ~/.synergy/config "$DEV_HOME/.synergy/config"
 ## Choose the Smallest Mode
 
 ```bash
-SYNERGY_HOME="$DEV_HOME" bun dev server --server-port 4097
+SYNERGY_HOME="$DEV_HOME" bun dev server --port 4097
 SYNERGY_HOME="$DEV_HOME" bun dev app --attach http://127.0.0.1:4097 --port 3001
 SYNERGY_HOME="$DEV_HOME" bun dev web --server-port 4097 --app-port 3001
 SYNERGY_HOME="$DEV_HOME" bun dev desktop --server-port 4097 --app-port 3001
