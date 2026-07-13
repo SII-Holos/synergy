@@ -110,6 +110,7 @@ export type PluginCortexTaskAfterInput = {
 
 export interface TaskHostService {
   start(input: PluginTaskStartInput): Promise<PluginTaskHandle>
+  current(): Promise<PluginTaskSnapshot | undefined>
   get(handle: PluginTaskHandle): Promise<PluginTaskSnapshot>
   cancel(handle: PluginTaskHandle): Promise<void>
 }

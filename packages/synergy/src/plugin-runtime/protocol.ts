@@ -23,6 +23,7 @@ export type PluginHostServiceMethod =
   | "session.get"
   | "session.abort"
   | "task.start"
+  | "task.current"
   | "task.get"
   | "task.cancel"
   | "workspace.read"

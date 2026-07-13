@@ -56,6 +56,7 @@ export function createPluginInvocationContext(input: {
     task: capabilities.has("task.delegate")
       ? {
           start: (value) => input.invokeHost("task.start", value) as never,
+          current: () => input.invokeHost("task.current", {}) as never,
           get: (value) => input.invokeHost("task.get", value) as never,
           cancel: (value) => input.invokeHost("task.cancel", value) as Promise<void>,
         }

@@ -12,12 +12,19 @@ import { isPathContained } from "../util/path-contain"
 import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
-import { cancelPluginTask, getPluginTask, invokePluginTool, startPluginTask } from "./host-services"
+import {
+  cancelPluginTask,
+  getCurrentPluginTask,
+  getPluginTask,
+  invokePluginTool,
+  startPluginTask,
+} from "./host-services"
 
 const capabilityByMethod = {
   "session.get": "session.read",
   "session.abort": "session.control",
   "task.start": "task.delegate",
+  "task.current": "task.delegate",
   "task.get": "task.delegate",
   "task.cancel": "task.delegate",
   "workspace.read": "workspace.read",
@@ -146,6 +153,14 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       if (input.method === "secrets.delete") return store.delete(key)
       if (typeof value.value !== "string") throw new Error("secrets.set requires string value")
       return store.set(key, value.value)
+    }
+    if (input.method === "task.current") {
+      return getCurrentPluginTask({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        sessionId: input.invocation.sessionId,
+      })
     }
     if (input.method === "task.get") {
       return getPluginTask({

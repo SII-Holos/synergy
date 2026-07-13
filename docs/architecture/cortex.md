@@ -22,6 +22,8 @@ The child session is the durable record. The in-memory task entry coordinates li
 
 Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
+The Plugin Task Host can resolve the task that owns the current invocation directly from this durable child-Session metadata. Ownership is committed before child execution begins, so an internal plugin tool can bind through the correlation ID even before the original `start()` call has returned to the plugin.
+
 ## Launch and Concurrency
 
 Synergy has one Cortex launch mechanism and two authorization entry paths:

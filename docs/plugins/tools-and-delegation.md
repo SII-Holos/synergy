@@ -36,17 +36,18 @@ Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and val
 
 ## Delegated Tasks
 
-`context.task` exists only when `task.delegate` is approved. It exposes three finite Host calls:
+`context.task` exists only when `task.delegate` is approved. It exposes four finite Host calls:
 
 ```ts
 const handle = await context.task.start(input)
+const owner = await context.task.current()
 const snapshot = await context.task.get(handle)
 await context.task.cancel(handle)
 ```
 
 `start()` returns the task and child Session identity immediately. It does not wait for agent completion. The input requires a plugin-owned `correlationId`; Cortex persists it with owner metadata containing plugin ID, generation, and Scope ID.
 
-`get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
+`current()` resolves the Task that owns the invocation's current child Session. It returns the same durable snapshot only when plugin ID, generation, and Scope all match; outside an owned plugin Task it returns `undefined`. This lets an internal plugin tool bind domain work from the Task's persisted `correlationId` without waiting for a post-launch Session attachment. `get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
 
 For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. Synergy invokes this hook only for the plugin that owns the Task. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
 

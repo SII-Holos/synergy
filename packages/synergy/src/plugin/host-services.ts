@@ -128,6 +128,24 @@ export async function getPluginTask(input: {
   return pluginTaskSnapshotFromSession(input.handle, delegated)!
 }
 
+export async function getCurrentPluginTask(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  sessionId?: string
+}): Promise<PluginTaskSnapshot | undefined> {
+  if (!input.sessionId) return undefined
+  const session = await Session.get(input.sessionId)
+  const delegated = session?.cortex
+  if (!delegated?.owner || !samePluginTaskOwner(delegated.owner, input)) return undefined
+  return getPluginTask({
+    pluginId: input.pluginId,
+    pluginGeneration: input.pluginGeneration,
+    scopeId: input.scopeId,
+    handle: { taskId: delegated.taskID, sessionId: input.sessionId },
+  })
+}
+
 export async function cancelPluginTask(input: {
   pluginId: string
   pluginGeneration: string
@@ -145,14 +163,20 @@ function assertPluginTaskOwner(
   pluginGeneration: string,
   scopeId: string,
 ): void {
-  if (
-    !owner ||
-    owner.pluginId !== pluginId ||
-    owner.pluginGeneration !== pluginGeneration ||
-    owner.scopeId !== scopeId
-  ) {
+  if (!owner || !samePluginTaskOwner(owner, { pluginId, pluginGeneration, scopeId })) {
     throw new Error("Plugin task does not belong to the invoking plugin generation and Scope")
   }
+}
+
+function samePluginTaskOwner(
+  owner: { pluginId: string; pluginGeneration: string; scopeId: string },
+  expected: { pluginId: string; pluginGeneration: string; scopeId: string },
+): boolean {
+  return (
+    owner.pluginId === expected.pluginId &&
+    owner.pluginGeneration === expected.pluginGeneration &&
+    owner.scopeId === expected.scopeId
+  )
 }
 
 export async function invokePluginTool(input: {
