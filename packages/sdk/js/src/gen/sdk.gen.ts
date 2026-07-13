@@ -3004,15 +3004,19 @@ export class Traces extends HeyApiClient {
 
 export class Issues extends HeyApiClient {
   /**
-   * List performance issues
+   * List filtered performance issues
    *
-   * List open or historical performance issues.
+   * List open or historical performance issues filtered by scope, tool, or last-seen time range.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       status?: PerfIssueStatus
       severity?: PerfIssueSeverity
       module?: PerfModule
+      scopeID?: string
+      tool?: string
+      since?: number
+      until?: number
       limit?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -3025,6 +3029,10 @@ export class Issues extends HeyApiClient {
             { in: "query", key: "status" },
             { in: "query", key: "severity" },
             { in: "query", key: "module" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "tool" },
+            { in: "query", key: "since" },
+            { in: "query", key: "until" },
             { in: "query", key: "limit" },
           ],
         },

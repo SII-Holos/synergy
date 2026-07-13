@@ -450,6 +450,19 @@ export type PerfRankedItem = {
   pid?: number
 }
 
+export type PerfToolFailureCategory = {
+  errorClass: string
+  count: number
+}
+
+export type PerfToolFailureItem = {
+  tool: string
+  callCount: number
+  errorCount: number
+  errorRate: number
+  categories: Array<PerfToolFailureCategory>
+}
+
 export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
 
 export type PerfIssueStatus = "open" | "resolved" | "suppressed"
@@ -566,6 +579,7 @@ export type PerfDashboardSummary = {
     slowRoutes: Array<PerfRankedItem>
     slowSessions: Array<PerfRankedItem>
     slowTools: Array<PerfRankedItem>
+    toolFailures: Array<PerfToolFailureItem>
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
     slowLibrary: Array<PerfRankedItem>
@@ -2097,6 +2111,14 @@ export type LearningConfig = {
    * LLM retry count for intent/script/reward generation (default: 3)
    */
   encoderRetries?: number
+  /**
+   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
+   */
+  encoderTimeoutMs?: number
+  /**
+   * Maximum characters collected from one encoder model stream before abort (default: 16000)
+   */
+  encoderMaxOutputChars?: number
   /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
@@ -7574,6 +7596,10 @@ export type PerformanceIssuesListData = {
     status?: PerfIssueStatus
     severity?: PerfIssueSeverity
     module?: PerfModule
+    scopeID?: string
+    tool?: string
+    since?: number
+    until?: number
     limit?: number
   }
   url: "/global/performance/issues"
