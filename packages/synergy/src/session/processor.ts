@@ -266,6 +266,7 @@ export namespace SessionProcessor {
           },
         })
       }
+      settledToolCalls.add(part.callID)
       await Observability.emit("tool.settle.end", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
@@ -328,6 +329,20 @@ export namespace SessionProcessor {
       }
     }
 
+    function shouldIgnoreSettledStreamEvent(callID: string, event: "tool-input-start" | "tool-call", tool: string) {
+      if (!settledToolCalls.has(callID)) return false
+      delete generatingAccum[callID]
+      log.warn("ignoring tool stream event after settlement", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID,
+        tool,
+        event,
+        snapshot: toolSettlementSnapshot(callID),
+      })
+      return true
+    }
+
     function settleTrackedExecution(toolCallId: string): Promise<void> | undefined {
       const existing = settlementPromises.get(toolCallId)
       if (existing) {
@@ -365,7 +380,6 @@ export namespace SessionProcessor {
 
       const settlement = (async () => {
         await settleToolPart(part, outcome)
-        settledToolCalls.add(toolCallId)
         executions.delete(toolCallId)
         delete toolcalls[toolCallId]
         log.info("tool.execution.settle.completed", {
@@ -580,6 +594,7 @@ export namespace SessionProcessor {
               },
             },
           })
+          settledToolCalls.add(part.callID)
           forgetToolCall(part.callID)
         }
       }
@@ -845,6 +860,7 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
+                      if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
@@ -920,6 +936,7 @@ export namespace SessionProcessor {
                         hadSlot: executions.has(value.toolCallId),
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
+                      if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
                       const match = toolcalls[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const part = await Session.updatePart({

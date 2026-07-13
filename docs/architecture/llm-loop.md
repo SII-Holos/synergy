@@ -130,6 +130,7 @@ Tool definitions are filtered for agent visibility and current workflow before p
 - tool input can move through generating, pending, and running states;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
+- settlement is terminal for that provider call ID, so late or replayed stream events cannot allocate a second tool part;
 - more than one tool execution can settle without losing original message-part order;
 - unresolved tools are completed with explicit abort or settlement errors;
 - repeated identical calls can trigger loop protection or permission review.
