@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import type { Worktree } from "@ericsanchezok/synergy-sdk/client"
-import { canDeleteWorktree, groupWorktreesByDirectory, worktreeLifecycleLabel } from "./worktrees-panel-model"
+import {
+  canDeleteWorktree,
+  gitProjectScopes,
+  groupWorktreesByDirectory,
+  loadWorktreesByDirectory,
+  worktreeLifecycleLabel,
+} from "./worktrees-panel-model"
 
 describe("worktrees panel model", () => {
   test("only managed non-main worktrees are deleteable", () => {
@@ -37,5 +43,39 @@ describe("worktrees panel model", () => {
       { scopeLabel: "Synergy", directory: "/repo", worktrees: items },
       { scopeLabel: "Other", directory: "/other", worktrees: [] },
     ])
+  })
+
+  test("selects only git project scopes", () => {
+    expect(
+      gitProjectScopes(
+        [
+          { type: "home", vcs: "git", worktree: "/home" },
+          { type: "project", vcs: "git", worktree: "/git" },
+          { type: "project", worktree: "/plain" },
+        ],
+        "/home",
+      ),
+    ).toEqual([{ type: "project", vcs: "git", worktree: "/git" }])
+  })
+
+  test("keeps successful scope results when another scope fails", async () => {
+    const item: Worktree = {
+      id: "wt_1",
+      name: "feature",
+      path: "/repo/.synergy/worktrees/feature",
+      scopeID: "scope_1",
+    }
+    const result = await loadWorktreesByDirectory(
+      [{ worktree: "/repo" }, { worktree: "/missing" }],
+      async (directory) => {
+        if (directory === "/missing") throw { data: { message: "Repository moved" } }
+        return [item]
+      },
+      1,
+    )
+
+    expect(result.worktrees.get("/repo")).toEqual([item])
+    expect(result.failures).toHaveLength(1)
+    expect(result.failures[0]?.directory).toBe("/missing")
   })
 })

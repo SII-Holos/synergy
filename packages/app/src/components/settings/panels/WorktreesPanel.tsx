@@ -9,9 +9,16 @@ import { deleteWorktreeConfirm } from "@/components/dialog/confirm-copy"
 import { formatBytes } from "@/components/library/shared"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { requestErrorMessage } from "@/utils/error"
 import { getScopeLabel } from "@/utils/scope"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { canDeleteWorktree, groupWorktreesByDirectory, worktreeLifecycleLabel } from "./worktrees-panel-model"
+import {
+  canDeleteWorktree,
+  gitProjectScopes,
+  groupWorktreesByDirectory,
+  loadWorktreesByDirectory,
+  worktreeLifecycleLabel,
+} from "./worktrees-panel-model"
 
 type GroupedWorktrees = { scopeLabel: string; directory: string; worktrees: Worktree[] }
 
@@ -19,24 +26,19 @@ function scopeLabel(directory: string, name?: string) {
   return getScopeLabel({ worktree: directory, name }, directory)
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string" && error) return error
-  return fallback
-}
-
 export function WorktreesPanel() {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const confirm = useConfirm()
   const [loading, setLoading] = createSignal(false)
+  const [failureCount, setFailureCount] = createSignal(0)
   const [busyID, setBusyID] = createSignal<string | undefined>()
   const [allWorktrees, setAllWorktrees] = createSignal<Map<string, Worktree[]>>(new Map())
   const [refreshKey, setRefreshKey] = createSignal(0)
 
   const projectScopes = createMemo(() => {
     const home = globalSync.data.paths?.home
-    return globalSync.data.scope.filter((scope) => scope.worktree !== home)
+    return gitProjectScopes(globalSync.data.scope, home)
   })
 
   const grouped = createMemo<GroupedWorktrees[]>(() =>
@@ -45,29 +47,39 @@ export function WorktreesPanel() {
 
   const totalCount = createMemo(() => grouped().reduce((sum, group) => sum + group.worktrees.length, 0))
 
-  async function load() {
+  async function load(scopes = projectScopes()) {
     if (!globalSDK.connected()) return
     setLoading(true)
     try {
-      const scopes = projectScopes()
-      const results = await Promise.all(
-        scopes.map(async (scope) => {
-          const result = await globalSDK.client.worktree.list({ directory: scope.worktree })
-          return {
-            directory: scope.worktree,
-            items: Array.isArray(result.data) ? result.data : [],
-          }
-        }),
+      const result = await loadWorktreesByDirectory(
+        scopes,
+        async (directory) => {
+          const response = await globalSDK.client.worktree.list({ directory })
+          return Array.isArray(response.data) ? response.data : []
+        },
+        3,
       )
-      const next = new Map<string, Worktree[]>()
-      for (const { directory, items } of results) next.set(directory, items)
-      setAllWorktrees(next)
+      setAllWorktrees(result.worktrees)
+      setFailureCount(result.failures.length)
+      if (result.failures.length > 0) {
+        const first = result.failures[0]!
+        showToast({
+          type: "error",
+          title:
+            result.failures.length === scopes.length ? "Worktrees failed to load" : "Some worktrees failed to load",
+          description: requestErrorMessage(
+            first.error,
+            `${result.failures.length} project scopes could not be loaded.`,
+          ),
+        })
+      }
     } catch (error) {
       setAllWorktrees(new Map())
+      setFailureCount(scopes.length)
       showToast({
         type: "error",
         title: "Worktrees failed to load",
-        description: errorMessage(error, "Try again."),
+        description: requestErrorMessage(error, "Try again."),
       })
     } finally {
       setLoading(false)
@@ -76,8 +88,9 @@ export function WorktreesPanel() {
 
   createEffect(() => {
     refreshKey()
+    const scopes = projectScopes()
     if (!globalSDK.connected()) return
-    void untrack(() => load())
+    void untrack(() => load(scopes))
   })
 
   async function removeWorktree(item: Worktree, directory: string, force: boolean) {
@@ -97,7 +110,7 @@ export function WorktreesPanel() {
       showToast({
         type: "error",
         title: "Failed to remove worktree",
-        description: errorMessage(error, "Try again."),
+        description: requestErrorMessage(error, "Try again."),
       })
     } finally {
       setBusyID(undefined)
@@ -125,7 +138,7 @@ export function WorktreesPanel() {
       >
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
-            <span class="text-text-weak text-12-medium">
+            <span class="settings-row-description">
               {totalCount()} worktree{totalCount() === 1 ? "" : "s"} across {projectScopes().length} project
               {projectScopes().length === 1 ? "" : "s"}
             </span>
@@ -137,21 +150,25 @@ export function WorktreesPanel() {
               disabled={loading()}
               onClick={() => void load()}
             >
-              Refresh
+              {loading() ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
 
           <SettingsEntityList
             isEmpty={!loading() && totalCount() === 0}
             emptyIcon={getSemanticIcon("workspace.worktree")}
-            emptyTitle="No worktrees found"
-            emptyDescription="Managed worktrees will appear here once created."
+            emptyTitle={failureCount() > 0 ? "Worktrees unavailable" : "No worktrees found"}
+            emptyDescription={
+              failureCount() > 0
+                ? "One or more project repositories could not be read. Try refreshing after checking their paths."
+                : "Managed worktrees will appear here once created."
+            }
           >
             <For each={grouped()}>
               {(group) => (
                 <Show when={group.worktrees.length > 0}>
                   <div class="flex flex-col gap-2">
-                    <div class="text-11-medium uppercase tracking-wider text-text-weaker px-1">{group.scopeLabel}</div>
+                    <div class="settings-path-meta uppercase tracking-wider px-1">{group.scopeLabel}</div>
                     <div class="flex flex-col overflow-hidden rounded-xl border border-border-weaker-base bg-surface-base/50">
                       <For each={group.worktrees}>
                         {(item) => {
@@ -166,7 +183,7 @@ export function WorktreesPanel() {
                                 </div>
                                 <div class="min-w-0">
                                   <div class="settings-row-title truncate">{item.name}</div>
-                                  <div class="flex items-center gap-1.5 mt-0.5 text-text-weak text-12-medium">
+                                  <div class="settings-path-meta flex items-center gap-1.5 mt-0.5">
                                     <Show when={item.branch}>
                                       <span class="ds-inline-badge ds-inline-badge-muted">{item.branch}</span>
                                     </Show>
@@ -188,7 +205,7 @@ export function WorktreesPanel() {
                                       <span class="ds-inline-badge ds-inline-badge-muted text-text-weaker">stale</span>
                                     </Show>
                                   </div>
-                                  <div class="mt-1 text-12-medium text-text-weaker flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <div class="settings-path-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                     <span class="truncate" title={item.path}>
                                       {item.path}
                                     </span>

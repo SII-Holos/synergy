@@ -3712,7 +3712,6 @@ export type WorktreeEnterInput = {
 export type WorktreeRemoveInput = {
   target: string
   force?: boolean
-  sessionID?: string
 }
 
 export type VcsInfo = {

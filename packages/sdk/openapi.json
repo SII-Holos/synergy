@@ -26562,9 +26562,6 @@
           "force": {
             "default": false,
             "type": "boolean"
-          },
-          "sessionID": {
-            "type": "string"
           }
         },
         "required": ["target"]

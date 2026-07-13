@@ -478,7 +478,77 @@ describe("git worktree integration", () => {
     })
   })
 
-  test("list includes dirty for managed worktrees", async () => {
+  test("remove rejects while session execution is using the worktree before it becomes busy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create({ title: "Reserved Remove" })
+          const created = await Worktree.create({
+            name: "reserved-remove",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+          let finishExecution!: () => void
+          const finish = new Promise<void>((resolve) => {
+            finishExecution = resolve
+          })
+          let executionStarted!: () => void
+          const started = new Promise<void>((resolve) => {
+            executionStarted = resolve
+          })
+          const execution = SessionManager.run(session.id, async () => {
+            executionStarted()
+            await finish
+          })
+
+          await started
+          try {
+            await expect(Worktree.remove({ target: created.id, force: true })).rejects.toThrow("using worktree")
+          } finally {
+            finishExecution()
+            await execution.catch(() => undefined)
+            const remaining = (await Worktree.list()).find((item) => item.id === created.id)
+            if (remaining) await Worktree.remove({ target: created.id, force: true })
+            await Session.remove(session.id)
+          }
+        })(),
+    })
+  })
+
+  test("concurrent enters retain every managed worktree binding", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session1 = await Session.create({ title: "Concurrent Enter 1" })
+          const session2 = await Session.create({ title: "Concurrent Enter 2" })
+          const created = await Worktree.create({ name: "concurrent-enter", bind: false, baseRef: "current" })
+
+          await Promise.all([
+            Worktree.enter({ sessionID: session1.id, target: created.id }),
+            Worktree.enter({ sessionID: session2.id, target: created.id }),
+          ])
+
+          const listed = await Worktree.list()
+          const bindings = listed.find((item) => item.id === created.id)?.bindings ?? []
+          expect(new Set(bindings)).toEqual(new Set([session1.id, session2.id]))
+
+          await Worktree.remove({ target: created.id, force: true })
+          await Session.remove(session1.id)
+          await Session.remove(session2.id)
+        })(),
+    })
+  })
+
+  test("list includes dirty state and disk usage for managed worktrees", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -496,8 +566,36 @@ describe("git worktree integration", () => {
           const managed = listed.find((item) => item.id === created.id)
           expect(managed).toBeDefined()
           expect(managed!.dirty).toBe(false)
+          expect(managed!.diskBytes).toBeNumber()
+
+          const before = managed!.diskBytes!
+          await fs.writeFile(path.join(created.path, "disk-usage.bin"), Buffer.alloc(4096))
+          const updated = (await Worktree.list()).find((item) => item.id === created.id)
+          expect(updated?.dirty).toBe(true)
+          expect(updated?.diskBytes).toBeGreaterThanOrEqual(before + 4096)
 
           await Worktree.remove({ target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("remove cleans a stale managed registry entry without touching the missing directory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "stale-remove", bind: false, baseRef: "current" })
+          await $`git worktree remove --force ${created.path}`.quiet().cwd(scope.worktree)
+
+          const stale = (await Worktree.list()).find((item) => item.id === created.id)
+          expect(stale?.stale).toBe(true)
+          expect(stale?.diskBytes).toBeUndefined()
+
+          await Worktree.remove({ target: created.id })
+          expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(false)
         })(),
     })
   })
@@ -526,7 +624,7 @@ describe("git worktree integration", () => {
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ target: created.id, force: true, sessionID: session1.id }),
+              body: JSON.stringify({ target: created.id, force: true }),
             },
           )
 
@@ -572,7 +670,7 @@ describe("git worktree integration", () => {
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ target: created.id, force: true, sessionID: session.id }),
+                body: JSON.stringify({ target: created.id, force: true }),
               },
             )
             expect(response.status).toBe(400)
