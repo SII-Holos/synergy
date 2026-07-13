@@ -21,6 +21,10 @@ Worktrees have explicit owners such as a session, Cortex task, Blueprint workflo
 
 The active worktree is the default write and execution boundary. Ordinary files in the original checkout can be read when they are not sensitive, but autonomous work cannot modify or execute from the original checkout. Cleanup removes resources only when their recorded owner permits it; a worktree is not inferred to be disposable merely because one session stopped using it.
 
+Worktree use and removal share one in-process lifecycle gate. Session execution reserves the worktree before project services start, while create, enter, and leave reserve it around binding changes. Removal first excludes new users, refreshes the binding registry, and refuses any active session use; only then can it migrate idle bound sessions back to the main checkout and remove the directory. Binding registry updates are serialized per worktree so concurrent enters and leaves cannot overwrite one another. A stale managed record whose Git worktree and directory are already gone is cleaned from the registry after its idle bindings are migrated, without attempting filesystem status or deletion.
+
+The Settings worktree browser queries only Git project Scopes and keeps successful project results when another repository is unavailable. List enrichment is concurrency-bounded. Dirty state is reported for live Git worktrees; managed worktrees also report checkout file bytes, excluding shared Git metadata. Main and external worktrees remain visible but read-only in this surface.
+
 ## Web Workspace File Service
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, file/content/symbol search, and VCS status. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
@@ -96,6 +100,7 @@ Message rollback changes the effective transcript through history events. It doe
 ## Invariants
 
 - Scope owns project context; workspace owns the execution directory.
+- Worktree removal excludes new execution and binding use before it validates and migrates current bindings.
 - Web file routes never escape the active workspace, including through symlinks.
 - File workbench state and caches have one frontend owner and explicit concurrency/size bounds.
 - Tool reads and writes still cross execution-policy and sensitive-path checks.

@@ -37,6 +37,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "import",
   "config-files",
   "archived-sessions",
+  "worktrees",
 ] as const
 
 export type BuiltinSettingsId = (typeof BUILTIN_SETTINGS_IDS)[number]
@@ -290,6 +291,15 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "session.archive",
     "Browse and permanently delete archived sessions.",
     ["archive", "archived", "session", "delete", "history", "project"],
+  ),
+  section(
+    "worktrees",
+    "Worktrees",
+    "System",
+    40,
+    "workspace.worktree",
+    "Browse and remove git worktrees across project scopes.",
+    ["worktree", "git", "checkout", "branch", "delete", "project"],
   ),
 ]
 

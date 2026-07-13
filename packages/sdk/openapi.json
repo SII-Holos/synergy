@@ -3951,6 +3951,76 @@
         ]
       }
     },
+    "/experimental/worktree/remove": {
+      "post": {
+        "operationId": "worktree.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove worktree",
+        "description": "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+        "responses": {
+          "200": {
+            "description": "Worktree removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Worktree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeRemoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/vcs": {
       "get": {
         "operationId": "vcs.get",
@@ -21163,8 +21233,7 @@
             "type": "string"
           }
         },
-        "required": ["id"],
-        "additionalProperties": false
+        "required": ["id"]
       },
       "ChannelInfo": {
         "type": "object",
@@ -23075,6 +23144,18 @@
             "description": "LLM retry count for intent/script/reward generation (default: 3)",
             "type": "integer",
             "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "encoderTimeoutMs": {
+            "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "encoderMaxOutputChars": {
+            "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+            "type": "integer",
+            "minimum": 1,
             "maximum": 9007199254740991
           },
           "digestToolOutputBudget": {
@@ -25523,6 +25604,9 @@
           "dirty": {
             "type": "boolean"
           },
+          "diskBytes": {
+            "type": "number"
+          },
           "owner": {
             "anyOf": [
               {
@@ -25665,8 +25749,7 @@
               "color": {
                 "type": "string"
               }
-            },
-            "additionalProperties": false
+            }
           },
           "time": {
             "type": "object",
@@ -25681,8 +25764,7 @@
                 "type": "number"
               }
             },
-            "required": ["created", "updated"],
-            "additionalProperties": false
+            "required": ["created", "updated"]
           },
           "sandboxes": {
             "type": "array",
@@ -25691,8 +25773,7 @@
             }
           }
         },
-        "required": ["id"],
-        "additionalProperties": false
+        "required": ["id"]
       },
       "FileDiff": {
         "type": "object",
@@ -26458,6 +26539,20 @@
         "required": ["id", "scope", "title", "version", "time"]
       },
       "WorktreeEnterInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["target"]
+      },
+      "WorktreeRemoveInput": {
         "type": "object",
         "properties": {
           "target": {
