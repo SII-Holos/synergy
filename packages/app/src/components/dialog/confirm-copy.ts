@@ -211,3 +211,22 @@ export function reencodeExperienceConfirm(kind: "intent" | "script", count: numb
     tone: "warning",
   }
 }
+
+export function deleteWorktreeConfirm(input: { name?: string; dirty?: boolean; bindings?: string[] }): ConfirmCopy {
+  const label = quoted(input.name, "Untitled worktree")
+  const bindings = input.bindings ?? []
+  const bindingText =
+    bindings.length === 0
+      ? "No sessions are currently bound."
+      : bindings.length === 1
+        ? `Bound session ${bindings[0]} will be moved back to the main checkout first.`
+        : `${bindings.length} bound sessions (${bindings.join(", ")}) will be moved back to the main checkout first.`
+  const dirtyText = input.dirty ? " This worktree has uncommitted changes; force remove will discard them." : ""
+  return {
+    title: input.dirty ? "Force-remove dirty worktree?" : "Delete worktree?",
+    description: `Delete ${label}? ${bindingText}${dirtyText} The worktree directory on disk will be removed. This cannot be undone.`,
+    confirmLabel: input.dirty ? "Force remove" : "Delete",
+    cancelLabel: "Cancel",
+    tone: "danger",
+  }
+}

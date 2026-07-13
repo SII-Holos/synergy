@@ -323,27 +323,31 @@ export namespace SessionManager {
         scopeID: scope.id,
       }
       const { ScopeRuntime } = await import("@/scope/runtime")
-      return await ScopeRuntime.provide({
-        scope,
-        workspace,
-        ensure: scope.type === "project",
-        fn: async () => {
-          assertExecutionContext(session, "session manager run")
-          const workspace = (session as Info).workspace
-          if (workspace?.type !== "git_worktree") {
-            activate(lease)
-            return fn(lease)
-          }
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.lock(workspace.path)
-          try {
-            activate(lease)
-            return await fn(lease)
-          } finally {
-            await Worktree.unlock(workspace.path)
-          }
-        },
-      })
+      const runWithScope = () =>
+        ScopeRuntime.provide({
+          scope,
+          workspace,
+          ensure: scope.type === "project",
+          fn: async () => {
+            assertExecutionContext(session, "session manager run")
+            const workspace = (session as Info).workspace
+            if (workspace?.type !== "git_worktree") {
+              activate(lease)
+              return fn(lease)
+            }
+            const { Worktree } = await import("../project/worktree")
+            await Worktree.lock(workspace.path)
+            try {
+              activate(lease)
+              return await fn(lease)
+            } finally {
+              await Worktree.unlock(workspace.path)
+            }
+          },
+        })
+      if (workspace.type !== "git_worktree") return await runWithScope()
+      const { Worktree } = await import("../project/worktree")
+      return await Worktree.withUse(workspace.path, session.id, runWithScope)
     } finally {
       await release(lease)
       const runtime = getRuntime(sessionID)

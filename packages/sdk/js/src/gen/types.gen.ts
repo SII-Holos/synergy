@@ -2098,6 +2098,14 @@ export type LearningConfig = {
    */
   encoderRetries?: number
   /**
+   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
+   */
+  encoderTimeoutMs?: number
+  /**
+   * Maximum characters collected from one encoder model stream before abort (default: 16000)
+   */
+  encoderMaxOutputChars?: number
+  /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
   digestToolOutputBudget?: number
@@ -3399,6 +3407,7 @@ export type Worktree = {
   managed?: boolean
   stale?: boolean
   dirty?: boolean
+  diskBytes?: number
   owner?:
     | {
         type: "session"
@@ -3696,6 +3705,11 @@ export type Session = {
 }
 
 export type WorktreeEnterInput = {
+  target: string
+  force?: boolean
+}
+
+export type WorktreeRemoveInput = {
   target: string
   force?: boolean
 }
@@ -8924,6 +8938,38 @@ export type WorktreeLeaveResponses = {
 }
 
 export type WorktreeLeaveResponse = WorktreeLeaveResponses[keyof WorktreeLeaveResponses]
+
+export type WorktreeRemoveData = {
+  body?: WorktreeRemoveInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/remove"
+}
+
+export type WorktreeRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeRemoveError = WorktreeRemoveErrors[keyof WorktreeRemoveErrors]
+
+export type WorktreeRemoveResponses = {
+  /**
+   * Worktree removed
+   */
+  200: Worktree
+}
+
+export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
 export type VcsGetData = {
   body?: never

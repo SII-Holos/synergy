@@ -1094,6 +1094,31 @@ export namespace Server {
             return c.json(session)
           },
         )
+        .post(
+          "/experimental/worktree/remove",
+          describeRoute({
+            summary: "Remove worktree",
+            description: "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+            operationId: "worktree.remove",
+            responses: {
+              200: {
+                description: "Worktree removed",
+                content: {
+                  "application/json": {
+                    schema: resolver(Worktree.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator("json", Worktree.RemoveInput),
+          async (c) => {
+            const body = c.req.valid("json")
+            const worktree = await Worktree.remove(body)
+            return c.json(worktree)
+          },
+        )
         .get(
           "/vcs",
           describeRoute({
