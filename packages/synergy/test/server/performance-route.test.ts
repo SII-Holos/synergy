@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "fs"
 import { tmpdir } from "os"
 import path from "path"
 import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilitySpans } from "../../src/observability/spans"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityStore } from "../../src/observability/store"
@@ -41,6 +42,103 @@ describe("performance routes", () => {
     expect(body.health.status).toBeDefined()
     expect(body.backend.requestCount).toBeGreaterThanOrEqual(1)
     expect(body.top.slowRoutes).toBeArray()
+  })
+
+  test("summary ranks tool failures with rates and error categories", async () => {
+    for (let index = 0; index < 4; index++) {
+      ObservabilityMetrics.record({
+        name: "tool.execution.count",
+        value: 1,
+        unit: "count",
+        module: "tool",
+        tool: "websearch",
+      })
+    }
+    for (let index = 0; index < 2; index++) {
+      ObservabilityMetrics.record({
+        name: "tool.execution.error",
+        value: 1,
+        unit: "count",
+        module: "tool",
+        tool: "websearch",
+        labels: { errorName: "TimeoutError" },
+      })
+    }
+    ObservabilityMetrics.record({
+      name: "tool.execution.count",
+      value: 1,
+      unit: "count",
+      module: "tool",
+      tool: "bash",
+    })
+    ObservabilityMetrics.record({
+      name: "tool.execution.error",
+      value: 1,
+      unit: "count",
+      module: "tool",
+      tool: "bash",
+      labels: { errorName: "PermissionDenied" },
+    })
+    ObservabilityStore.flush()
+
+    const response = await Server.App().request("/global/performance/summary?windowMs=60000")
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.top.toolFailures).toEqual([
+      {
+        tool: "websearch",
+        callCount: 4,
+        errorCount: 2,
+        errorRate: 0.5,
+        categories: [{ errorClass: "TimeoutError", count: 2 }],
+      },
+      {
+        tool: "bash",
+        callCount: 1,
+        errorCount: 1,
+        errorRate: 1,
+        categories: [{ errorClass: "PermissionDenied", count: 1 }],
+      },
+    ])
+  })
+
+  test("issues filter tool failures by tool scope and last-seen time", async () => {
+    const now = Date.now()
+    ObservabilityIssues.raise({
+      code: "PERF_TOOL_EXECUTION_FAILED",
+      severity: "error",
+      module: "tool",
+      title: "Tool execution failed",
+      message: "websearch failed during execute",
+      scopeID: "scope-a",
+      fingerprint: "tool-failure:scope-a:websearch:TimeoutError:execute:builtin",
+      evidence: { tool: "websearch", errorClass: "TimeoutError" },
+    })
+    ObservabilityIssues.raise({
+      code: "PERF_TOOL_EXECUTION_FAILED",
+      severity: "error",
+      module: "tool",
+      title: "Tool execution failed",
+      message: "bash failed during execute",
+      scopeID: "scope-b",
+      fingerprint: "tool-failure:scope-b:bash:PermissionDenied:execute:builtin",
+      evidence: { tool: "bash", errorClass: "PermissionDenied" },
+    })
+    ObservabilityStore.flush()
+
+    const response = await Server.App().request(
+      `/global/performance/issues?module=tool&tool=websearch&scopeID=scope-a&since=${now - 1000}&until=${now + 1000}`,
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.issues).toHaveLength(1)
+    expect(body.issues[0].evidence).toMatchObject({ tool: "websearch", errorClass: "TimeoutError" })
+
+    const outsideWindow = await Server.App().request(
+      `/global/performance/issues?module=tool&tool=websearch&scopeID=scope-a&since=${now + 1000}`,
+    )
+    expect(outsideWindow.status).toBe(200)
+    expect((await outsideWindow.json()).issues).toEqual([])
   })
 
   test("browser metric ingestion validates, redacts, and reports accepted counts", async () => {

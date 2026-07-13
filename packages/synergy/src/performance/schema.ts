@@ -173,6 +173,25 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfRankedItem" })
   export type RankedItem = z.infer<typeof RankedItem>
 
+  export const ToolFailureCategory = z
+    .object({
+      errorClass: z.string(),
+      count: z.number().int().nonnegative(),
+    })
+    .meta({ ref: "PerfToolFailureCategory" })
+  export type ToolFailureCategory = z.infer<typeof ToolFailureCategory>
+
+  export const ToolFailureItem = z
+    .object({
+      tool: z.string(),
+      callCount: z.number().int().nonnegative(),
+      errorCount: z.number().int().nonnegative(),
+      errorRate: z.number().min(0).max(1),
+      categories: z.array(ToolFailureCategory),
+    })
+    .meta({ ref: "PerfToolFailureItem" })
+  export type ToolFailureItem = z.infer<typeof ToolFailureItem>
+
   export const TimelineQuality = z
     .object({
       truncated: z.boolean().optional(),
@@ -266,6 +285,7 @@ export namespace PerformanceSchema {
         slowRoutes: z.array(RankedItem),
         slowSessions: z.array(RankedItem),
         slowTools: z.array(RankedItem),
+        toolFailures: z.array(ToolFailureItem),
         slowProviders: z.array(RankedItem),
         slowStorage: z.array(RankedItem),
         slowLibrary: z.array(RankedItem),

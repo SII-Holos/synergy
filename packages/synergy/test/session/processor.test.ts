@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { TimeoutConfig } from "../../src/util/timeout-config"
 import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
@@ -7,6 +7,9 @@ import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
+import { ObservabilityStore } from "../../src/observability/store"
+import { ObservabilityToolFailures } from "../../src/observability/tool-failures"
+import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
 
 function toolPart(
   callID: string,
@@ -293,6 +296,108 @@ describe("SessionProcessor execution slot settlement", () => {
       expect(tool.state.error).toBe("synthetic failed")
       expect(tool.state.metadata?.reason).toBe("expected_failure")
     }
+  })
+
+  describe("broad tool failure observability", () => {
+    beforeEach(() => resetObservabilityHome("synergy-processor-tool-failure-"))
+    afterEach(() => cleanupObservabilityHomes())
+
+    for (const scenario of [
+      {
+        callID: "call_unknown_tool",
+        tool: "hallucinated_tool",
+        error: new Error("Model tried to call unavailable tool 'hallucinated_tool'"),
+        errorClass: "unknown_tool",
+        startsToolInput: false,
+      },
+      {
+        callID: "call_invalid_arguments",
+        tool: "bash",
+        error: new Error("Invalid tool input: expected command to be a string"),
+        errorClass: "invalid_arguments",
+        startsToolInput: true,
+      },
+    ]) {
+      test(`records LLM ${scenario.errorClass} failures that never enter the executor`, async () => {
+        await runSettlementScenario({
+          messageID: `msg_${scenario.callID}`,
+          async *stream() {
+            yield { type: "start" }
+            if (scenario.startsToolInput) {
+              yield { type: "tool-input-start", id: scenario.callID, toolName: scenario.tool }
+            }
+            yield {
+              type: "tool-error",
+              toolCallId: scenario.callID,
+              toolName: scenario.tool,
+              input: {},
+              error: scenario.error,
+            }
+          },
+        })
+        ObservabilityStore.flush()
+
+        const metrics = ObservabilityStore.queryMetrics({
+          since: 0,
+          names: ["tool.execution.count", "tool.execution.error"],
+        })
+        expect(
+          metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.count"),
+        ).toHaveLength(1)
+        const errors = metrics.filter((row) => row.call_id === scenario.callID && row.name === "tool.execution.error")
+        expect(errors).toHaveLength(1)
+        expect(JSON.parse(errors[0]!.labels_json).errorName).toBe(scenario.errorClass)
+
+        const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool: scenario.tool })
+        expect(issues).toHaveLength(1)
+        expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({
+          tool: scenario.tool,
+          phase: "llm.tool_call",
+          errorClass: scenario.errorClass,
+          owner: "llm",
+          callID: scenario.callID,
+        })
+      })
+    }
+
+    test("does not double-count executor failures when the stream later emits tool-error", async () => {
+      const callID = "call_executor_then_stream_error"
+      const tool = "bash"
+      const error = new Error("executor failed")
+      await runSettlementScenario({
+        messageID: "msg_executor_then_stream_error",
+        async *stream(processor) {
+          yield { type: "start" }
+          const slot = processor.beginExecution(callID)
+          yield { type: "tool-call", toolCallId: callID, toolName: tool, input: { command: "exit 1" } }
+          ObservabilityToolFailures.record({
+            tool,
+            sessionID: "ses_test",
+            messageID: "msg_executor_then_stream_error",
+            callID,
+            phase: "tool.execute",
+            error,
+            owner: "builtin",
+          })
+          slot.fail({ command: "exit 1" }, error.message)
+          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: { command: "exit 1" }, error }
+        },
+      })
+      ObservabilityStore.flush()
+
+      const metrics = ObservabilityStore.queryMetrics({
+        since: 0,
+        names: ["tool.execution.count", "tool.execution.error"],
+        tool,
+      })
+      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
+      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
+
+      const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool })
+      expect(issues).toHaveLength(1)
+      expect(issues[0]!.occurrence_count).toBe(1)
+      expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({ owner: "builtin", phase: "tool.execute" })
+    })
   })
 
   test("settles a save_file create-file outcome without tool-result", async () => {
