@@ -3,6 +3,7 @@ import {
   buildSessionSwitchMetrics,
   buildTokenTimingMetric,
   fitBrowserMetricBatch,
+  mergeTokenReceipt,
   pageContextFromUrl,
 } from "./browser-metrics"
 
@@ -119,6 +120,30 @@ describe("browser performance metrics", () => {
         deltaChars: 4,
         messageID: "msg_1",
       },
+    })
+  })
+
+  test("keeps the first receipt time while a render frame accumulates deltas", () => {
+    expect(
+      mergeTokenReceipt(
+        {
+          time: 10,
+          context: { sessionID: "ses_1", correlationId: "msg_1" },
+          deltaChars: 4,
+          partType: "text",
+        },
+        {
+          time: 14,
+          context: { sessionID: "ses_1", correlationId: "msg_1" },
+          deltaChars: 6,
+          partType: "text",
+        },
+      ),
+    ).toEqual({
+      time: 10,
+      context: { sessionID: "ses_1", correlationId: "msg_1" },
+      deltaChars: 10,
+      partType: "text",
     })
   })
 

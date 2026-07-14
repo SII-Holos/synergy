@@ -19,6 +19,7 @@ description: Implement or review Synergy Web and shared UI changes across packag
 3. Keep derived values one-way. Preserve composer resolution as explicit draft → session default → fallback; only explicit user choices persist upward.
 4. Use generated SDK methods for ordinary internal HTTP routes. Keep raw browser transports only for WebSocket/EventSource/WebRTC, external URLs, platform fetch injection, and browser file/blob/download flows that the SDK should not represent.
 5. Preserve Scope/directory parameters, authentication, error semantics, asset URLs, event `seq`/`epoch`, replay, and loading/error states.
+6. For append-only LLM streams, keep the full snapshot as recovery state while imperative renderers track an offset and consume only the appended suffix through the dependency's typed live-update API. Do not rescan the accumulated prefix or insert an independent character-rate playback backlog; reset from a checkpoint only when the append invariant breaks.
 
 ## Use Semantic Icons
 

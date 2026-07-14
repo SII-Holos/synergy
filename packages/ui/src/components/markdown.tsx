@@ -8,8 +8,8 @@ import {
 import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
+import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
 import { applyMarkdownTerminalCrossfade } from "./markdown-terminal-transition"
-import * as smd from "streaming-markdown"
 
 type Entry = MarkdownRenderEntry
 
@@ -216,33 +216,20 @@ export function Markdown(
     { initialValue: null },
   )
 
-  // Streaming path: feed increments to the streaming-markdown parser, which
-  // appends DOM into the container. Text from the typewriter is append-only in
-  // the common case; if it is rewritten (not a prefix), reset the parser.
-  let stream: { parser: smd.Parser; written: string } | undefined
-  const resetStream = () => {
-    container.innerHTML = ""
-    stream = { parser: smd.parser(smd.default_renderer(container)), written: "" }
-  }
+  // Streaming snapshots remain authoritative for recovery, while the renderer
+  // consumes only the suffix after its offset. A shorter snapshot resets the
+  // append-only parser without scanning the accumulated prefix.
+  let stream: MarkdownStreamController | undefined
   const endStream = () => {
     if (!stream) return
-    try {
-      smd.parser_end(stream.parser)
-    } catch {
-      /* ignore */
-    }
+    stream.end()
     stream = undefined
   }
 
   createEffect(() => {
     if (!local.streaming) return
-    const text = local.text
-    if (!stream || !text.startsWith(stream.written)) resetStream()
-    const suffix = text.slice(stream!.written.length)
-    if (suffix) {
-      smd.parser_write(stream!.parser, suffix)
-      stream!.written = text
-    }
+    if (!stream) stream = createMarkdownStreamController(container)
+    stream.update(local.text, local.cacheKey)
   })
 
   // Terminal render: once the full-fidelity HTML resolves (and we are no longer

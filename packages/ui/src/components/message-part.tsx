@@ -46,14 +46,14 @@ import { ErrorCard } from "./error-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
+import { createAutoScroll, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
-import { renderableTextPartMarkdownText } from "./text-part-render"
+import { createTextPartProjection } from "./text-part-render"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -2037,7 +2037,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const part = () => props.part as TextPart
-  const displayText = () => relativizeProjectPaths((part().text ?? "").trim(), data.directory)
   const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
@@ -2050,14 +2049,15 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       sessionStatus() as { type: string } | undefined,
     )
 
-  const typedText = createTypewriter({
-    source: displayText,
-    streaming: isStreaming,
-    completed: isCompleted,
-  })
-
-  const renderedText = () =>
-    renderableTextPartMarkdownText({ completed: isCompleted(), source: displayText(), typed: typedText() })
+  const projection = createTextPartProjection()
+  const renderedText = createMemo(() =>
+    projection.project({
+      key: part().id,
+      source: part().text ?? "",
+      completed: isCompleted() || !isStreaming(),
+      remove: data.directory,
+    }),
+  )
 
   return (
     <Show when={renderedText()}>
@@ -2071,7 +2071,6 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
   const part = () => props.part as ReasoningPart
-  const text = () => part().text.trim()
   const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
@@ -2084,14 +2083,14 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
       sessionStatus() as { type: string } | undefined,
     )
 
-  const typedText = createTypewriter({
-    source: text,
-    streaming: isStreaming,
-    completed: isCompleted,
-  })
-
-  const renderedText = () =>
-    renderableTextPartMarkdownText({ completed: isCompleted(), source: text(), typed: typedText() })
+  const projection = createTextPartProjection()
+  const renderedText = createMemo(() =>
+    projection.project({
+      key: part().id,
+      source: part().text,
+      completed: isCompleted() || !isStreaming(),
+    }),
+  )
 
   return (
     <Show when={renderedText()}>

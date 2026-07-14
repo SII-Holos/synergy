@@ -166,6 +166,14 @@ Streaming frames remain unsequenced because they are convergent rather than jour
 
 Encoder checkpoint state is transport-local. The global WebSocket delta clients share one encoder because they receive the same frames; each SSE connection owns another encoder. A global encoder shared across independent transports would let one consumer's checkpoint timing corrupt another's convergence.
 
+### Incremental presentation
+
+The reconciled `part.text` string remains the authoritative frontend snapshot. Active text and reasoning renderers keep an offset into that snapshot and pass only the appended suffix through the display projection and the streaming Markdown parser. They do not compare, transform, or replay the accumulated prefix on each update, and they do not create a separate character-rate backlog between the event stream and the renderer.
+
+The display projection preserves trim and project-path relativization across chunk boundaries. A part identity change, source shrink, or transition to terminal state rebuilds from the authoritative snapshot once. The terminal Markdown path then performs the complete Marked, syntax, math, and sanitization render once and replaces the streaming tree.
+
+Streaming Markdown creates a fixed set of token elements through DOM APIs and rejects unsafe link and image URL protocols before setting attributes. Raw model HTML is never assigned to `innerHTML` during streaming. Automatic bottom-following is coalesced so content growth schedules at most one scroll operation per animation frame.
+
 ## Server Part Write-Behind
 
 Network streaming and disk persistence are separate optimizations.
@@ -225,6 +233,7 @@ Agent and workflow selections follow the same principle: server session fields a
 - Web snapshot apply-gating is not implemented merely because response headers exist.
 - Store updates reconcile existing leaves and identities.
 - Streaming deltas converge through full checkpoints.
+- Active text rendering processes appended suffixes rather than rescanning accumulated snapshots.
 - Disk write-behind never delays discrete or terminal persistence.
 - Compaction fetches before swapping the visible message set.
 - The active session survives message-bucket eviction.

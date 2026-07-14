@@ -92,7 +92,8 @@ Performance support cards should surface runtime retention counters plainly: ses
 
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
-When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.
+Streaming text and reasoning should follow the model's actual deltas through frame-bounded incremental rendering; do not add an independent character-rate playback backlog that falls behind long responses.
+When a text or reasoning part is superseded by later visible work in the same running turn, it should settle immediately instead of continuing as a second active stream above the current work.
 
 When the current running assistant step has no visible message part yet, the timeline may show a transient provider-waiting status using the backend session status text verbatim. Its current turn runtime may appear as quiet inline elapsed-time metadata after a middle dot, updating once per second without badge, chip, capsule, or button chrome. Once any real text, reasoning, tool, media, or attachment part appears for that step, the persisted part timeline takes over and the transient status disappears.
 

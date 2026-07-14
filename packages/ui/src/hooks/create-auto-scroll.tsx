@@ -11,6 +11,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
+  let scrollFrame: number | undefined
+  let forceNextScroll = false
   let down = false
   let cleanup: (() => void) | undefined
 
@@ -27,24 +29,32 @@ export function createAutoScroll(options: AutoScrollOptions) {
     return el.scrollHeight - el.clientHeight - el.scrollTop
   }
 
-  const scrollToBottomNow = (behavior: ScrollBehavior) => {
-    const el = scroll
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior })
-  }
+  const flushScrollToBottom = () => {
+    scrollFrame = undefined
+    const force = forceNextScroll
+    forceNextScroll = false
 
-  const scrollToBottom = (force: boolean) => {
     if (!force && !active()) return
     if (!scroll) return
 
     if (!force && store.userScrolled) return
     if (force && store.userScrolled) setStore("userScrolled", false)
 
-    const distance = distanceFromBottom()
+    const bottom = scroll.scrollHeight
+    const distance = bottom - scroll.clientHeight - scroll.scrollTop
     if (distance < 2) return
 
-    const behavior: ScrollBehavior = force || distance > 96 ? "auto" : "smooth"
-    scrollToBottomNow(behavior)
+    scroll.scrollTo({ top: bottom, behavior: "auto" })
+  }
+
+  const scrollToBottom = (force: boolean) => {
+    if (!force && !active()) return
+    if (!scroll) return
+    if (!force && store.userScrolled) return
+
+    forceNextScroll ||= force
+    if (scrollFrame !== undefined) return
+    scrollFrame = requestAnimationFrame(flushScrollToBottom)
   }
 
   const stop = () => {
@@ -131,6 +141,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   onCleanup(() => {
     if (settleTimer) clearTimeout(settleTimer)
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
     if (cleanup) cleanup()
   })
 
