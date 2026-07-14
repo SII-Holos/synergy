@@ -232,9 +232,17 @@ describe("tool exposure", () => {
 
         const session = await Session.create({})
         const outcome = Promise.withResolvers<any>()
+        const callbacks = new Map<string, Promise<unknown>>()
         const processor = {
           message: { id: "message_test" },
           partFromToolCall: () => undefined,
+          executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
+            const existing = callbacks.get(callID)
+            if (existing) return existing as Promise<T>
+            const callback = Promise.resolve().then(execute)
+            callbacks.set(callID, callback)
+            return callback
+          },
           beginExecution: (callID: string) => ({
             callID,
             promise: outcome.promise,
