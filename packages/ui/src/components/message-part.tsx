@@ -53,7 +53,7 @@ import { isToolCardHidden } from "./tool-result-presentation"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
-import { createTextPartProjection } from "./text-part-render"
+import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -158,21 +158,6 @@ function relativizeProjectPaths(text: string, directory?: string) {
   if (!text) return ""
   if (!directory) return text
   return text.split(directory).join("")
-}
-
-function isRenderableTextPartCompleted(
-  messageParts: PartType[] | undefined,
-  message: AssistantMessage,
-  part: TextPart | ReasoningPart,
-  sessionStatus: { type: string } | undefined,
-) {
-  if (part.time?.end) return true
-  if (message.time.completed) return true
-  if (sessionStatus?.type !== "busy") return true
-  if (!messageParts?.length) return false
-
-  const index = messageParts.findIndex((item) => item?.id === part.id)
-  return index >= 0 && index < messageParts.length - 1
 }
 
 export function getDirectory(path: string | undefined) {
@@ -2037,24 +2022,18 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const part = () => props.part as TextPart
-  const messageParts = () => data.store.part[props.message.id]
-
-  const sessionStatus = () => data.store.session_status[props.message.sessionID]
-  const isStreaming = () => sessionStatus()?.type === "busy"
-  const isCompleted = () =>
-    isRenderableTextPartCompleted(
-      messageParts(),
-      props.message as AssistantMessage,
-      part(),
-      sessionStatus() as { type: string } | undefined,
-    )
+  const isTerminal = () =>
+    isTextPartTerminal({
+      partEnd: part().time?.end,
+      messageCompleted: (props.message as AssistantMessage).time.completed,
+    })
 
   const projection = createTextPartProjection()
   const renderedText = createMemo(() =>
     projection.project({
       key: part().id,
       source: part().text ?? "",
-      completed: isCompleted() || !isStreaming(),
+      completed: isTerminal(),
       remove: data.directory,
     }),
   )
@@ -2062,40 +2041,33 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={renderedText()}>
       <div data-component="text-part">
-        <Markdown text={renderedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
+        <Markdown text={renderedText()} streaming={!isTerminal()} cacheKey={part().id} />
       </div>
     </Show>
   )
 }
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
-  const data = useData()
   const part = () => props.part as ReasoningPart
-  const messageParts = () => data.store.part[props.message.id]
-
-  const sessionStatus = () => data.store.session_status[props.message.sessionID]
-  const isStreaming = () => sessionStatus()?.type === "busy"
-  const isCompleted = () =>
-    isRenderableTextPartCompleted(
-      messageParts(),
-      props.message as AssistantMessage,
-      part(),
-      sessionStatus() as { type: string } | undefined,
-    )
+  const isTerminal = () =>
+    isTextPartTerminal({
+      partEnd: part().time?.end,
+      messageCompleted: (props.message as AssistantMessage).time.completed,
+    })
 
   const projection = createTextPartProjection()
   const renderedText = createMemo(() =>
     projection.project({
       key: part().id,
       source: part().text,
-      completed: isCompleted() || !isStreaming(),
+      completed: isTerminal(),
     }),
   )
 
   return (
     <Show when={renderedText()}>
       <div data-component="reasoning-part">
-        <Markdown text={renderedText()} streaming={isStreaming() && !isCompleted()} cacheKey={part().id} />
+        <Markdown text={renderedText()} streaming={!isTerminal()} cacheKey={part().id} />
       </div>
     </Show>
   )

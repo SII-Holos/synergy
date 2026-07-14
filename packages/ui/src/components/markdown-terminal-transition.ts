@@ -87,23 +87,28 @@ export function applyMarkdownTerminalCrossfade(input: {
   // Moving these nodes into the container later preserves the same listeners.
   enhanceCleanup = input.enhance?.(next)
 
-  // Ensure the outgoing stream layer is painted before the fade starts.
-  previous.getBoundingClientRect()
   frameId = nextFrame(() => {
-    frameId = undefined
-    if (finished) return
-    stage.dataset.active = "true"
-    timeoutId = schedule(() => {
-      timeoutId = undefined
+    frameId = nextFrame(() => {
+      frameId = undefined
       if (finished) return
-      finished = true
-      // Move the already-enhanced terminal nodes into place; do not re-parse HTML.
-      input.container.replaceChildren(...Array.from(next.childNodes))
-    }, durationMs)
+      stage.dataset.active = "true"
+      timeoutId = schedule(() => {
+        timeoutId = undefined
+        if (finished) return
+        finished = true
+        // Move the already-enhanced terminal nodes into place; do not re-parse HTML.
+        input.container.replaceChildren(...Array.from(next.childNodes))
+      }, durationMs)
+    })
   })
 
   return () => {
-    finished = true
-    dispose()
+    clearMotion()
+    if (!finished) {
+      finished = true
+      input.container.replaceChildren(...Array.from(next.childNodes))
+    }
+    enhanceCleanup?.()
+    enhanceCleanup = undefined
   }
 }

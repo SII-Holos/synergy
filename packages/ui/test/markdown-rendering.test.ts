@@ -5,7 +5,7 @@ import {
   markdownFallbackHtml,
   markdownRenderEntry,
 } from "../src/components/markdown-render"
-import { createTextPartProjection } from "../src/components/text-part-render"
+import { createTextPartProjection, isTextPartTerminal } from "../src/components/text-part-render"
 
 describe("Markdown terminal rendering", () => {
   test("ignores stale rendered HTML whose hash does not match current markdown", () => {
@@ -63,5 +63,13 @@ describe("createTextPartProjection", () => {
     expect(projection.project({ key: "part_2", source: "  replacement  ", completed: false, remove })).toBe(
       "replacement",
     )
+  })
+})
+
+describe("isTextPartTerminal", () => {
+  test("keeps an unfinished part on the streaming renderer until its own lifecycle ends", () => {
+    expect(isTextPartTerminal({ partEnd: undefined, messageCompleted: undefined })).toBe(false)
+    expect(isTextPartTerminal({ partEnd: 2, messageCompleted: undefined })).toBe(true)
+    expect(isTextPartTerminal({ partEnd: undefined, messageCompleted: 3 })).toBe(true)
   })
 })

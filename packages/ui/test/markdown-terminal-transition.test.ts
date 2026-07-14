@@ -13,6 +13,7 @@ type NodeLike = {
   html: string
   text: string
   inert: boolean
+  layoutReads: number
   append: (...nodes: NodeLike[]) => void
   replaceChildren: (...nodes: NodeLike[]) => void
   querySelector: (selector: string) => NodeLike | null
@@ -35,6 +36,7 @@ function createNode(html = "", text = html.replaceAll(/<[^>]+>/g, "")): NodeLike
     html,
     text,
     inert: false,
+    layoutReads: 0,
     get innerHTML() {
       return this.html
     },
@@ -90,6 +92,7 @@ function createNode(html = "", text = html.replaceAll(/<[^>]+>/g, "")): NodeLike
       return this.attributes[name] ?? null
     },
     getBoundingClientRect() {
+      this.layoutReads += 1
       return { width: 1, height: 1 }
     },
   }
@@ -106,6 +109,7 @@ function createLeaf(html: string, text: string): NodeLike {
     html,
     text,
     inert: false,
+    layoutReads: 0,
     get innerHTML() {
       return this.html
     },
@@ -136,6 +140,7 @@ function createLeaf(html: string, text: string): NodeLike {
       return this.attributes[name] ?? null
     },
     getBoundingClientRect() {
+      this.layoutReads += 1
       return { width: 1, height: 1 }
     },
   }
@@ -154,6 +159,12 @@ function createContainer(markup: string, text: string) {
   container.html = markup
   container.text = text
   return container as unknown as HTMLElement
+}
+
+function countSlot(node: NodeLike, slot: string): number {
+  let count = node.dataset.slot === slot ? 1 : 0
+  for (const child of node.childNodes) count += countSlot(child, slot)
+  return count
 }
 
 describe("markdownTerminalTransitionMode", () => {
@@ -237,9 +248,13 @@ describe("applyMarkdownTerminalCrossfade", () => {
     expect(previous?.inert).toBe(true)
     expect(enhanceLive).toBe(1)
     expect(enhancedRoots).toHaveLength(1)
+    expect((previous as unknown as NodeLike).layoutReads).toBe(0)
 
     expect(frames).toHaveLength(1)
     frames[0]!()
+    expect(stage?.getAttribute("data-active")).toBeNull()
+    expect(frames).toHaveLength(2)
+    frames[1]!()
     expect(stage?.getAttribute("data-active")).toBe("true")
     expect(timeouts).toHaveLength(1)
     expect(timeouts[0]?.ms).toBe(MARKDOWN_TERMINAL_CROSSFADE_MS)
@@ -252,6 +267,34 @@ describe("applyMarkdownTerminalCrossfade", () => {
 
     cleanup()
     expect(enhanceLive).toBe(0)
+  })
+
+  test("collapses interrupted transitions instead of nesting terminal trees", () => {
+    const container = createContainer("<p>stream partial</p>", "stream partial")
+    let cleanup: (() => void) | undefined
+
+    for (let update = 1; update <= 100; update++) {
+      cleanup?.()
+      expect(countSlot(container as unknown as NodeLike, "markdown-terminal-crossfade")).toBe(0)
+
+      cleanup = applyMarkdownTerminalCrossfade({
+        container,
+        html: `<p>terminal ${update}</p>`,
+        nextFrame: () => update,
+        cancelFrame: () => {},
+        schedule: () => update,
+        cancel: () => {},
+        prefersReducedMotion: false,
+        markdownLength: 32,
+        hadStreamContent: true,
+      })
+
+      expect(countSlot(container as unknown as NodeLike, "markdown-terminal-crossfade")).toBe(1)
+    }
+
+    cleanup?.()
+    expect(countSlot(container as unknown as NodeLike, "markdown-terminal-crossfade")).toBe(0)
+    expect(container.innerHTML).toBe("<p>terminal 100</p>")
   })
 
   test("replaces instantly when reduced motion is preferred", () => {

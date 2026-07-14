@@ -5,6 +5,10 @@ export interface TextPartProjectionInput {
   remove?: string
 }
 
+export function isTextPartTerminal(input: { partEnd?: number; messageCompleted?: number }) {
+  return input.partEnd !== undefined || input.messageCompleted !== undefined
+}
+
 interface IncrementalTransform {
   write(chunk: string): string
 }
