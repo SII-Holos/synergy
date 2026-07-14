@@ -583,6 +583,92 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("deduplicates terminal tool parts by call ID and prefers the execution outcome", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "read file",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "view_file",
+            state: {
+              status: "error",
+              input: { path: "missing.txt" },
+              error: "AI SDK tool error",
+              time: { start: 1, end: 2 },
+              metadata: {
+                toolDiagnostic: {
+                  code: "invalid_arguments",
+                  toolName: "view_file",
+                  message: "AI SDK tool error",
+                  metadata: { source: "ai_sdk_tool_error" },
+                },
+              },
+            },
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "tool",
+            callID: "call-1",
+            tool: "view_file",
+            state: {
+              status: "error",
+              input: { path: "missing.txt" },
+              error: "file not found",
+              time: { start: 0, end: 1 },
+              metadata: { source: "execution" },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "read file" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "view_file",
+            input: { path: "missing.txt" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "view_file",
+            output: { type: "error-text", value: "file not found" },
+          },
+        ],
+      },
+    ])
+  })
+
   test("removes OpenAI response item references from model provider metadata", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"

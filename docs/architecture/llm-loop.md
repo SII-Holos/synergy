@@ -130,8 +130,10 @@ Tool definitions are filtered for agent visibility and current workflow before p
 `SessionProcessor` owns streamed tool state:
 
 - tool input can move through generating, pending, and running states;
+- each provider call ID owns one runtime execution promise, so replayed AI SDK callbacks reuse the original result or error instead of repeating tool side effects;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
+- settlement is terminal for that provider call ID, so late or replayed stream events cannot allocate a second tool part;
 - more than one tool execution can settle without losing original message-part order;
 - unresolved tools are completed with explicit abort or settlement errors;
 - repeated identical calls can trigger loop protection or permission review.

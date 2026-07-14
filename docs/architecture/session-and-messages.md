@@ -174,6 +174,7 @@ On abort, steer and context items are discarded while queued task items remain f
 - attachment model policy decides whether an attachment contributes content, summary, provider file data, or nothing;
 - only a bounded number of historical images are retained;
 - tool calls and results are emitted in provider-compatible order;
+- duplicate terminal tool parts from older histories are collapsed by provider call ID, preferring the execution outcome over an AI SDK fallback diagnostic;
 - workflow wrappers are applied ephemerally and do not rewrite stored user text.
 
 Visible history and model context can therefore differ intentionally without losing the durable record.

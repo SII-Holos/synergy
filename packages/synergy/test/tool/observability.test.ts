@@ -224,9 +224,17 @@ const model = {
 } as any
 
 function minimalProcessor(executions: Map<string, Promise<any>>) {
+  const callbacks = new Map<string, Promise<unknown>>()
   return {
     message: { id: "msg_tool_obs" },
     partFromToolCall: () => undefined,
+    executeOnce: <T>(id: string, execute: () => Promise<T>) => {
+      const existing = callbacks.get(id)
+      if (existing) return existing as Promise<T>
+      const callback = Promise.resolve().then(execute)
+      callbacks.set(id, callback)
+      return callback
+    },
     beginExecution: (id: string) => {
       let outcome: any
       let resolvePromise!: (value: any) => void

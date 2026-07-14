@@ -1936,6 +1936,17 @@ export namespace ToolResolver {
     return (await availability(input)).visible
   }
 
+  function withExecutionDeduplication(input: Input, runtimeTool: AITool): AITool {
+    const execute = runtimeTool.execute
+    if (!execute) return runtimeTool
+    return {
+      ...runtimeTool,
+      execute(args, options) {
+        return input.processor.executeOnce(options.toolCallId, () => execute.call(runtimeTool, args, options))
+      },
+    } as AITool
+  }
+
   export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
     using _ = log.time("resolveWithAvailability")
     const tools: Record<string, AITool> = {}
@@ -1944,13 +1955,13 @@ export namespace ToolResolver {
     for (const item of availabilityResult.visible) {
       const runtimeTool = item.createRuntimeTool?.(input)
       if (runtimeTool) {
-        tools[item.id] = runtimeTool
+        tools[item.id] = withExecutionDeduplication(input, runtimeTool)
       }
     }
 
     for (const diagnostic of availabilityResult.diagnostics.values()) {
       if (tools[diagnostic.toolName]) continue
-      tools[diagnostic.toolName] = diagnosticRuntimeTool(input, diagnostic)
+      tools[diagnostic.toolName] = withExecutionDeduplication(input, diagnosticRuntimeTool(input, diagnostic))
     }
 
     return {
@@ -1966,7 +1977,7 @@ export namespace ToolResolver {
 
     for (const item of defs) {
       const runtimeTool = item.createRuntimeTool?.(input)
-      if (runtimeTool) tools[item.id] = runtimeTool
+      if (runtimeTool) tools[item.id] = withExecutionDeduplication(input, runtimeTool)
     }
 
     return tools

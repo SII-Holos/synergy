@@ -331,6 +331,44 @@ describe("SessionProcessor execution slot settlement", () => {
     }
   })
 
+  test("does not persist a duplicate tool part when a settled call is replayed before tool-error", async () => {
+    const callID = "call_replayed_after_settlement"
+    const input = { filePath: "/tmp/missing.txt" }
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_replayed_after_settlement",
+      async *stream(processor) {
+        yield { type: "start" }
+        processor.beginExecution(callID).fail(input, "file not found", { source: "execution" })
+        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+        yield { type: "tool-input-start", id: callID, toolName: "view_file" }
+        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+        yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
+      },
+    })
+
+    const toolParts = parts.filter((part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID)
+    expect(toolParts.map((part) => part.state.status)).toEqual(["error"])
+    expect(toolParts[0]?.state.status === "error" ? toolParts[0].state.error : undefined).toBe("file not found")
+  })
+
+  test("does not persist a duplicate tool part after fallback tool-error settlement", async () => {
+    const callID = "call_replayed_after_fallback"
+    const input = { path: "missing.txt" }
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_replayed_after_fallback",
+      async *stream() {
+        yield { type: "start" }
+        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+        yield { type: "tool-error", toolCallId: callID, error: new Error("AI SDK tool error") }
+        yield { type: "tool-call", toolCallId: callID, toolName: "view_file", input }
+      },
+    })
+
+    const toolParts = parts.filter((part): part is MessageV2.ToolPart => part.type === "tool" && part.callID === callID)
+    expect(toolParts).toHaveLength(1)
+    expect(toolParts[0]?.state.status).toBe("error")
+  })
+
   describe("broad tool failure observability", () => {
     beforeEach(() => resetObservabilityHome("synergy-processor-tool-failure-"))
     afterEach(() => cleanupObservabilityHomes())
@@ -402,7 +440,6 @@ describe("SessionProcessor execution slot settlement", () => {
         async *stream(processor) {
           yield { type: "start" }
           const slot = processor.beginExecution(callID)
-          yield { type: "tool-call", toolCallId: callID, toolName: tool, input: { command: "exit 1" } }
           ObservabilityToolFailures.record({
             tool,
             sessionID: "ses_test",
@@ -413,6 +450,7 @@ describe("SessionProcessor execution slot settlement", () => {
             owner: "builtin",
           })
           slot.fail({ command: "exit 1" }, error.message)
+          yield { type: "tool-call", toolCallId: callID, toolName: tool, input: { command: "exit 1" } }
           yield { type: "tool-error", toolCallId: callID, toolName: tool, input: { command: "exit 1" }, error }
         },
       })
