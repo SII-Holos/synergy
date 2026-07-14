@@ -15,6 +15,8 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 - frontend session-switch timing, token receive/apply/paint timing, browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
 - slow routes, sessions, tools, providers, storage operations, child processes, and trace drill-downs.
 
+The Web panel loads a snapshot when it opens or when the selected time range changes. The snapshot remains stable until **Refresh** is selected; the panel does not poll, refresh after visibility changes, subscribe to live Performance events, or refetch charts as they enter the viewport.
+
 Every record is stored with low-cardinality attribution such as source, module, Scope/session/request/tool/provider/process IDs, correlation IDs, trace IDs, span IDs, and safe labels. Sensitive prompt, response, header, credential, environment, raw body, and file-content data is redacted or omitted before it reaches public read models or diagnostics packages.
 
 Permission evaluation logs contain only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks remain bounded and do not expose command or path contents through observability.
@@ -49,7 +51,6 @@ Performance settings extend the existing runtime observability domain in `120-ru
       "metricRetentionMs": 86400000,
       "traceRetentionMs": 86400000,
       "resourceSampleIntervalMs": 5000,
-      "dashboardRefreshMs": 5000,
       "storage": {
         "sqliteEnabled": true,
         "jsonlMirrorEnabled": false,

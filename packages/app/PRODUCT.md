@@ -90,6 +90,8 @@ Performance should separate server process resources from registered tool child 
 
 Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
 
+Performance is a user-controlled snapshot. Load it when the panel opens or the user changes the selected range, then keep it stable until the user selects Refresh; do not poll, refresh on visibility changes, subscribe the panel to live Performance events, or refetch charts as they enter the viewport.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 Streaming text and reasoning should follow the model's actual deltas through frame-bounded incremental rendering; do not add an independent character-rate playback backlog that falls behind long responses.

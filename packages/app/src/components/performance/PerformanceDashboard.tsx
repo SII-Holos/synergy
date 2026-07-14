@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { Line } from "solid-chartjs"
 import { Chart as ChartJS, CategoryScale, Filler, LinearScale, LineElement, PointElement, Tooltip } from "chart.js"
 import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
@@ -63,7 +63,7 @@ export function PerformanceDashboard() {
   const [selectedTrace, setSelectedTrace] = createSignal<PerformanceTraceSpan | null>(null)
   const [selectedTraceDetail, setSelectedTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
   const summary = () => perf.summary()
-  const issues = createMemo(() => [...perf.eventIssues(), ...(summary()?.issues ?? [])].slice(0, 12))
+  const issues = createMemo(() => (summary()?.issues ?? []).slice(0, 12))
   const traces = createMemo(() => perf.eventTraces().slice(0, 24))
 
   const selectTrace = async (traceId: string, fallback?: Partial<PerformanceTraceSpan>) => {
@@ -103,15 +103,8 @@ export function PerformanceDashboard() {
   return (
     <div class="performance-dashboard">
       <div class="performance-toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
-        <div class="flex items-center gap-2 text-12-medium text-text-weak">
-          <span
-            classList={{
-              "h-2 w-2 rounded-full": true,
-              "bg-icon-success-base": perf.connected(),
-              "bg-icon-warning-base": !perf.connected(),
-            }}
-          />
-          {perf.connected() ? "Live performance stream connected" : "Polling performance data while stream reconnects"}
+        <div class="text-12-medium text-text-weak">
+          {summary()?.generatedAt ? `Snapshot from ${formatTime(summary()?.generatedAt)}` : "Performance snapshot"}
         </div>
         <div class="flex items-center gap-2">
           <TimeRangeControl value={perf.windowMs()} onChange={(value) => perf.setWindowMs(value)} />
@@ -121,20 +114,15 @@ export function PerformanceDashboard() {
             size="small"
             icon={getSemanticIcon("action.refresh")}
             disabled={perf.loading}
-            onClick={() => {
-              void perf.refresh()
-              void perf.loadTimeline(perf.windowMs())
-            }}
+            onClick={() => void perf.refresh()}
           >
             Refresh
           </Button>
         </div>
       </div>
 
-      <Show when={perf.error() || perf.streamError()}>
-        <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">
-          {perf.error() ?? perf.streamError()}
-        </div>
+      <Show when={perf.error()}>
+        <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">{perf.error()}</div>
       </Show>
 
       <SummaryQualityNotice summary={summary()} />
@@ -157,7 +145,6 @@ export function PerformanceDashboard() {
             ),
           ]}
           quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
-          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
         <PerformanceLineChart
           title="Memory"
@@ -173,7 +160,6 @@ export function PerformanceDashboard() {
             "process.memory.heap_used",
             "process.memory.heap_total",
           ])}
-          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
         <PerformanceLineChart
           title="Requests"
@@ -189,7 +175,6 @@ export function PerformanceDashboard() {
             ),
           ]}
           quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
-          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
         <PerformanceLineChart
           title="Sessions"
@@ -201,7 +186,6 @@ export function PerformanceDashboard() {
           ]}
           quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
           emptyLabel="No historical session samples for this range"
-          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
         <PerformanceLineChart
           title="Storage I/O"
@@ -226,7 +210,6 @@ export function PerformanceDashboard() {
             "storage.write.bytes",
           ])}
           emptyLabel="Storage metrics are not available for this range"
-          onVisible={() => void perf.loadTimeline(perf.windowMs())}
         />
       </div>
 
@@ -412,23 +395,8 @@ function PerformanceLineChart(props: {
   datasets: ChartDatasetSpec[]
   quality?: string
   emptyLabel?: string
-  onVisible?: () => void
 }) {
   const chartTheme = useChartTheme()
-  let element: HTMLDivElement | undefined
-  let visible = false
-  if (typeof IntersectionObserver !== "undefined") {
-    const observer = new IntersectionObserver((entries) => {
-      if (visible || !entries.some((entry) => entry.isIntersecting)) return
-      visible = true
-      props.onVisible?.()
-      observer.disconnect()
-    })
-    queueMicrotask(() => element && observer.observe(element))
-    onCleanup(() => observer.disconnect())
-  } else {
-    queueMicrotask(() => props.onVisible?.())
-  }
   const model = createMemo(() => {
     return buildLineChartModel({
       points: props.points,
@@ -438,7 +406,7 @@ function PerformanceLineChart(props: {
   })
 
   return (
-    <div ref={element} class="performance-card rounded-xl p-4">
+    <div class="performance-card rounded-xl p-4">
       <div class="mb-3">
         <h3 class="text-14-semibold text-text-strong">{props.title}</h3>
         <p class="mt-1 text-11-regular text-text-weak">{props.description}</p>

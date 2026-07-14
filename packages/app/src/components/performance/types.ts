@@ -50,10 +50,3 @@ export type BrowserMetricSample = {
   domNodes?: number
   navigationMs?: number
 }
-
-export type PerformanceEvent =
-  | { type: "summary"; summary?: PerformanceSummary }
-  | { type: "trace"; trace?: PerformanceTraceSpan }
-  | { type: "issue"; issue?: PerformanceIssue }
-  | { type: "browser"; sample?: BrowserMetricSample }
-  | { type: "error"; message?: string }
