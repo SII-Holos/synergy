@@ -210,6 +210,70 @@ describe("tool exposure", () => {
     })
   })
 
+  test("runtime tools defer afterPersist effects to processor settlement", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = `post_persist_test_${Math.random().toString(36).slice(2)}`
+        let committed = false
+        await ToolRegistry.register(
+          Tool.define(id, {
+            description: "A test tool with a post-persist effect.",
+            parameters: z.object({ value: z.string() }),
+            async execute({ value }) {
+              return { title: id, output: value, metadata: {} }
+            },
+            afterPersist() {
+              committed = true
+            },
+          }),
+        )
+
+        const session = await Session.create({})
+        const outcome = Promise.withResolvers<any>()
+        const processor = {
+          message: { id: "message_test" },
+          partFromToolCall: () => undefined,
+          beginExecution: (callID: string) => ({
+            callID,
+            promise: outcome.promise,
+            resolve: outcome.resolve,
+            complete(input: unknown, result: unknown) {
+              outcome.resolve({ status: "completed", input, result })
+            },
+            fail(input: unknown, error: string, metadata?: Record<string, unknown>) {
+              outcome.resolve({ status: "error", input, error, metadata })
+            },
+            get outcome() {
+              return undefined
+            },
+            get status() {
+              return "pending" as const
+            },
+          }),
+        } as any
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          processor,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        await (resolved.tools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
+        const completed = await outcome.promise
+
+        expect(committed).toBe(false)
+        expect(completed.result.output).toBe("persist me")
+        expect(completed.result.afterPersist).toBeFunction()
+        await completed.result.afterPersist()
+        expect(committed).toBe(true)
+      },
+    })
+  })
+
   test("internal tools are hidden from search and visible only when force-enabled", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

@@ -727,6 +727,17 @@ export namespace Cortex {
     })
   }
 
+  export function acknowledgeParentCompletion(input: { taskID: string; parentSessionID: string }): boolean {
+    const task = tasks.get(input.taskID)
+    if (!task || task.parentSessionID !== input.parentSessionID || !isTerminal(task.status)) return false
+
+    const pending = deferredParentNotifications.get(input.parentSessionID)
+    if (!pending?.delete(input.taskID)) return false
+    if (pending.size === 0) deferredParentNotifications.delete(input.parentSessionID)
+    log.info("acknowledged parent task completion", input)
+    return true
+  }
+
   export async function flushDeferredParentNotifications(parentSessionID: string): Promise<void> {
     const pending = deferredParentNotifications.get(parentSessionID)
     if (!pending || pending.size === 0) return

@@ -12,6 +12,13 @@ export namespace Tool {
     [key: string]: any
   }
 
+  export interface ExecutionResult<M extends Metadata = Metadata> {
+    title: string
+    metadata: M
+    output: string
+    attachments?: MessageV2.AttachmentPart[]
+  }
+
   export interface InitContext {
     agent?: Agent.Info
   }
@@ -48,15 +55,8 @@ export namespace Tool {
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters
-      execute(
-        args: z.infer<Parameters>,
-        ctx: Context,
-      ): Promise<{
-        title: string
-        metadata: M
-        output: string
-        attachments?: MessageV2.AttachmentPart[]
-      }>
+      execute(args: z.infer<Parameters>, ctx: Context): Promise<ExecutionResult<M>>
+      afterPersist?(args: z.infer<Parameters>, ctx: Context, result: ExecutionResult<M>): Promise<void> | void
       formatValidationError?(error: z.ZodError): string
     }>
   }

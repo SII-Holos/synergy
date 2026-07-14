@@ -1608,6 +1608,7 @@ export namespace ToolResolver {
                     ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
                     : (result.metadata ?? {}),
                   attachments: result.attachments,
+                  afterPersist: item.afterPersist ? () => item.afterPersist!(args, toolCtx, result) : undefined,
                 })
                 log.info("tool.execute.callback.completed", {
                   tool: item.id,

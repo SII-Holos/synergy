@@ -279,6 +279,39 @@ describe("SessionProcessor execution slot settlement", () => {
     if (tool?.state.status === "completed") expect(tool.state.output).toBe("no tool-result needed")
   })
 
+  test("runs a completed tool post-persist effect after the tool part is durable", async () => {
+    let persisted = false
+    let committed = false
+    await runSettlementScenario({
+      messageID: "msg_assistant_post_persist",
+      updatePart: async (input) => {
+        const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "completed") {
+          expect(committed).toBe(false)
+          persisted = true
+        }
+        return part
+      },
+      async *stream(processor) {
+        yield { type: "start" }
+        const slot = processor.beginExecution("call_post_persist")
+        yield { type: "tool-call", toolCallId: "call_post_persist", toolName: "synthetic", input: {} }
+        slot.complete(
+          {},
+          {
+            ...completedOutcome("synthetic", "persisted result"),
+            afterPersist: async () => {
+              expect(persisted).toBe(true)
+              committed = true
+            },
+          },
+        )
+      },
+    })
+
+    expect(committed).toBe(true)
+  })
+
   test("settles a synthetic tool error outcome instead of unresolved", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_slot_error",
