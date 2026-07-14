@@ -33,7 +33,7 @@ type QueueEntry =
   | { kind: "resource"; value: ResourceEntry }
   | { kind: "longTask"; value: LongTaskEntry }
 
-type TokenReceipt = {
+export type TokenReceipt = {
   time: number
   context: BrowserTelemetryContext
   deltaChars: number
@@ -54,6 +54,15 @@ let locallyRejected = 0
 let cleanup: Array<() => void> = []
 const recentLongTasks: LongTaskEntry[] = []
 const tokenReceipts = new Map<string, TokenReceipt>()
+
+export function mergeTokenReceipt(current: TokenReceipt | undefined, next: TokenReceipt): TokenReceipt {
+  if (!current) return next
+  return {
+    ...current,
+    deltaChars: current.deltaChars + next.deltaChars,
+  }
+}
+
 export function startBrowserPerformanceMetrics(input: { url: string; client: SynergyClient }) {
   if (started || typeof window === "undefined") return
   started = true
@@ -159,7 +168,8 @@ export function recordTokenReceive(
     deltaChars: input.delta?.length ?? 0,
     partType: safeString(part.type ?? "unknown"),
   }
-  tokenReceipts.set(tokenKey(part), receipt)
+  const key = tokenKey(part)
+  tokenReceipts.set(key, mergeTokenReceipt(tokenReceipts.get(key), receipt))
   while (tokenReceipts.size > MAX_TOKEN_RECEIPTS) {
     const oldest = tokenReceipts.keys().next().value
     if (!oldest) break
@@ -173,6 +183,7 @@ export function recordTokenApply(part: { id: string; sessionID?: string; message
   const key = tokenKey(part)
   const receipt = tokenReceipts.get(key)
   if (!receipt) return
+  tokenReceipts.delete(key)
   const appliedAt = browserNow()
   const applyMetric = buildTokenTimingMetric({
     phase: "apply",
@@ -191,7 +202,6 @@ export function recordTokenApply(part: { id: string; sessionID?: string; message
       receipt,
     })
     if (paintMetric) enqueue({ kind: "metric", value: paintMetric })
-    tokenReceipts.delete(key)
   }
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(() => paint())

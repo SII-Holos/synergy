@@ -1051,6 +1051,12 @@ function createGlobalSync() {
             if (typeof p?.text === "string") p.text += delta
           }),
         )
+        recordTokenApply({
+          id: partID,
+          sessionID: event.properties.sessionID,
+          messageID,
+          type: event.properties.kind,
+        })
         break
       }
       case "message.part.updated": {
@@ -1098,6 +1104,7 @@ function createGlobalSync() {
         }
 
         capturePlanBlueprintOfferFromPart(store, setStore, part)
+        if (event.properties.delta !== undefined) recordTokenApply(part)
 
         // Optimistic workspace update for worktree tools — the status bar reads
         // session.workspace from the store and should reflect the new workspace

@@ -3,18 +3,7 @@ export const MARKDOWN_TERMINAL_CROSSFADE_MAX_CHARS = 20_000
 
 export type MarkdownTerminalTransitionMode = "instant" | "crossfade"
 
-export function markdownTerminalTransitionMode(input: {
-  hadStreamContent: boolean
-  markdownLength: number
-  prefersReducedMotion: boolean
-}): MarkdownTerminalTransitionMode {
-  if (!input.hadStreamContent) return "instant"
-  if (input.prefersReducedMotion) return "instant"
-  if (input.markdownLength > MARKDOWN_TERMINAL_CROSSFADE_MAX_CHARS) return "instant"
-  return "crossfade"
-}
-
-export function applyMarkdownTerminalCrossfade(input: {
+export interface MarkdownTerminalCrossfadeInput {
   container: HTMLElement
   html: string
   durationMs?: number
@@ -26,7 +15,24 @@ export function applyMarkdownTerminalCrossfade(input: {
   prefersReducedMotion?: boolean
   markdownLength?: number
   hadStreamContent?: boolean
-}) {
+}
+
+export interface MarkdownTerminalTransitionInput extends MarkdownTerminalCrossfadeInput {
+  hash: string
+}
+
+export function markdownTerminalTransitionMode(input: {
+  hadStreamContent: boolean
+  markdownLength: number
+  prefersReducedMotion: boolean
+}): MarkdownTerminalTransitionMode {
+  if (!input.hadStreamContent) return "instant"
+  if (input.prefersReducedMotion) return "instant"
+  if (input.markdownLength > MARKDOWN_TERMINAL_CROSSFADE_MAX_CHARS) return "instant"
+  return "crossfade"
+}
+
+export function applyMarkdownTerminalCrossfade(input: MarkdownTerminalCrossfadeInput) {
   const mode = markdownTerminalTransitionMode({
     hadStreamContent: input.hadStreamContent ?? Boolean(input.container.childNodes.length),
     markdownLength: input.markdownLength ?? input.html.length,
@@ -87,23 +93,52 @@ export function applyMarkdownTerminalCrossfade(input: {
   // Moving these nodes into the container later preserves the same listeners.
   enhanceCleanup = input.enhance?.(next)
 
-  // Ensure the outgoing stream layer is painted before the fade starts.
-  previous.getBoundingClientRect()
   frameId = nextFrame(() => {
-    frameId = undefined
-    if (finished) return
-    stage.dataset.active = "true"
-    timeoutId = schedule(() => {
-      timeoutId = undefined
+    frameId = nextFrame(() => {
+      frameId = undefined
       if (finished) return
-      finished = true
-      // Move the already-enhanced terminal nodes into place; do not re-parse HTML.
-      input.container.replaceChildren(...Array.from(next.childNodes))
-    }, durationMs)
+      stage.dataset.active = "true"
+      timeoutId = schedule(() => {
+        timeoutId = undefined
+        if (finished) return
+        finished = true
+        // Move the already-enhanced terminal nodes into place; do not re-parse HTML.
+        input.container.replaceChildren(...Array.from(next.childNodes))
+      }, durationMs)
+    })
   })
 
   return () => {
-    finished = true
-    dispose()
+    clearMotion()
+    if (!finished) {
+      finished = true
+      input.container.replaceChildren(...Array.from(next.childNodes))
+    }
+    enhanceCleanup?.()
+    enhanceCleanup = undefined
+  }
+}
+
+export function createMarkdownTerminalTransitionController() {
+  let current: { hash: string; cleanup: () => void } | undefined
+
+  return {
+    apply(input: MarkdownTerminalTransitionInput) {
+      if (current?.hash === input.hash) return false
+
+      current?.cleanup()
+      current = undefined
+
+      const { hash, ...transition } = input
+      current = {
+        hash,
+        cleanup: applyMarkdownTerminalCrossfade(transition),
+      }
+      return true
+    },
+    reset() {
+      current?.cleanup()
+      current = undefined
+    },
   }
 }

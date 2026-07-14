@@ -9,6 +9,7 @@ import {
   stopBrowserPerformanceMetrics,
 } from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
+import { streamingTokenReceipt } from "./streaming-token-event"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -149,10 +150,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
         if (type === "server.heartbeat") return
 
-        if (payload.type === "message.part.updated" && payload.properties.delta !== undefined) {
-          const part = payload.properties.part
-          recordTokenReceive(part, { delta: payload.properties.delta })
-        }
+        const tokenReceipt = streamingTokenReceipt(payload)
+        if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
         const directory = parsed.directory ?? "global"
         const k = key(directory, payload)

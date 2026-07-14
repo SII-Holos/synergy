@@ -5,7 +5,7 @@ import {
   markdownFallbackHtml,
   markdownRenderEntry,
 } from "../src/components/markdown-render"
-import { renderableTextPartMarkdownText } from "../src/components/text-part-render"
+import { createTextPartProjection, isTextPartTerminal } from "../src/components/text-part-render"
 
 describe("Markdown terminal rendering", () => {
   test("ignores stale rendered HTML whose hash does not match current markdown", () => {
@@ -29,24 +29,47 @@ describe("Markdown terminal rendering", () => {
   })
 })
 
-describe("renderableTextPartMarkdownText", () => {
-  test("uses full source once completion arrives instead of typewriter prefix", () => {
-    expect(
-      renderableTextPartMarkdownText({
-        completed: true,
-        source: "intro\n\n```markdown\nfull long block\n```",
-        typed: "intro",
-      }),
-    ).toBe("intro\n\n```markdown\nfull long block\n```")
+describe("createTextPartProjection", () => {
+  test("processes appended text without exposing trim whitespace", () => {
+    const projection = createTextPartProjection()
+
+    expect(projection.project({ key: "part_1", source: "  hello  ", completed: false })).toBe("hello")
+    expect(projection.project({ key: "part_1", source: "  hello  \nworld", completed: false })).toBe("hello  \nworld")
   })
 
-  test("uses typewriter text while still streaming", () => {
+  test("removes a project path split across stream updates", () => {
+    const projection = createTextPartProjection()
+    const remove = "/workspace/project"
+
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false, remove })).toBe("")
     expect(
-      renderableTextPartMarkdownText({
+      projection.project({
+        key: "part_1",
+        source: "  /workspace/project/src/index.ts",
         completed: false,
-        source: "complete source",
-        typed: "visible prefix",
+        remove,
       }),
-    ).toBe("visible prefix")
+    ).toBe("/src/index.ts")
+  })
+
+  test("rebuilds once for terminal or rewritten source", () => {
+    const projection = createTextPartProjection()
+    const remove = "/workspace/project"
+
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false, remove })).toBe("")
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: true, remove })).toBe(
+      "/workspace/pro",
+    )
+    expect(projection.project({ key: "part_2", source: "  replacement  ", completed: false, remove })).toBe(
+      "replacement",
+    )
+  })
+})
+
+describe("isTextPartTerminal", () => {
+  test("keeps an unfinished part on the streaming renderer until its own lifecycle ends", () => {
+    expect(isTextPartTerminal({ partEnd: undefined, messageCompleted: undefined })).toBe(false)
+    expect(isTextPartTerminal({ partEnd: 2, messageCompleted: undefined })).toBe(true)
+    expect(isTextPartTerminal({ partEnd: undefined, messageCompleted: 3 })).toBe(true)
   })
 })
