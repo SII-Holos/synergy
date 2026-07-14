@@ -363,6 +363,20 @@ export namespace SessionCompaction {
     return anchor ? formatAnchor(anchor.text) : undefined
   }
 
+  export function buildRecoveryHint(input: { sessionID: string; summaryMessageID: string }): string {
+    return [
+      "<recovery-hint>",
+      "This task is continuing after context compaction.",
+      "Use the latest compaction summary as the primary handoff, resume from its first unfinished next step, and do not repeat work recorded as completed.",
+      "Earlier message text and tool-call summaries remain durably stored in this session.",
+      "Do not read the earlier history unless the continuation summary is insufficient.",
+      'If exact earlier message context is required and `session_read` is not visible, first expand the "session" tool group.',
+      `Then use \`session_read\` with target session "${input.sessionID}", around message "${input.summaryMessageID}", and limit 50.`,
+      "Do not guess when the missing context can be recovered from the stored session.",
+      "</recovery-hint>",
+    ].join("\n")
+  }
+
   export async function process(input: {
     parentID: string
     messages: MessageV2.WithParts[]
@@ -531,6 +545,16 @@ export namespace SessionCompaction {
         synthetic: true,
         origin: "system",
         text: "Continue if you have next steps",
+        time: { start: now, end: now },
+      })
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: continueMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        synthetic: true,
+        origin: "system",
+        text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
         time: { start: now, end: now },
       })
       if (anchor) {

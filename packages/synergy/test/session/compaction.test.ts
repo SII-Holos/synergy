@@ -597,6 +597,23 @@ describe("session.compaction.buildAnchor", () => {
   })
 })
 
+describe("session.compaction.buildRecoveryHint", () => {
+  test("points the continuation at durable history around the compaction boundary", () => {
+    const hint = SessionCompaction.buildRecoveryHint({
+      sessionID: "ses_test",
+      summaryMessageID: "msg_summary",
+    })
+
+    expect(hint).toContain("<recovery-hint>")
+    expect(hint).toContain("Do not read the earlier history unless the continuation summary is insufficient")
+    expect(hint).toContain('expand the "session" tool group')
+    expect(hint).toContain('target session "ses_test"')
+    expect(hint).toContain('around message "msg_summary"')
+    expect(hint).toContain("limit 50")
+    expect(hint).toContain("</recovery-hint>")
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Token.encodingForModelID
 // ---------------------------------------------------------------------------
