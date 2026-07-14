@@ -96,6 +96,7 @@ export const SemanticIconToken = {
   "performance.storage": "hard-drive",
   "performance.library": "book-marked",
   "performance.vitals": "circle-gauge",
+  "performance.analysis": "binoculars",
 
   // Settings areas that are not product entities
   "settings.account": "user",

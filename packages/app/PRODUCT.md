@@ -90,6 +90,8 @@ Performance should separate server process resources from registered tool child 
 
 Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
 
+Performance AI analysis should be an explicit action over the selected time window, not a continuous background opinion. Send only a bounded, redacted telemetry read model to a hidden tool-free Cortex child, show its lifecycle and Markdown conclusion in the Performance surface, and keep cancel plus durable session navigation available for control and auditability.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.

@@ -96,6 +96,7 @@ export namespace ObservabilityConfig {
       issueListPerMinute: 120,
       browserIngestPerMinute: 60,
       configPatchPerMinute: 20,
+      analysisPerMinute: 6,
       sseConnectionsPerClient: 4,
     },
     redactAttributeKeys: [

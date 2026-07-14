@@ -27,4 +27,6 @@ export namespace PerformanceError {
     | "PERF_CONFIG_CONFLICT"
     | "PERF_STORAGE_UNAVAILABLE"
     | "PERF_SPAN_CONFLICT"
+    | "PERF_ANALYSIS_NOT_FOUND"
+    | "PERF_ANALYSIS_UNAVAILABLE"
 }

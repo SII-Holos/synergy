@@ -21,6 +21,12 @@ Permission evaluation logs contain only the permission name, requested pattern l
 
 Server resource samples are kept separate from registered tool child process samples. Linux hosts report child RSS from `/proc/<pid>/status`; unsupported hosts still report registered child process counts. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored.
 
+## AI analysis
+
+Use **Analyze** in the Performance toolbar to snapshot the selected monitoring window and ask the hidden `performance-analyst` agent for a concise health verdict, evidence-backed findings, recommendations, and material data gaps. The panel displays queued and running state, supports explicit cancellation, renders the final Markdown result directly, and links to the durable child session for inspection.
+
+Analysis runs as a visible, tool-free Cortex child under a dedicated Performance request session. The prompt receives only a bounded read model: raw trace, span, session, issue, correlation, process, and fingerprint identifiers are omitted; child processes receive anonymous labels; time-series points are reduced to aggregate trends; and inflight work is capped. Telemetry strings are treated as untrusted data. Starting an analysis requires an available Thinking model and does not grant the analyst filesystem, shell, network, or other tool access.
+
 ## Local storage
 
 Canonical telemetry is stored locally in SQLite with WAL mode:
@@ -88,6 +94,9 @@ The server exposes local-first endpoints under `/global/performance`:
 - `GET /global/performance/config`
 - `PATCH /global/performance/config`
 - `POST /global/performance/browser-metrics`
+- `POST /global/performance/analysis`
+- `GET /global/performance/analysis/:sessionID`
+- `POST /global/performance/analysis/:sessionID/cancel`
 - `GET /global/performance/events`
 
 The support diagnostics summary is `GET /global/diagnostics` and returns the typed `DiagnosticsSummary` schema. `synergy diagnostics` creates a tar.gz package containing `summary.json`, indexed `events.jsonl`, `issues.json`, `inflight.json`, `resources.json`, redacted logs, process registry state, server lock information, pending-session metadata, and plugin runtime state when available.

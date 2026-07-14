@@ -1,8 +1,10 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { isPerformanceAnalysisActive } from "./analysis-model"
 import { CHART_METRICS } from "./chart-model"
 import type {
   BrowserMetricSample,
+  PerformanceAnalysis,
   PerformanceEvent,
   PerformanceIssue,
   PerformanceSummary,
@@ -44,6 +46,9 @@ export function usePerformance() {
   const [windowMs, setWindowMs] = createSignal(900_000)
   const [timeline, setTimeline] = createSignal<PerformanceTimeline | null>(null)
   const [traceDetail, setTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
+  const [analysis, setAnalysis] = createSignal<PerformanceAnalysis | null>(null)
+  const [analysisError, setAnalysisError] = createSignal<string | null>(null)
+  const [analysisStarting, setAnalysisStarting] = createSignal(false)
 
   const [summary, { refetch, mutate }] = createResource(
     windowMs,
@@ -114,6 +119,7 @@ export function usePerformance() {
   sampleBrowser()
   const browserTimer = window.setInterval(sampleBrowser, 10_000)
   let pollTimer: number | undefined
+  let analysisPollTimer: number | undefined
   const schedulePoll = () => {
     window.clearTimeout(pollTimer)
     pollTimer = window.setTimeout(() => {
@@ -135,6 +141,7 @@ export function usePerformance() {
     stream.close()
     window.clearInterval(browserTimer)
     window.clearTimeout(pollTimer)
+    window.clearTimeout(analysisPollTimer)
     document.removeEventListener("visibilitychange", onVisibility)
   })
 
@@ -148,12 +155,17 @@ export function usePerformance() {
     setWindowMs,
     timeline,
     traceDetail,
+    analysis,
+    analysisError,
+    analysisStarting,
     browserSamples,
     eventIssues,
     eventTraces,
     refresh: refreshAll,
     loadTrace,
     loadTimeline,
+    startAnalysis,
+    cancelAnalysis,
   }
 
   async function refreshAll() {
@@ -189,6 +201,65 @@ export function usePerformance() {
     const result = await sdk.client.performance.traces.detail({ traceId }, { throwOnError: true })
     setTraceDetail(result.data ?? null)
     return result.data ?? null
+  }
+
+  async function startAnalysis() {
+    window.clearTimeout(analysisPollTimer)
+    setAnalysisError(null)
+    setAnalysis(null)
+    setAnalysisStarting(true)
+    try {
+      const result = await sdk.client.performance.analysis.start(
+        { performanceAnalysisRequest: { windowMs: windowMs() } },
+        { throwOnError: true },
+      )
+      const next = result.data ?? null
+      setAnalysis(next)
+      if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(next.sessionID)
+      return next
+    } catch (err) {
+      setAnalysisError(getErrorMessage(err))
+      return null
+    } finally {
+      setAnalysisStarting(false)
+    }
+  }
+
+  async function loadAnalysis(sessionID: string) {
+    try {
+      const result = await sdk.client.performance.analysis.get({ sessionID }, { throwOnError: true })
+      const next = result.data ?? null
+      setAnalysis(next)
+      if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(sessionID)
+      return next
+    } catch (err) {
+      setAnalysisError(getErrorMessage(err))
+      return null
+    }
+  }
+
+  function scheduleAnalysisPoll(sessionID: string) {
+    window.clearTimeout(analysisPollTimer)
+    analysisPollTimer = window.setTimeout(() => void loadAnalysis(sessionID), 1_000)
+  }
+
+  async function cancelAnalysis() {
+    const current = analysis()
+    if (!current || !isPerformanceAnalysisActive(current.status)) return current
+    window.clearTimeout(analysisPollTimer)
+    setAnalysisError(null)
+    try {
+      const result = await sdk.client.performance.analysis.cancel(
+        { sessionID: current.sessionID },
+        { throwOnError: true },
+      )
+      const next = result.data ?? null
+      setAnalysis(next)
+      return next
+    } catch (err) {
+      setAnalysisError(getErrorMessage(err))
+      return null
+    }
   }
 
   function parsePerformanceEvent(event: MessageEvent): PerformanceEvent | undefined {

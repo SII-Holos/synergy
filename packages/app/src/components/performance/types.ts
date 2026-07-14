@@ -4,6 +4,7 @@ import type {
   PerfTraceDetail,
   PerfTraceListItem,
   PerfTimeline,
+  PerformanceAnalysisView,
 } from "@ericsanchezok/synergy-sdk"
 
 export type PerformanceMetricPoint = {
@@ -43,6 +44,7 @@ export type PerformanceSummary = Omit<PerfDashboardSummary, "resources" | "top">
 }
 export type PerformanceTraceDetail = PerfTraceDetail
 export type PerformanceTimeline = PerfTimeline
+export type PerformanceAnalysis = PerformanceAnalysisView
 
 export type BrowserMetricSample = {
   timestamp: number
