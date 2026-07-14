@@ -49,6 +49,8 @@ A background task returns its identity immediately and continues independently. 
 
 Completion is event-driven. The parent does not need to poll `task_output` in a loop. When a synchronous waiter exists, Cortex resolves that waiter directly. Otherwise, a visible task can notify the parent session when the parent is available; hidden reviewer tasks normally suppress parent-facing task events and notifications.
 
+When the parent explicitly reads a terminal task through `task_output`, the persisted tool result satisfies any deferred completion notification for that task. Reading live progress does not consume the future terminal notification.
+
 ## Progress
 
 Cortex observes the child session while it runs. Progress includes:
