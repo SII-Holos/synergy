@@ -575,6 +575,25 @@ export namespace AgendaStore {
     }
   }
 
+  export function isSessionContinuationBlocker(item: AgendaTypes.Item, sessionID?: string): boolean {
+    const originSessionID = item.origin.sessionID
+    return (
+      (item.status === "active" || item.status === "pending") &&
+      item.wake !== false &&
+      item.silent !== true &&
+      originSessionID !== undefined &&
+      (sessionID === undefined || originSessionID === sessionID)
+    )
+  }
+
+  function sortSessionWakeItems(items: AgendaTypes.Item[]): AgendaTypes.Item[] {
+    return items.sort((a, b) => {
+      const aNext = a.state.nextRunAt ?? Number.POSITIVE_INFINITY
+      const bNext = b.state.nextRunAt ?? Number.POSITIVE_INFINITY
+      return aNext - bNext
+    })
+  }
+
   export async function listForSessionWakeups(input: {
     sessionID: string
     scopeID: string
@@ -584,16 +603,34 @@ export namespace AgendaStore {
   }): Promise<AgendaTypes.SessionAgendaResponse> {
     const now = input.now ?? Date.now()
     const items = await listForScope(input.scopeID)
-    const matching = items
-      .filter((item) => item.status === "active" || item.status === "pending")
-      .filter((item) => item.wake !== false && item.silent !== true)
-      .filter((item) => item.origin.sessionID === input.sessionID)
-      .filter((item) => item.state.nextRunAt === undefined || item.state.nextRunAt > now)
-      .sort((a, b) => {
-        const aNext = a.state.nextRunAt ?? Number.POSITIVE_INFINITY
-        const bNext = b.state.nextRunAt ?? Number.POSITIVE_INFINITY
-        return aNext - bNext
-      })
+    const matching = sortSessionWakeItems(
+      items
+        .filter((item) => isSessionContinuationBlocker(item, input.sessionID))
+        .filter((item) => item.state.nextRunAt === undefined || item.state.nextRunAt > now),
+    )
+
+    const total = matching.length
+    const paged = input.limit === 0 ? [] : matching.slice(input.offset, input.offset + input.limit)
+    return {
+      sessionID: input.sessionID,
+      count: total,
+      hasActiveAgenda: total > 0,
+      items: paged.map(toSessionAgendaItem),
+      offset: input.offset,
+      limit: input.limit,
+      total,
+      hasMore: input.offset + paged.length < total,
+    }
+  }
+
+  export async function listForSessionContinuationBlockers(input: {
+    sessionID: string
+    scopeID: string
+    limit: number
+    offset: number
+  }): Promise<AgendaTypes.SessionAgendaResponse> {
+    const items = await listForScope(input.scopeID)
+    const matching = sortSessionWakeItems(items.filter((item) => isSessionContinuationBlocker(item, input.sessionID)))
 
     const total = matching.length
     const paged = input.limit === 0 ? [] : matching.slice(input.offset, input.offset + input.limit)

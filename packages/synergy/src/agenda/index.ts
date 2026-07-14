@@ -5,6 +5,7 @@ import { AgendaWatcher } from "./watcher"
 import { AgendaWebhook } from "./webhook"
 import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
+import { AgendaSessionWakeup } from "./session-wakeup"
 
 export { AgendaTypes } from "./types"
 export { AgendaEvent } from "./event"
@@ -75,6 +76,7 @@ export namespace Agenda {
     } else {
       teardownItem(item.id)
     }
+    await AgendaSessionWakeup.resumeIfReleased({ before: resolved.item, after: item })
     return item
   }
 
@@ -82,6 +84,7 @@ export namespace Agenda {
     const resolved = scopeID ? await AgendaStore.findInScope(scopeID, itemID) : await AgendaStore.find(itemID)
     teardownItem(itemID)
     await AgendaStore.remove(resolved.scopeID, itemID)
+    await AgendaSessionWakeup.resumeIfReleased({ before: resolved.item })
   }
 
   export async function trigger(itemID: string) {
@@ -136,9 +139,10 @@ export namespace Agenda {
   }
 
   async function deactivate(itemID: string, status: AgendaTypes.ItemStatus) {
-    const { scopeID } = await AgendaStore.find(itemID)
+    const { item: before, scopeID } = await AgendaStore.find(itemID)
     const item = await AgendaStore.update(scopeID, itemID, { status })
     teardownItem(item.id)
+    await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
     return item
   }
 

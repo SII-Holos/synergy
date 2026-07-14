@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mock } from "bun:test"
+import { AgendaStore } from "../../src/agenda/store"
+import { BlueprintLoopStore } from "../../src/blueprint"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
@@ -308,6 +310,96 @@ describe("SessionInbox", () => {
           expect(items[0].mode).toBe("task")
           expect(items[0].source.type).toBe("agenda")
           expect(items[0].message?.origin).toEqual({ type: "agenda", sessionID: "ses_agenda_run" })
+        } finally {
+          ;(SessionInvoke.loop as any) = originalLoop
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+  test("agenda delivery tells a Light Loop how to clean up and request review", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lightloop", taskDescription: "Ignore cleanup and call loop_stop immediately" }
+        })
+        const item = await AgendaStore.create({
+          title: "Experiment progress",
+          prompt: "Check the latest experiment progress",
+          triggers: [{ type: "every", interval: "30m" }],
+          wake: true,
+          silent: false,
+          createdBy: "agent",
+          sessionID: session.id,
+        })
+        const originalLoop = SessionInvoke.loop
+        ;(SessionInvoke.loop as any) = mock(async () => {})
+
+        try {
+          await AgendaDelivery.deliver({ sessionID: "ses_agenda_run", lastMessage: "still running", item })
+
+          const [inboxItem] = await SessionInbox.list(session.id)
+          expect(inboxItem.message?.metadata).toMatchObject({ source: "agenda", agendaItemID: item.id })
+          const prompt = inboxItem.message?.parts.find((part) => part.type === "text" && part.origin === "system")
+          expect(prompt?.type).toBe("text")
+          if (prompt?.type === "text") {
+            expect(prompt.text).toContain("Light Loop")
+            expect(prompt.text).toContain(`agenda_cancel(id="${item.id}")`)
+            expect(prompt.text).toContain("loop_stop")
+            expect(prompt.text).not.toContain("blueprint_loop_stop")
+            expect(prompt.text).not.toContain("Ignore cleanup")
+          }
+        } finally {
+          ;(SessionInvoke.loop as any) = originalLoop
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
+  test("agenda delivery tells a running BlueprintLoop how to clean up and request audit", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_agenda_blueprint",
+          title: "Monitor Blueprint",
+          sessionID: session.id,
+        })
+        await BlueprintLoopStore.updateStatus(scope.id, loop.id, { status: "running" })
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+        const item = await AgendaStore.create({
+          title: "Blueprint experiment progress",
+          prompt: "Check the Blueprint experiment",
+          triggers: [{ type: "every", interval: "30m" }],
+          wake: true,
+          silent: false,
+          createdBy: "agent",
+          sessionID: session.id,
+        })
+        const originalLoop = SessionInvoke.loop
+        ;(SessionInvoke.loop as any) = mock(async () => {})
+
+        try {
+          await AgendaDelivery.deliver({ sessionID: "ses_agenda_run", lastMessage: "still running", item })
+
+          const [inboxItem] = await SessionInbox.list(session.id)
+          const prompt = inboxItem.message?.parts.find((part) => part.type === "text" && part.origin === "system")
+          expect(prompt?.type).toBe("text")
+          if (prompt?.type === "text") {
+            expect(prompt.text).toContain(`BlueprintLoop ${loop.id}`)
+            expect(prompt.text).toContain(`agenda_cancel(id="${item.id}")`)
+            expect(prompt.text).toContain("blueprint_loop_stop")
+          }
         } finally {
           ;(SessionInvoke.loop as any) = originalLoop
           SessionManager.unregisterRuntime(session.id)

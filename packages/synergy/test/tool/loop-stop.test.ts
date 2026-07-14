@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { AgendaStore } from "../../src/agenda/store"
 import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex"
 import { Session } from "../../src/session"
@@ -203,6 +204,33 @@ describe("loop_stop", () => {
         await expect(tool.execute({ summary: "done" }, ctx("ses_test_loop"))).rejects.toThrow(
           "No active Light Loop workflow on this session",
         )
+      },
+    })
+  })
+  test("rejects review while an Agenda item can still wake the Light Loop session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = sessionWithLightLoop(true)
+        const agenda = await AgendaStore.create({
+          title: "Experiment progress",
+          prompt: "Check the experiment",
+          triggers: [{ type: "every", interval: "30m" }],
+          wake: true,
+          silent: false,
+          createdBy: "agent",
+          sessionID: session.id,
+        })
+        ;(Session.get as any) = mock(async () => session)
+        const launch = mock(async () => ({ id: "ctx_unexpected", sessionID: "ses_unexpected" }))
+        ;(Cortex.launch as any) = launch
+
+        const tool = await LoopStopTool.init()
+        await expect(tool.execute({ summary: "done" }, ctx(session.id))).rejects.toThrow(
+          `agenda_cancel(id="${agenda.id}")`,
+        )
+        expect(launch).not.toHaveBeenCalled()
       },
     })
   })

@@ -83,7 +83,7 @@ Model calls are accumulated for the run and flushed at idle. A positive maximum 
 
 ## Continuation Kernel
 
-One subscriber handles `SessionEvent.Idle` for all workflows. Its shared gate rejects archived sessions, sessions with queued or running Cortex work, sessions without a terminal assistant for the latest reply-required user message, and terminal assistant errors.
+One subscriber handles `SessionEvent.Idle` for all workflows. Its shared gate rejects archived sessions, sessions with queued or running Cortex work, sessions without a terminal assistant for the latest reply-required user message, terminal assistant errors, and sessions where any active or pending Agenda item for that session has `wake !== false` and `silent !== true`.
 
 Policies run in descending priority:
 
@@ -95,6 +95,16 @@ The first policy that handles the idle wins. Per-session, per-policy deduplicati
 
 BlueprintLoop continues only a `running` bound loop. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or sends a phase continuation. Light Loop sends its task check only when no completion review is pending.
 
+### Agenda Wake Ownership
+
+Agenda items that can wake their owning session (`wake !== false`, `silent !== true`, status `active` or `pending`, with an `origin.sessionID`) temporarily suppress the shared continuation gate. While any such blocker exists, Agenda owns the wake cadence: ordinary Light Loop, BlueprintLoop, and Lattice continuation policies do not fire.
+
+The blocker check deliberately ignores `nextRunAt`, so an overdue or just-fired item remains a blocker while its status is still `active` or `pending`. Cancelling, pausing, removing, making the item non-waking or silent, or automatically completing it releases the blocker. `AgendaSessionWakeup.resumeIfReleased` then kicks the ContinuationKernel; for automatic completion, that kick is deliberately deferred until after the Agenda result is delivered.
+
+When Agenda delivery wakes an active Light Loop or running BlueprintLoop execution session, the delivery appends system-origin cleanup guidance: it lists remaining blockers with their `agenda_cancel` commands, exposes `agenda_cancel`, `agenda_list`, and the correct stop tool, and instructs the loop to cancel Agenda items before requesting stop.
+
+`loop_stop` and `blueprint_loop_stop` call `AgendaSessionWakeup.assertClear` to reject the request while any blocker remains, showing the cancellation commands in the error message.
+
 ## Invariants
 
 - Workflow instructions are a context projection; stored user text remains unchanged.
@@ -102,7 +112,7 @@ BlueprintLoop continues only a `running` bound loop. Lattice enforces its budget
 - Blueprint writes occur only in Plan or Lattice.
 - Executors request completion; independent reviewer sessions decide it.
 - Lattice owns phase transitions and only its own BlueprintLoops can advance its Pathway.
-- One shared idle gate prevents continuation while child work or an incomplete/erroring turn is still active.
+- One shared idle gate prevents continuation while child work, an incomplete/erroring turn, or wake-capable Agenda items are still active.
 
 ## SuperPlan Storage Substrate
 

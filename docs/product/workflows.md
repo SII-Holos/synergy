@@ -82,6 +82,11 @@ BlueprintLoop, Lattice, and Light Loop share one continuation kernel. It acts on
 - the session exists and is not archived
 - no Cortex child task for the session is queued or running
 - the latest reply-required user task has a terminal assistant response without an error
+- **no active or pending Agenda item can wake that session** (the item must have `wake !== false`, `silent !== true`, and a matching `origin.sessionID`)
+
+While a wake-capable Agenda item exists, Agenda owns the continuation cadence. Stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run while such items remain and show the cancellation commands needed to clear them.
+
+The blocker check ignores `nextRunAt`, so an overdue or just-fired item remains a blocker while it is still active or pending. When an automatic run completes the item, ordinary continuation resumes only after the Agenda result has been delivered.
 
 If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. A terminal response is consumed at most once by each policy, preventing duplicate continuation messages.
 

@@ -486,6 +486,7 @@ export namespace SessionInbox {
         visible: visibleFor(mode, origin),
         metadata: input.mail.metadata,
         summary: userMail.summary,
+        tools: userMail.tools,
       },
       summaryPreview: summarized.preview,
       summary: {

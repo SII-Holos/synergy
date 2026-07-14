@@ -92,6 +92,8 @@ export namespace ContinuationKernel {
     const scopeID = (session.scope as Scope).id
 
     if (await hasActiveCortexWork(sessionID)) return undefined
+    const { AgendaSessionWakeup } = await import("../agenda/session-wakeup")
+    if (await AgendaSessionWakeup.has(sessionID, scopeID)) return undefined
 
     const terminalMessageID = await terminalAssistantMessageID(sessionID)
     if (!terminalMessageID) return undefined

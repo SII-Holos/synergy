@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { AgendaStore } from "../../src/agenda/store"
 import { BlueprintLoopStore } from "../../src/blueprint"
 import { Cortex } from "../../src/cortex"
 import { Identifier } from "../../src/id/id"
@@ -187,6 +188,32 @@ describe("blueprint_loop_stop", () => {
         await expect(tool.execute({ summary: "done" }, ctx(unrelated.id))).rejects.toThrow(
           "Only the BlueprintLoop execution session may request review",
         )
+      },
+    })
+  })
+  test("rejects audit while an Agenda item can still wake the BlueprintLoop session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await createRunningLoop()
+        const agenda = await AgendaStore.create({
+          title: "Blueprint experiment progress",
+          prompt: "Check the Blueprint experiment",
+          triggers: [{ type: "every", interval: "30m" }],
+          wake: true,
+          silent: false,
+          createdBy: "agent",
+          sessionID: session.id,
+        })
+        const launches = installReviewerLaunch()
+        const tool = await BlueprintLoopStopTool.init()
+
+        await expect(tool.execute({ summary: "done" }, ctx(session.id))).rejects.toThrow(
+          `agenda_cancel(id="${agenda.id}")`,
+        )
+        expect(launches).toHaveLength(0)
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("running")
       },
     })
   })

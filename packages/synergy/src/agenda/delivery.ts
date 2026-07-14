@@ -1,6 +1,7 @@
 import { Identifier } from "../id/id"
 import { SessionManager } from "../session/manager"
 import { Log } from "../util/log"
+import { AgendaSessionWakeup } from "./session-wakeup"
 import { AgendaTypes } from "./types"
 
 export namespace AgendaDelivery {
@@ -33,12 +34,21 @@ export namespace AgendaDelivery {
         })
         return
       }
+      const instruction = await AgendaSessionWakeup.loopInstruction({ session, item: input.item }).catch((error) => {
+        log.warn("failed to build loop-aware Agenda instruction", {
+          itemID: input.item.id,
+          sessionID: session.id,
+          error,
+        })
+        return undefined
+      })
 
       await SessionManager.deliver({
         target: session.id,
         mail: {
           type: "user",
-          metadata: { source: "agenda", sourceSessionID: input.sessionID },
+          metadata: { source: "agenda", sourceSessionID: input.sessionID, agendaItemID: input.item.id },
+          ...(instruction ? { tools: instruction.tools } : {}),
           parts: [
             {
               id: Identifier.ascending("part"),
@@ -47,6 +57,18 @@ export namespace AgendaDelivery {
               type: "text",
               text,
             },
+            ...(instruction
+              ? [
+                  {
+                    id: Identifier.ascending("part"),
+                    sessionID: session.id,
+                    messageID: Identifier.ascending("message"),
+                    type: "text" as const,
+                    text: instruction.text,
+                    origin: "system" as const,
+                  },
+                ]
+              : []),
           ],
         },
       })
