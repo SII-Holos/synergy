@@ -202,7 +202,7 @@ If the summarization call itself exceeds context, Synergy writes a deterministic
 
 The active task anchor is resolved directly from root `R`: user-authored text first, then the root summary title. There is no backward heuristic scan or carried anchor metadata.
 
-Automatic compaction writes a hidden non-root system continuation belonging to `R`, includes the anchor, and returns `continue`. The next iteration rereads filtered history and resumes the same task.
+Automatic compaction writes a hidden non-root system continuation belonging to `R`, includes the anchor, and returns `continue`. The continuation also carries a deterministic recovery hint: use the summary as the primary handoff, avoid repeating completed work, and only when exact earlier message context is missing, expand the deferred Session tools if needed and use `session_read` around the compaction summary message. The next iteration rereads filtered history and resumes the same task.
 
 ### Filtering and pruning
 
