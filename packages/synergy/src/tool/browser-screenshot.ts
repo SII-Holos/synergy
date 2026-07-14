@@ -7,7 +7,7 @@ import { Identifier } from "../id/id"
 
 export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   description:
-    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Image-capable models receive it directly; text-only models receive a saved local path for look_at. A failed requested type never falls back to another capture.",
+    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Image-capable models receive it directly; text-only models receive a saved local path and can use look_at when available. A failed requested type never falls back to another capture.",
   parameters: z
     .object({
       fullPage: z.literal(true).optional(),
@@ -42,9 +42,12 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
         const filePath = Asset.filePath(assetId)
         const kind = params.target ? "locator" : params.clip ? "clip" : params.fullPage ? "fullPage" : "viewport"
         const supportsImageInput = ctx.extra?.model?.capabilities?.input?.image === true
+        const lookAtAvailable = ctx.extra?.lookAtAvailable === true
         const delivery = supportsImageInput
           ? "The screenshot is available in the current model context."
-          : `Use look_at with file_path ${JSON.stringify(filePath)} to inspect the screenshot visually.`
+          : lookAtAvailable
+            ? `Use look_at with file_path ${JSON.stringify(filePath)} to inspect the screenshot visually.`
+            : `The screenshot is saved at local path ${JSON.stringify(filePath)}.`
         return {
           title: `Screenshot of ${page.url || page.title || "page"}`,
           output: `Captured ${kind} screenshot (${result.width}x${result.height}) as ${filename}. ${delivery}`,
@@ -57,7 +60,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
             assetId,
             filename,
             filePath,
-            modelDelivery: supportsImageInput ? "provider-file" : "look_at",
+            modelDelivery: supportsImageInput ? "provider-file" : lookAtAvailable ? "look_at" : "local_only",
           },
           attachments: [
             {

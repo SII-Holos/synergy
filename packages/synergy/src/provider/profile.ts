@@ -109,6 +109,7 @@ export namespace ProviderProfile {
     aiSdkPackage?: string
     modelFactory?: ModelFactory
     modelsDevProviderID?: string
+    sourceModelProviderID?: string
     fallbackModels?: string[]
     defaultAuxModel?: string
     healthCheck?: HealthCheck

@@ -612,7 +612,10 @@ describe("ProviderTransform.message - empty image handling", () => {
       },
     ] as any[]
 
-    const result = ProviderTransform.message(msgs, bedrockModel)
+    const result = ProviderTransform.message(msgs, bedrockModel, {
+      lookAtAvailable: true,
+      viewImageAvailable: true,
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0].content).toHaveLength(2)
@@ -620,6 +623,73 @@ describe("ProviderTransform.message - empty image handling", () => {
       type: "text",
       text: '["huge.png" was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use view_image with a smaller local image when the active model supports image input, use look_at for separate vision-model analysis, or attach a smaller image.]',
     })
+  })
+})
+describe("ProviderTransform.message - unsupported image replacement hint", () => {
+  const validBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+  const textOnlyModel = {
+    id: "anthropic/claude-3-5-sonnet",
+    providerID: "anthropic",
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("must not mention look_at when lookAtAvailable is false", () => {
+    const msgs = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Check this out" },
+          { type: "image", image: `data:image/png;base64,${validBase64}` },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, textOnlyModel, { lookAtAvailable: false })
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    const textBlocks = content.filter((item) => item.type === "text")
+    const replacement = textBlocks[1]?.text ?? ""
+
+    expect(replacement).not.toContain("look_at")
+    expect(replacement).toContain("does not support")
+  })
+
+  test("may mention look_at when lookAtAvailable is true", () => {
+    const msgs = [
+      {
+        role: "user",
+        content: [{ type: "image", image: `data:image/png;base64,${validBase64}` }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, textOnlyModel, { lookAtAvailable: true })
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    const text = content[0]?.type === "text" ? content[0].text : ""
+
+    expect(text).toContain("look_at")
   })
 })
 

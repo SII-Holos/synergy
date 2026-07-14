@@ -29,7 +29,7 @@ afterEach(() => {
   BrowserToolHelper.withActivity = originalWithActivity
 })
 
-function context(supportsImageInput: boolean) {
+function context(supportsImageInput: boolean, lookAtAvailable = true) {
   return {
     sessionID: "ses_browser_screenshot_test",
     messageID: "msg_browser_screenshot_test",
@@ -40,6 +40,7 @@ function context(supportsImageInput: boolean) {
       model: {
         capabilities: { input: { image: supportsImageInput } },
       },
+      lookAtAvailable,
     },
     metadata() {},
     async ask() {},
@@ -60,9 +61,9 @@ describe("tool.browser_screenshot", () => {
     })
   })
 
-  test("gives text-only models a real local path for look_at", async () => {
+  test("gives text-only models a real local path and mentions look_at when available", async () => {
     const tool = await BrowserScreenshotTool.init()
-    const result = await tool.execute({}, context(false))
+    const result = await tool.execute({}, context(false, true))
 
     const attachment = result.attachments?.[0]
     expect(attachment?.localPath).toBeTruthy()
@@ -71,5 +72,20 @@ describe("tool.browser_screenshot", () => {
     expect(attachment?.model).toMatchObject({ mode: "summary" })
     expect(result.output).toContain("look_at")
     expect(result.output).toContain(attachment!.localPath!)
+  })
+
+  test("text-only model with lookAtAvailable:false returns a local asset path but does not mention look_at", async () => {
+    const tool = await BrowserScreenshotTool.init()
+    const result = await tool.execute({}, context(false, false))
+
+    const attachment = result.attachments?.[0]
+    expect(attachment?.localPath).toBeTruthy()
+    expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
+    expect(attachment?.url).toStartWith("asset://")
+    expect(attachment?.model).toMatchObject({ mode: "summary" })
+    // Must produce a real path but must not claim look_at is available.
+    expect(result.output).not.toContain("look_at")
+    expect(result.output).toContain(attachment!.localPath!)
+    expect(result.metadata.modelDelivery).toBe("local_only")
   })
 })

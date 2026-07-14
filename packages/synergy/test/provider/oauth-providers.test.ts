@@ -213,6 +213,45 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
   expect(models).toEqual(["gpt-5.4-mini", "claude-sonnet-4.6"])
 })
 
+test("github copilot model catalog preserves API vision capabilities", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  const catalog = await CopilotProvider.fetchModelCatalog(
+    CopilotProvider.PROVIDER_ID,
+    asFetch(async (input) => {
+      const url = String(input)
+      if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+        return jsonResponse({ token: "copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      if (url === `${CopilotProvider.BASE_URL}/models`) {
+        return jsonResponse({
+          data: [
+            {
+              id: "vision-model",
+              capabilities: {
+                supports: { vision: true },
+                limits: { vision: { supported_media_types: ["image/png", "image/jpeg"] } },
+              },
+            },
+            { id: "text-model", capabilities: { supports: { vision: false } } },
+          ],
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+
+  expect(catalog).toEqual([
+    {
+      id: "vision-model",
+      model: { modalities: { input: ["text", "image"], output: ["text"] } },
+    },
+    {
+      id: "text-model",
+      model: { modalities: { input: ["text"], output: ["text"] } },
+    },
+  ])
+})
+
 test("github provider device login resolves managed token and reports account status", async () => {
   const authorize = await GitHubProvider.authorizeDeviceCode(
     asFetch(async (input, init) => {

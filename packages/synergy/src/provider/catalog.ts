@@ -127,6 +127,7 @@ export namespace ProviderCatalog {
   ): ModelsDev.Provider {
     const sourceID = profile.modelsDevProviderID ?? profile.id
     const source = modelsDev[sourceID]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const sourceModelIDs = Object.keys(source?.models ?? {})
     const mappedProvider = sourceID !== profile.id
     const modelIDs =
@@ -149,7 +150,7 @@ export namespace ProviderCatalog {
     }
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     for (const modelID of modelIDs) {
-      const sourceModel = source?.models?.[modelID]
+      const sourceModel = source?.models?.[modelID] ?? metadataSource?.models?.[modelID]
       provider.models[modelID] = modelFromSource({
         modelID,
         provider,
@@ -281,11 +282,12 @@ export namespace ProviderCatalog {
     }
     liveDiscovery.set(profile.id, "verified")
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     const next: ModelsDev.Provider = { ...provider, models: {} }
     for (const entry of live) {
       const modelID = entry.id
-      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID]
+      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID] ?? metadataSource?.models?.[modelID]
       next.models[modelID] = modelFromSource({
         modelID,
         provider,

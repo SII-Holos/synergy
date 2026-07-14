@@ -388,6 +388,8 @@ export namespace LLM {
                       input.systemCacheBreakpoint === undefined
                         ? undefined
                         : baseSystemLength + input.systemCacheBreakpoint,
+                    lookAtAvailable: input.activeToolIDs?.includes("look_at") === true,
+                    viewImageAvailable: input.activeToolIDs?.includes("view_image") === true,
                   })
                 }
                 return args.params
