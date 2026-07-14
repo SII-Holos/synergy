@@ -1,4 +1,5 @@
 import { describe, expect, test, mock } from "bun:test"
+import { getEventListeners } from "node:events"
 import { SessionManager } from "../../src/session/manager"
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -1063,6 +1064,41 @@ describe("SessionInvoke completion notices", () => {
           expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
         },
       })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke per-turn cleanup", () => {
+  test("removes the session abort listener and closes the combined turn signal", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let sessionAbort: AbortSignal | undefined
+    let turnAbort: AbortSignal | undefined
+    const restore = installBasicLoopMocks({
+      onProcess: async (input) => {
+        turnAbort = input.abort
+        sessionAbort = SessionManager.getRuntime(activeSessionID)?.owner?.lease.signal
+        expect(sessionAbort).toBeDefined()
+        expect(getEventListeners(sessionAbort!, "abort").length).toBeGreaterThan(0)
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(sessionAbort).toBeDefined()
+      expect(getEventListeners(sessionAbort!, "abort")).toHaveLength(0)
+      expect(turnAbort?.aborted).toBe(true)
     } finally {
       restore()
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)

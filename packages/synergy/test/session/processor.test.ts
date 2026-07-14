@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { Bus } from "../../src/bus"
 import { TimeoutConfig } from "../../src/util/timeout-config"
 import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
@@ -143,12 +144,14 @@ describe("SessionProcessor.streamToolErrorOutcome", () => {
 type SettlementScenario = {
   messageID: string
   stream(processor: SessionProcessor.Info): AsyncGenerator<Record<string, unknown>>
+  cancelUnusedStream?: () => Promise<void> | void
   config?: Record<string, unknown>
   updatePart?: (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => Promise<MessageV2.Part>
 }
 
 async function runSettlementScenario(scenario: SettlementScenario) {
   const originalStream = LLM.stream
+  const originalBusPublish = Bus.publish
   const originalUpdatePart = Session.updatePart
   const originalParts = MessageV2.parts
   const originalUpdateMessage = Session.updateMessage
@@ -161,6 +164,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
 
   try {
     TimeoutConfig.invalidate()
+    ;(Bus.publish as any) = mock(async () => {})
     ;(Session.updatePart as any) = mock(async (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => {
       const part = scenario.updatePart ? await scenario.updatePart(input) : "part" in input ? input.part : input
       parts.set(part.id, part)
@@ -176,6 +180,9 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(LLM.stream as any) = mock(async () => ({
       fullStream: scenario.stream(processor),
+      ...(scenario.cancelUnusedStream
+        ? { baseStream: { cancel: scenario.cancelUnusedStream } }
+        : {}),
     }))
 
     processor = SessionProcessor.create({
@@ -202,6 +209,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     return [...parts.values()]
   } finally {
     TimeoutConfig.invalidate()
+    ;(Bus.publish as any) = originalBusPublish
     ;(LLM.stream as any) = originalStream
     ;(Session.updatePart as any) = originalUpdatePart
     ;(MessageV2.parts as any) = originalParts
@@ -226,6 +234,34 @@ function completedOutcome(tool: string, output: string, metadata: Record<string,
 }
 
 describe("SessionProcessor execution slot settlement", () => {
+  test("cancels the unused AI SDK stream branch after consuming fullStream", async () => {
+    const cancel = mock(async () => {})
+    await runSettlementScenario({
+      messageID: "msg_assistant_stream_cleanup",
+      cancelUnusedStream: cancel,
+      async *stream() {
+        yield { type: "start" }
+        yield { type: "finish" }
+      },
+    })
+
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  test("cancels the unused AI SDK stream branch when fullStream fails", async () => {
+    const cancel = mock(async () => {})
+    await runSettlementScenario({
+      messageID: "msg_assistant_stream_cleanup_error",
+      cancelUnusedStream: cancel,
+      async *stream() {
+        yield { type: "start" }
+        throw new Error("stream failed")
+      },
+    })
+
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
   test("settles a synthetic non-bash slot that resolves before the running part exists", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_slot_first",

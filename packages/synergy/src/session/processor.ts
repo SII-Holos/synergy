@@ -66,6 +66,20 @@ export namespace SessionProcessor {
     resolvedAt?: number
   }
 
+  function cancelUnusedStreamBranch(stream: unknown): Promise<void> {
+    const branch = (stream as { baseStream?: { cancel(reason?: unknown): Promise<void> | void } }).baseStream
+    if (!branch || typeof branch.cancel !== "function") return Promise.resolve()
+
+    try {
+      return Promise.resolve(branch.cancel("Synergy consumes the fullStream branch")).catch((error) => {
+        log.warn("failed to cancel unused AI SDK stream branch", { error })
+      })
+    } catch (error) {
+      log.warn("failed to cancel unused AI SDK stream branch", { error })
+      return Promise.resolve()
+    }
+  }
+
   export function createSlot(callID: string): ToolExecutionSlot {
     let outcome: ToolOutcome | undefined
     let resolved = false
@@ -855,8 +869,13 @@ export namespace SessionProcessor {
                 }
               }
 
+              const fullStream = stream.fullStream
+              // AI SDK implements fullStream by teeing its base stream and
+              // retaining the unused branch. Cancel it before consuming ours so
+              // completed turns do not buffer chunks for the invoke lifetime.
+              const unusedStreamCancellation = cancelUnusedStreamBranch(stream)
               try {
-                for await (const value of stream.fullStream) {
+                for await (const value of fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
                     case "start":
@@ -1296,6 +1315,7 @@ export namespace SessionProcessor {
                 ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
+                await unusedStreamCancellation
                 flushChunkMetrics()
                 currentText = undefined
                 reasoningMap = {}

@@ -837,7 +837,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           turnDeadline.abort(deadlineError)
           rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
-        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const clearTurnTimer = () => clearTimeout(turnTimer)
+        abort.addEventListener("abort", clearTurnTimer, { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
         // Race against the deadline instead of relying on abort propagation:
@@ -903,9 +904,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             turnSpanEnded = true
           }
         } finally {
+          const turnTimedOut = turnDeadline.signal.aborted
           clearTimeout(turnTimer)
+          abort.removeEventListener("abort", clearTurnTimer)
+          if (!turnTimedOut) turnDeadline.abort()
           processTimer.stop()
-          releaseTurnReferences(!turnDeadline.signal.aborted)
+          releaseTurnReferences(!turnTimedOut)
           if (!turnSpanEnded) {
             ObservabilitySpans.end(turnSpan, {
               attributes: {
