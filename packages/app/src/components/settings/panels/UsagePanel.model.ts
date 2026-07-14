@@ -82,8 +82,8 @@ export function formatPercent(value: number | undefined) {
 
 export function formatUsageWindowLabel(label: string) {
   const normalized = label.trim().toLowerCase()
-  if (normalized === "session") return "5-hour window"
-  if (normalized === "current session") return "5-hour window"
+  if (normalized === "session") return "Session window"
+  if (normalized === "current session") return "Session window"
   if (normalized === "weekly") return "Weekly window"
   if (normalized === "current week") return "Weekly window"
   if (normalized === "monthly") return "Monthly window"
