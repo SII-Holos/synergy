@@ -44,6 +44,7 @@ import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
+import { ProviderStream } from "./stream"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -889,17 +890,29 @@ export namespace Provider {
           })
         }
 
+        const responseBody =
+          response.body && ProviderStream.isSSE(response.headers)
+            ? ProviderStream.limitSSEEventBytes(response.body)
+            : response.body
+
         // For streaming responses, wrap the body to reset idle timer on each chunk
-        if (idleController && response.body) {
-          const originalBody = response.body
+        if (idleController && responseBody) {
+          const originalBody = responseBody
           const idleSignal = idleController.signal
           // Aborting the fetch signal does not reliably reject a pending body
           // read on a half-open connection, so the idle timeout must also win
           // a race against the read itself.
+          let rejectIdle!: (reason: unknown) => void
           const idleAborted = new Promise<never>((_, reject) => {
-            idleSignal.addEventListener("abort", () => reject(idleSignal.reason), { once: true })
+            rejectIdle = reject
           })
+          const onIdleAbort = () => rejectIdle(idleSignal.reason)
+          idleSignal.addEventListener("abort", onIdleAbort, { once: true })
           idleAborted.catch(() => {})
+          const cleanupStream = () => {
+            if (idleTimer) clearTimeout(idleTimer)
+            idleSignal.removeEventListener("abort", onIdleAbort)
+          }
           const resetIdle = () => {
             if (idleTimer) clearTimeout(idleTimer)
             idleTimer = setTimeout(() => {
@@ -920,27 +933,35 @@ export namespace Provider {
               try {
                 const { done, value } = await Promise.race([reader.read(), idleAborted])
                 if (done) {
-                  if (idleTimer) clearTimeout(idleTimer)
+                  cleanupStream()
                   controller.close()
                   return
                 }
                 resetIdle()
                 controller.enqueue(value)
               } catch (err) {
-                if (idleTimer) clearTimeout(idleTimer)
+                cleanupStream()
                 controller.error(err)
                 try {
                   await reader.cancel(err)
                 } catch {}
               }
             },
-            cancel() {
-              if (idleTimer) clearTimeout(idleTimer)
-              return originalBody.cancel()
+            cancel(reason) {
+              cleanupStream()
+              return reader ? reader.cancel(reason) : originalBody.cancel(reason)
             },
           })
 
           return new Response(wrappedStream, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        if (responseBody !== response.body) {
+          return new Response(responseBody, {
             status: response.status,
             statusText: response.statusText,
             headers: response.headers,

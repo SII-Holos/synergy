@@ -7,6 +7,8 @@ import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
+import { SessionBounds } from "../../src/session/bounds"
+import { Bus } from "../../src/bus"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityToolFailures } from "../../src/observability/tool-failures"
 import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
@@ -145,6 +147,8 @@ type SettlementScenario = {
   stream(processor: SessionProcessor.Info): AsyncGenerator<Record<string, unknown>>
   config?: Record<string, unknown>
   updatePart?: (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => Promise<MessageV2.Part>
+  abort?: AbortSignal
+  residualStream?: { cancel(reason?: unknown): Promise<void> }
 }
 
 async function runSettlementScenario(scenario: SettlementScenario) {
@@ -156,6 +160,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   const originalConfigCurrent = Config.current
   const originalPluginTrigger = Plugin.trigger
   const originalExperienceComplete = ExperienceEncoder.onComplete
+  const originalBusPublish = Bus.publish
   const parts = new Map<string, MessageV2.Part>()
   let processor!: SessionProcessor.Info
 
@@ -174,8 +179,10 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     )
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
+    ;(Bus.publish as any) = mock(async () => {})
     ;(LLM.stream as any) = mock(async () => ({
       fullStream: scenario.stream(processor),
+      baseStream: scenario.residualStream,
     }))
 
     processor = SessionProcessor.create({
@@ -195,7 +202,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
       },
       sessionID: "ses_test",
       model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
-      abort: new AbortController().signal,
+      abort: scenario.abort ?? new AbortController().signal,
     })
 
     await processor.process({} as any)
@@ -210,8 +217,56 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(Config.current as any) = originalConfigCurrent
     ;(Plugin.trigger as any) = originalPluginTrigger
     ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    ;(Bus.publish as any) = originalBusPublish
   }
 }
+
+describe("SessionProcessor stream lifecycle", () => {
+  for (const testCase of ["completion", "failure", "abort"] as const) {
+    test(`cancels the residual AI SDK stream branch after ${testCase}`, async () => {
+      let cancelCount = 0
+      const controller = new AbortController()
+      await runSettlementScenario({
+        messageID: `msg_stream_${testCase}`,
+        abort: controller.signal,
+        residualStream: {
+          async cancel() {
+            cancelCount++
+          },
+        },
+        async *stream() {
+          if (testCase === "failure") throw new Error("stream failed")
+          if (testCase === "abort") controller.abort()
+          yield { type: "finish" }
+        },
+      })
+
+      expect(cancelCount).toBe(1)
+    })
+  }
+})
+
+describe("SessionProcessor tool input bounds", () => {
+  test("terminates a tool part when streamed input exceeds the byte limit", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_tool_input_limit",
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_large", toolName: "edit" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_large",
+          delta: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1),
+        }
+      },
+    })
+
+    const part = firstTool(parts, "call_large")
+    expect(part?.state.status).toBe("error")
+    if (part?.state.status === "error") {
+      expect(part.state.error).toContain("exceeded")
+    }
+  })
+})
 
 function firstTool(parts: MessageV2.Part[], callID?: string) {
   return parts.find((part): part is MessageV2.ToolPart => part.type === "tool" && (!callID || part.callID === callID))

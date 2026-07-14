@@ -548,7 +548,7 @@ export namespace Agent {
       system: [],
       retries: 1,
     })
-    const text = (await result.text.catch(() => "")) ?? ""
+    const text = (await LLM.collectText(result).catch(() => "")) ?? ""
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("agent generator did not return JSON")
     return z

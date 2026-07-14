@@ -27,10 +27,11 @@ For every sessionless call:
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
 2. Resolve it through `Agent.get()`, `Agent.getAvailableModel()`, and `Provider.getModel()` so role configuration and availability remain authoritative.
 3. Use `LLM.stream()` so provider transforms, variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization still apply.
-4. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
-5. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
-6. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
-7. Test model-role fallback, timeout/cancellation, parsing, redaction, and failure semantics without making a live provider call.
+4. Consume the result through `LLM.collectText()`, `LLM.takeTextStream()`, or `LLM.takeFullStream()`. Dispose owned streams in `finally`; do not access AI SDK stream/text getters directly because each getter retains a tee branch until explicitly cancelled.
+5. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
+6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
+7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
+8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
 

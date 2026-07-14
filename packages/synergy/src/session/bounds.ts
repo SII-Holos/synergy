@@ -1,4 +1,5 @@
 export namespace SessionBounds {
+  export const TOOL_INPUT_MAX_BYTES = 1_048_576
   export const TOOL_OUTPUT_MAX_CHARS = 32_000
   export const DIFF_PREVIEW_MAX_CHARS = 8_000
 
