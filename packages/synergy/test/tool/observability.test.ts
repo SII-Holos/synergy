@@ -56,6 +56,68 @@ describe("ToolResolver observability", () => {
         expect(evidence).toMatchObject({ tool: "ephemeral_fail", phase: "tool.execute", errorClass: "Error" })
         expect(evidence.callID).toBe("call_fail_b")
         expect(JSON.stringify(issue)).not.toContain("plain-secret")
+
+        const failureMetrics = ObservabilityStore.queryMetrics({
+          since: 0,
+          names: ["tool.execution.count", "tool.execution.error"],
+          tool: "ephemeral_fail",
+        })
+        expect(failureMetrics.filter((row) => row.name === "tool.execution.count")).toHaveLength(2)
+        expect(failureMetrics.filter((row) => row.name === "tool.execution.error")).toHaveLength(2)
+      },
+    })
+  })
+
+  test("records diagnostic tool calls that fail before executor dispatch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const executions = new Map<string, Promise<any>>()
+        const tools = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: "ses_tool_diagnostic_obs",
+          processor: minimalProcessor(executions),
+          ephemeralTools: [
+            {
+              id: "ephemeral_hidden",
+              description: "Hidden for this request",
+              inputSchema: { type: "object", properties: {}, additionalProperties: false },
+              async execute() {
+                return { title: "unexpected", output: "unexpected" }
+              },
+            },
+          ],
+          userTools: { ephemeral_hidden: false },
+          includeMCP: false,
+        })
+
+        await expect(
+          (tools.tools.ephemeral_hidden as any).execute({}, { toolCallId: "call_diagnostic_hidden" }),
+        ).rejects.toThrow("not currently visible")
+        await executions.get("call_diagnostic_hidden")
+        ObservabilityStore.flush()
+
+        const metrics = ObservabilityStore.queryMetrics({
+          since: 0,
+          names: ["tool.execution.count", "tool.execution.error"],
+          tool: "ephemeral_hidden",
+        })
+        expect(metrics.filter((row) => row.name === "tool.execution.count")).toHaveLength(1)
+        const errors = metrics.filter((row) => row.name === "tool.execution.error")
+        expect(errors).toHaveLength(1)
+        expect(JSON.parse(errors[0]!.labels_json).errorName).toBe("tool_unavailable")
+
+        const issues = ObservabilityStore.queryIssues({ status: "open", module: "tool", tool: "ephemeral_hidden" })
+        expect(issues).toHaveLength(1)
+        expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({
+          tool: "ephemeral_hidden",
+          phase: "tool.availability",
+          errorClass: "tool_unavailable",
+          owner: "diagnostic",
+          callID: "call_diagnostic_hidden",
+        })
       },
     })
   })
@@ -162,9 +224,17 @@ const model = {
 } as any
 
 function minimalProcessor(executions: Map<string, Promise<any>>) {
+  const callbacks = new Map<string, Promise<unknown>>()
   return {
     message: { id: "msg_tool_obs" },
     partFromToolCall: () => undefined,
+    executeOnce: <T>(id: string, execute: () => Promise<T>) => {
+      const existing = callbacks.get(id)
+      if (existing) return existing as Promise<T>
+      const callback = Promise.resolve().then(execute)
+      callbacks.set(id, callback)
+      return callback
+    },
     beginExecution: (id: string) => {
       let outcome: any
       let resolvePromise!: (value: any) => void

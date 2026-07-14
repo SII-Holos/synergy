@@ -38,6 +38,10 @@ const IssuesQuery = z
     status: PerformanceSchema.IssueStatus.default("open"),
     severity: PerformanceSchema.IssueSeverity.optional(),
     module: PerformanceSchema.Module.optional(),
+    scopeID: z.string().optional(),
+    tool: z.string().min(1).optional(),
+    since: z.coerce.number().int().nonnegative().optional(),
+    until: z.coerce.number().int().nonnegative().optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
   })
   .meta({ ref: "PerformanceIssuesQuery" })
@@ -268,8 +272,8 @@ export const PerformanceRoute = new Hono()
   .get(
     "/performance/issues",
     describeRoute({
-      summary: "List performance issues",
-      description: "List open or historical performance issues.",
+      summary: "List filtered performance issues",
+      description: "List open or historical performance issues filtered by scope, tool, or last-seen time range.",
       operationId: "performance.issues.list",
       responses: {
         200: {

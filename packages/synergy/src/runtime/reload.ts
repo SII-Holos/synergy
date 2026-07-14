@@ -323,7 +323,7 @@ export namespace RuntimeReload {
       case "plugin": {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
-        await Plugin.init({ source: "plugin_reload" })
+        await Plugin.init()
         // Collect disabled plugin diagnostics
         try {
           const disabled = await Plugin.getDisabled()

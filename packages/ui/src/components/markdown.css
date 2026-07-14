@@ -9,11 +9,15 @@
   line-height: 1.68;
 }
 
-[data-component="markdown"] > *:first-child {
+[data-component="markdown"] > *:first-child,
+[data-component="markdown"] [data-slot="markdown-terminal-from"] > *:first-child,
+[data-component="markdown"] [data-slot="markdown-terminal-to"] > *:first-child {
   margin-top: 0;
 }
 
-[data-component="markdown"] > *:last-child {
+[data-component="markdown"] > *:last-child,
+[data-component="markdown"] [data-slot="markdown-terminal-from"] > *:last-child,
+[data-component="markdown"] [data-slot="markdown-terminal-to"] > *:last-child {
   margin-bottom: 0;
 }
 
@@ -366,6 +370,53 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-crossfade"] {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-from"],
+[data-component="markdown"] [data-slot="markdown-terminal-to"] {
+  min-width: 0;
+  transition: opacity 280ms ease;
+  will-change: opacity;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-from"] {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+[data-component="markdown"] [data-slot="markdown-terminal-to"] {
+  position: relative;
+  opacity: 0;
+  z-index: 2;
+}
+
+[data-component="markdown"]
+  [data-slot="markdown-terminal-crossfade"][data-active="true"]
+  [data-slot="markdown-terminal-from"] {
+  opacity: 0;
+}
+
+[data-component="markdown"]
+  [data-slot="markdown-terminal-crossfade"][data-active="true"]
+  [data-slot="markdown-terminal-to"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="markdown"] [data-slot="markdown-terminal-from"],
+  [data-component="markdown"] [data-slot="markdown-terminal-to"] {
+    transition: none;
   }
 }
 

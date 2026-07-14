@@ -1,5 +1,7 @@
 import {
+  type Accessor,
   batch,
+  createComponent,
   createContext,
   createEffect,
   createSignal,
@@ -8,33 +10,33 @@ import {
   type ParentProps,
   useContext,
 } from "solid-js"
+import type { PluginManifestContribution, PluginSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
-import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 import { registerPluginTheme } from "@ericsanchezok/synergy-ui/theme"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
+import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
+import { pluginSurfaceId } from "./surface-id"
 import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
 import { registerIcon } from "./registries/icon-registry"
-import { registerMessageSlot, type MessageSlotProps } from "./registries/message-slot-registry"
 import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 import { registerPartRenderer } from "./registries/part-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
-import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
-import { registerUICommand, type PluginUICommand } from "./registries/ui-command-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
-import { pluginSurfaceId } from "./surface-id"
-import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { requestPluginHostConfirm } from "./host-confirm"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 export type PluginUIStatus = PluginLifecycleState
-
 export interface PluginUIError {
   pluginId: string
   message: string
   timestamp: number
 }
-
 interface PluginHostValue {
   plugins: () => PluginContribution[]
   status: () => Map<string, PluginUIStatus>
@@ -44,338 +46,369 @@ interface PluginHostValue {
 }
 
 const PluginHostContext = createContext<PluginHostValue>()
+const navigationPath = (pluginId: string, id: string) =>
+  `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(id)}`
 
-function pluginNavigationPath(pluginId: string, navigationId: string) {
-  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(navigationId)}`
+function navigate(path: string) {
+  window.history.pushState({}, "", path)
+  window.dispatchEvent(new PopStateEvent("popstate"))
 }
 
-function registerPluginSurfaces(contributions: PluginContribution[], assets: PluginUIAssets) {
-  const disposers: Array<() => void> = []
-  const uiErrors: PluginUIError[] = assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
+function currentSessionId() {
+  const match = window.location.pathname.match(/\/session\/([^/]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined
+}
 
-  const addError = (pluginId: string, message: string) => {
-    uiErrors.push({ pluginId, message, timestamp: Date.now() })
+function surfaceContext(input: {
+  contribution: PluginContribution
+  contributionId: string
+  kind: string
+  serverUrl: string
+  events: ReturnType<typeof useGlobalSDK>["event"]
+  scopeKey: string
+  sessionId?: string
+  resource?: { id: string; title?: string; state?: unknown }
+  showConfirm: ReturnType<typeof useConfirm>["show"]
+}): PluginSurfaceContext {
+  const pluginId = input.contribution.pluginId
+  const requireHostActions = () => {
+    if (!input.contribution.capabilities.includes("ui.hostActions"))
+      throw new Error("Plugin is not approved for ui.hostActions")
   }
-
-  const assetUrl = (contribution: PluginContribution, filePath: string) =>
-    pluginAssetUrl(contribution.pluginId, contribution.version, filePath)
-
-  const pluginToolId = (pluginId: string, toolId: string) =>
-    PluginToolId.is(toolId) ? toolId : PluginToolId.format(pluginId, toolId)
-
-  const loadComponent = <Props extends object>(
-    contribution: PluginContribution,
-    modulePath: string | undefined,
-    exportName: string | undefined,
-  ) => {
-    if (!modulePath) return undefined
-    return () =>
-      loadPluginExport<Component<Props>>(
-        contribution.pluginId,
-        assetUrl(contribution, modulePath),
-        exportName ?? "default",
-        contribution.ui?.minUIApiVersion ?? "",
-      )
+  const invoke = async (type: "query" | "command", id: string, value?: unknown) => {
+    const declared = input.contribution.contributions.find((item) => item.kind === "operation" && item.id === id)
+    if (!declared || declared.kind !== "operation" || declared.type !== type)
+      throw new Error(`Plugin operation ${id} is not a ${type}`)
+    const response = await fetch(
+      `${input.serverUrl}/plugin/${encodeURIComponent(pluginId)}/operations/${encodeURIComponent(id)}/invoke`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-synergy-plugin-caller": "ui",
+          "x-synergy-scope-id": encodeURIComponent(input.contribution.scopeId),
+        },
+        body: JSON.stringify({ input: value ?? {}, sessionId: input.sessionId }),
+      },
+    )
+    const body = await response.json()
+    if (!response.ok)
+      throw Object.assign(new Error(body.message ?? `Plugin operation failed (${response.status})`), {
+        code: body.code,
+      })
+    return body.data
   }
-
-  const loadCommand = (
-    contribution: PluginContribution,
-    modulePath: string | undefined,
-    exportName: string | undefined,
-  ) => {
-    if (!modulePath) return undefined
-    return () =>
-      loadPluginExport<PluginUICommand>(
-        contribution.pluginId,
-        assetUrl(contribution, modulePath),
-        exportName ?? "default",
-        contribution.ui?.minUIApiVersion ?? "",
-      )
-  }
-
-  for (const contribution of contributions) {
-    const ui = contribution.ui
-    if (!ui) continue
-
-    if (contribution.permissions?.ui !== true) {
-      addError(
-        contribution.pluginId,
-        "This plugin declares UI surfaces but permissions.ui is not enabled. Enable the UI permission or remove contributes.ui.",
-      )
-      continue
-    }
-
-    for (const renderer of ui.toolRenderers ?? []) {
-      const toolId = pluginToolId(contribution.pluginId, renderer.tool)
-      if (toolRendererRegistry.has(toolId)) continue
-      const loader = ui.entry
-        ? () =>
-            loadPluginExport<ToolRenderer>(
-              contribution.pluginId,
-              assetUrl(contribution, ui.entry!),
-              renderer.exportName ?? "default",
-              ui.minUIApiVersion ?? "",
-            )
-        : undefined
-      if (!loader && !renderer.fallback) {
-        addError(
-          contribution.pluginId,
-          `Tool renderer "${renderer.tool}" needs contributes.ui.entry or a declarative fallback.`,
+  return {
+    pluginId,
+    scopeId: input.contribution.scopeId,
+    sessionId: input.sessionId,
+    surface: {
+      kind: input.kind,
+      id: input.contributionId,
+      ...(input.resource ? { resource: input.resource } : {}),
+    },
+    operations: {
+      query: (id, value) => invoke("query", id, value),
+      command: (id, value) => invoke("command", id, value),
+    },
+    events: {
+      subscribe(eventId, listener) {
+        return input.events.listen((event: any) => {
+          if (event?.type !== "plugin.event") return
+          const value = event.properties
+          if (
+            value?.pluginId === pluginId &&
+            value?.scopeId === input.contribution.scopeId &&
+            value?.eventId === eventId
+          )
+            listener(value)
+        })
+      },
+    },
+    settings: {
+      async get() {
+        const response = await fetch(`${input.serverUrl}/plugin/${encodeURIComponent(pluginId)}/config`, {
+          headers: { "x-synergy-scope-id": encodeURIComponent(input.contribution.scopeId) },
+        })
+        if (!response.ok) throw new Error(`Plugin settings request failed (${response.status})`)
+        return (await response.json()) as Record<string, unknown>
+      },
+      subscribe(listener) {
+        const onChange = (event: Event) => {
+          const detail = (event as CustomEvent<{ pluginId?: string; values?: Record<string, unknown> }>).detail
+          if (detail?.pluginId === pluginId && detail.values) listener(detail.values)
+        }
+        window.addEventListener("synergy:plugin-config-changed", onChange)
+        return () => window.removeEventListener("synergy:plugin-config-changed", onChange)
+      },
+    },
+    host: {
+      openSession(sessionId) {
+        requireHostActions()
+        navigate(`/${base64Encode(input.scopeKey)}/session/${encodeURIComponent(sessionId)}`)
+      },
+      openPluginPage(path, params) {
+        requireHostActions()
+        const queryParams = new URLSearchParams(params)
+        queryParams.set("_scope", base64Encode(input.scopeKey))
+        const query = queryParams.toString()
+        navigate(`/plugins/${encodeURIComponent(pluginId)}/${path.replace(/^\//, "")}${query ? `?${query}` : ""}`)
+      },
+      openWorkbenchPanel(panelId, resource) {
+        requireHostActions()
+        window.dispatchEvent(
+          new CustomEvent("synergy:plugin-open-workbench", {
+            detail: { panelId: pluginSurfaceId(pluginId, panelId), resource },
+          }),
         )
-        continue
-      }
-      disposers.push(
-        toolRendererRegistry.register(toolId, {
-          loader,
-          fallback: renderer.fallback
-            ? {
-                ...renderer.fallback,
-                icon: resolvePluginIconReference(contribution, renderer.fallback.icon),
-              }
-            : undefined,
-        }),
-      )
-    }
-
-    for (const renderer of ui.partRenderers ?? []) {
-      if (!ui.entry) {
-        addError(contribution.pluginId, `Part renderer "${renderer.type}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerPartRenderer(renderer.type, undefined, () =>
-          loadPluginExport<Component>(
-            contribution.pluginId,
-            assetUrl(contribution, ui.entry!),
-            renderer.exportName ?? "default",
-            ui.minUIApiVersion ?? "",
-          ),
-        ),
-      )
-    }
-
-    for (const panel of ui.workbenchPanels ?? []) {
-      const loader = loadComponent<WorkbenchPanelContentProps>(contribution, ui.entry, panel.exportName)
-      if (!loader) {
-        addError(contribution.pluginId, `Workbench panel "${panel.id}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerWorkbenchPanel({
-          id: pluginSurfaceId(contribution.pluginId, panel.id),
-          label: panel.label,
-          icon: resolvePluginIconReference(contribution, panel.icon),
-          surface: panel.surface,
-          cardinality: panel.cardinality,
-          requiresSession: panel.requiresSession,
-          loader,
-          pluginId: contribution.pluginId,
-          exportName: panel.exportName,
-          order: panel.order,
-        }),
-      )
-    }
-
-    for (const navigation of ui.navigation ?? []) {
-      const loader = loadComponent<NavigationContentProps>(contribution, ui.entry, navigation.exportName)
-      if (!loader) {
-        addError(contribution.pluginId, `Navigation surface "${navigation.id}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerNavigation({
-          id: pluginSurfaceId(contribution.pluginId, navigation.id),
-          navigationId: navigation.id,
-          label: navigation.label,
-          icon: resolvePluginIconReference(contribution, navigation.icon),
-          placement: navigation.placement,
-          path: pluginNavigationPath(contribution.pluginId, navigation.id),
-          order: navigation.order,
-          loader,
-          pluginId: contribution.pluginId,
-          exportName: navigation.exportName,
-        }),
-      )
-    }
-
-    for (const section of ui.settings ?? []) {
-      const loader = loadComponent(contribution, ui.entry, section.exportName)
-      if (!loader && !section.formSchema) {
-        addError(contribution.pluginId, `Settings section "${section.id}" needs a form schema or contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerSettingsSection({
-          id: pluginSurfaceId(contribution.pluginId, section.id),
-          label: section.label,
-          icon: resolvePluginIconReference(contribution, section.icon),
-          group: section.group,
-          formSchema: section.formSchema,
-          order: section.order,
-          visibility: section.visibility,
-          loader,
-          pluginId: contribution.pluginId,
-          exportName: section.exportName,
-        }),
-      )
-    }
-
-    for (const slot of ui.messageSlots ?? []) {
-      if (!ui.entry) {
-        addError(contribution.pluginId, `Message slot "${slot.id}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerMessageSlot({
-          id: pluginSurfaceId(contribution.pluginId, slot.id),
-          slot: slot.slot,
-          loader: () =>
-            loadPluginExport<Component<MessageSlotProps>>(
-              contribution.pluginId,
-              assetUrl(contribution, ui.entry!),
-              slot.exportName ?? "default",
-              ui.minUIApiVersion ?? "",
-            ),
-          pluginId: contribution.pluginId,
-        }),
-      )
-    }
-
-    for (const slot of ui.composerSlots ?? []) {
-      if (!ui.entry) {
-        addError(contribution.pluginId, `Composer slot "${slot.id}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerComposerSlot({
-          id: pluginSurfaceId(contribution.pluginId, slot.id),
-          slot: slot.slot,
-          order: slot.order,
-          loader: () =>
-            loadPluginExport<Component<ComposerSlotProps>>(
-              contribution.pluginId,
-              assetUrl(contribution, ui.entry!),
-              slot.exportName ?? "default",
-              ui.minUIApiVersion ?? "",
-            ),
-          pluginId: contribution.pluginId,
-        }),
-      )
-    }
-
-    for (const theme of ui.themes ?? []) {
-      const loaded = assets.themes.get(pluginSurfaceId(contribution.pluginId, theme.id))
-      if (loaded) disposers.push(registerPluginTheme(loaded))
-    }
-
-    for (const icon of ui.icons ?? []) {
-      const loaded = assets.icons.get(pluginSurfaceId(contribution.pluginId, icon.name))
-      if (loaded) disposers.push(registerIcon(loaded))
-    }
-
-    for (const command of ui.commands ?? []) {
-      const loader = loadCommand(contribution, ui.entry, command.exportName)
-      if (!loader) {
-        addError(contribution.pluginId, `Command "${command.id}" needs contributes.ui.entry.`)
-        continue
-      }
-      disposers.push(
-        registerUICommand({
-          id: pluginSurfaceId(contribution.pluginId, command.id),
-          commandId: command.id,
-          label: command.label,
-          description: command.description,
-          icon: resolvePluginIconReference(contribution, command.icon),
-          pluginId: contribution.pluginId,
-          loader,
-        }),
-      )
-    }
+      },
+      openResource(resource) {
+        requireHostActions()
+        window.dispatchEvent(new CustomEvent("synergy:plugin-open-resource", { detail: resource }))
+      },
+      notify(message, options) {
+        requireHostActions()
+        showToast({ type: options?.kind ?? "info", title: message })
+      },
+      confirm: async (options) => {
+        requireHostActions()
+        return requestPluginHostConfirm(input.showConfirm, options)
+      },
+    },
   }
-
-  return { disposers, uiErrors }
 }
 
-export function PluginHostProvider(props: ParentProps) {
+function registerPluginSurfaces(input: {
+  contributions: PluginContribution[]
+  serverUrl: string
+  events: ReturnType<typeof useGlobalSDK>["event"]
+  scopeKey: string
+  assets: PluginUIAssets
+  showConfirm: ReturnType<typeof useConfirm>["show"]
+}) {
+  const disposers: Array<() => void> = []
+  const errors: PluginUIError[] = input.assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
+  const fail = (pluginId: string, message: string) => errors.push({ pluginId, message, timestamp: Date.now() })
+
+  for (const plugin of input.contributions) {
+    const asset = (file: string) => pluginAssetUrl(plugin.pluginId, plugin.generation, file)
+    const componentLoader = <Props extends object>(
+      item: PluginManifestContribution,
+      session: (props: Props) => string | undefined = () => currentSessionId(),
+      resource: (props: Props) => { id: string; title?: string; state?: unknown } | undefined = () => undefined,
+    ) => {
+      if (!("component" in item) || !item.component) return undefined
+      return async () => {
+        const loaded = await loadPluginExport<Component<PluginSurfaceContext>>(
+          plugin.pluginId,
+          asset(item.component!.entry),
+          item.component!.exportName,
+          "3.0",
+        )
+        const Wrapper: Component<Props> = (props) =>
+          createComponent(
+            loaded.default,
+            surfaceContext({
+              contribution: plugin,
+              contributionId: item.id,
+              kind: item.kind,
+              serverUrl: input.serverUrl,
+              events: input.events,
+              scopeKey: input.scopeKey,
+              sessionId: session(props),
+              resource: resource(props),
+              showConfirm: input.showConfirm,
+            }),
+          )
+        return { default: Wrapper }
+      }
+    }
+
+    const adapters = {
+      "ui.workbenchPanel": (item: Extract<PluginManifestContribution, { kind: "ui.workbenchPanel" }>) => {
+        const loader = componentLoader<WorkbenchPanelContentProps>(
+          item,
+          () => currentSessionId(),
+          (props) =>
+            props.tab.resourceId
+              ? {
+                  id: props.tab.resourceId,
+                  ...(props.tab.title ? { title: props.tab.title } : {}),
+                  ...(props.tab.state !== undefined ? { state: props.tab.state } : {}),
+                }
+              : undefined,
+        )
+        if (!loader) {
+          fail(plugin.pluginId, `Workbench panel ${item.id} has no trusted component`)
+          return
+        }
+        disposers.push(
+          registerWorkbenchPanel({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            label: item.label,
+            icon: resolvePluginIconReference(plugin, item.icon),
+            order: item.order,
+            surface: item.surface,
+            cardinality: item.cardinality,
+            requiresSession: item.requiresSession,
+            pluginId: plugin.pluginId,
+            loader,
+            defaultResource: item.defaultResource
+              ? {
+                  resourceId: item.defaultResource.id,
+                  title: item.defaultResource.title,
+                  state: item.defaultResource.state,
+                  source: "plugin",
+                }
+              : undefined,
+            createTab: item.defaultResource
+              ? () => ({
+                  resourceId: item.defaultResource!.id,
+                  title: item.defaultResource!.title,
+                  state: item.defaultResource!.state,
+                  source: "plugin",
+                })
+              : undefined,
+          }),
+        )
+      },
+      "ui.navigationItem": (item: Extract<PluginManifestContribution, { kind: "ui.navigationItem" }>) => {
+        const loader = componentLoader<NavigationContentProps>(item)
+        if (!loader) {
+          fail(plugin.pluginId, `Navigation item ${item.id} has no trusted component`)
+          return
+        }
+        disposers.push(
+          registerNavigation({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            navigationId: item.id,
+            label: item.label,
+            icon: resolvePluginIconReference(plugin, item.icon),
+            order: item.order,
+            placement: item.placement,
+            path: navigationPath(plugin.pluginId, item.id),
+            pluginId: plugin.pluginId,
+            loader,
+          }),
+        )
+      },
+      "ui.messageRenderer": (item: Extract<PluginManifestContribution, { kind: "ui.messageRenderer" }>) => {
+        const loader = componentLoader<{ sessionId?: string }>(item, (props) => props.sessionId ?? currentSessionId())
+        if (loader) disposers.push(registerPartRenderer(item.messageType, undefined, loader as never))
+      },
+      "ui.composerAction": (item: Extract<PluginManifestContribution, { kind: "ui.composerAction" }>) => {
+        const loader = componentLoader<ComposerSlotProps>(item, (props) => props.sessionId)
+        if (loader)
+          disposers.push(
+            registerComposerSlot({
+              id: pluginSurfaceId(plugin.pluginId, item.id),
+              slot: item.slot as ComposerSlotProps["slot"],
+              order: item.order,
+              pluginId: plugin.pluginId,
+              loader,
+            }),
+          )
+      },
+      "ui.settings": (item: Extract<PluginManifestContribution, { kind: "ui.settings" }>) => {
+        const loader = componentLoader<Record<string, never>>(item)
+        disposers.push(
+          registerSettingsSection({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            label: item.label,
+            icon: resolvePluginIconReference(plugin, item.icon),
+            group: item.group,
+            order: item.order,
+            formSchema: item.formSchema,
+            visibility: item.visibility,
+            pluginId: plugin.pluginId,
+            loader: loader as never,
+          }),
+        )
+      },
+      "ui.theme": (item: Extract<PluginManifestContribution, { kind: "ui.theme" }>) => {
+        const loaded = input.assets.themes.get(pluginSurfaceId(plugin.pluginId, item.id))
+        if (loaded) disposers.push(registerPluginTheme(loaded))
+      },
+      "ui.icon": (item: Extract<PluginManifestContribution, { kind: "ui.icon" }>) => {
+        const loaded = input.assets.icons.get(pluginSurfaceId(plugin.pluginId, item.id))
+        if (loaded) disposers.push(registerIcon(loaded))
+      },
+    }
+
+    for (const item of plugin.contributions) {
+      const adapter = adapters[item.kind as keyof typeof adapters]
+      if (adapter) adapter(item as never)
+    }
+  }
+  return { disposers, errors }
+}
+
+export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<string> }>) {
   const server = useServer()
-  let disposePluginSurfaces: Array<() => void> = []
+  const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
+  const scopeKey = props.scopeKey
+  let disposers: Array<() => void> = []
   let reloadGeneration = 0
   let reloadController: AbortController | undefined
-  let disposed = false
-
-  const [pluginContributions, setPluginContributions] = createSignal<PluginContribution[]>([])
-  const [statusMap, setStatusMap] = createSignal<Map<string, PluginUIStatus>>(new Map())
+  const [plugins, setPlugins] = createSignal<PluginContribution[]>([])
+  const [status, setStatus] = createSignal(new Map<string, PluginUIStatus>())
   const [errors, setErrors] = createSignal<PluginUIError[]>([])
-
-  function disposeRegisteredSurfaces() {
-    for (let index = disposePluginSurfaces.length - 1; index >= 0; index--) disposePluginSurfaces[index]()
-    disposePluginSurfaces = []
+  const dispose = () => {
+    for (const item of disposers) item()
+    disposers = []
   }
-
   async function reload() {
-    const url = server.url
-    if (!url) return
+    if (!server.url) return
     const generation = ++reloadGeneration
     reloadController?.abort()
     const controller = new AbortController()
     reloadController = controller
-
     try {
-      const contributions = await fetchUIContributions(url)
-      const assets = await loadPluginUIAssets(contributions, { signal: controller.signal })
-      if (disposed || generation !== reloadGeneration) return
-      disposeRegisteredSurfaces()
-      const registered = registerPluginSurfaces(contributions, assets)
-      disposePluginSurfaces = registered.disposers
-
+      const next = await fetchUIContributions(server.url, scopeKey())
+      const assets = await loadPluginUIAssets(next, { signal: controller.signal })
+      if (generation !== reloadGeneration) return
+      dispose()
+      const registered = registerPluginSurfaces({
+        contributions: next,
+        serverUrl: server.url,
+        events: globalSDK.event,
+        scopeKey: scopeKey(),
+        assets,
+        showConfirm: confirm.show,
+      })
+      disposers = registered.disposers
       batch(() => {
-        setPluginContributions(contributions)
-        const nextStatus = new Map<string, PluginUIStatus>()
-        for (const contribution of contributions) {
-          nextStatus.set(contribution.pluginId, "active")
-        }
-        setStatusMap(nextStatus)
-        setErrors(registered.uiErrors)
+        setPlugins(next)
+        setStatus(new Map(next.map((item) => [item.pluginId, "active" as const])))
+        setErrors(registered.errors)
       })
     } catch (error) {
-      if (controller.signal.aborted || disposed || generation !== reloadGeneration) return
+      if (controller.signal.aborted || generation !== reloadGeneration) return
       setErrors([
-        {
-          pluginId: "",
-          message: `Failed to fetch contributions: ${error instanceof Error ? error.message : String(error)}`,
-          timestamp: Date.now(),
-        },
+        { pluginId: "", message: error instanceof Error ? error.message : String(error), timestamp: Date.now() },
       ])
-    } finally {
-      if (reloadController === controller) reloadController = undefined
     }
   }
-
   createEffect(() => {
-    const url = server.url
-    if (url) void reload()
+    scopeKey()
+    if (server.url) void reload()
   })
-
   onCleanup(() => {
-    disposed = true
-    reloadGeneration++
     reloadController?.abort()
-    disposeRegisteredSurfaces()
+    dispose()
   })
-
-  const value: PluginHostValue = {
-    plugins: pluginContributions,
-    status: statusMap,
-    loadedPluginIds: () => pluginContributions().map((plugin) => plugin.pluginId),
-    errors,
-    reload,
-  }
-
-  return <PluginHostContext.Provider value={value}>{props.children}</PluginHostContext.Provider>
+  return (
+    <PluginHostContext.Provider
+      value={{ plugins, status, loadedPluginIds: () => plugins().map((item) => item.pluginId), errors, reload }}
+    >
+      {props.children}
+    </PluginHostContext.Provider>
+  )
 }
 
-export function usePluginHost(): PluginHostValue {
-  const context = useContext(PluginHostContext)
-  if (!context) throw new Error("usePluginHost must be used within a PluginHostProvider")
-  return context
+export function usePluginHost() {
+  const value = useContext(PluginHostContext)
+  if (!value) throw new Error("usePluginHost must be used within PluginHostProvider")
+  return value
 }

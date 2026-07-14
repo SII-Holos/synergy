@@ -35,6 +35,7 @@ const ScopeField = opaque<Scope>(
 )
 
 const CortexDelegationInfoInner = z.object({
+  taskID: z.string(),
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
@@ -42,7 +43,7 @@ const CortexDelegationInfoInner = z.object({
   executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
   startedAt: z.number(),
   completedAt: z.number().optional(),
-  status: z.enum(["queued", "running", "completed", "error", "cancelled"]),
+  status: z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"]),
   model: z
     .object({
       providerID: z.string(),
@@ -54,6 +55,9 @@ const CortexDelegationInfoInner = z.object({
   tools: z.record(z.string(), z.boolean()).optional(),
   outputConfig: CortexTypes.OutputConfig.optional(),
   output: CortexTypes.TaskOutput.optional(),
+  owner: CortexTypes.TaskOwner.optional(),
+  timeoutMs: z.number().int().positive().optional(),
+  usage: CortexTypes.TaskUsage.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })

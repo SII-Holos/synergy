@@ -73,6 +73,10 @@ const performanceQueryParameters: Record<string, OpenApiParameter[]> = {
     query("status", { $ref: "#/components/schemas/PerfIssueStatus", default: "open" }),
     query("severity", { $ref: "#/components/schemas/PerfIssueSeverity" }),
     query("module", { $ref: "#/components/schemas/PerfModule" }),
+    query("scopeID", { type: "string" }),
+    query("tool", { type: "string", minLength: 1 }),
+    query("since", { type: "integer", minimum: 0 }),
+    query("until", { type: "integer", minimum: 0 }),
     query("limit", { type: "integer", minimum: 1, maximum: 200 }),
   ],
 }

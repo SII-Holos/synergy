@@ -48,16 +48,38 @@ export namespace SessionManager {
 
   export type SessionMail = SessionMail.User | SessionMail.Assistant
 
+  export type LoopPhase = "starting" | "running" | "stopping"
+
+  export interface LoopLease {
+    readonly sessionID: string
+    readonly generation: number
+    readonly signal: AbortSignal
+  }
+
+  export interface LoopOwner {
+    lease: LoopLease
+    controller: AbortController
+    phase: LoopPhase
+  }
+
   export interface SessionRuntime {
     sessionID: string
     status: StatusInfo
-    abort?: AbortController
+    owner?: LoopOwner
     waiters: {
       onComplete(result: MessageV2.WithParts): void
       onCancel(): void
     }[]
     lastActiveAt: number
     isChild: boolean
+  }
+  let nextOwnerGeneration = 0
+  const owns = (runtime: SessionRuntime, lease: LoopLease) => runtime.owner?.lease === lease
+  const occupied = (runtime: SessionRuntime | undefined) => runtime?.owner !== undefined
+  const nextGeneration = () => ++nextOwnerGeneration
+  const cancelWaiters = (runtime: SessionRuntime) => {
+    for (const callback of runtime.waiters) callback.onCancel()
+    runtime.waiters = []
   }
 
   export interface RuntimeStats {
@@ -136,13 +158,7 @@ export namespace SessionManager {
   const sweepTimer = setInterval(() => {
     const now = Date.now()
     for (const [sessionID, runtime] of runtimes) {
-      if (runtime.abort) {
-        if (runtime.abort.signal.aborted) {
-          runtime.abort = undefined
-        } else {
-          continue
-        }
-      }
+      if (occupied(runtime)) continue
       const ttl = runtime.isChild ? CHILD_SESSION_IDLE_TTL_MS : USER_IDLE_TTL_MS
       if (now - runtime.lastActiveAt < ttl) continue
       runtimes.delete(sessionID)
@@ -275,7 +291,7 @@ export namespace SessionManager {
     let childCount = 0
     let waiterCount = 0
     for (const runtime of runtimes.values()) {
-      if (runtime.abort) runningCount++
+      if (occupied(runtime)) runningCount++
       if (runtime.isChild) childCount++
       waiterCount += runtime.waiters.length
     }
@@ -289,10 +305,17 @@ export namespace SessionManager {
     }
   }
 
-  export async function run<T>(input: string | SessionEndpoint.Info, fn: () => Promise<T>): Promise<T> {
-    const session = await requireSession(input)
-    registerRuntime(session.id)
+  export async function run<T>(
+    sessionID: string,
+    fn: (lease: LoopLease) => Promise<T>,
+    options?: { lease?: LoopLease },
+  ): Promise<T> {
+    const lease = options?.lease ?? acquire(sessionID)
+    const runtime = getRuntime(sessionID)
+    if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
+
     try {
+      const session = await requireSession(sessionID)
       const scope = session.scope as Scope
       const workspace = (session as Info).workspace ?? {
         type: "main" as const,
@@ -300,28 +323,35 @@ export namespace SessionManager {
         scopeID: scope.id,
       }
       const { ScopeRuntime } = await import("@/scope/runtime")
-      return await ScopeRuntime.provide({
-        scope,
-        workspace,
-        ensure: scope.type === "project",
-        fn: async () => {
-          assertExecutionContext(session, "session manager run")
-          const workspace = (session as Info).workspace
-          if (workspace?.type !== "git_worktree") return fn()
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.lock(workspace.path)
-          try {
-            return await fn()
-          } finally {
-            await Worktree.unlock(workspace.path)
-          }
-        },
-      })
+      const runWithScope = () =>
+        ScopeRuntime.provide({
+          scope,
+          workspace,
+          ensure: scope.type === "project",
+          fn: async () => {
+            assertExecutionContext(session, "session manager run")
+            const workspace = (session as Info).workspace
+            if (workspace?.type !== "git_worktree") {
+              activate(lease)
+              return fn(lease)
+            }
+            const { Worktree } = await import("../project/worktree")
+            await Worktree.lock(workspace.path)
+            try {
+              activate(lease)
+              return await fn(lease)
+            } finally {
+              await Worktree.unlock(workspace.path)
+            }
+          },
+        })
+      if (workspace.type !== "git_worktree") return await runWithScope()
+      const { Worktree } = await import("../project/worktree")
+      return await Worktree.withUse(workspace.path, session.id, runWithScope)
     } finally {
-      const runtime = getRuntime(session.id)
-      if (runtime && !runtime.abort) {
-        unregisterRuntime(session.id)
-      }
+      await release(lease)
+      const runtime = getRuntime(sessionID)
+      if (runtime && !occupied(runtime)) unregisterRuntime(sessionID)
     }
   }
 
@@ -349,58 +379,72 @@ export namespace SessionManager {
     )
   }
 
-  export function acquire(sessionID: string): AbortSignal | undefined {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) {
-      log.warn("acquire: session runtime not loaded", { sessionID })
-      return undefined
-    }
-    if (runtime.abort) return undefined
+  export function acquire(sessionID: string): LoopLease | undefined {
+    const runtime = registerRuntime(sessionID)
+    if (occupied(runtime)) return undefined
+
     runtime.lastActiveAt = Date.now()
     const controller = new AbortController()
-    runtime.abort = controller
+    const lease: LoopLease = {
+      sessionID,
+      generation: nextGeneration(),
+      signal: controller.signal,
+    }
+    runtime.owner = { lease, controller, phase: "starting" }
     runtime.status = { type: "busy" }
-    return controller.signal
+    return lease
   }
 
-  export function signalAbort(sessionID: string): void {
-    const runtime = getRuntime(sessionID)
-    if (!runtime) return
-
-    const abort = runtime.abort
-    if (abort) {
-      abort.abort()
-      for (const callback of runtime.waiters) {
-        callback.onCancel()
-      }
-      runtime.waiters = []
-    }
-    runtime.abort = undefined
+  export function activate(lease: LoopLease): boolean {
+    const runtime = getRuntime(lease.sessionID)
+    if (!runtime || !owns(runtime, lease)) return false
+    if (runtime.owner!.phase === "starting") runtime.owner!.phase = "running"
+    return runtime.owner!.phase === "running"
   }
 
-  export async function release(sessionID: string): Promise<void> {
+  export type AbortOutcome = "not_found" | "idle" | "signaled" | "already_stopping"
+
+  export function signalAbort(sessionID: string): AbortOutcome {
     const runtime = getRuntime(sessionID)
-    if (!runtime) return
+    if (!runtime) return "not_found"
+    const owner = runtime.owner
+    if (!owner) return "idle"
+    if (owner.phase === "stopping") return "already_stopping"
 
-    const abort = runtime.abort
-    if (abort) {
-      abort.abort()
-      for (const callback of runtime.waiters) {
-        callback.onCancel()
-      }
-      runtime.waiters = []
-    }
-    runtime.abort = undefined
+    owner.phase = "stopping"
+    owner.controller.abort()
+    cancelWaiters(runtime)
+    return "signaled"
+  }
+  export function completeWaiters(lease: LoopLease, result: MessageV2.WithParts): boolean {
+    const runtime = getRuntime(lease.sessionID)
+    if (!runtime || !owns(runtime, lease)) return false
+    const waiters = runtime.waiters
+    runtime.waiters = []
+    for (const callback of waiters) callback.onComplete(result)
+    return true
+  }
 
+  export async function release(lease: LoopLease): Promise<boolean> {
+    const runtime = getRuntime(lease.sessionID)
+    if (!runtime || !owns(runtime, lease)) return false
+
+    runtime.owner!.controller.abort()
+    cancelWaiters(runtime)
+    runtime.owner = undefined
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)
-    await emitSessionUpdated(sessionID).catch((error) => {
-      log.warn("failed to emit session update after release", { sessionID, error })
+    await emitSessionUpdated(lease.sessionID).catch((error) => {
+      log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    if (await SessionInbox.hasRunnableItem(sessionID)) {
-      scheduleWake(sessionID, "release")
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.flushDeferredParentNotifications(lease.sessionID)
+
+    if (await SessionInbox.hasRunnableItem(lease.sessionID)) {
+      scheduleWake(lease.sessionID, "release")
     }
+    return true
   }
 
   export async function wake(sessionID: string): Promise<void> {
@@ -426,17 +470,15 @@ export namespace SessionManager {
   }
 
   export function isRunning(sessionID: string): boolean {
-    return !!getRuntime(sessionID)?.abort
+    return occupied(getRuntime(sessionID))
   }
 
   export function assertIdle(sessionID: string): void {
-    if (getRuntime(sessionID)?.abort) {
-      throw new BusyError(sessionID)
-    }
+    if (occupied(getRuntime(sessionID))) throw new BusyError(sessionID)
   }
 
   export function listRunningRuntimes(): SessionRuntime[] {
-    return Array.from(runtimes.values()).filter((e) => e.abort)
+    return Array.from(runtimes.values()).filter(occupied)
   }
 
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {
@@ -490,7 +532,7 @@ export namespace SessionManager {
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
     const releaseIfIdle = () => {
-      if (!runtime.abort) unregisterRuntime(session.id)
+      if (!occupied(runtime)) unregisterRuntime(session.id)
     }
 
     if (input.mail.type === "assistant") {

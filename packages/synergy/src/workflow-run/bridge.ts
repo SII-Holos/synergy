@@ -1,6 +1,7 @@
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
 import { CortexEvent } from "../cortex/event"
+import { CortexTypes } from "../cortex/types"
 import { MessageV2 } from "../session/message-v2"
 import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
@@ -106,36 +107,20 @@ export namespace WorkflowBridge {
     }
   }
 
-  async function handleContractor(task: {
-    id: string
-    parentSessionID?: string
-    sessionID?: string
-    status: string
-    visibility?: string
-    owner?: {
-      kind?: string
-      runID?: string
-      entityID?: string
-      seat?: string
-      instance?: number
-      correlationID?: string
-    }
-    output?: { mode?: string; value?: unknown }
-  }): Promise<void> {
-    if (task.owner?.kind !== "workflow_run" || !task.owner.runID) return
+  async function handleContractor(task: CortexTypes.Task): Promise<void> {
+    const owner = task.owner
+    if (owner?.kind !== "workflow_run" || !owner.runID) return
     if (!task.parentSessionID) return
     const scopeID = await scopeForSession(task.parentSessionID)
     if (!scopeID) return
-    const run = await WorkflowRunStore.getOrUndefined(scopeID, task.owner.runID)
+    const run = await WorkflowRunStore.getOrUndefined(scopeID, owner.runID)
     if (!run || run.status !== "active") return
-    const entityID = task.owner.entityID
+    const entityID = owner.entityID
 
     // Clear seat active-task allocation when a seat Cortex task finishes.
-    if (task.owner.seat !== undefined && task.owner.instance !== undefined) {
+    if (owner.seat !== undefined && owner.instance !== undefined) {
       await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-        const binding = draft.seats.find(
-          (seat) => seat.seat === task.owner!.seat && seat.instance === task.owner!.instance,
-        )
+        const binding = draft.seats.find((seat) => seat.seat === owner.seat && seat.instance === owner.instance)
         if (binding && binding.activeTaskID === task.id) {
           binding.activeTaskID = undefined
           if (!binding.entityID) binding.status = "idle"
@@ -148,15 +133,15 @@ export namespace WorkflowBridge {
       scopeID,
       { id: run.id },
       {
-        kind: task.owner.seat ? "contractor_finished" : "contractor_finished",
+        kind: "contractor_finished",
         entityID,
         data: {
           taskID: task.id,
           status: task.status,
-          correlationID: task.owner.correlationID,
+          correlationID: owner.correlationID,
           outputMode: task.output?.mode,
-          seat: task.owner.seat,
-          instance: task.owner.instance,
+          seat: owner.seat,
+          instance: owner.instance,
         },
       },
     )

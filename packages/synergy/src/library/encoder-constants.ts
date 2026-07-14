@@ -18,3 +18,9 @@ export const SCRIPT_MIN_CHARS = 20
 
 /** Minimum numbered steps required in a valid trajectory script. */
 export const SCRIPT_MIN_STEPS = 2
+
+/** Wall-clock deadline for a single encoder LLM call (intent/script/reward). */
+export const ENCODER_LLM_TIMEOUT_MS = 60_000
+
+/** Maximum characters collected from one encoder model stream before aborting. */
+export const ENCODER_MAX_OUTPUT_CHARS = 16_000

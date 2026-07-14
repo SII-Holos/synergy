@@ -6,7 +6,7 @@ import { PluginLockfile } from "./lockfile-schema"
 import type { PluginLockEntry } from "./lockfile-schema"
 
 const EMPTY_LOCKFILE: PluginLockfile = {
-  version: 1 as const,
+  version: 2 as const,
   plugins: {},
 }
 
@@ -64,6 +64,18 @@ export function removeEntry(lockfile: PluginLockfile, pluginName: string): Plugi
   return {
     ...lockfile,
     plugins: rest,
+  }
+}
+
+export function removePluginEntries(lockfile: PluginLockfile, pluginId: string, specs: string[]): PluginLockfile {
+  const removedSpecs = new Set(specs)
+  return {
+    ...lockfile,
+    plugins: Object.fromEntries(
+      Object.entries(lockfile.plugins).filter(
+        ([entryId, entry]) => entryId !== pluginId && entry.approvalId !== pluginId && !removedSpecs.has(entry.spec),
+      ),
+    ),
   }
 }
 

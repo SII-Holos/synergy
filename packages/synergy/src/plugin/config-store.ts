@@ -1,5 +1,5 @@
 import Ajv, { type ErrorObject } from "ajv"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
 
 const ajv = new Ajv({ allErrors: true, strict: false })
@@ -8,7 +8,7 @@ export class PluginConfigValidationError extends Error {
   readonly issues: string[]
 
   constructor(pluginId: string, issues: string[]) {
-    super(`Plugin config for "${pluginId}" does not match contributes.config.schema: ${issues.join("; ")}`)
+    super(`Plugin settings for "${pluginId}" do not match the declared settings schema: ${issues.join("; ")}`)
     this.name = "PluginConfigValidationError"
     this.issues = issues
   }
@@ -29,8 +29,8 @@ function normalizePluginConfig(pluginId: string, values: unknown): Record<string
   return values as Record<string, unknown>
 }
 
-function validatePluginConfig(pluginId: string, values: Record<string, unknown>, manifest?: PluginManifest | null) {
-  const schema = manifest?.contributes?.config?.schema
+function validatePluginConfig(pluginId: string, values: Record<string, unknown>, manifest?: PluginManifestType | null) {
+  const schema = manifest?.contributions.find((item) => item.kind === "ui.settings")?.formSchema
   if (!schema || Object.keys(schema).length === 0) return
 
   let validate
@@ -55,7 +55,7 @@ export async function getPluginConfig(pluginId: string): Promise<Record<string, 
 export async function replacePluginConfig(
   pluginId: string,
   values: unknown,
-  options: { manifest?: PluginManifest | null } = {},
+  options: { manifest?: PluginManifestType | null } = {},
 ): Promise<Record<string, unknown>> {
   const normalized = normalizePluginConfig(pluginId, values)
   validatePluginConfig(pluginId, normalized, options.manifest)
@@ -79,7 +79,7 @@ export async function setPluginConfigKey(
   pluginId: string,
   key: string,
   value: unknown,
-  options: { manifest?: PluginManifest | null } = {},
+  options: { manifest?: PluginManifestType | null } = {},
 ): Promise<Record<string, unknown>> {
   const current = await getPluginConfig(pluginId)
   return replacePluginConfig(pluginId, { ...current, [key]: value }, options)

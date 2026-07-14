@@ -14,7 +14,6 @@ import { SearchToolsTool } from "../../src/tool/search-tools"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Log } from "../../src/util/log"
-import { PluginManifest } from "../../../plugin/src/manifest"
 import { tool as pluginTool } from "../../../plugin/src/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -211,6 +210,78 @@ describe("tool exposure", () => {
     })
   })
 
+  test("runtime tools defer afterPersist effects to processor settlement", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = `post_persist_test_${Math.random().toString(36).slice(2)}`
+        let committed = false
+        await ToolRegistry.register(
+          Tool.define(id, {
+            description: "A test tool with a post-persist effect.",
+            parameters: z.object({ value: z.string() }),
+            async execute({ value }) {
+              return { title: id, output: value, metadata: {} }
+            },
+            afterPersist() {
+              committed = true
+            },
+          }),
+        )
+
+        const session = await Session.create({})
+        const outcome = Promise.withResolvers<any>()
+        const callbacks = new Map<string, Promise<unknown>>()
+        const processor = {
+          message: { id: "message_test" },
+          partFromToolCall: () => undefined,
+          executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
+            const existing = callbacks.get(callID)
+            if (existing) return existing as Promise<T>
+            const callback = Promise.resolve().then(execute)
+            callbacks.set(callID, callback)
+            return callback
+          },
+          beginExecution: (callID: string) => ({
+            callID,
+            promise: outcome.promise,
+            resolve: outcome.resolve,
+            complete(input: unknown, result: unknown) {
+              outcome.resolve({ status: "completed", input, result })
+            },
+            fail(input: unknown, error: string, metadata?: Record<string, unknown>) {
+              outcome.resolve({ status: "error", input, error, metadata })
+            },
+            get outcome() {
+              return undefined
+            },
+            get status() {
+              return "pending" as const
+            },
+          }),
+        } as any
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          processor,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        await (resolved.tools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
+        const completed = await outcome.promise
+
+        expect(committed).toBe(false)
+        expect(completed.result.output).toBe("persist me")
+        expect(completed.result.afterPersist).toBeFunction()
+        await completed.result.afterPersist()
+        expect(committed).toBe(true)
+      },
+    })
+  })
+
   test("internal tools are hidden from search and visible only when force-enabled", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -266,7 +337,7 @@ describe("tool exposure", () => {
             pluginId: "focus",
             toolId: "bad_schema",
             pluginDir: "/tmp/focus",
-            runtimeMode: "in-process",
+            runtimeMode: "inProcess",
           },
           init: async () => ({
             description: "An invalid plugin tool.",
@@ -290,11 +361,11 @@ describe("tool exposure", () => {
         expect(availability.visible.some((item) => item.id === badId)).toBe(false)
         const diagnostic = availability.diagnostics.get(badId)
         expect(diagnostic?.code).toBe("tool_unavailable")
-        expect(diagnostic?.message).toContain("zod >=4")
+        expect(diagnostic?.message).toContain("invalid JSON Schema input")
         expect(diagnostic?.metadata).toMatchObject({
           pluginId: "focus",
           pluginToolId: "bad_schema",
-          runtimeMode: "in-process",
+          runtimeMode: "inProcess",
         })
       },
     })
@@ -443,6 +514,7 @@ describe("tool exposure", () => {
         const child = await Session.create({
           parentID: parent.id,
           cortex: {
+            taskID: "cortex-lightloop-review",
             parentSessionID: parent.id,
             parentMessageID: "msg_parent",
             description: "Review LightLoop",
@@ -529,6 +601,7 @@ describe("tool exposure", () => {
         const reviewer = await Session.create({
           parentID: execution.id,
           cortex: {
+            taskID: "cortex-blueprint-review",
             parentSessionID: execution.id,
             parentMessageID: "msg_parent",
             description: "Audit BlueprintLoop",
@@ -563,6 +636,7 @@ describe("tool exposure", () => {
         const unrelatedReviewer = await Session.create({
           parentID: execution.id,
           cortex: {
+            taskID: "cortex-unrelated-blueprint-review",
             parentSessionID: execution.id,
             parentMessageID: "msg_parent",
             description: "Unrecorded Blueprint audit",
@@ -611,6 +685,7 @@ describe("tool exposure", () => {
         const child = await Session.create({
           parentID: parent.id,
           cortex: {
+            taskID: "cortex-unrecorded-lightloop-review",
             parentSessionID: parent.id,
             parentMessageID: "msg_parent",
             description: "Review LightLoop",
@@ -696,9 +771,17 @@ describe("tool exposure", () => {
           draft.workflow = { kind: "plan" }
         })
         const executions = new Map<string, Promise<any>>()
+        const callbacks = new Map<string, Promise<unknown>>()
         const processor = {
           message: { id: "message_test" },
           partFromToolCall: () => undefined,
+          executeOnce: <T>(id: string, execute: () => Promise<T>) => {
+            const existing = callbacks.get(id)
+            if (existing) return existing as Promise<T>
+            const callback = Promise.resolve().then(execute)
+            callbacks.set(id, callback)
+            return callback
+          },
           beginExecution: (id: string) => {
             let outcome: any
             let resolvePromise!: (value: any) => void
@@ -805,41 +888,8 @@ describe("tool exposure", () => {
         return "ok"
       },
     })
-    const manifest = PluginManifest.parse({
-      name: "demo-plugin",
-      version: "1.0.0",
-      description: "Demo plugin",
-      contributes: {
-        tools: [
-          {
-            name: "plugin_search",
-            description: "Search-only plugin tool",
-            exposure: { mode: "search", title: "Plugin Search", keywords: ["plugin"] },
-          },
-          {
-            id: "plugin_grouped",
-            name: "grouped",
-            description: "Grouped plugin tool",
-            exposure: {
-              mode: "group",
-              group: "plugin:demo",
-              title: "Demo Plugin",
-              description: "Demo plugin tools",
-              whenToExpand: "Expand when using the demo plugin.",
-            },
-          },
-        ],
-      },
-    })
-
     expect(deferred.exposure).toEqual({ mode: "search", title: "Deferred Plugin", keywords: ["plugin"] })
     expect(compatible.exposure).toBeUndefined()
-    expect(manifest.contributes?.tools?.[0]?.exposure).toEqual({
-      mode: "search",
-      title: "Plugin Search",
-      keywords: ["plugin"],
-    })
-    expect(manifest.contributes?.tools?.[1]?.exposure).toMatchObject({ mode: "group", group: "plugin:demo" })
   })
 
   test("ToolDiscovery marks grouped tool results with expandable groups", async () => {

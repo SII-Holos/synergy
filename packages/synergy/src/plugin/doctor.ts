@@ -224,7 +224,7 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
               ...nextLockfile.plugins,
               [pluginId]: {
                 ...entry,
-                resolved: resolved.entryPath,
+                resolved: resolved.pluginDir,
               },
             },
           }

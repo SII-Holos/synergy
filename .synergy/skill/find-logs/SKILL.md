@@ -72,8 +72,8 @@ Static code inspection establishes hypotheses. It is not sufficient evidence for
 
 When the task authorizes code changes and existing evidence cannot distinguish the hypotheses:
 
-1. Load `architecture` to identify the ownership boundary, then create or reuse a task-owned worktree according to `git-guide`. Never instrument the primary/shared checkout.
-2. Load `develop-synergy`; start the worktree with a new isolated `SYNERGY_HOME` and explicit free ports. Never reuse, restart, or mutate the backend carrying the current task.
+1. Load `architecture` to identify the ownership boundary, then inspect the current checkout according to `git-guide`. Temporary instrumentation may be edited there when it preserves unrelated work; use a task-owned worktree when concurrent changes need isolation.
+2. Load `develop-synergy`; start the source checkout with a new isolated `SYNERGY_HOME` and explicit free ports. Never reuse, restart, or mutate the backend carrying the current task.
 3. Reproduce the original behavior before editing when possible. Record the exact action, expected invariant, observed state, server start time, and a narrow log/trace window.
 4. Add the smallest temporary observation that separates the hypotheses: structured logs around state transitions, counters, timing, assertions, or a focused diagnostic endpoint/test. Prefer the owning domain's `Log.create({ service: ... })` pattern and log identifiers or derived metadata instead of payload contents.
 5. Restart only the isolated backend when required, repeat the same reproduction, and compare the before/after event sequence. Inspect persisted state and frontend/runtime state only at the boundary relevant to the hypothesis.

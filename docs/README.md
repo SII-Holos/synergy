@@ -61,7 +61,7 @@ The [plugin documentation](plugins/README.md) covers the external authoring surf
 
 - getting started and development kit
 - manifest and contribution reference
-- runtime isolation, trust, permissions, and consent
+- generated manifests, capabilities, runtime generations, trust, and approval
 - tools, agents, commands, MCP, and product UI contributions
 - validation, signing, packaging, marketplace publishing, and security
 

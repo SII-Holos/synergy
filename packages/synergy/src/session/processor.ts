@@ -22,6 +22,7 @@ import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { SessionToolInput } from "./tool-input"
 import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
@@ -40,6 +41,7 @@ export namespace SessionProcessor {
           title: string
           metadata: Record<string, any>
           attachments?: MessageV2.AttachmentPart[]
+          afterPersist?: () => Promise<void> | void
         }
       }
     | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
@@ -110,21 +112,23 @@ export namespace SessionProcessor {
     )
   }
 
-  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+  function streamToolDiagnostic(toolName: string, error: unknown): ToolDiagnostic {
     const rawMessage = error instanceof Error ? error.message : String(error)
     const errorName = error instanceof Error ? error.name : undefined
-    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool/i.test(rawMessage)
-    const diagnostic = {
+    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool|no.?such.?tool/i.test(
+      `${errorName ?? ""} ${rawMessage}`,
+    )
+    return {
       code: unavailable ? "unknown_tool" : "invalid_arguments",
-      toolName: part.tool,
+      toolName,
       message: unavailable
         ? [
-            `The model tried to call unavailable tool "${part.tool}".`,
+            `The model tried to call unavailable tool "${toolName}".`,
             "This tool is not available in the current session, mode, or permission context. Do not retry the same hidden tool.",
             rawMessage,
           ].join("\n")
         : [
-            `The "${part.tool}" tool call could not be accepted.`,
+            `The "${toolName}" tool call could not be accepted.`,
             "Rewrite the tool input so it satisfies the current schema, or choose another available tool.",
             rawMessage,
           ].join("\n"),
@@ -133,8 +137,11 @@ export namespace SessionProcessor {
         errorName,
         rawMessage,
       },
-    } satisfies ToolDiagnostic
+    }
+  }
 
+  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+    const diagnostic = streamToolDiagnostic(part.tool, error)
     return {
       status: "error",
       input:
@@ -166,6 +173,7 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const executions = new Map<string, ToolExecutionSlotInternal>()
+    const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
     const generatingAccum: Record<string, string> = {}
@@ -251,6 +259,7 @@ export namespace SessionProcessor {
             attachments: outcome.result.attachments,
           },
         })
+        await outcome.result.afterPersist?.()
       } else {
         await Session.updatePart({
           ...part,
@@ -266,6 +275,7 @@ export namespace SessionProcessor {
           },
         })
       }
+      settledToolCalls.add(part.callID)
       await Observability.emit("tool.settle.end", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
@@ -289,6 +299,7 @@ export namespace SessionProcessor {
       return {
         activeToolCallCount: Object.keys(toolcalls).length,
         activeExecutionCount: executions.size,
+        executionCallbackCount: executionCallbacks.size,
         settledToolCallCount: settledToolCalls.size,
         settlementPromiseCount: settlementPromises.size,
         ...(callID
@@ -298,6 +309,7 @@ export namespace SessionProcessor {
               partStatus: part?.state.status,
               hasPart: Boolean(part),
               hasSlot: Boolean(slot),
+              hasExecutionCallback: executionCallbacks.has(callID),
               slotStatus: slot?.status,
               hasOutcome: Boolean(slot?.outcome),
               hasSettlementPromise: settlementPromises.has(callID),
@@ -315,6 +327,7 @@ export namespace SessionProcessor {
                   partStatus: part?.state.status,
                   hasPart: Boolean(part),
                   hasSlot: Boolean(slot),
+                  hasExecutionCallback: executionCallbacks.has(id),
                   slotStatus: slot?.status,
                   hasOutcome: Boolean(slot?.outcome),
                   registeredAt: slot?.registeredAt,
@@ -326,6 +339,20 @@ export namespace SessionProcessor {
             }
           : {}),
       }
+    }
+
+    function shouldIgnoreSettledStreamEvent(callID: string, event: "tool-input-start" | "tool-call", tool: string) {
+      if (!settledToolCalls.has(callID)) return false
+      delete generatingAccum[callID]
+      log.warn("ignoring tool stream event after settlement", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID,
+        tool,
+        event,
+        snapshot: toolSettlementSnapshot(callID),
+      })
+      return true
     }
 
     function settleTrackedExecution(toolCallId: string): Promise<void> | undefined {
@@ -365,7 +392,6 @@ export namespace SessionProcessor {
 
       const settlement = (async () => {
         await settleToolPart(part, outcome)
-        settledToolCalls.add(toolCallId)
         executions.delete(toolCallId)
         delete toolcalls[toolCallId]
         log.info("tool.execution.settle.completed", {
@@ -580,6 +606,7 @@ export namespace SessionProcessor {
               },
             },
           })
+          settledToolCalls.add(part.callID)
           forgetToolCall(part.callID)
         }
       }
@@ -648,10 +675,28 @@ export namespace SessionProcessor {
       return slot
     }
 
+    function executeOnce<T>(callID: string, execute: () => Promise<T>): Promise<T> {
+      const existing = executionCallbacks.get(callID)
+      if (existing) {
+        log.warn("reusing tool execution callback", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        return existing as Promise<T>
+      }
+
+      const execution = Promise.resolve().then(execute)
+      executionCallbacks.set(callID, execution)
+      return execution
+    }
+
     function dispose(reason = "manual") {
       const before = toolSettlementSnapshot(undefined, true)
       for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
       executions.clear()
+      executionCallbacks.clear()
       settlementPromises.clear()
       settledToolCalls.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
@@ -672,6 +717,7 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       beginExecution,
+      executeOnce,
       dispose,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
@@ -845,6 +891,7 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
+                      if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
@@ -920,6 +967,7 @@ export namespace SessionProcessor {
                         hadSlot: executions.has(value.toolCallId),
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
+                      if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
                       const match = toolcalls[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const part = await Session.updatePart({
@@ -997,8 +1045,24 @@ export namespace SessionProcessor {
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
                       const match = toolcalls[value.toolCallId]
+                      const slot = executions.get(value.toolCallId)
+                      const rejected =
+                        value.error instanceof PermissionNext.RejectedError ||
+                        value.error instanceof Question.RejectedError
+                      if (!slot && !rejected && !settledToolCalls.has(value.toolCallId)) {
+                        const diagnostic = streamToolDiagnostic(value.toolName, value.error)
+                        ObservabilityToolFailures.record({
+                          tool: value.toolName,
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          callID: value.toolCallId,
+                          phase: "llm.tool_call",
+                          error: value.error,
+                          errorClass: diagnostic.code,
+                          owner: "llm",
+                        })
+                      }
                       if (match && match.state.status === "running") {
-                        const slot = executions.get(value.toolCallId)
                         if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
                         const settlement = settleTrackedExecution(value.toolCallId)
                         if (settlement) {
@@ -1008,12 +1072,7 @@ export namespace SessionProcessor {
                           delete toolcalls[value.toolCallId]
                         }
                       }
-                      if (
-                        value.error instanceof PermissionNext.RejectedError ||
-                        value.error instanceof Question.RejectedError
-                      ) {
-                        blocked = shouldBreak
-                      }
+                      if (rejected) blocked = shouldBreak
                       break
                     }
                     case "error":

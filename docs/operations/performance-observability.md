@@ -8,7 +8,7 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 
 - health status, health score, and open performance issues;
 - HTTP request count, error rate, and p50/p95/p99 latency;
-- session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues;
+- session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
 - CPU, memory, event-loop lag, and app-owned disk IO;
 - registered tool child process count, RSS total, and top child process memory contributors;
 - session runtime counts and retained Cortex task counts, including retained prompt/output/error character totals;
@@ -16,6 +16,8 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 - slow routes, sessions, tools, providers, storage operations, child processes, and trace drill-downs.
 
 Every record is stored with low-cardinality attribution such as source, module, Scope/session/request/tool/provider/process IDs, correlation IDs, trace IDs, span IDs, and safe labels. Sensitive prompt, response, header, credential, environment, raw body, and file-content data is redacted or omitted before it reaches public read models or diagnostics packages.
+
+Permission evaluation logs contain only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks remain bounded and do not expose command or path contents through observability.
 
 Server resource samples are kept separate from registered tool child process samples. Linux hosts report child RSS from `/proc/<pid>/status`; unsupported hosts still report registered child process counts. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored.
 

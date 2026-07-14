@@ -389,45 +389,24 @@ export namespace ProviderCatalog {
 
   async function registerPluginProfiles() {
     const { Plugin } = await import("../plugin")
-    const allHooks = await Plugin.allHooks().catch(() => [])
+    const entries = await Plugin.authProviderEntries().catch(() => [])
     ProviderProfile.clearPluginProfiles()
-    for (const hooks of allHooks) {
-      const values = Array.isArray(hooks.provider) ? hooks.provider : hooks.provider ? [hooks.provider] : []
-      for (const profile of values) {
-        ProviderProfile.register({
-          id: profile.id,
-          name: profile.name,
-          origin: "plugin",
-          aliases: profile.aliases,
-          description: profile.description,
-          signupUrl: profile.signupUrl,
-          recommendation: profile.recommendation,
-          env: profile.env,
-          baseURL: profile.baseURL,
-          modelsURL: profile.modelsURL,
-          apiMode: profile.apiMode,
-          authKind: profile.authKind,
-          aiSdkPackage: profile.aiSdkPackage,
-          modelFactory: profile.modelFactory,
-          modelsDevProviderID: profile.modelsDevProviderID,
-          fallbackModels: profile.fallbackModels,
-          defaultAuxModel: profile.defaultAuxModel,
-          usageKind: profile.usageKind,
-          healthCheck: profile.healthCheck,
-          requestQuirks: profile.requestQuirks,
-          autoload: profile.autoload as ProviderProfile.Profile["autoload"],
-          resolveAuth: profile.resolveAuth as ProviderProfile.Profile["resolveAuth"],
-          refreshAuth: profile.refreshAuth as ProviderProfile.Profile["refreshAuth"],
-          buildHeaders: profile.buildHeaders as ProviderProfile.Profile["buildHeaders"],
-          rewriteBody: profile.rewriteBody as ProviderProfile.Profile["rewriteBody"],
-          modelOptions: profile.modelOptions as ProviderProfile.Profile["modelOptions"],
-          classifyError: profile.classifyError as ProviderProfile.Profile["classifyError"],
-          runtimeOptions: profile.runtimeOptions as ProviderProfile.Profile["runtimeOptions"],
-          getModel: profile.getModel as ProviderProfile.Profile["getModel"],
-          fetchModelCatalog: profile.fetchModelCatalog as ProviderProfile.Profile["fetchModelCatalog"],
-          fetchModels: profile.fetchModels as ProviderProfile.Profile["fetchModels"],
-        })
-      }
+    for (const { contribution } of entries) {
+      const profile = contribution.provider
+      ProviderProfile.register({
+        id: contribution.id,
+        name: profile.name,
+        origin: "plugin",
+        aliases: profile.aliases,
+        description: profile.description,
+        signupUrl: profile.signupUrl,
+        recommendation: profile.recommendation as ProviderProfile.Profile["recommendation"],
+        env: profile.env,
+        baseURL: profile.baseURL,
+        modelsURL: profile.modelsURL,
+        authKind: profile.authKind,
+        fallbackModels: profile.fallbackModels,
+      })
     }
   }
 

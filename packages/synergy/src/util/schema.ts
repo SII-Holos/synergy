@@ -1,15 +1,12 @@
 import z from "zod"
 
 /**
- * Create a `z.custom<T>()` schema that is safe for OpenAPI / JSON Schema generation.
+ * Give a structural Zod schema an opaque domain type while retaining its
+ * canonical JSON Schema representation.
  *
- * Raw `z.custom<T>()` schemas throw "Custom types cannot be represented in JSON Schema"
- * when processed by `z.toJSONSchema()` (used by hono-openapi's `resolver()`). This
- * helper attaches a `_zod.toJSONSchema` override so the schema serializes correctly.
- *
- * Use this for any opaque runtime type (e.g. `Scope`) that needs to appear in
- * API-facing Zod schemas. The `jsonSchema` argument defines what the type looks like
- * in the generated OpenAPI spec.
+ * Use this for domain types such as `Scope` whose runtime representation has an
+ * explicit public schema. The structural schema remains the single validation
+ * and OpenAPI source; no Zod internals are patched.
  *
  * @example
  * ```ts
@@ -20,8 +17,6 @@ import z from "zod"
  * ```
  */
 export function opaque<T>(jsonSchema: z.ZodType, opts?: { ref?: string }): z.ZodType<T> {
-  const schema = z.custom<T>(() => true)
-  const withMeta = opts?.ref ? schema.meta({ ref: opts.ref }) : schema
-  withMeta._zod.toJSONSchema = () => z.toJSONSchema(jsonSchema)
-  return withMeta
+  const schema = opts?.ref ? jsonSchema.meta({ ref: opts.ref }) : jsonSchema
+  return schema as z.ZodType<T>
 }

@@ -10,6 +10,9 @@ import { ObservabilityResources } from "@/observability/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
+  // Successful duration samples are high-cardinality and previously amplified
+  // telemetry write load under UI polling (#343). Keep errors at 100%.
+  const STORAGE_DURATION_SAMPLE_RATE = 0.02
 
   export const NotFoundError = NamedError.create(
     "NotFoundError",
@@ -174,6 +177,7 @@ export namespace Storage {
         unit: "ms",
         module: "storage",
         labels: { operation, keyPrefix: key[0] ?? "root", status },
+        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
       })
       ObservabilityMetrics.record({
         name: "storage.operation.count",

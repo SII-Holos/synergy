@@ -37,12 +37,12 @@ export namespace PerformanceDashboard {
     const cortexStats = {
       totalCount: cortexTasks.length,
       byStatus: {
-        pending: cortexTasks.filter((task) => task.status === "pending").length,
         queued: cortexTasks.filter((task) => task.status === "queued").length,
         running: cortexTasks.filter((task) => task.status === "running").length,
         completed: cortexTasks.filter((task) => task.status === "completed").length,
         error: cortexTasks.filter((task) => task.status === "error").length,
         cancelled: cortexTasks.filter((task) => task.status === "cancelled").length,
+        interrupted: cortexTasks.filter((task) => task.status === "interrupted").length,
       },
       retainedPromptChars: cortexTasks.reduce((sum, task) => sum + task.prompt.length, 0),
       retainedOutputChars: cortexTasks.reduce((sum, task) => {
@@ -64,6 +64,7 @@ export namespace PerformanceDashboard {
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
+    const toolFailures = rankToolFailures(metrics)
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
     const library = metrics.filter((row) => row.name === "library.operation.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
@@ -160,12 +161,12 @@ export namespace PerformanceDashboard {
         sessionRuntimes: runtimeStats,
         cortexTasks: {
           totalCount: cortexStats.totalCount,
-          pendingCount: cortexStats.byStatus.pending,
           queuedCount: cortexStats.byStatus.queued,
           runningCount: cortexStats.byStatus.running,
           completedCount: cortexStats.byStatus.completed,
           errorCount: cortexStats.byStatus.error,
           cancelledCount: cortexStats.byStatus.cancelled,
+          interruptedCount: cortexStats.byStatus.interrupted,
           retainedPromptChars: cortexStats.retainedPromptChars,
           retainedOutputChars: cortexStats.retainedOutputChars,
           retainedErrorChars: cortexStats.retainedErrorChars,
@@ -176,6 +177,7 @@ export namespace PerformanceDashboard {
         slowRoutes: rank(http, "path"),
         slowSessions: rank(turns, "session_id"),
         slowTools: rank(tools, "tool"),
+        toolFailures,
         slowProviders: rank(llm, "providerID", "provider", "modelID", "model"),
         slowStorage: rank(storage, "operation"),
         slowLibrary: rank(library, "operation"),
@@ -210,6 +212,40 @@ export namespace PerformanceDashboard {
           tool: row.tool ?? undefined,
         }
       })
+  }
+
+  function rankToolFailures(rows: MetricRow[]): PerformanceSchema.ToolFailureItem[] {
+    const tools = new Map<string, { callCount: number; errorCount: number; categories: Map<string, number> }>()
+    for (const row of rows) {
+      if (row.name !== "tool.execution.count" && row.name !== "tool.execution.error") continue
+      const tool = row.tool ?? stringLabel(row.labels.tool)
+      if (!tool) continue
+      const entry = tools.get(tool) ?? { callCount: 0, errorCount: 0, categories: new Map<string, number>() }
+      if (row.name === "tool.execution.count") {
+        entry.callCount += row.value
+      } else {
+        entry.errorCount += row.value
+        const errorClass = stringLabel(row.labels.errorName) ?? "UnknownError"
+        entry.categories.set(errorClass, (entry.categories.get(errorClass) ?? 0) + row.value)
+      }
+      tools.set(tool, entry)
+    }
+    return Array.from(tools, ([tool, entry]) => ({
+      tool,
+      callCount: entry.callCount,
+      errorCount: entry.errorCount,
+      errorRate: entry.errorCount / Math.max(entry.callCount, entry.errorCount, 1),
+      categories: Array.from(entry.categories, ([errorClass, count]) => ({ errorClass, count }))
+        .sort((a, b) => b.count - a.count || a.errorClass.localeCompare(b.errorClass))
+        .slice(0, 3),
+    }))
+      .filter((entry) => entry.errorCount > 0)
+      .sort((a, b) => b.errorCount - a.errorCount || b.errorRate - a.errorRate || a.tool.localeCompare(b.tool))
+      .slice(0, 5)
+  }
+
+  function stringLabel(value: unknown) {
+    return typeof value === "string" && value.length > 0 ? value : undefined
   }
 
   function rankChildProcesses(rows: ObservabilityStore.StoredResource[]): PerformanceSchema.RankedItem[] {

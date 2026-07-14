@@ -19,7 +19,7 @@ export interface PluginUIAssets {
 
 export function resolvePluginIconReference(contribution: PluginContribution, iconName: string | undefined) {
   if (!iconName) return iconName
-  const declared = contribution.ui?.icons?.some((icon) => icon.name === iconName)
+  const declared = contribution.contributions.some((item) => item.kind === "ui.icon" && item.id === iconName)
   return declared ? pluginSurfaceId(contribution.pluginId, iconName) : iconName
 }
 
@@ -41,55 +41,55 @@ export async function loadPluginUIAssets(
   const requests: Array<Promise<LoadedAsset>> = []
 
   for (const contribution of contributions) {
-    if (contribution.permissions?.ui !== true) continue
+    for (const definition of contribution.contributions) {
+      if (definition.kind === "ui.theme") {
+        requests.push(
+          loadAsset(contribution.pluginId, `Theme "${definition.id}"`, options.signal, async () => {
+            const url = pluginAssetUrl(contribution.pluginId, contribution.generation, definition.path)
+            const response = await fetcher(url, { signal: options.signal })
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const theme = parseTheme(await response.json())
+            if (theme.id !== definition.id) {
+              throw new Error(`theme id "${theme.id}" does not match contribution id "${definition.id}"`)
+            }
+            const key = pluginSurfaceId(contribution.pluginId, definition.id)
+            return {
+              status: "loaded" as const,
+              kind: "theme" as const,
+              key,
+              value: {
+                id: key,
+                label: definition.label,
+                theme,
+                pluginId: contribution.pluginId,
+              } satisfies PluginThemeDefinition,
+            }
+          }),
+        )
+      }
 
-    for (const definition of contribution.ui?.themes ?? []) {
-      requests.push(
-        loadAsset(contribution.pluginId, `Theme "${definition.id}"`, options.signal, async () => {
-          const url = pluginAssetUrl(contribution.pluginId, contribution.version, definition.path)
-          const response = await fetcher(url, { signal: options.signal })
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          const theme = parseTheme(await response.json())
-          if (theme.id !== definition.id) {
-            throw new Error(`theme id "${theme.id}" does not match manifest id "${definition.id}"`)
-          }
-          const key = pluginSurfaceId(contribution.pluginId, definition.id)
-          return {
-            status: "loaded" as const,
-            kind: "theme" as const,
-            key,
-            value: {
-              id: key,
-              label: definition.label,
-              theme,
-              pluginId: contribution.pluginId,
-            } satisfies PluginThemeDefinition,
-          }
-        }),
-      )
-    }
-
-    for (const definition of contribution.ui?.icons ?? []) {
-      requests.push(
-        loadAsset(contribution.pluginId, `Icon "${definition.name}"`, options.signal, async () => {
-          const url = pluginAssetUrl(contribution.pluginId, contribution.version, definition.path)
-          const response = await fetcher(url, { signal: options.signal })
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          const svgContent = await response.text()
-          if (!svgContent.trim()) throw new Error("empty SVG asset")
-          const key = pluginSurfaceId(contribution.pluginId, definition.name)
-          return {
-            status: "loaded" as const,
-            kind: "icon" as const,
-            key,
-            value: {
-              name: key,
-              svgContent,
-              pluginId: contribution.pluginId,
-            } satisfies LoadedPluginIcon,
-          }
-        }),
-      )
+      if (definition.kind === "ui.icon") {
+        requests.push(
+          loadAsset(contribution.pluginId, `Icon "${definition.id}"`, options.signal, async () => {
+            const url = pluginAssetUrl(contribution.pluginId, contribution.generation, definition.path)
+            const response = await fetcher(url, { signal: options.signal })
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const svgContent = await response.text()
+            if (!svgContent.trim()) throw new Error("empty SVG asset")
+            const key = pluginSurfaceId(contribution.pluginId, definition.id)
+            return {
+              status: "loaded" as const,
+              kind: "icon" as const,
+              key,
+              value: {
+                name: key,
+                svgContent,
+                pluginId: contribution.pluginId,
+              } satisfies LoadedPluginIcon,
+            }
+          }),
+        )
+      }
     }
   }
 

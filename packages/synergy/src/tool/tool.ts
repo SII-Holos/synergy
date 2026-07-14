@@ -5,10 +5,18 @@ import type { PermissionNext } from "../permission/next"
 import { Truncate } from "./truncation"
 import { ToolExposure } from "./exposure"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import type { PluginJsonSchema, PluginSettingCondition } from "@ericsanchezok/synergy-plugin"
 
 export namespace Tool {
   interface Metadata {
     [key: string]: any
+  }
+
+  export interface ExecutionResult<M extends Metadata = Metadata> {
+    title: string
+    metadata: M
+    output: string
+    attachments?: MessageV2.AttachmentPart[]
   }
 
   export interface InitContext {
@@ -21,7 +29,7 @@ export namespace Tool {
         pluginId: string
         toolId: string
         pluginDir?: string
-        runtimeMode: "in-process" | "worker" | "process"
+        runtimeMode: "inProcess" | "process"
       }
     | {
         type: "local"
@@ -42,18 +50,13 @@ export namespace Tool {
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
+    inputSchema?: PluginJsonSchema
+    enabledWhen?: PluginSettingCondition
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters
-      execute(
-        args: z.infer<Parameters>,
-        ctx: Context,
-      ): Promise<{
-        title: string
-        metadata: M
-        output: string
-        attachments?: MessageV2.AttachmentPart[]
-      }>
+      execute(args: z.infer<Parameters>, ctx: Context): Promise<ExecutionResult<M>>
+      afterPersist?(args: z.infer<Parameters>, ctx: Context, result: ExecutionResult<M>): Promise<void> | void
       formatValidationError?(error: z.ZodError): string
     }>
   }

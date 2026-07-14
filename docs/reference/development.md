@@ -29,12 +29,12 @@ bun dev build desktop
 | ------------------- | ------------------------------------------------------------------------- |
 | `server`            | source server on fixed development port 4096 by default                   |
 | `app`               | Vite app against an existing server; default app port 3000                |
-| `web`               | source server plus Vite app                                               |
+| `web`               | source server, Vite app, and remote Browser Host                          |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
 
-Use `--server-port`, `--app-port`, `--hostname`, and `--attach` to avoid conflicts. The orchestrator checks required ports and target health before starting dependent processes. In parallel modes it terminates sibling processes when one exits.
+Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined Web or Desktop flows. The orchestrator checks required ports and target health before starting dependent processes. In parallel modes it terminates sibling process trees when one exits so package-script wrappers cannot leave servers or Electron hosts running.
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Normal daily Desktop work should use external mode for Vite reload speed.
 
@@ -129,9 +129,9 @@ Frontend code should use `createSynergyClient()` and generated methods for inter
 
 The development branch is `dev`; `main` is updated by the release workflow. All pull requests target `dev`.
 
-Make repository changes in a task-owned worktree on a topic branch. Do not run `git checkout` or `git switch`, edit, commit, rebase, or publish from the primary/shared checkout. Create or enter the task worktree first, then inspect its status. Reuse that worktree for later changes to the same branch rather than creating a new worktree for every edit.
+Repository changes may be made directly in the current checkout. Treat primary and pre-existing checkouts as potentially shared: preserve unrelated work, and do not switch branches or rebase unless the user explicitly requests it. Use a task-owned worktree when concurrent development needs branch or file isolation, not as a prerequisite for every edit, and reuse an existing task worktree when it already owns the branch.
 
-Never push `dev` or `main` directly. Push only the task topic branch and open its pull request against `dev`; the release workflow is the only path from `dev` to `main`. Preserve unrelated changes, stage explicit task files, and keep local paths, runtime identifiers, logs, credentials, and internal configuration out of commit and GitHub text. See `git-guide` for the commit template, mandatory agent co-author footer, and publication workflow.
+Stage and commit only when requested. Local commits on `dev` or `main` are allowed, but never push either protected branch directly. Push a topic branch and open its pull request against `dev`; the release workflow is the only path from `dev` to `main`. Preserve unrelated changes, stage explicit task files, and keep local paths, runtime identifiers, logs, credentials, and internal configuration out of commit and GitHub text. See `git-guide` for the commit template, mandatory agent co-author footer, and publication workflow.
 
 Keep changes focused, update migrations for persisted schema changes, and update current-state docs plus relevant `.synergy/skill` workflows whenever an agent-facing command, path, tool, or procedure changes.
 

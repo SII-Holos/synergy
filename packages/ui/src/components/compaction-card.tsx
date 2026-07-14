@@ -4,6 +4,7 @@ import type { Message as MessageType, Part as PartType } from "@ericsanchezok/sy
 import { Markdown } from "./markdown"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
+import { Collapsible } from "./collapsible"
 
 import "./compaction-card.css"
 
@@ -38,69 +39,68 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
   const title = createMemo(() => (complete() ? "Context compressed" : "Compressing context..."))
   const description = createMemo(() => (complete() ? "Summary ready" : "Preparing a compact continuation summary"))
   const canExpand = createMemo(() => complete() && !!summary())
+  const open = createMemo(() => canExpand() && expanded())
   const expandIcon = createMemo(() =>
-    expanded() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
+    open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
   )
 
-  const toggle = () => {
+  const handleOpenChange = (value: boolean) => {
     if (!canExpand()) return
-    setExpanded((value) => !value)
+    setExpanded(value)
   }
 
   return (
     <div
       data-component="compaction-card"
       data-status={complete() ? "complete" : "running"}
-      data-expanded={expanded() ? "" : undefined}
+      data-expanded={open() ? "" : undefined}
     >
-      <button
-        type="button"
-        data-slot="compaction-card-header"
-        disabled={!canExpand()}
-        aria-expanded={canExpand() ? expanded() : undefined}
-        onClick={toggle}
-      >
-        <div data-slot="compaction-card-leading">
-          <div data-slot="compaction-card-icon" aria-hidden="true">
-            <Icon name={getSemanticIcon("settings.compaction")} size="small" />
-          </div>
-          <div data-slot="compaction-card-copy">
-            <div data-slot="compaction-card-title-row">
-              <span data-slot="compaction-card-title">{title()}</span>
+      <Collapsible open={open()} onOpenChange={handleOpenChange} disabled={!canExpand()} variant="ghost">
+        <Collapsible.Trigger data-slot="compaction-card-header" type="button">
+          <div data-slot="compaction-card-leading">
+            <div data-slot="compaction-card-icon" aria-hidden="true">
+              <Icon name={getSemanticIcon("settings.compaction")} size="small" />
             </div>
-            <span data-slot="compaction-card-description">{description()}</span>
+            <div data-slot="compaction-card-copy">
+              <div data-slot="compaction-card-title-row">
+                <span data-slot="compaction-card-title">{title()}</span>
+              </div>
+              <span data-slot="compaction-card-description">{description()}</span>
+            </div>
           </div>
-        </div>
-        <div data-slot="compaction-card-meta">
-          <span data-slot="compaction-card-time">{timestamp()}</span>
-          <Show when={canExpand()}>
-            <span data-slot="compaction-card-arrow" aria-hidden="true">
-              <Icon name={expandIcon()} size="small" />
-            </span>
-          </Show>
-        </div>
-      </button>
-
-      <Show when={expanded() && recovery()}>
-        {(p) => (
-          <div data-slot="compaction-card-content">
-            <Show when={p().mechanical}>
-              <div data-slot="compaction-card-warning">
-                <Icon name={getSemanticIcon("state.warning")} size="small" />
-                <span data-slot="compaction-card-warning-text">
-                  This summary was mechanically generated due to context limits. Some detail may be missing.
-                </span>
-              </div>
-            </Show>
-
-            <Show when={summary()}>
-              <div data-slot="compaction-card-summary">
-                <Markdown text={summary()} />
-              </div>
+          <div data-slot="compaction-card-meta">
+            <span data-slot="compaction-card-time">{timestamp()}</span>
+            <Show when={canExpand()}>
+              <span data-slot="compaction-card-arrow" aria-hidden="true">
+                <Icon name={expandIcon()} size="small" />
+              </span>
             </Show>
           </div>
-        )}
-      </Show>
+        </Collapsible.Trigger>
+
+        <Show when={recovery()}>
+          {(p) => (
+            <Collapsible.Content>
+              <div data-slot="compaction-card-content">
+                <Show when={p().mechanical}>
+                  <div data-slot="compaction-card-warning">
+                    <Icon name={getSemanticIcon("state.warning")} size="small" />
+                    <span data-slot="compaction-card-warning-text">
+                      This summary was mechanically generated due to context limits. Some detail may be missing.
+                    </span>
+                  </div>
+                </Show>
+
+                <Show when={summary()}>
+                  <div data-slot="compaction-card-summary">
+                    <Markdown text={summary()} />
+                  </div>
+                </Show>
+              </div>
+            </Collapsible.Content>
+          )}
+        </Show>
+      </Collapsible>
     </div>
   )
 }

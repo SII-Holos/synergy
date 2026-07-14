@@ -1,9 +1,28 @@
-import z from "zod"
+import { z } from "zod"
 import { Identifier } from "../id/id"
 
 export namespace CortexTypes {
-  export const TaskStatus = z.enum(["pending", "queued", "running", "completed", "error", "cancelled"])
+  export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
+
+  export const PluginTaskOwner = z.object({
+    kind: z.literal("plugin").default("plugin"),
+    pluginId: z.string(),
+    pluginGeneration: z.string(),
+    scopeId: z.string(),
+    correlationId: z.string(),
+  })
+  export type PluginTaskOwner = z.infer<typeof PluginTaskOwner>
+
+  export const TaskUsage = z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    reasoningTokens: z.number(),
+    cacheReadTokens: z.number(),
+    cacheWriteTokens: z.number(),
+    cost: z.number(),
+  })
+  export type TaskUsage = z.infer<typeof TaskUsage>
 
   export const TaskToolProgress = z.object({
     id: z.string(),
@@ -60,16 +79,21 @@ export namespace CortexTypes {
   ])
   export type TaskOutput = z.infer<typeof TaskOutput>
 
-  export const TaskOwner = z
+  export const WorkflowTaskOwner = z
     .object({
-      kind: z.string(),
+      kind: z.literal("workflow_run"),
       runID: z.string().optional(),
       entityID: z.string().optional(),
       seat: z.string().optional(),
       instance: z.number().int().optional(),
       correlationID: z.string().optional(),
     })
-    .meta({ ref: "CortexTaskOwner" })
+    .meta({ ref: "CortexWorkflowTaskOwner" })
+  export type WorkflowTaskOwner = z.infer<typeof WorkflowTaskOwner>
+
+  export const TaskOwner = z.discriminatedUnion("kind", [PluginTaskOwner, WorkflowTaskOwner]).meta({
+    ref: "CortexTaskOwner",
+  })
   export type TaskOwner = z.infer<typeof TaskOwner>
 
   export const Task = z
@@ -81,6 +105,12 @@ export namespace CortexTypes {
       description: z.string(),
       prompt: z.string(),
       agent: z.string(),
+      model: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
       owner: TaskOwner.optional(),
@@ -97,6 +127,8 @@ export namespace CortexTypes {
       metadata: z.record(z.string(), z.unknown()).optional(),
       outputConfig: OutputConfig.optional(),
       output: TaskOutput.optional(),
+      timeoutMs: z.number().int().positive().optional(),
+      usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>
@@ -130,6 +162,7 @@ export namespace CortexTypes {
     tools: z.record(z.string(), z.boolean()).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     output: OutputConfig.optional(),
+    timeoutMs: z.number().int().positive().optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>
 }

@@ -1118,8 +1118,8 @@
     "/global/performance/issues": {
       "get": {
         "operationId": "performance.issues.list",
-        "summary": "List performance issues",
-        "description": "List open or historical performance issues.",
+        "summary": "List filtered performance issues",
+        "description": "List open or historical performance issues filtered by scope, tool, or last-seen time range.",
         "responses": {
           "200": {
             "description": "Performance issues",
@@ -3947,6 +3947,76 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.leave({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/remove": {
+      "post": {
+        "operationId": "worktree.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove worktree",
+        "description": "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+        "responses": {
+          "200": {
+            "description": "Worktree removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Worktree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeRemoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.remove({\n  ...\n})"
           }
         ]
       }
@@ -7747,7 +7817,7 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "queued", "running", "completed", "error", "cancelled"]
+                      "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
                     },
                     "rendered": {
                       "type": "string"
@@ -8923,6 +8993,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9014,6 +9094,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9060,6 +9150,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceFileNode"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -15625,28 +15725,71 @@
             }
           }
         ],
-        "summary": "List plugin UI contributions",
-        "description": "Return aggregated UI manifests for all loaded plugins.",
+        "summary": "List enabled plugin UI contributions",
         "responses": {
           "200": {
-            "description": "List of plugin UI contributions",
+            "description": "Contributions",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PluginUIContribution"
+                    "type": "object",
+                    "properties": {
+                      "pluginId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "generation": {
+                        "type": "string"
+                      },
+                      "scopeId": {
+                        "type": "string"
+                      },
+                      "capabilities": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "contributions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "uiArtifact": {
+                        "type": "object",
+                        "properties": {
+                          "entry": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["entry", "sha256"]
+                      }
+                    },
+                    "required": [
+                      "pluginId",
+                      "name",
+                      "version",
+                      "generation",
+                      "scopeId",
+                      "capabilities",
+                      "contributions"
+                    ]
                   }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15660,7 +15803,7 @@
         ]
       }
     },
-    "/plugin/assets/{pluginId}/{versionHash}/*": {
+    "/plugin/assets/{pluginId}/{generation}/{asset}": {
       "get": {
         "operationId": "plugin.serveAsset",
         "parameters": [
@@ -15691,25 +15834,22 @@
               "type": "string"
             },
             "in": "path",
-            "name": "versionHash",
+            "name": "generation",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "asset",
             "required": true
           }
         ],
-        "summary": "Serve plugin static asset",
-        "description": "Serve a static file from a plugin's directory with immutable cache headers.",
+        "summary": "Serve a generated plugin artifact",
         "responses": {
           "200": {
-            "description": "Plugin static asset"
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
+            "description": "Asset"
           },
           "404": {
             "description": "Not found",
@@ -15730,9 +15870,9 @@
         ]
       }
     },
-    "/plugin/{pluginId}/interact": {
+    "/plugin/{pluginId}/operations/{operationId}/invoke": {
       "post": {
-        "operationId": "plugin.interact",
+        "operationId": "plugin.invokeOperation",
         "parameters": [
           {
             "in": "query",
@@ -15755,17 +15895,27 @@
             "in": "path",
             "name": "pluginId",
             "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "operationId",
+            "required": true
           }
         ],
-        "summary": "Relay plugin interaction",
-        "description": "Relay a postMessage interaction for a plugin.",
+        "summary": "Invoke a declared plugin operation",
         "responses": {
           "200": {
-            "description": "Interaction relayed",
+            "description": "Operation result"
+          },
+          "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PluginInteractResult"
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15776,6 +15926,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
                 }
               }
             }
@@ -15787,74 +15947,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "type": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "payload": {},
-                  "source": {
+                  "input": {},
+                  "sessionId": {
                     "type": "string"
                   }
-                },
-                "required": ["type"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.interact({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/plugin/{pluginId}/config-schema": {
-      "get": {
-        "operationId": "plugin.configSchema",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get plugin config schema",
-        "description": "Return the plugin's contributed config schema from its manifest.",
-        "responses": {
-          "200": {
-            "description": "Plugin config schema",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfigSchema"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -15863,7 +15959,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.configSchema({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.invokeOperation({\n  ...\n})"
           }
         ]
       }
@@ -15895,18 +15991,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin config",
-        "description": "Return the current config values for a plugin.",
         "responses": {
           "200": {
-            "description": "Plugin config",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfig"
-                }
-              }
-            }
+            "description": "Plugin settings"
           },
           "404": {
             "description": "Not found",
@@ -15952,28 +16039,9 @@
             "required": true
           }
         ],
-        "summary": "Update plugin config",
-        "description": "Replace the plugin's configuration namespace.",
         "responses": {
           "200": {
-            "description": "Updated plugin config",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginConfig"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
+            "description": "Plugin settings"
           },
           "404": {
             "description": "Not found",
@@ -15990,11 +16058,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
+                "$ref": "#/components/schemas/PluginConfigUpdate"
               }
             }
           }
@@ -16034,8 +16098,6 @@
             "required": true
           }
         ],
-        "summary": "Get plugin status",
-        "description": "Report the current status of a loaded plugin.",
         "responses": {
           "200": {
             "description": "Plugin status",
@@ -16066,6 +16128,57 @@
         ]
       }
     },
+    "/plugin/dev/reload": {
+      "post": {
+        "operationId": "postPluginDevReload",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "generation": {
+                    "type": "string"
+                  },
+                  "artifactDir": {
+                    "type": "string"
+                  }
+                },
+                "required": ["pluginId", "generation", "artifactDir"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {}
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.postPluginDevReload({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/plugins": {
       "get": {
         "operationId": "api.plugins.list",
@@ -16085,17 +16198,15 @@
             }
           }
         ],
-        "summary": "List all loaded plugins",
-        "description": "Return metadata for all currently loaded plugins.",
         "responses": {
           "200": {
-            "description": "List of loaded plugins",
+            "description": "Installed plugins",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ApiPluginInfo"
+                    "$ref": "#/components/schemas/PluginStatus"
                   }
                 }
               }
@@ -16137,18 +16248,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin detail",
-        "description": "Return detailed metadata for a single loaded plugin.",
         "responses": {
           "200": {
-            "description": "Plugin detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiPluginDetail"
-                }
-              }
-            }
+            "description": "Plugin detail"
           },
           "404": {
             "description": "Not found",
@@ -16194,28 +16296,9 @@
             "required": true
           }
         ],
-        "summary": "Remove plugin",
-        "description": "Uninstall and deactivate a plugin, then reload the plugin runtime.",
         "responses": {
           "200": {
-            "description": "Plugin removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "pluginId": {
-                      "type": "string"
-                    },
-                    "removed": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["pluginId", "removed"]
-                }
-              }
-            }
+            "description": "Removed"
           },
           "404": {
             "description": "Not found",
@@ -16236,140 +16319,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/status": {
-      "get": {
-        "operationId": "api.plugins.status",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get plugin status",
-        "description": "Report the current status of a loaded plugin.",
-        "responses": {
-          "200": {
-            "description": "Plugin status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginStatus"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.status({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/preview-install": {
-      "post": {
-        "operationId": "api.plugins.previewInstall",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Preview permissions for new plugin install",
-        "description": "Compute the permission diff for a new plugin manifest before installation.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  }
-                },
-                "required": ["manifest"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewInstall({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/approve-install": {
+    "/api/plugins/approve-install": {
       "post": {
         "operationId": "api.plugins.approveInstall",
         "parameters": [
@@ -16386,52 +16336,11 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
           }
         ],
-        "summary": "Approve new plugin install",
-        "description": "Record approval for a new plugin installation after reviewing its permissions.",
         "responses": {
           "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+            "description": "Approved"
           }
         },
         "requestBody": {
@@ -16440,13 +16349,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
+                  "pluginId": {
+                    "type": "string"
                   },
+                  "manifest": {},
                   "capabilities": {
                     "type": "array",
                     "items": {
@@ -16458,7 +16364,7 @@
                     "enum": ["local", "official", "npm", "git", "url", "builtin"]
                   }
                 },
-                "required": ["manifest", "capabilities"]
+                "required": ["pluginId", "manifest", "capabilities", "source"]
               }
             }
           }
@@ -16467,190 +16373,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveInstall({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/preview-update": {
-      "post": {
-        "operationId": "api.plugins.previewUpdate",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Preview permissions for plugin update",
-        "description": "Compute the permission diff between the currently installed plugin and a new manifest version.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  }
-                },
-                "required": ["manifest"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewUpdate({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/approve-update": {
-      "post": {
-        "operationId": "api.plugins.approveUpdate",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Approve plugin update",
-        "description": "Record approval for a plugin update after reviewing its permission changes.",
-        "responses": {
-          "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "manifest": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "capabilities": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "source": {
-                    "type": "string",
-                    "enum": ["local", "official", "npm", "git", "url", "builtin"]
-                  }
-                },
-                "required": ["manifest", "capabilities"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveUpdate({\n  ...\n})"
           }
         ]
       }
@@ -16682,22 +16404,9 @@
             "required": true
           }
         ],
-        "summary": "Get plugin approval status",
-        "description": "Return the current approval record for a plugin, or 404 if not approved.",
         "responses": {
           "200": {
-            "description": "Approval record",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
+            "description": "Approval"
           },
           "404": {
             "description": "Not found",
@@ -16718,70 +16427,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/permission-diff": {
-      "get": {
-        "operationId": "api.plugins.permissionDiff",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Get permission diff for plugin version",
-        "description": "Return the permission diff between the approved capabilities and the current plugin manifest.",
-        "responses": {
-          "200": {
-            "description": "Permission diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.permissionDiff({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/install-from-registry": {
+    "/api/plugins/registry/install": {
       "post": {
         "operationId": "api.plugins.installFromRegistry",
         "parameters": [
@@ -16800,48 +16446,12 @@
             }
           }
         ],
-        "summary": "Install plugin from registry",
-        "description": "Install a plugin from the official or local registry. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.",
         "responses": {
           "200": {
-            "description": "Install result with plugin status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiPluginDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+            "description": "Installed"
           },
           "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NoteConflictError"
-                }
-              }
-            }
+            "description": "Approval required"
           }
         },
         "requestBody": {
@@ -16851,19 +16461,17 @@
                 "type": "object",
                 "properties": {
                   "id": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "version": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "source": {
                     "type": "string",
                     "enum": ["official", "local"]
                   }
                 },
-                "required": ["id", "version"]
+                "required": ["id", "version", "source"]
               }
             }
           }
@@ -16876,7 +16484,7 @@
         ]
       }
     },
-    "/api/plugins/{pluginId}/update-from-registry": {
+    "/api/plugins/registry/update": {
       "post": {
         "operationId": "api.plugins.updateFromRegistry",
         "parameters": [
@@ -16893,52 +16501,14 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
           }
         ],
-        "summary": "Check for plugin update from registry",
-        "description": "Check if an update is available for a plugin from the official or local registry. Optionally target a specific version. Returns version comparison and permission diff.",
         "responses": {
           "200": {
-            "description": "Update check result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              }
-            }
+            "description": "Updated"
           },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
+          "409": {
+            "description": "Approval required"
           }
         },
         "requestBody": {
@@ -16947,15 +16517,18 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "targetVersion": {
-                    "type": "string",
-                    "minLength": 1
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
                   },
                   "source": {
                     "type": "string",
                     "enum": ["official", "local"]
                   }
-                }
+                },
+                "required": ["pluginId", "version", "source"]
               }
             }
           }
@@ -16996,21 +16569,13 @@
           }
         ],
         "summary": "Reload plugin runtime",
-        "description": "Stop and restart the plugin runtime process.",
         "responses": {
           "200": {
-            "description": "Runtime state after reload",
+            "description": "Runtime",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/PluginRuntimeInfo"
                 }
               }
             }
@@ -17030,72 +16595,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.reload({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/runtime/stop": {
-      "post": {
-        "operationId": "plugin.runtime.stop",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "pluginId",
-            "required": true
-          }
-        ],
-        "summary": "Stop plugin runtime",
-        "description": "Gracefully stop the plugin runtime process.",
-        "responses": {
-          "200": {
-            "description": "Runtime state after stop",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.stop({\n  ...\n})"
           }
         ]
       }
@@ -17128,21 +16627,13 @@
           }
         ],
         "summary": "Start plugin runtime",
-        "description": "Start the plugin runtime process.",
         "responses": {
           "200": {
-            "description": "Runtime state after start",
+            "description": "Runtime",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PluginRuntimeInfo"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/PluginRuntimeInfo"
                 }
               }
             }
@@ -17162,6 +16653,57 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/stop": {
+      "post": {
+        "operationId": "plugin.runtime.stop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Stop plugin runtime",
+        "responses": {
+          "200": {
+            "description": "Stopped"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.stop({\n  ...\n})"
           }
         ]
       }
@@ -17194,20 +16736,9 @@
           }
         ],
         "summary": "Get plugin runtime logs",
-        "description": "Return recent log entries for the plugin runtime.",
         "responses": {
           "200": {
-            "description": "Recent runtime log entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PluginRuntimeLogEntry"
-                  }
-                }
-              }
-            }
+            "description": "Logs"
           },
           "404": {
             "description": "Not found",
@@ -20725,6 +20256,50 @@
         },
         "required": ["id", "label", "value", "unit"]
       },
+      "PerfToolFailureCategory": {
+        "type": "object",
+        "properties": {
+          "errorClass": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["errorClass", "count"]
+      },
+      "PerfToolFailureItem": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "callCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errorCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerfToolFailureCategory"
+            }
+          }
+        },
+        "required": ["tool", "callCount", "errorCount", "errorRate", "categories"]
+      },
       "PerfIssueSeverity": {
         "type": "string",
         "enum": ["info", "warning", "error", "critical"]
@@ -21081,11 +20656,6 @@
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
                   },
-                  "pendingCount": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
                   "queuedCount": {
                     "type": "integer",
                     "minimum": -9007199254740991,
@@ -21107,6 +20677,11 @@
                     "maximum": 9007199254740991
                   },
                   "cancelledCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "interruptedCount": {
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
@@ -21134,12 +20709,12 @@
                 },
                 "required": [
                   "totalCount",
-                  "pendingCount",
                   "queuedCount",
                   "runningCount",
                   "completedCount",
                   "errorCount",
                   "cancelledCount",
+                  "interruptedCount",
                   "retainedPromptChars",
                   "retainedOutputChars",
                   "retainedErrorChars",
@@ -21168,6 +20743,12 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/PerfRankedItem"
+                }
+              },
+              "toolFailures": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfToolFailureItem"
                 }
               },
               "slowProviders": {
@@ -21205,6 +20786,7 @@
               "slowRoutes",
               "slowSessions",
               "slowTools",
+              "toolFailures",
               "slowProviders",
               "slowStorage",
               "slowLibrary",
@@ -22355,8 +21937,7 @@
             "type": "string"
           }
         },
-        "required": ["id"],
-        "additionalProperties": false
+        "required": ["id"]
       },
       "ChannelInfo": {
         "type": "object",
@@ -23362,16 +22943,10 @@
         "default": {
           "startupTimeoutMs": 5000,
           "toolInvocationTimeoutMs": 120000,
-          "hookInvocationTimeoutMs": 120000,
-          "bridgeRequestTimeoutMs": 120000,
+          "hostServiceRequestTimeoutMs": 120000,
           "taskRunTimeoutMs": 120000,
           "shutdownGraceMs": 1500,
-          "maxConcurrentRequests": 8,
-          "maxLogBytesPerMinute": 128000,
-          "memoryMb": 256,
-          "memoryPollIntervalMs": 10000,
-          "heartbeatIntervalMs": 5000,
-          "heartbeatMissesBeforeKill": 3
+          "heartbeatIntervalMs": 5000
         },
         "type": "object",
         "properties": {
@@ -23387,14 +22962,8 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "hookInvocationTimeoutMs": {
-            "description": "Maximum milliseconds for a plugin hook invocation",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "bridgeRequestTimeoutMs": {
-            "description": "Maximum milliseconds for one plugin-to-host bridge request",
+          "hostServiceRequestTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin Host Service request",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -23411,38 +22980,8 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "maxConcurrentRequests": {
-            "description": "Maximum concurrent bridge requests",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "maxLogBytesPerMinute": {
-            "description": "Maximum plugin log bytes per minute",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "memoryMb": {
-            "description": "Maximum process runtime RSS in MB",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "memoryPollIntervalMs": {
-            "description": "Memory polling interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
           "heartbeatIntervalMs": {
             "description": "Heartbeat interval in milliseconds",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "heartbeatMissesBeforeKill": {
-            "description": "Missed heartbeats before process kill",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -23454,32 +22993,6 @@
         "description": "Plugin runtime isolation policy configuration",
         "type": "object",
         "properties": {
-          "thirdPartyDefaultMode": {
-            "description": "Default isolation mode for third-party plugins (npm, git, url)",
-            "default": "process",
-            "type": "string",
-            "enum": ["process", "worker"]
-          },
-          "highRiskRequiresProcess": {
-            "description": "Require process isolation for high-risk plugins regardless of source",
-            "default": true,
-            "type": "boolean"
-          },
-          "allowThirdPartyInProcess": {
-            "description": "Allow third-party plugins to request in-process mode (not recommended)",
-            "default": false,
-            "type": "boolean"
-          },
-          "allowWorkerMode": {
-            "description": "Allow plugins to request worker thread isolation",
-            "default": true,
-            "type": "boolean"
-          },
-          "allowLocalInProcess": {
-            "description": "Allow local plugins to run in-process",
-            "default": true,
-            "type": "boolean"
-          },
           "limits": {
             "$ref": "#/components/schemas/PluginRuntimeLimitsConfig"
           }
@@ -24335,6 +23848,18 @@
             "description": "LLM retry count for intent/script/reward generation (default: 3)",
             "type": "integer",
             "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "encoderTimeoutMs": {
+            "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "encoderMaxOutputChars": {
+            "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+            "type": "integer",
+            "minimum": 1,
             "maximum": 9007199254740991
           },
           "digestToolOutputBudget": {
@@ -26783,6 +26308,9 @@
           "dirty": {
             "type": "boolean"
           },
+          "diskBytes": {
+            "type": "number"
+          },
           "owner": {
             "anyOf": [
               {
@@ -26925,8 +26453,7 @@
               "color": {
                 "type": "string"
               }
-            },
-            "additionalProperties": false
+            }
           },
           "time": {
             "type": "object",
@@ -26941,8 +26468,7 @@
                 "type": "number"
               }
             },
-            "required": ["created", "updated"],
-            "additionalProperties": false
+            "required": ["created", "updated"]
           },
           "sandboxes": {
             "type": "array",
@@ -26951,8 +26477,7 @@
             }
           }
         },
-        "required": ["id"],
-        "additionalProperties": false
+        "required": ["id"]
       },
       "FileDiff": {
         "type": "object",
@@ -27115,9 +26640,69 @@
           }
         }
       },
+      "CortexWorkflowTaskOwner": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "workflow_run"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "entityID": {
+            "type": "string"
+          },
+          "seat": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "correlationID": {
+            "type": "string"
+          }
+        },
+        "required": ["kind"]
+      },
+      "CortexTaskOwner": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "default": "plugin",
+                "type": "string",
+                "const": "plugin"
+              },
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginGeneration": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "pluginGeneration", "scopeId", "correlationId"]
+          },
+          {
+            "$ref": "#/components/schemas/CortexWorkflowTaskOwner"
+          }
+        ]
+      },
       "SessionCortexDelegation": {
         "type": "object",
         "properties": {
+          "taskID": {
+            "type": "string"
+          },
           "parentSessionID": {
             "type": "string"
           },
@@ -27142,7 +26727,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["queued", "running", "completed", "error", "cancelled"]
+            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
           },
           "model": {
             "type": "object",
@@ -27272,9 +26857,48 @@
                 "required": ["mode", "value"]
               }
             ]
+          },
+          "owner": {
+            "$ref": "#/components/schemas/CortexTaskOwner"
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "reasoningTokens": {
+                "type": "number"
+              },
+              "cacheReadTokens": {
+                "type": "number"
+              },
+              "cacheWriteTokens": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "reasoningTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "cost"
+            ]
           }
         },
-        "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
+        "required": ["taskID", "parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
       },
       "SessionSuperPlanInfo": {
         "type": "object",
@@ -27697,6 +27321,20 @@
         "required": ["id", "scope", "title", "version", "time"]
       },
       "WorktreeEnterInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["target"]
+      },
+      "WorktreeRemoveInput": {
         "type": "object",
         "properties": {
           "target": {
@@ -30098,32 +29736,6 @@
         },
         "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
       },
-      "CortexTaskOwner": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string"
-          },
-          "runID": {
-            "type": "string"
-          },
-          "entityID": {
-            "type": "string"
-          },
-          "seat": {
-            "type": "string"
-          },
-          "instance": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "correlationID": {
-            "type": "string"
-          }
-        },
-        "required": ["kind"]
-      },
       "CortexTask": {
         "type": "object",
         "properties": {
@@ -30152,6 +29764,18 @@
           "agent": {
             "type": "string"
           },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
           "executionRole": {
             "type": "string",
             "enum": ["primary", "delegated_subagent"]
@@ -30167,7 +29791,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["pending", "queued", "running", "completed", "error", "cancelled"]
+            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
           },
           "startedAt": {
             "type": "number"
@@ -30351,6 +29975,42 @@
                 },
                 "required": ["mode", "value"]
               }
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "reasoningTokens": {
+                "type": "number"
+              },
+              "cacheReadTokens": {
+                "type": "number"
+              },
+              "cacheWriteTokens": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "reasoningTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "cost"
             ]
           }
         },
@@ -35063,79 +34723,7 @@
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
       },
-      "PluginUIContribution": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          },
-          "ui": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "permissions": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["pluginId", "version"]
-      },
-      "PluginInteractResult": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": ["status", "type"]
-      },
-      "PluginConfigSchema": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      },
-      "PluginConfig": {
+      "PluginConfigUpdate": {
         "type": "object",
         "propertyNames": {
           "type": "string"
@@ -35154,32 +34742,98 @@
           "version": {
             "type": "string"
           },
-          "source": {
-            "type": "string",
-            "enum": ["local", "npm", "git", "url", "builtin", "official"]
+          "apiVersion": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "installation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "directory"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec", "path"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "archive"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec", "path"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "registry"
+                  },
+                  "registry": {
+                    "type": "string",
+                    "enum": ["official", "local"]
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "registry", "spec"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "package"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["npm", "git", "url"]
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "source", "spec"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "builtin"
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "spec"]
+              }
+            ]
           },
           "trust": {
-            "type": "object",
-            "properties": {
-              "tier": {
-                "type": "string",
-                "enum": ["declarative", "trusted-import", "sandbox"]
-              },
-              "source": {
-                "type": "string",
-                "enum": ["local", "npm", "git", "url", "builtin", "official"]
-              },
-              "userTrusted": {
-                "type": "boolean"
-              },
-              "verifiedIntegrity": {
-                "type": "boolean"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+            "type": "string",
+            "enum": ["declarative", "trusted-import"]
           },
           "health": {
             "type": "string",
@@ -35189,72 +34843,41 @@
             "type": "string"
           },
           "disabledPhase": {
-            "type": "string",
-            "enum": ["resolve", "load", "manifest", "hook", "runtime", "doctor"]
+            "type": "string"
           },
           "loaded": {
             "type": "boolean"
           },
-          "loadError": {
-            "type": "string"
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
-          "manifestValid": {
-            "type": "boolean"
-          },
-          "integrity": {
+          "risk": {
             "type": "string",
-            "enum": ["verified", "unverified", "failed"]
+            "enum": ["low", "medium", "high"]
           },
-          "permissions": {
-            "type": "object",
-            "properties": {
-              "base": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "tools": {
-                "type": "object",
-                "propertyNames": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
                   "type": "string"
                 },
-                "additionalProperties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["query", "command"]
+                },
+                "expose": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
                 }
               },
-              "overallRisk": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "warnings": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "toolId": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["type", "message"]
-                }
-              }
-            },
-            "required": ["base", "tools", "overallRisk", "warnings"]
-          },
-          "navigation": {
-            "type": "array",
-            "items": {
-              "type": "string"
+              "required": ["id", "type", "expose"]
             }
           },
           "tools": {
@@ -35273,411 +34896,115 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "warnings": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
                 }
               },
-              "required": ["id", "fullId", "capabilities", "warnings"]
+              "required": ["id", "fullId", "capabilities"]
             }
           },
-          "ui": {
-            "type": "object",
-            "properties": {
-              "contributions": {
-                "type": "number"
-              },
-              "errors": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["contributions", "errors"]
+          "uiContributions": {
+            "type": "number"
           },
-          "stores": {
+          "contributionHealth": {
             "type": "object",
-            "properties": {
-              "config": {
-                "type": "boolean"
-              },
-              "secrets": {
-                "type": "string",
-                "enum": ["none", "plaintext", "keychain"]
-              },
-              "cacheBytes": {
-                "type": "number"
-              }
+            "propertyNames": {
+              "type": "string"
             },
-            "required": ["config", "secrets"]
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": ["healthy", "degraded"]
+                },
+                "lastError": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "number"
+                }
+              },
+              "required": ["state", "updatedAt"]
+            }
           },
           "runtime": {
             "type": "object",
             "properties": {
               "mode": {
-                "type": "string"
+                "type": "string",
+                "enum": ["process", "inProcess"]
+              },
+              "state": {
+                "type": "string",
+                "enum": ["starting", "ready", "draining", "crashed", "stopped"]
               },
               "pid": {
                 "type": "number"
               },
-              "state": {
-                "type": "string"
-              },
-              "restarts": {
+              "inFlight": {
                 "type": "number"
               },
               "lastHeartbeatAt": {
                 "type": "number"
               },
-              "memoryMb": {
-                "type": "number"
-              },
-              "limits": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
               "lastError": {
-                "type": "string"
-              },
-              "runtimeDecision": {
                 "type": "string"
               }
             },
-            "required": ["mode", "state", "restarts", "limits"]
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                },
-                "toolId": {
-                  "type": "string"
-                }
-              },
-              "required": ["type", "message"]
-            }
+            "required": ["mode", "state", "inFlight"]
           }
         },
         "required": [
           "id",
-          "source",
+          "name",
+          "installation",
           "trust",
           "health",
           "loaded",
-          "manifestValid",
-          "integrity",
-          "permissions",
-          "navigation",
+          "capabilities",
+          "risk",
+          "operations",
           "tools",
-          "ui",
-          "stores",
-          "warnings"
-        ]
-      },
-      "ApiPluginPermissionItem": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "granted": {
-            "type": "boolean"
-          }
-        },
-        "required": ["key", "description", "risk"]
-      },
-      "ApiPluginInfo": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "trustTier": {
-            "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
-          },
-          "hasManifest": {
-            "type": "boolean"
-          },
-          "pluginDir": {
-            "type": "string"
-          },
-          "cliCommands": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "skillCount": {
-            "type": "number"
-          },
-          "agentCount": {
-            "type": "number"
-          },
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "permissionsSummary": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ApiPluginPermissionItem"
-            }
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "loaded": {
-            "type": "boolean"
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pluginId",
-          "trustTier",
-          "hasManifest",
-          "pluginDir",
-          "cliCommands",
-          "skillCount",
-          "agentCount",
-          "capabilities",
-          "risk",
-          "permissionsSummary"
-        ]
-      },
-      "ApiPluginDetail": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "trustTier": {
-            "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
-          },
-          "hasManifest": {
-            "type": "boolean"
-          },
-          "pluginDir": {
-            "type": "string"
-          },
-          "manifest": {
-            "anyOf": [
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "cliCommands": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "skills": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
-          "permissionsSummary": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ApiPluginPermissionItem"
-            }
-          },
-          "health": {
-            "type": "string",
-            "enum": ["loaded", "disabled"]
-          },
-          "loaded": {
-            "type": "boolean"
-          },
-          "disabledReason": {
-            "type": "string"
-          },
-          "disabledPhase": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pluginId",
-          "trustTier",
-          "hasManifest",
-          "pluginDir",
-          "cliCommands",
-          "skills",
-          "agents",
-          "capabilities",
-          "risk",
-          "permissionsSummary"
+          "uiContributions",
+          "contributionHealth"
         ]
       },
       "PluginRuntimeInfo": {
         "type": "object",
         "properties": {
+          "key": {
+            "type": "string"
+          },
           "mode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "enum": ["process", "inProcess"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["starting", "ready", "draining", "crashed", "stopped"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
           },
           "pid": {
             "type": "number"
           },
-          "state": {
-            "type": "string",
-            "enum": ["starting", "ready", "unhealthy", "stopped", "crashed"]
+          "inFlight": {
+            "type": "number"
           },
-          "restarts": {
+          "startedAt": {
             "type": "number"
           },
           "lastHeartbeatAt": {
             "type": "number"
           },
-          "memoryMb": {
-            "type": "number"
-          },
-          "limits": {
-            "type": "object",
-            "properties": {
-              "startupTimeoutMs": {
-                "type": "number"
-              },
-              "toolInvocationTimeoutMs": {
-                "type": "number"
-              },
-              "hookInvocationTimeoutMs": {
-                "type": "number"
-              },
-              "bridgeRequestTimeoutMs": {
-                "type": "number"
-              },
-              "taskRunTimeoutMs": {
-                "type": "number"
-              },
-              "shutdownGraceMs": {
-                "type": "number"
-              },
-              "maxConcurrentRequests": {
-                "type": "number"
-              },
-              "maxLogBytesPerMinute": {
-                "type": "number"
-              },
-              "memoryMb": {
-                "type": "number"
-              },
-              "memoryPollIntervalMs": {
-                "type": "number"
-              },
-              "heartbeatIntervalMs": {
-                "type": "number"
-              },
-              "heartbeatMissesBeforeKill": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "startupTimeoutMs",
-              "toolInvocationTimeoutMs",
-              "hookInvocationTimeoutMs",
-              "bridgeRequestTimeoutMs",
-              "taskRunTimeoutMs",
-              "shutdownGraceMs",
-              "maxConcurrentRequests",
-              "maxLogBytesPerMinute",
-              "memoryMb",
-              "memoryPollIntervalMs",
-              "heartbeatIntervalMs",
-              "heartbeatMissesBeforeKill"
-            ]
-          },
           "lastError": {
             "type": "string"
           }
         },
-        "required": ["mode", "state", "restarts", "limits"]
-      },
-      "PluginRuntimeLogEntry": {
-        "type": "object",
-        "properties": {
-          "timestamp": {
-            "type": "number"
-          },
-          "level": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["timestamp", "level", "message"]
+        "required": ["key", "mode", "state", "version", "generation", "inFlight", "startedAt"]
       },
       "RegistryPluginIcon": {
         "anyOf": [
@@ -35771,11 +35098,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "uiSurfaces": {
             "type": "array",
@@ -35895,7 +35222,7 @@
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -36019,11 +35346,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -36153,11 +35480,11 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["declarative", "trusted-import", "sandbox"]
+            "enum": ["declarative", "trusted-import"]
           },
           "runtimeMode": {
             "type": "string",
-            "enum": ["in-process", "worker", "process"]
+            "const": "process"
           },
           "permissionsSummary": {
             "type": "array",
@@ -37118,40 +36445,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.message.updated": {
         "type": "object",
         "properties": {
@@ -37401,6 +36694,40 @@
               }
             },
             "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -38160,6 +37487,60 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.plugin.event": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.event"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginVersion": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payload": {}
+            },
+            "required": [
+              "pluginId",
+              "pluginVersion",
+              "generation",
+              "eventId",
+              "scopeId",
+              "sequence",
+              "timestamp",
+              "payload"
+            ]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.command.executed": {
         "type": "object",
         "properties": {
@@ -38619,9 +38000,6 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
             "$ref": "#/components/schemas/Event.message.updated"
           },
           {
@@ -38656,6 +38034,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.session.inbox.updated"
@@ -38761,6 +38142,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.event"
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"

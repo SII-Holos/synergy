@@ -950,6 +950,28 @@ export namespace MessageV2 {
     })
   }
 
+  function isTerminalToolPart(part: Part): part is ToolPart {
+    return part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")
+  }
+
+  function isAISDKToolError(part: ToolPart) {
+    return (
+      part.state.status === "error" && part.state.metadata?.toolDiagnostic?.metadata?.source === "ai_sdk_tool_error"
+    )
+  }
+
+  function canonicalTerminalToolParts(parts: Part[]) {
+    const canonical = new Map<string, ToolPart>()
+    for (const part of parts) {
+      if (!isTerminalToolPart(part)) continue
+      const existing = canonical.get(part.callID)
+      if (!existing || (isAISDKToolError(existing) && !isAISDKToolError(part))) {
+        canonical.set(part.callID, part)
+      }
+    }
+    return new Set(canonical.values())
+  }
+
   export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
@@ -1022,6 +1044,7 @@ export namespace MessageV2 {
           role: "assistant",
           parts: [],
         }
+        const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
         for (const part of msg.parts) {
           if (part.type === "text")
             assistantMessage.parts.push({
@@ -1034,6 +1057,7 @@ export namespace MessageV2 {
               type: "step-start",
             })
           if (part.type === "tool") {
+            if (isTerminalToolPart(part) && !canonicalToolParts.has(part)) continue
             if (part.state.status === "completed") {
               if (part.state.attachments?.length) {
                 const attachmentParts: UIMessage["parts"] = [

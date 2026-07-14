@@ -16,9 +16,11 @@ A Cortex task records:
 - visibility and notification behavior
 - output mode and resolved output
 
-Task status moves through `pending`, `queued`, `running`, and one terminal state: `completed`, `error`, or `cancelled`.
+Task status moves through `queued`, `running`, and one terminal state: `completed`, `error`, `cancelled`, or `interrupted`. A Task is created only when it has entered the Cortex queue, so there is no separate `pending` lifecycle state. `interrupted` means durable metadata says work was active, but no live runtime survived restart; it is distinct from an execution error.
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, and output.
+
+Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
 ## Launch and Concurrency
 
@@ -46,6 +48,8 @@ The child still uses the normal session loop, control-profile resolution, capabi
 A background task returns its identity immediately and continues independently. A foreground task waits for the child result for up to 300 seconds. If the wait expires, the task keeps running in the background rather than being cancelled.
 
 Completion is event-driven. The parent does not need to poll `task_output` in a loop. When a synchronous waiter exists, Cortex resolves that waiter directly. Otherwise, a visible task can notify the parent session when the parent is available; hidden reviewer tasks normally suppress parent-facing task events and notifications.
+
+When the parent explicitly reads a terminal task through `task_output`, the persisted tool result satisfies any deferred completion notification for that task. Reading live progress does not consume the future terminal notification.
 
 ## Progress
 
@@ -80,6 +84,8 @@ Parent delivery and child persistence are separate:
 5. temporary child-worktree resources are cleaned up when appropriate
 
 A running parent is not interrupted with a normal completion notice in the middle of its turn. Callers that need a direct result should await the task; orchestration features can bind the task to a DAG node or use their own continuation trigger.
+
+Plugin Host delegation is always handle-based: `start()` returns immediately, while `get()` and the `cortex.task.after` observer expose completion. At Synergy startup, durable child Sessions left in queued/running state are changed to `interrupted` and emit the same observer so plugin control planes can make an explicit recovery decision.
 
 ## Cancellation and Retention
 

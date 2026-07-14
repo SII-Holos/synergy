@@ -397,9 +397,9 @@ describe("SessionInvoke workspace execution context", () => {
         },
       })
 
-      SessionManager.registerRuntime(sessionID)
-      SessionManager.acquire(sessionID)
-      await SessionManager.release(sessionID)
+      const lease = SessionManager.acquire(sessionID)
+      expect(lease).toBeDefined()
+      await SessionManager.release(lease!)
       await withTimeout(processed.promise, "release wake")
 
       expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
@@ -1077,10 +1077,10 @@ describe("SessionInvoke.cancel", () => {
     const originalRelease = (SessionManager as any).release
     const originalSignalAbort = (SessionManager as any).signalAbort
     const originalClearForSession = (PermissionNext as any).clearForSession
-    const runtime = SessionManager.registerRuntime(sessionID)
+    const lease = SessionManager.acquire(sessionID)
+    expect(lease).toBeDefined()
+    const runtime = SessionManager.getRuntime(sessionID)!
     try {
-      // Simulate a busy runtime that was previously acquired
-      runtime.abort = new AbortController()
       runtime.status = { type: "busy", description: "processing..." }
 
       const releaseSpy = mock(async () => {})

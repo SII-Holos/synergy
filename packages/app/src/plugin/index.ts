@@ -30,16 +30,6 @@ export {
 export { type IconEntry, registerIcon, getIcon, hasIcon, listIcons } from "./registries/icon-registry"
 
 export {
-  type MessageSlotName,
-  type MessageSlotProps,
-  type MessageSlotEntry,
-  registerMessageSlot,
-  getMessageSlotsByName,
-  clearMessageSlots,
-  subscribeMessageSlots,
-} from "./registries/message-slot-registry"
-
-export {
   type ComposerSlotName,
   type ComposerSlotProps,
   type ComposerSlotEntry,
@@ -63,41 +53,18 @@ export {
   subscribeNavigation,
 } from "./registries/navigation-registry"
 
-export {
-  type PluginCommandContext,
-  type PluginUICommand,
-  type UICommandEntry,
-  registerUICommand,
-  listUICommands,
-  getUICommand,
-  clearUICommands,
-  subscribeUICommands,
-} from "./registries/ui-command-registry"
-
-export {
-  ToolRendererRegistry,
-  toolRendererRegistry,
-  type ToolRendererEntry,
-  type ToolFallbackMeta,
-  type ToolRendererProps,
-  type ToolRenderer,
-} from "./registries/tool-registry"
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
-export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
+export { type PluginContribution } from "./api"
 export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
-export {
-  PluginToolBridge,
-  PluginCommandBridge,
-  PluginMessageSlotBridge,
-  PluginComposerSlotBridge,
-  PluginThemeConfigBridge,
-} from "./bridge"
+export { PluginComposerSlotBridge, PluginThemeConfigBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { PluginRouteScope } from "./route-scope"
+export { resolvePluginScopeKey } from "./scope-key"
 export { fetchUIContributions } from "./api"
 export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 
 // Consent UI components
-export { PermissionDiffList, PermissionRiskBadge, InstallConsentDialog } from "./consent"
+export { PermissionRiskBadge, InstallConsentDialog } from "./consent"
 export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./consent"

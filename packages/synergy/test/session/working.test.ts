@@ -37,8 +37,8 @@ describe("SessionWorking", () => {
         fn: async () => {
           const session = await Session.create({})
           const runtime = SessionManager.registerRuntime(session.id)
-          const controller = new AbortController()
-          runtime.abort = controller
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
           runtime.status = { type: "busy", description: "testing" }
 
           const result = await SessionWorking.resolve(session.id)
@@ -46,7 +46,7 @@ describe("SessionWorking", () => {
           expect(result.status).toBe("busy")
           if (result.status === "busy") expect(result.description).toBe("testing")
 
-          runtime.abort = undefined
+          await SessionManager.release(lease!)
           SessionManager.unregisterRuntime(session.id)
         },
       })
@@ -59,8 +59,8 @@ describe("SessionWorking", () => {
         fn: async () => {
           const session = await Session.create({})
           const runtime = SessionManager.registerRuntime(session.id)
-          const controller = new AbortController()
-          runtime.abort = controller
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
           const now = Date.now()
           runtime.status = {
             type: "retry",
@@ -78,7 +78,7 @@ describe("SessionWorking", () => {
             expect(result.next).toBeGreaterThan(now)
           }
 
-          runtime.abort = undefined
+          await SessionManager.release(lease!)
           SessionManager.unregisterRuntime(session.id)
         },
       })
@@ -317,6 +317,7 @@ describe("SessionWorking", () => {
           const child = await Session.create({
             parentID: parent.id,
             cortex: {
+              taskID: "cortex-interrupted-test",
               parentSessionID: parent.id,
               parentMessageID,
               description: "Interrupted child task",
@@ -348,7 +349,7 @@ describe("SessionWorking", () => {
           await SessionInvoke.resumePending()
 
           const refreshed = await Session.get(child.id)
-          expect(refreshed.cortex?.status).toBe("cancelled")
+          expect(refreshed.cortex?.status).toBe("interrupted")
           expect(refreshed.cortex?.completedAt).toBeNumber()
           expect(refreshed.cortex?.error).toContain("Server restarted")
           expect(refreshed.pendingReply).toBeUndefined()

@@ -31,7 +31,7 @@ Child sessions inherit the parent workspace and interaction context by default. 
 
 ## One Active Loop
 
-`SessionManager.acquire()` enforces at most one active LLM loop per session. A second caller waits on the existing runtime instead of creating a competing writer.
+`SessionManager.acquire()` synchronously grants one caller a generation-tagged loop lease before asynchronous session or workspace setup begins. The runtime keeps that lease as its owner through `starting`, `running`, and `stopping`; abort signals the owner but does not make the session idle. Only `release()` with the exact current lease can clear ownership, so stale cleanup cannot terminate a replacement loop. A second caller waits on the existing runtime instead of creating a competing writer.
 
 This single-writer rule supports:
 
@@ -174,6 +174,7 @@ On abort, steer and context items are discarded while queued task items remain f
 - attachment model policy decides whether an attachment contributes content, summary, provider file data, or nothing;
 - only a bounded number of historical images are retained;
 - tool calls and results are emitted in provider-compatible order;
+- duplicate terminal tool parts from older histories are collapsed by provider call ID, preferring the execution outcome over an AI SDK fallback diagnostic;
 - workflow wrappers are applied ephemerally and do not rewrite stored user text.
 
 Visible history and model context can therefore differ intentionally without losing the durable record.
@@ -213,7 +214,7 @@ An interrupted assistant that never reached terminal persistence is completed wi
 ## Invariants
 
 - A session belongs to one Scope and has one current workspace.
-- At most one active loop writes a session.
+- At most one active loop lease owns a session, including while it is starting or stopping.
 - One root user message owns each task and all assistant messages in that task.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.

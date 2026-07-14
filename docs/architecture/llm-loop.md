@@ -10,9 +10,11 @@ The loop is not an in-memory conversation object. Durable messages and session s
 
 New direct input is either materialized as a root user message or queued in `SessionInbox`. When a reply is required, the session records `pendingReply` and enters `SessionManager.run()`.
 
-`SessionManager.acquire()` grants one caller loop ownership. Other callers attach waiters to that runtime. During ownership:
+`SessionManager.run()` acquires a generation-tagged lease synchronously, before session lookup or workspace setup can yield. The lease is the loop's owner identity and carries its abort signal. Its runtime phase moves from `starting` to `running`; cancellation moves it to `stopping` without clearing ownership. Only the exact owner lease can complete waiters or release the runtime, so a stale loop cannot abort, complete, or release a newer owner. Other callers attach waiters to the occupied runtime.
 
-- the abort signal is shared by the session run;
+During ownership:
+
+- the lease abort signal is shared by the session run;
 - status changes are published as busy, retry, idle, or recovering;
 - the loop-scoped message cache holds the assembled raw history;
 - all loop writes update that cache and durable storage;
@@ -128,8 +130,10 @@ Tool definitions are filtered for agent visibility and current workflow before p
 `SessionProcessor` owns streamed tool state:
 
 - tool input can move through generating, pending, and running states;
+- each provider call ID owns one runtime execution promise, so replayed AI SDK callbacks reuse the original result or error instead of repeating tool side effects;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
+- settlement is terminal for that provider call ID, so late or replayed stream events cannot allocate a second tool part;
 - more than one tool execution can settle without losing original message-part order;
 - unresolved tools are completed with explicit abort or settlement errors;
 - repeated identical calls can trigger loop protection or permission review.
@@ -234,9 +238,11 @@ Provider, auth, output-length, timeout, abort, and unknown failures are persiste
 
 If abort interrupts a processor before normal finalization, repair writes an explicit aborted assistant and clears `pendingReply`. Runtime startup also detects and repairs incomplete persisted turns.
 
+Abort never publishes idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress.
+
 ## Invariants
 
-- One loop owns one session at a time.
+- One lease owns one session at a time across starting, running, and stopping phases.
 - Every assistant step remains attached to the current root `R`.
 - Steer is drained before the call predicate; context only piggybacks on an already-required call.
 - Stored user text is not rewritten to apply workflow instructions.

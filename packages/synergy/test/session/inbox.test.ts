@@ -118,7 +118,8 @@ describe("SessionInbox", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
-        SessionManager.acquire(session.id)
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
 
         await SessionManager.deliver({
           target: session.id,
@@ -145,6 +146,7 @@ describe("SessionInbox", () => {
         expect(items[0].source.type).toBe("cortex")
         expect(items[0].summary.preview).toContain("background task completed")
 
+        await SessionManager.release(lease!)
         SessionManager.unregisterRuntime(session.id)
       },
     })

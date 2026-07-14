@@ -1,14 +1,6 @@
-import {
-  HOOKS,
-  HOOK_CATEGORIES,
-  BUS_EVENT_NAMES,
-  type HookCategory,
-  type HookDescriptor,
-} from "@ericsanchezok/synergy-plugin/hooks"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { PluginRuntimeCommand } from "./plugin-runtime"
 import { PluginTestCommand } from "./plugin-test"
-import { PluginPublishCommand } from "./plugin-publish"
 import { PluginPublishMarketCommand } from "./plugin-publish-market"
 import { PluginEntryCommand } from "./plugin-entry"
 import { PluginInfoCommand } from "./plugin-info"
@@ -34,8 +26,7 @@ import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
-import { read as readManifestFile } from "../../plugin/manifest-reader"
-import { resolveSpecPluginDir } from "../../plugin/loader"
+import { readPluginManifest } from "../../plugin/spec-resolver"
 import { diffPermissions } from "../../plugin/consent/diff"
 import { baseCapabilities } from "../../plugin/capability"
 import { Server } from "../../server/server"
@@ -44,36 +35,8 @@ import { resolvePluginSpec } from "../../plugin/spec-resolver"
 import { doctor as runPluginDoctor } from "../../plugin/doctor"
 import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
-// ---------------------------------------------------------------------------
-// Helpers
-function formatHookList(category?: HookCategory) {
-  const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
-  const grouped = category
-    ? [[category, hooks] as const]
-    : HOOK_CATEGORIES.map(
-        (name: HookCategory) => [name, hooks.filter((hook: HookDescriptor) => hook.category === name)] as const,
-      )
-
-  for (const [groupName, groupHooks] of grouped) {
-    if (groupHooks.length === 0) continue
-    process.stdout.write(UI.Style.TEXT_HIGHLIGHT_BOLD + groupName + UI.Style.TEXT_NORMAL + EOL)
-    for (const hook of groupHooks) {
-      const mutates = hook.mutatesOutput ? "mutates" : "observe"
-      process.stdout.write(`  ${hook.name.padEnd(38)} ${mutates.padEnd(8)} ${hook.summary}` + EOL)
-      if (hook.name === "event") {
-        for (const eventName of BUS_EVENT_NAMES) {
-          process.stdout.write(`    ${eventName}` + EOL)
-        }
-      }
-    }
-    process.stdout.write(EOL)
-  }
-}
-
-// ---------------------------------------------------------------------------
-
 async function readManifest(pluginDir: string): Promise<PluginManifest> {
-  return readManifestFile(pluginDir)
+  return readPluginManifest(pluginDir)
 }
 
 function readPkgVersion(pluginDir: string): string | undefined {
@@ -90,16 +53,16 @@ function readPkgVersion(pluginDir: string): string | undefined {
 interface ContributedSummary {
   skills: number
   agents: number
-  commands: number
+  operations: number
   mcpServers: number
 }
 
 function getContributed(manifest: PluginManifest): ContributedSummary {
   return {
-    skills: manifest?.contributes?.skills?.length ?? 0,
-    agents: manifest?.contributes?.agents?.length ?? 0,
-    commands: manifest?.contributes?.commands?.length ?? 0,
-    mcpServers: manifest?.contributes?.mcp ? Object.keys(manifest.contributes.mcp).length : 0,
+    skills: manifest.contributions.filter((item) => item.kind === "skill").length,
+    agents: manifest.contributions.filter((item) => item.kind === "agent").length,
+    operations: manifest.contributions.filter((item) => item.kind === "operation").length,
+    mcpServers: manifest.contributions.filter((item) => item.kind === "mcp").length,
   }
 }
 
@@ -108,61 +71,12 @@ function printContributed(manifest: PluginManifest) {
   const parts: string[] = []
   if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
   if (c.agents > 0) parts.push(`${c.agents} agent${c.agents !== 1 ? "s" : ""}`)
-  if (c.commands > 0) parts.push(`${c.commands} command${c.commands !== 1 ? "s" : ""}`)
+  if (c.operations > 0) parts.push(`${c.operations} operation${c.operations !== 1 ? "s" : ""}`)
   if (c.mcpServers > 0) parts.push(`${c.mcpServers} MCP server${c.mcpServers !== 1 ? "s" : ""}`)
   if (parts.length > 0) {
     UI.println(`  ${UI.Style.TEXT_DIM}Contributes:${UI.Style.TEXT_NORMAL} ${parts.join(", ")}`)
   }
 }
-
-// ---------------------------------------------------------------------------
-// hooks
-// ---------------------------------------------------------------------------
-
-export const PluginHooksCommand = cmd({
-  command: "hooks",
-  describe: "list all supported plugin hooks",
-  builder: (yargs: Argv) =>
-    yargs
-      .option("json", {
-        type: "boolean",
-        describe: "print hooks as JSON",
-      })
-      .option("category", {
-        type: "string",
-        describe: "filter hooks by category",
-        choices: HOOK_CATEGORIES,
-      }),
-  async handler(args) {
-    const category = args.category as HookCategory | undefined
-    const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
-
-    if (args.json) {
-      const hooksWithEvents = hooks.map((hook) =>
-        hook.name === "event" ? { ...hook, eventNames: BUS_EVENT_NAMES } : hook,
-      )
-      process.stdout.write(JSON.stringify(hooksWithEvents, null, 2) + EOL)
-      return
-    }
-
-    UI.empty()
-    process.stdout.write(UI.logo() + EOL + EOL)
-    process.stdout.write(UI.Style.TEXT_NORMAL_BOLD + "Plugin Hooks" + UI.Style.TEXT_NORMAL + EOL)
-    process.stdout.write("Current formal plugin hook surface for Synergy." + EOL + EOL)
-
-    if (category) {
-      process.stdout.write(`Category: ${category.padEnd(12)}` + EOL + EOL)
-    }
-
-    formatHookList(category)
-    process.stdout.write(
-      UI.Style.TEXT_DIM +
-        "Tip: use --json for structured output. See packages/plugin/README.md for authoring guidance." +
-        UI.Style.TEXT_NORMAL +
-        EOL,
-    )
-  },
-})
 
 // ---------------------------------------------------------------------------
 // add <spec>
@@ -736,7 +650,7 @@ interface ResolvedPluginPackage {
   pluginDir: string
   pkg: string
   version: string
-  entryPath: string
+  entryPath?: string
 }
 
 async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPluginPackage> {
@@ -752,7 +666,7 @@ async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPlug
     version: resolved.version,
     pluginDir,
     manifest,
-    id: manifest.name,
+    id: manifest.id,
     installedVersion: readPkgVersion(pluginDir),
   }
 }
@@ -836,7 +750,6 @@ export const PluginCommand = cmd({
   describe: "install, remove, update, and inspect plugins",
   builder: (yargs: Argv) =>
     yargs
-      .command(PluginHooksCommand)
       .command(PluginCreateCommand)
       .command(PluginAddCommand)
       .command(PluginRemoveCommand)
@@ -851,7 +764,6 @@ export const PluginCommand = cmd({
       .command(PluginDevCommand)
       .command(PluginRuntimeCommand)
       .command(PluginTestCommand)
-      .command(PluginPublishCommand)
       .command(PluginPublishMarketCommand)
       .command(PluginEntryCommand)
       .command(PluginInfoCommand)

@@ -163,7 +163,7 @@ export namespace WorkflowRunService {
 
     for (const task of Cortex.list()) {
       if (task.owner?.kind !== "workflow_run" || task.owner.runID !== run.id) continue
-      if (task.status !== "running" && task.status !== "queued" && task.status !== "pending") continue
+      if (task.status !== "running" && task.status !== "queued") continue
       await Cortex.cancel(task.id).catch(() => undefined)
     }
 

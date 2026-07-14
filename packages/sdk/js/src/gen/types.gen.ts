@@ -450,6 +450,19 @@ export type PerfRankedItem = {
   pid?: number
 }
 
+export type PerfToolFailureCategory = {
+  errorClass: string
+  count: number
+}
+
+export type PerfToolFailureItem = {
+  tool: string
+  callCount: number
+  errorCount: number
+  errorRate: number
+  categories: Array<PerfToolFailureCategory>
+}
+
 export type PerfIssueSeverity = "info" | "warning" | "error" | "critical"
 
 export type PerfIssueStatus = "open" | "resolved" | "suppressed"
@@ -550,12 +563,12 @@ export type PerfDashboardSummary = {
     }
     cortexTasks: {
       totalCount: number
-      pendingCount: number
       queuedCount: number
       runningCount: number
       completedCount: number
       errorCount: number
       cancelledCount: number
+      interruptedCount: number
       retainedPromptChars: number
       retainedOutputChars: number
       retainedErrorChars: number
@@ -566,6 +579,7 @@ export type PerfDashboardSummary = {
     slowRoutes: Array<PerfRankedItem>
     slowSessions: Array<PerfRankedItem>
     slowTools: Array<PerfRankedItem>
+    toolFailures: Array<PerfToolFailureItem>
     slowProviders: Array<PerfRankedItem>
     slowStorage: Array<PerfRankedItem>
     slowLibrary: Array<PerfRankedItem>
@@ -1606,13 +1620,9 @@ export type PluginRuntimeLimitsConfig = {
    */
   toolInvocationTimeoutMs?: number
   /**
-   * Maximum milliseconds for a plugin hook invocation
+   * Maximum milliseconds for one plugin Host Service request
    */
-  hookInvocationTimeoutMs?: number
-  /**
-   * Maximum milliseconds for one plugin-to-host bridge request
-   */
-  bridgeRequestTimeoutMs?: number
+  hostServiceRequestTimeoutMs?: number
   /**
    * Default maximum milliseconds for plugin delegated task runs
    */
@@ -1622,55 +1632,15 @@ export type PluginRuntimeLimitsConfig = {
    */
   shutdownGraceMs?: number
   /**
-   * Maximum concurrent bridge requests
-   */
-  maxConcurrentRequests?: number
-  /**
-   * Maximum plugin log bytes per minute
-   */
-  maxLogBytesPerMinute?: number
-  /**
-   * Maximum process runtime RSS in MB
-   */
-  memoryMb?: number
-  /**
-   * Memory polling interval in milliseconds
-   */
-  memoryPollIntervalMs?: number
-  /**
    * Heartbeat interval in milliseconds
    */
   heartbeatIntervalMs?: number
-  /**
-   * Missed heartbeats before process kill
-   */
-  heartbeatMissesBeforeKill?: number
 }
 
 /**
  * Plugin runtime isolation policy configuration
  */
 export type PluginRuntimePolicyConfig = {
-  /**
-   * Default isolation mode for third-party plugins (npm, git, url)
-   */
-  thirdPartyDefaultMode?: "process" | "worker"
-  /**
-   * Require process isolation for high-risk plugins regardless of source
-   */
-  highRiskRequiresProcess?: boolean
-  /**
-   * Allow third-party plugins to request in-process mode (not recommended)
-   */
-  allowThirdPartyInProcess?: boolean
-  /**
-   * Allow plugins to request worker thread isolation
-   */
-  allowWorkerMode?: boolean
-  /**
-   * Allow local plugins to run in-process
-   */
-  allowLocalInProcess?: boolean
   limits?: PluginRuntimeLimitsConfig
 }
 
@@ -2141,6 +2111,14 @@ export type LearningConfig = {
    * LLM retry count for intent/script/reward generation (default: 3)
    */
   encoderRetries?: number
+  /**
+   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
+   */
+  encoderTimeoutMs?: number
+  /**
+   * Maximum characters collected from one encoder model stream before abort (default: 16000)
+   */
+  encoderMaxOutputChars?: number
   /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
@@ -3443,6 +3421,7 @@ export type Worktree = {
   managed?: boolean
   stale?: boolean
   dirty?: boolean
+  diskBytes?: number
   owner?:
     | {
         type: "session"
@@ -3547,7 +3526,27 @@ export type SessionHistoryInfo = {
   }
 }
 
+export type CortexWorkflowTaskOwner = {
+  kind: "workflow_run"
+  runID?: string
+  entityID?: string
+  seat?: string
+  instance?: number
+  correlationID?: string
+}
+
+export type CortexTaskOwner =
+  | {
+      kind?: "plugin"
+      pluginId: string
+      pluginGeneration: string
+      scopeId: string
+      correlationId: string
+    }
+  | CortexWorkflowTaskOwner
+
 export type SessionCortexDelegation = {
+  taskID: string
   parentSessionID: string
   parentMessageID: string
   description: string
@@ -3555,7 +3554,7 @@ export type SessionCortexDelegation = {
   executionRole?: "primary" | "delegated_subagent"
   startedAt: number
   completedAt?: number
-  status: "queued" | "running" | "completed" | "error" | "cancelled"
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   model?: {
     providerID: string
     modelID: string
@@ -3592,6 +3591,16 @@ export type SessionCortexDelegation = {
         mode: "structured"
         value: unknown
       }
+  owner?: CortexTaskOwner
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
 }
 
 export type SessionSuperPlanInfo = {
@@ -3739,6 +3748,11 @@ export type Session = {
 }
 
 export type WorktreeEnterInput = {
+  target: string
+  force?: boolean
+}
+
+export type WorktreeRemoveInput = {
   target: string
   force?: boolean
 }
@@ -4609,15 +4623,6 @@ export type SessionImportResult = {
   warnings: Array<string>
 }
 
-export type CortexTaskOwner = {
-  kind: string
-  runID?: string
-  entityID?: string
-  seat?: string
-  instance?: number
-  correlationID?: string
-}
-
 export type CortexTask = {
   id: string
   sessionID: string
@@ -4626,11 +4631,15 @@ export type CortexTask = {
   description: string
   prompt: string
   agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
   executionRole?: "primary" | "delegated_subagent"
   category?: string
   owner?: CortexTaskOwner
   dagNodeId?: string
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   startedAt: number
   completedAt?: number
   error?: string
@@ -4685,6 +4694,15 @@ export type CortexTask = {
         mode: "structured"
         value: unknown
       }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
 }
 
 export type Command = {
@@ -6212,177 +6230,87 @@ export type BrowserControlRequest = {
   traceId?: string
 }
 
-export type PluginUiContribution = {
-  pluginId: string
-  name?: string
-  version: string
-  health?: "loaded" | "disabled"
-  disabledReason?: string
-  disabledPhase?: string
-  ui?: {
-    [key: string]: unknown
-  } | null
-  permissions?: {
-    [key: string]: unknown
-  } | null
-}
-
-export type PluginInteractResult = {
-  status: string
-  type: string
-}
-
-export type PluginConfigSchema = {
-  [key: string]: unknown
-}
-
-export type PluginConfig = {
+export type PluginConfigUpdate = {
   [key: string]: unknown
 }
 
 export type PluginStatus = {
   id: string
-  name?: string
+  name: string
   version?: string
-  source: "local" | "npm" | "git" | "url" | "builtin" | "official"
-  trust: {
-    tier: "declarative" | "trusted-import" | "sandbox"
-    source: "local" | "npm" | "git" | "url" | "builtin" | "official"
-    userTrusted: boolean
-    verifiedIntegrity: boolean
-    reason: string
-  }
+  apiVersion?: string
+  generation?: string
+  installation:
+    | {
+        kind: "directory"
+        spec: string
+        path: string
+      }
+    | {
+        kind: "archive"
+        spec: string
+        path: string
+      }
+    | {
+        kind: "registry"
+        registry: "official" | "local"
+        spec: string
+      }
+    | {
+        kind: "package"
+        source: "npm" | "git" | "url"
+        spec: string
+      }
+    | {
+        kind: "builtin"
+        spec: string
+      }
+  trust: "declarative" | "trusted-import"
   health: "loaded" | "disabled"
   disabledReason?: string
-  disabledPhase?: "resolve" | "load" | "manifest" | "hook" | "runtime" | "doctor"
+  disabledPhase?: string
   loaded: boolean
-  loadError?: string
-  manifestValid: boolean
-  integrity: "verified" | "unverified" | "failed"
-  permissions: {
-    base: Array<string>
-    tools: {
-      [key: string]: Array<string>
-    }
-    overallRisk: "low" | "medium" | "high"
-    warnings: Array<{
-      type: string
-      message: string
-      toolId?: string
-    }>
-  }
-  navigation: Array<string>
+  capabilities: Array<string>
+  risk: "low" | "medium" | "high"
+  operations: Array<{
+    id: string
+    type: "query" | "command"
+    expose: Array<string>
+  }>
   tools: Array<{
     id: string
     fullId: string
     capabilities: Array<string>
-    warnings: Array<string>
   }>
-  ui: {
-    contributions: number
-    errors: Array<string>
-  }
-  stores: {
-    config: boolean
-    secrets: "none" | "plaintext" | "keychain"
-    cacheBytes?: number
+  uiContributions: number
+  contributionHealth: {
+    [key: string]: {
+      state: "healthy" | "degraded"
+      lastError?: string
+      updatedAt: number
+    }
   }
   runtime?: {
-    mode: string
+    mode: "process" | "inProcess"
+    state: "starting" | "ready" | "draining" | "crashed" | "stopped"
     pid?: number
-    state: string
-    restarts: number
+    inFlight: number
     lastHeartbeatAt?: number
-    memoryMb?: number
-    limits: {
-      [key: string]: unknown
-    }
     lastError?: string
-    runtimeDecision?: string
   }
-  warnings: Array<{
-    type: string
-    message: string
-    toolId?: string
-  }>
-}
-
-export type ApiPluginPermissionItem = {
-  key: string
-  description: string
-  risk: "low" | "medium" | "high"
-  granted?: boolean
-}
-
-export type ApiPluginInfo = {
-  pluginId: string
-  name?: string
-  version?: string
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  hasManifest: boolean
-  pluginDir: string
-  cliCommands: Array<string>
-  skillCount: number
-  agentCount: number
-  capabilities: Array<string>
-  risk: "low" | "medium" | "high"
-  permissionsSummary: Array<ApiPluginPermissionItem>
-  health?: "loaded" | "disabled"
-  loaded?: boolean
-  disabledReason?: string
-  disabledPhase?: string
-}
-
-export type ApiPluginDetail = {
-  pluginId: string
-  name?: string
-  version?: string
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  hasManifest: boolean
-  pluginDir: string
-  manifest?: {
-    [key: string]: unknown
-  } | null
-  cliCommands: Array<string>
-  skills: Array<string>
-  agents: Array<string>
-  capabilities: Array<string>
-  risk: "low" | "medium" | "high"
-  permissionsSummary: Array<ApiPluginPermissionItem>
-  health?: "loaded" | "disabled"
-  loaded?: boolean
-  disabledReason?: string
-  disabledPhase?: string
 }
 
 export type PluginRuntimeInfo = {
-  mode: "in-process" | "worker" | "process"
+  key: string
+  mode: "process" | "inProcess"
+  state: "starting" | "ready" | "draining" | "crashed" | "stopped"
+  version: string
+  generation: string
   pid?: number
-  state: "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
-  restarts: number
+  inFlight: number
+  startedAt: number
   lastHeartbeatAt?: number
-  memoryMb?: number
-  limits: {
-    startupTimeoutMs: number
-    toolInvocationTimeoutMs: number
-    hookInvocationTimeoutMs: number
-    bridgeRequestTimeoutMs: number
-    taskRunTimeoutMs: number
-    shutdownGraceMs: number
-    maxConcurrentRequests: number
-    maxLogBytesPerMinute: number
-    memoryMb: number
-    memoryPollIntervalMs: number
-    heartbeatIntervalMs: number
-    heartbeatMissesBeforeKill: number
-  }
   lastError?: string
-}
-
-export type PluginRuntimeLogEntry = {
-  timestamp: number
-  level: string
-  message: string
 }
 
 export type RegistryPluginIcon =
@@ -6413,8 +6341,8 @@ export type RegistryPluginSummary = {
   latestVersion?: string
   updatedAt: number
   risk: "low" | "medium" | "high"
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  runtimeMode: "in-process" | "worker" | "process"
+  trustTier: "declarative" | "trusted-import"
+  runtimeMode: "process"
   uiSurfaces: Array<string>
   tools: Array<string>
   downloads: number
@@ -6448,7 +6376,7 @@ export type RegistryPluginVersion = {
   installSpec?: string
   integrity?: string
   risk: "low" | "medium" | "high"
-  runtimeMode?: "in-process" | "worker" | "process"
+  runtimeMode?: "process"
   permissionsSummary: Array<RegistryPermissionItem>
   tools?: Array<string>
   uiSurfaces?: Array<string>
@@ -6485,8 +6413,8 @@ export type RegistryPluginEntry = {
   createdAt: number
   updatedAt: number
   risk: "low" | "medium" | "high"
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  runtimeMode: "in-process" | "worker" | "process"
+  trustTier: "declarative" | "trusted-import"
+  runtimeMode: "process"
   permissionsSummary: Array<RegistryPermissionSummary>
   uiSurfaces: Array<string>
   tools: Array<string>
@@ -6517,8 +6445,8 @@ export type RegistryPublishInput = {
   compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
   risk: "low" | "medium" | "high"
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  runtimeMode: "in-process" | "worker" | "process"
+  trustTier: "declarative" | "trusted-import"
+  runtimeMode: "process"
   permissionsSummary: Array<RegistryPermissionSummary>
   uiSurfaces: Array<string>
   tools: Array<string>
@@ -6857,15 +6785,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
@@ -6955,6 +6874,15 @@ export type EventSessionIdle = {
   type: "session.idle"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -7223,6 +7151,21 @@ export type EventAgendaItemDeleted = {
   }
 }
 
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
 export type EventCommandExecuted = {
   type: "command.executed"
   properties: {
@@ -7391,7 +7334,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -7404,6 +7346,7 @@ export type Event =
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventRuntimeReloaded
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
@@ -7439,6 +7382,7 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
+  | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
@@ -7967,6 +7911,10 @@ export type PerformanceIssuesListData = {
     status?: PerfIssueStatus
     severity?: PerfIssueSeverity
     module?: PerfModule
+    scopeID?: string
+    tool?: string
+    since?: number
+    until?: number
     limit?: number
   }
   url: "/global/performance/issues"
@@ -9317,6 +9265,38 @@ export type WorktreeLeaveResponses = {
 }
 
 export type WorktreeLeaveResponse = WorktreeLeaveResponses[keyof WorktreeLeaveResponses]
+
+export type WorktreeRemoveData = {
+  body?: WorktreeRemoveInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/remove"
+}
+
+export type WorktreeRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeRemoveError = WorktreeRemoveErrors[keyof WorktreeRemoveErrors]
+
+export type WorktreeRemoveResponses = {
+  /**
+   * Worktree removed
+   */
+  200: Worktree
+}
+
+export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
 export type VcsGetData = {
   body?: never
@@ -11016,7 +10996,7 @@ export type CortexOutputResponses = {
    */
   200: {
     taskID: string
-    status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled"
+    status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
     rendered: string
     output?:
       | {
@@ -11525,6 +11505,15 @@ export type WorkspaceFilesChildrenData = {
   url: "/workspace/files/children"
 }
 
+export type WorkspaceFilesChildrenErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesChildrenError = WorkspaceFilesChildrenErrors[keyof WorkspaceFilesChildrenErrors]
+
 export type WorkspaceFilesChildrenResponses = {
   /**
    * Workspace file children
@@ -11550,6 +11539,15 @@ export type WorkspaceFilesReadData = {
   url: "/workspace/files/read"
 }
 
+export type WorkspaceFilesReadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesReadError = WorkspaceFilesReadErrors[keyof WorkspaceFilesReadErrors]
+
 export type WorkspaceFilesReadResponses = {
   /**
    * Workspace file read result
@@ -11569,6 +11567,15 @@ export type WorkspaceFilesStatData = {
   }
   url: "/workspace/files/stat"
 }
+
+export type WorkspaceFilesStatErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkspaceFilesStatError = WorkspaceFilesStatErrors[keyof WorkspaceFilesStatErrors]
 
 export type WorkspaceFilesStatResponses = {
   /**
@@ -14648,20 +14655,25 @@ export type PluginListUiContributionsData = {
   url: "/plugin/ui/contributions"
 }
 
-export type PluginListUiContributionsErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type PluginListUiContributionsError = PluginListUiContributionsErrors[keyof PluginListUiContributionsErrors]
-
 export type PluginListUiContributionsResponses = {
   /**
-   * List of plugin UI contributions
+   * Contributions
    */
-  200: Array<PluginUiContribution>
+  200: Array<{
+    pluginId: string
+    name: string
+    version: string
+    generation: string
+    scopeId: string
+    capabilities: Array<string>
+    contributions: Array<{
+      [key: string]: unknown
+    }>
+    uiArtifact?: {
+      entry: string
+      sha256: string
+    }
+  }>
 }
 
 export type PluginListUiContributionsResponse =
@@ -14671,20 +14683,17 @@ export type PluginServeAssetData = {
   body?: never
   path: {
     pluginId: string
-    versionHash: string
+    generation: string
+    asset: string
   }
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/plugin/assets/{pluginId}/{versionHash}/*"
+  url: "/plugin/assets/{pluginId}/{generation}/{asset}"
 }
 
 export type PluginServeAssetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
   /**
    * Not found
    */
@@ -14695,74 +14704,50 @@ export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAsse
 
 export type PluginServeAssetResponses = {
   /**
-   * Plugin static asset
+   * Asset
    */
   200: unknown
 }
 
-export type PluginInteractData = {
+export type PluginInvokeOperationData = {
   body?: {
-    type: string
-    payload?: unknown
-    source?: string
+    input?: unknown
+    sessionId?: string
   }
   path: {
     pluginId: string
+    operationId: string
   }
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/plugin/{pluginId}/interact"
+  url: "/plugin/{pluginId}/operations/{operationId}/invoke"
 }
 
-export type PluginInteractErrors = {
+export type PluginInvokeOperationErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
   /**
    * Not found
    */
   404: NotFoundError
-}
-
-export type PluginInteractError = PluginInteractErrors[keyof PluginInteractErrors]
-
-export type PluginInteractResponses = {
   /**
-   * Interaction relayed
+   * Conflict
    */
-  200: PluginInteractResult
+  409: NoteConflictError
 }
 
-export type PluginInteractResponse = PluginInteractResponses[keyof PluginInteractResponses]
+export type PluginInvokeOperationError = PluginInvokeOperationErrors[keyof PluginInvokeOperationErrors]
 
-export type PluginConfigSchemaData = {
-  body?: never
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/plugin/{pluginId}/config-schema"
-}
-
-export type PluginConfigSchemaErrors = {
+export type PluginInvokeOperationResponses = {
   /**
-   * Not found
+   * Operation result
    */
-  404: NotFoundError
+  200: unknown
 }
-
-export type PluginConfigSchemaError = PluginConfigSchemaErrors[keyof PluginConfigSchemaErrors]
-
-export type PluginConfigSchemaResponses = {
-  /**
-   * Plugin config schema
-   */
-  200: PluginConfigSchema
-}
-
-export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
 
 export type PluginGetConfigData = {
   body?: never
@@ -14787,17 +14772,13 @@ export type PluginGetConfigError = PluginGetConfigErrors[keyof PluginGetConfigEr
 
 export type PluginGetConfigResponses = {
   /**
-   * Plugin config
+   * Plugin settings
    */
-  200: PluginConfig
+  200: unknown
 }
 
-export type PluginGetConfigResponse = PluginGetConfigResponses[keyof PluginGetConfigResponses]
-
 export type PluginUpdateConfigData = {
-  body?: {
-    [key: string]: unknown
-  }
+  body?: PluginConfigUpdate
   path: {
     pluginId: string
   }
@@ -14810,10 +14791,6 @@ export type PluginUpdateConfigData = {
 
 export type PluginUpdateConfigErrors = {
   /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
    * Not found
    */
   404: NotFoundError
@@ -14823,12 +14800,10 @@ export type PluginUpdateConfigError = PluginUpdateConfigErrors[keyof PluginUpdat
 
 export type PluginUpdateConfigResponses = {
   /**
-   * Updated plugin config
+   * Plugin settings
    */
-  200: PluginConfig
+  200: unknown
 }
-
-export type PluginUpdateConfigResponse = PluginUpdateConfigResponses[keyof PluginUpdateConfigResponses]
 
 export type PluginStatusData = {
   body?: never
@@ -14860,6 +14835,24 @@ export type PluginStatusResponses = {
 
 export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
 
+export type PostPluginDevReloadData = {
+  body?: {
+    pluginId: string
+    generation: string
+    artifactDir: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/plugin/dev/reload"
+}
+
+export type PostPluginDevReloadResponses = {
+  200: unknown
+}
+
 export type ApiPluginsListData = {
   body?: never
   path?: never
@@ -14872,9 +14865,9 @@ export type ApiPluginsListData = {
 
 export type ApiPluginsListResponses = {
   /**
-   * List of loaded plugins
+   * Installed plugins
    */
-  200: Array<ApiPluginInfo>
+  200: Array<PluginStatus>
 }
 
 export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
@@ -14902,15 +14895,10 @@ export type ApiPluginsRemoveError = ApiPluginsRemoveErrors[keyof ApiPluginsRemov
 
 export type ApiPluginsRemoveResponses = {
   /**
-   * Plugin removed
+   * Removed
    */
-  200: {
-    pluginId: string
-    removed: true
-  }
+  200: unknown
 }
-
-export type ApiPluginsRemoveResponse = ApiPluginsRemoveResponses[keyof ApiPluginsRemoveResponses]
 
 export type ApiPluginsGetData = {
   body?: never
@@ -14937,196 +14925,30 @@ export type ApiPluginsGetResponses = {
   /**
    * Plugin detail
    */
-  200: ApiPluginDetail
+  200: unknown
 }
 
-export type ApiPluginsGetResponse = ApiPluginsGetResponses[keyof ApiPluginsGetResponses]
-
-export type ApiPluginsStatusData = {
-  body?: never
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/status"
-}
-
-export type ApiPluginsStatusErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ApiPluginsStatusError = ApiPluginsStatusErrors[keyof ApiPluginsStatusErrors]
-
-export type ApiPluginsStatusResponses = {
-  /**
-   * Plugin status
-   */
-  200: PluginStatus
-}
-
-export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
-
-export type ApiPluginsPreviewInstallData = {
+export type ApiPluginsApproveInstallData = {
   body?: {
-    manifest: {
-      [key: string]: unknown
-    }
+    pluginId: string
+    manifest: unknown
+    capabilities: Array<string>
+    source: "local" | "official" | "npm" | "git" | "url" | "builtin"
   }
   path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/api/plugins/preview-install"
+  url: "/api/plugins/approve-install"
 }
-
-export type ApiPluginsPreviewInstallErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ApiPluginsPreviewInstallError = ApiPluginsPreviewInstallErrors[keyof ApiPluginsPreviewInstallErrors]
-
-export type ApiPluginsPreviewInstallResponses = {
-  /**
-   * Permission diff
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type ApiPluginsPreviewInstallResponse =
-  ApiPluginsPreviewInstallResponses[keyof ApiPluginsPreviewInstallResponses]
-
-export type ApiPluginsApproveInstallData = {
-  body?: {
-    manifest: {
-      [key: string]: unknown
-    }
-    capabilities: Array<string>
-    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
-  }
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/approve-install"
-}
-
-export type ApiPluginsApproveInstallErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ApiPluginsApproveInstallError = ApiPluginsApproveInstallErrors[keyof ApiPluginsApproveInstallErrors]
 
 export type ApiPluginsApproveInstallResponses = {
   /**
-   * Approval record
+   * Approved
    */
-  200: {
-    [key: string]: unknown
-  }
+  200: unknown
 }
-
-export type ApiPluginsApproveInstallResponse =
-  ApiPluginsApproveInstallResponses[keyof ApiPluginsApproveInstallResponses]
-
-export type ApiPluginsPreviewUpdateData = {
-  body?: {
-    manifest: {
-      [key: string]: unknown
-    }
-  }
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/preview-update"
-}
-
-export type ApiPluginsPreviewUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ApiPluginsPreviewUpdateError = ApiPluginsPreviewUpdateErrors[keyof ApiPluginsPreviewUpdateErrors]
-
-export type ApiPluginsPreviewUpdateResponses = {
-  /**
-   * Permission diff
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type ApiPluginsPreviewUpdateResponse = ApiPluginsPreviewUpdateResponses[keyof ApiPluginsPreviewUpdateResponses]
-
-export type ApiPluginsApproveUpdateData = {
-  body?: {
-    manifest: {
-      [key: string]: unknown
-    }
-    capabilities: Array<string>
-    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
-  }
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/approve-update"
-}
-
-export type ApiPluginsApproveUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ApiPluginsApproveUpdateError = ApiPluginsApproveUpdateErrors[keyof ApiPluginsApproveUpdateErrors]
-
-export type ApiPluginsApproveUpdateResponses = {
-  /**
-   * Approval record
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type ApiPluginsApproveUpdateResponse = ApiPluginsApproveUpdateResponses[keyof ApiPluginsApproveUpdateResponses]
 
 export type ApiPluginsGetApprovalData = {
   body?: never
@@ -15151,130 +14973,66 @@ export type ApiPluginsGetApprovalError = ApiPluginsGetApprovalErrors[keyof ApiPl
 
 export type ApiPluginsGetApprovalResponses = {
   /**
-   * Approval record
+   * Approval
    */
-  200: {
-    [key: string]: unknown
-  }
+  200: unknown
 }
-
-export type ApiPluginsGetApprovalResponse = ApiPluginsGetApprovalResponses[keyof ApiPluginsGetApprovalResponses]
-
-export type ApiPluginsPermissionDiffData = {
-  body?: never
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/permission-diff"
-}
-
-export type ApiPluginsPermissionDiffErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type ApiPluginsPermissionDiffError = ApiPluginsPermissionDiffErrors[keyof ApiPluginsPermissionDiffErrors]
-
-export type ApiPluginsPermissionDiffResponses = {
-  /**
-   * Permission diff
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type ApiPluginsPermissionDiffResponse =
-  ApiPluginsPermissionDiffResponses[keyof ApiPluginsPermissionDiffResponses]
 
 export type ApiPluginsInstallFromRegistryData = {
   body?: {
     id: string
     version: string
-    source?: "official" | "local"
+    source: "official" | "local"
   }
   path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/api/plugins/install-from-registry"
+  url: "/api/plugins/registry/install"
 }
 
 export type ApiPluginsInstallFromRegistryErrors = {
   /**
-   * Bad request
+   * Approval required
    */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: NoteConflictError
+  409: unknown
 }
-
-export type ApiPluginsInstallFromRegistryError =
-  ApiPluginsInstallFromRegistryErrors[keyof ApiPluginsInstallFromRegistryErrors]
 
 export type ApiPluginsInstallFromRegistryResponses = {
   /**
-   * Install result with plugin status
+   * Installed
    */
-  200: ApiPluginDetail
+  200: unknown
 }
-
-export type ApiPluginsInstallFromRegistryResponse =
-  ApiPluginsInstallFromRegistryResponses[keyof ApiPluginsInstallFromRegistryResponses]
 
 export type ApiPluginsUpdateFromRegistryData = {
   body?: {
-    targetVersion?: string
-    source?: "official" | "local"
-  }
-  path: {
     pluginId: string
+    version: string
+    source: "official" | "local"
   }
+  path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/api/plugins/{pluginId}/update-from-registry"
+  url: "/api/plugins/registry/update"
 }
 
 export type ApiPluginsUpdateFromRegistryErrors = {
   /**
-   * Bad request
+   * Approval required
    */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
+  409: unknown
 }
-
-export type ApiPluginsUpdateFromRegistryError =
-  ApiPluginsUpdateFromRegistryErrors[keyof ApiPluginsUpdateFromRegistryErrors]
 
 export type ApiPluginsUpdateFromRegistryResponses = {
   /**
-   * Update check result
+   * Updated
    */
-  200: {
-    [key: string]: unknown
-  }
+  200: unknown
 }
-
-export type ApiPluginsUpdateFromRegistryResponse =
-  ApiPluginsUpdateFromRegistryResponses[keyof ApiPluginsUpdateFromRegistryResponses]
 
 export type PluginRuntimeReloadData = {
   body?: never
@@ -15299,42 +15057,12 @@ export type PluginRuntimeReloadError = PluginRuntimeReloadErrors[keyof PluginRun
 
 export type PluginRuntimeReloadResponses = {
   /**
-   * Runtime state after reload
+   * Runtime
    */
-  200: PluginRuntimeInfo | null
+  200: PluginRuntimeInfo
 }
 
 export type PluginRuntimeReloadResponse = PluginRuntimeReloadResponses[keyof PluginRuntimeReloadResponses]
-
-export type PluginRuntimeStopData = {
-  body?: never
-  path: {
-    pluginId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/{pluginId}/runtime/stop"
-}
-
-export type PluginRuntimeStopErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
-
-export type PluginRuntimeStopResponses = {
-  /**
-   * Runtime state after stop
-   */
-  200: PluginRuntimeInfo | null
-}
-
-export type PluginRuntimeStopResponse = PluginRuntimeStopResponses[keyof PluginRuntimeStopResponses]
 
 export type PluginRuntimeStartData = {
   body?: never
@@ -15359,12 +15087,40 @@ export type PluginRuntimeStartError = PluginRuntimeStartErrors[keyof PluginRunti
 
 export type PluginRuntimeStartResponses = {
   /**
-   * Runtime state after start
+   * Runtime
    */
-  200: PluginRuntimeInfo | null
+  200: PluginRuntimeInfo
 }
 
 export type PluginRuntimeStartResponse = PluginRuntimeStartResponses[keyof PluginRuntimeStartResponses]
+
+export type PluginRuntimeStopData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/stop"
+}
+
+export type PluginRuntimeStopErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
+
+export type PluginRuntimeStopResponses = {
+  /**
+   * Stopped
+   */
+  200: unknown
+}
 
 export type PluginRuntimeLogsData = {
   body?: never
@@ -15389,12 +15145,10 @@ export type PluginRuntimeLogsError = PluginRuntimeLogsErrors[keyof PluginRuntime
 
 export type PluginRuntimeLogsResponses = {
   /**
-   * Recent runtime log entries
+   * Logs
    */
-  200: Array<PluginRuntimeLogEntry>
+  200: unknown
 }
-
-export type PluginRuntimeLogsResponse = PluginRuntimeLogsResponses[keyof PluginRuntimeLogsResponses]
 
 export type RegistryPluginsSearchData = {
   body?: never

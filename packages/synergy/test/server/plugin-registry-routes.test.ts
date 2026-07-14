@@ -48,7 +48,7 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
     ],
     risk: "low",
     trustTier: "declarative",
-    runtimeMode: "in-process",
+    runtimeMode: "process",
     permissionsSummary: [
       {
         key: "file_read",
@@ -196,7 +196,7 @@ describe("plugin registry routes v2", () => {
         expect(body.id).toBe("test-plugin")
         expect(body.risk).toBe("low")
         expect(body.trustTier).toBe("declarative")
-        expect(body.runtimeMode).toBe("in-process")
+        expect(body.runtimeMode).toBe("process")
         expect(body.uiSurfaces).toEqual(["toolRenderers"])
         expect(body.tools).toEqual(["myTool"])
         expect(body.downloads).toBe(0)
@@ -328,7 +328,7 @@ describe("plugin registry routes v2", () => {
         expect(body.id).toBe("test-plugin")
         expect(body.risk).toBe("low")
         expect(body.trustTier).toBe("declarative")
-        expect(body.runtimeMode).toBe("in-process")
+        expect(body.runtimeMode).toBe("process")
         expect(body.permissionsSummary).toEqual([
           {
             key: "file_read",
@@ -373,7 +373,7 @@ describe("plugin registry routes v2", () => {
         expect(summary.name).toBe("SearchablePlugin")
         expect(summary.risk).toBe("low")
         expect(summary.trustTier).toBe("declarative")
-        expect(summary.runtimeMode).toBe("in-process")
+        expect(summary.runtimeMode).toBe("process")
         expect(summary.uiSurfaces).toEqual(["toolRenderers"])
         expect(summary.tools).toEqual(["myTool"])
         expect(summary.downloads).toBe(0)

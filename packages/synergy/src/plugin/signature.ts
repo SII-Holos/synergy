@@ -1,4 +1,3 @@
-import type { PluginLockEntry } from "./lockfile-schema"
 import { sha256File } from "../util/crypto"
 import { subtle } from "node:crypto"
 import { Log } from "../util/log"
@@ -201,17 +200,6 @@ export async function verifySignatureFromHashes(
   } catch (err) {
     log.error("signature verification error", { err })
     return false
-  }
-}
-
-/**
- * Extract the lockfile-compatible signature entry from verified metadata.
- */
-export function toLockfileSignature(meta: SignatureMetadata): NonNullable<PluginLockEntry["signature"]> {
-  return {
-    algorithm: meta.algorithm,
-    signature: meta.signature,
-    signer: meta.signer,
   }
 }
 

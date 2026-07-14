@@ -124,7 +124,7 @@ export async function resolveInstalledPluginPolicy(
 ): Promise<InstalledPluginPolicyDecision> {
   const source = input.source ?? derivePluginSource(input.pluginDir)
   const [approval, integrity] = await Promise.all([
-    input.approval === undefined ? getApproval(input.pluginId) : Promise.resolve(input.approval),
+    input.approval === undefined ? getApproval(input.pluginId, input.manifest) : Promise.resolve(input.approval),
     input.verifiedIntegrity === undefined ? resolvePluginIntegrity(input.pluginDir) : Promise.resolve(undefined),
   ])
   const verifiedIntegrity = input.verifiedIntegrity ?? integrity === "verified"
@@ -135,8 +135,6 @@ export async function resolveInstalledPluginPolicy(
     userTrusted,
     verifiedIntegrity,
     devMode: input.devMode ?? Installation.isLocal(),
-    policy: input.policy,
-    forceProcess: input.forceProcess,
     risk: input.risk,
   })
   return {

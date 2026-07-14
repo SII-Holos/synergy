@@ -52,6 +52,7 @@ import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
 import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
+import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
@@ -435,6 +436,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     "archived-sessions": ArchivedSessionsPanel,
+    worktrees: WorktreesPanel,
   })
 
   const settingsSections = createMemo(() => {
@@ -640,8 +642,10 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   async function updateValues(next: Record<string, unknown>) {
     const pluginId = section().pluginId
     if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({ pluginId, body: next })
-    mutate(result.data ?? next)
+    const result = await globalSDK.client.plugin.updateConfig({ pluginId, pluginConfigUpdate: next })
+    const saved = result.data ?? next
+    mutate(saved)
+    window.dispatchEvent(new CustomEvent("synergy:plugin-config-changed", { detail: { pluginId, values: saved } }))
   }
 
   onMount(() => {
@@ -690,7 +694,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
                   <SettingsSection>
                     <DeclarativeSettingsForm
                       schema={schema()}
-                      values={values() ?? {}}
+                      values={(values() ?? {}) as Record<string, unknown>}
                       onChange={(next) => updateValues(next)}
                     />
                   </SettingsSection>
@@ -710,7 +714,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
               <Dynamic
                 component={c()}
                 pluginId={section().pluginId}
-                values={values() ?? {}}
+                values={(values() ?? {}) as Record<string, unknown>}
                 onChange={(next: Record<string, unknown>) => updateValues(next)}
               />
             </ErrorBoundary>

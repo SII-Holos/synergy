@@ -4,19 +4,19 @@ import { fileURLToPath, pathToFileURL } from "url"
 import { Global } from "../global"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
-import { PluginId } from "./ids"
 import { PluginManifest, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
-import { resolveEntryFromPluginDir } from "@ericsanchezok/synergy-plugin/spec"
-import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
 import { sourceFromSpec } from "./source"
+import { sha256File } from "../util/crypto"
+import { isPathContained } from "../util/path-contain"
 
 export interface ResolvedPluginSpec {
   spec: string
   pkg: string
   version: string
   source: PluginSource
-  entryPath: string
+  entryPath?: string
   pluginDir: string
   manifest: PluginManifestType
   cached?: boolean
@@ -95,14 +95,29 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
   if (!text.trim()) {
     throw new Error(`Plugin manifest is empty at ${manifestPath}. Synergy plugins must include a valid plugin.json.`)
   }
-  const parsed = PluginManifest.parse(JSON.parse(text))
-  return parsed as PluginManifestType
+  const manifest = PluginManifest.parse(JSON.parse(text))
+  for (const [kind, artifact] of Object.entries({ runtime: manifest.artifacts.runtime, ui: manifest.artifacts.ui })) {
+    if (!artifact) continue
+    const artifactPath = path.resolve(pluginDir, artifact.entry)
+    if (!isPathContained(pluginDir, artifactPath))
+      throw new Error(`Plugin ${kind} artifact escapes its package: ${artifact.entry}`)
+    if (!fs.existsSync(artifactPath) || !fs.statSync(artifactPath).isFile()) {
+      throw new Error(`Plugin ${kind} artifact not found: ${artifact.entry}`)
+    }
+    const actual = sha256File(artifactPath)
+    if (actual !== artifact.sha256) throw new Error(`Plugin ${kind} artifact integrity mismatch: ${artifact.entry}`)
+  }
+  return manifest
+}
+
+function runtimeEntry(pluginDir: string, manifest: PluginManifestType): string | undefined {
+  return manifest.artifacts.runtime ? path.resolve(pluginDir, manifest.artifacts.runtime.entry) : undefined
 }
 
 async function validateExtractedArchiveDir(pluginDir: string): Promise<void> {
   const manifest = await readPluginManifest(pluginDir)
-  const entryPath = resolveEntryFromPluginDir(pluginDir, manifest)
-  if (!fs.existsSync(entryPath)) {
+  const entryPath = runtimeEntry(pluginDir, manifest)
+  if (entryPath && !fs.existsSync(entryPath)) {
     throw new Error(`Plugin entry not found at ${entryPath}. Synergy plugins must include a valid runtime entry.`)
   }
 }
@@ -186,15 +201,15 @@ async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions)
   const rawPath = pathFromFileSpec(spec)
   const absolute = path.isAbsolute(rawPath) ? rawPath : path.resolve(options.cwd ?? process.cwd(), rawPath)
   const archive = isArchivePath(absolute)
-  const pluginDir = archive
+  let pluginDir = archive
     ? await extractArchive(absolute, { stage: options.stageLocalArchive })
     : findPackageRoot(absolute)
+  const builtDir = path.join(pluginDir, "dist")
+  if (!archive && fs.existsSync(path.join(builtDir, "plugin.json"))) pluginDir = builtDir
   const manifest = await readPluginManifest(pluginDir)
   const entryPath =
-    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !archive
-      ? absolute
-      : resolveEntryFromPluginDir(pluginDir, manifest)
-  const pkg = manifest.name
+    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !archive ? absolute : runtimeEntry(pluginDir, manifest)
+  const pkg = manifest.id
   return {
     spec,
     pkg,
@@ -233,7 +248,7 @@ export async function resolvePluginSpec(
       pkg,
       version,
       source,
-      entryPath: resolveEntryFromPluginDir(pluginDir, manifest),
+      entryPath: runtimeEntry(pluginDir, manifest),
       pluginDir,
       manifest,
     }
@@ -250,7 +265,7 @@ export async function resolvePluginSpec(
     pkg,
     version,
     source,
-    entryPath: installed.entryPath,
+    entryPath: runtimeEntry(pluginDir, manifest),
     pluginDir,
     manifest,
     cached: installed.cached,
@@ -260,21 +275,4 @@ export async function resolvePluginSpec(
 export function importUrlForEntry(entryPath: string, reloadVersion?: number): string {
   const url = pathToFileURL(entryPath).href
   return reloadVersion == null ? url : `${url}?t=${reloadVersion}`
-}
-
-export function assertCanonicalPluginIdentity(input: {
-  spec?: string
-  manifest: PluginManifestType
-  descriptor: PluginDescriptor
-}) {
-  const { manifest, descriptor, spec } = input
-  if (!PluginId.isValid(descriptor.id)) {
-    throw new Error(`Plugin descriptor id "${descriptor.id}" is invalid`)
-  }
-  if (manifest.name !== descriptor.id) {
-    const suffix = spec ? ` for ${spec}` : ""
-    throw new Error(
-      `Plugin identity mismatch${suffix}: plugin.json name "${manifest.name}" must match PluginDescriptor.id "${descriptor.id}"`,
-    )
-  }
 }

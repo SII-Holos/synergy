@@ -99,7 +99,7 @@ export namespace WorkflowSeats {
         // Lazy require avoids circular imports in pure unit tests that never load Cortex.
         const { Cortex } = require("../cortex") as typeof import("../cortex")
         const task = Cortex.get(binding.activeTaskID)
-        if (task && (task.status === "running" || task.status === "queued" || task.status === "pending")) {
+        if (task && (task.status === "running" || task.status === "queued")) {
           return "working"
         }
       } catch {

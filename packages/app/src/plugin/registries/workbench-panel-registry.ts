@@ -11,6 +11,7 @@ export interface WorkbenchPanelTab {
   resourceId?: string
   title?: string
   source?: string
+  state?: unknown
 }
 
 export interface WorkbenchPanelContentProps {
@@ -25,6 +26,7 @@ export interface WorkbenchPanelTabInit {
   resourceId?: string
   title?: string
   source?: string
+  state?: unknown
 }
 
 export interface WorkbenchPanelEntry extends SurfaceEntry {
@@ -35,6 +37,7 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   component?: Component<WorkbenchPanelContentProps>
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
   exportName?: string
+  defaultResource?: WorkbenchPanelTabInit
   createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | Promise<void>
   title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined

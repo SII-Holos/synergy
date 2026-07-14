@@ -1,134 +1,109 @@
-import path from "path"
 import fs from "fs"
+import path from "path"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, permissionItems, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { PluginArtifact, PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
+import { buildPluginProject } from "./build.js"
 
-function timestamp(): string {
-  return new Date().toLocaleTimeString("en-US", { hour12: false })
-}
-
-function debounce(ms: number) {
+function debounce(delay: number, callback: () => void) {
   let timer: ReturnType<typeof setTimeout> | undefined
-  return (fn: () => void) => {
+  return () => {
     if (timer) clearTimeout(timer)
-    timer = setTimeout(fn, ms)
+    timer = setTimeout(callback, delay)
   }
 }
 
-function riskLabel(risk: "low" | "medium" | "high"): string {
-  if (risk === "high") return UI.Style.TEXT_DANGER + "high" + UI.Style.TEXT_NORMAL
-  if (risk === "medium") return UI.Style.TEXT_WARNING + "medium" + UI.Style.TEXT_NORMAL
-  return UI.Style.TEXT_SUCCESS + "low" + UI.Style.TEXT_NORMAL
-}
-
-function printPermissionPreview(manifest: PluginManifestType) {
-  const capabilities = baseCapabilities(manifest)
-  const risk = pluginRisk(manifest, { scope: "install" })
-  const items = permissionItems(manifest, capabilities)
-
-  UI.println(`✓ permissions: ${riskLabel(risk)} risk`)
-  if (items.length > 0) {
-    UI.println(`  -> ${items.map((item) => `${item.title} (${riskLabel(item.severity)})`).join(", ")}`)
+export async function publishGeneration(pluginDir: string, serverUrl?: string) {
+  const root = path.join(pluginDir, "dist", "dev")
+  const staging = path.join(root, `.staging-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  fs.mkdirSync(root, { recursive: true })
+  const built = await buildPluginProject(pluginDir, { outputDir: staging })
+  if (!built) {
+    fs.rmSync(staging, { recursive: true, force: true })
+    return false
   }
-}
-
-function countUiContributions(manifest: PluginManifestType): number {
-  const ui = manifest.contributes?.ui
-  if (!ui) return 0
-  return (
-    (ui.toolRenderers?.length ?? 0) +
-    (ui.partRenderers?.length ?? 0) +
-    (ui.workbenchPanels?.length ?? 0) +
-    (ui.navigation?.length ?? 0) +
-    (ui.settings?.length ?? 0) +
-    (ui.messageSlots?.length ?? 0) +
-    (ui.composerSlots?.length ?? 0) +
-    (ui.themes?.length ?? 0) +
-    (ui.icons?.length ?? 0) +
-    (ui.commands?.length ?? 0)
+  const manifest = PluginManifest.parse(
+    JSON.parse(fs.readFileSync(path.join(staging, PluginArtifact.manifestFile), "utf-8")),
   )
-}
+  const generationDir = path.join(root, manifest.artifacts.generation)
+  if (fs.existsSync(generationDir)) fs.rmSync(staging, { recursive: true, force: true })
+  else fs.renameSync(staging, generationDir)
 
-function readManifest(manifestPath: string): PluginManifestType {
-  const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
-  return PluginManifest.parse(raw) as PluginManifestType
+  const pointer = path.join(root, "current.json")
+  const temporaryPointer = `${pointer}.tmp`
+  fs.writeFileSync(
+    temporaryPointer,
+    `${JSON.stringify({ pluginId: manifest.id, generation: manifest.artifacts.generation, directory: generationDir }, null, 2)}\n`,
+  )
+  fs.renameSync(temporaryPointer, pointer)
+
+  const generations = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".staging-"))
+    .map((entry) => ({ name: entry.name, time: fs.statSync(path.join(root, entry.name)).mtimeMs }))
+    .sort((left, right) => right.time - left.time)
+  for (const old of generations.slice(3)) fs.rmSync(path.join(root, old.name), { recursive: true, force: true })
+
+  if (serverUrl) {
+    if (!process.env.SYNERGY_HOME) {
+      throw new Error("Live reload requires an explicit isolated SYNERGY_HOME")
+    }
+    const response = await fetch(new URL("/plugin/dev/reload", serverUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        pluginId: manifest.id,
+        generation: manifest.artifacts.generation,
+        artifactDir: generationDir,
+      }),
+    })
+    if (!response.ok) throw new Error(`Synergy dev reload failed: ${response.status} ${await response.text()}`)
+  }
+  UI.println(`generation ${manifest.artifacts.generation.slice(0, 12)} ready`)
+  return true
 }
 
 export const PluginDevCommand = cmd({
   command: "dev [path]",
-  describe: "start plugin development mode with file watching",
+  describe: "watch, rebuild, and atomically reload a plugin generation",
   builder: (yargs: Argv) =>
-    yargs.positional("path", {
-      type: "string",
-      describe: "path to plugin directory (defaults to cwd)",
-    }),
+    yargs
+      .positional("path", { type: "string", describe: "plugin directory (defaults to cwd)" })
+      .option("server-url", { type: "string", describe: "isolated Synergy server URL for live reload" }),
   async handler(args) {
     const pluginDir = path.resolve((args.path as string) ?? process.cwd())
-    const manifestPath = path.join(pluginDir, "plugin.json")
-    if (!fs.existsSync(manifestPath)) {
-      UI.error(`No plugin.json found at ${manifestPath}`)
-      process.exitCode = 1
-      return
-    }
-
-    let manifest: PluginManifestType
-    try {
-      manifest = readManifest(manifestPath)
-    } catch (error) {
-      UI.error(`Failed to read manifest: ${error instanceof Error ? error.message : String(error)}`)
-      process.exitCode = 1
-      return
-    }
-
-    UI.println(
-      `${UI.Style.TEXT_NORMAL_BOLD}Synergy Plugin Dev${UI.Style.TEXT_NORMAL} - ${manifest.name} v${manifest.version}`,
-    )
-    UI.println()
-    UI.println(`${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} manifest valid`)
-    printPermissionPreview(manifest)
-
-    const uiContribs = countUiContributions(manifest)
-    if (uiContribs > 0) {
-      UI.println()
-      UI.println(`UI: ${uiContribs} contribution${uiContribs !== 1 ? "s" : ""}`)
-    }
-
-    const srcDir = path.join(pluginDir, "src")
-    if (!fs.existsSync(srcDir)) {
-      UI.println(`${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} No src/ directory found at ${srcDir}`)
-      return
-    }
-
-    UI.println()
-    UI.println(`Watching ${srcDir} for changes...`)
-    UI.println(
-      `${UI.Style.TEXT_DIM}Run synergy plugin add file://${pluginDir} in a Synergy runtime when you need live installation/reload.${UI.Style.TEXT_NORMAL}`,
-    )
-    UI.println()
-
-    const onReload = debounce(300)
-    const watcher = fs.watch(srcDir, { recursive: true }, (_event, filename) => {
-      if (!filename) return
-      onReload(() => {
-        UI.println(`${timestamp()} [${manifest.name}] File changed: ${filename}`)
-        try {
-          manifest = readManifest(manifestPath)
-          UI.println(`${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} manifest valid`)
-          printPermissionPreview(manifest)
-          UI.println()
-        } catch (error) {
-          UI.error(`Manifest read error: ${error instanceof Error ? error.message : String(error)}`)
+    const serverUrl = args["server-url"] as string | undefined
+    let building = false
+    let queued = false
+    const build = async () => {
+      if (building) {
+        queued = true
+        return
+      }
+      building = true
+      try {
+        await publishGeneration(pluginDir, serverUrl)
+      } catch (error) {
+        UI.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        building = false
+        if (queued) {
+          queued = false
+          void build()
         }
-      })
-    })
+      }
+    }
+    await build()
+    UI.println(`Watching ${pluginDir}`)
+    const schedule = debounce(200, () => void build())
+    const watchers = ["src", "package.json", "themes", "icons"]
+      .map((relative) => path.join(pluginDir, relative))
+      .filter((target) => fs.existsSync(target))
+      .map((target) => fs.watch(target, { recursive: fs.statSync(target).isDirectory() }, schedule))
 
     const shutdown = () => {
-      UI.println()
-      UI.println("Shutting down...")
-      watcher.close()
+      for (const watcher of watchers) watcher.close()
       process.exit(0)
     }
     process.on("SIGINT", shutdown)
