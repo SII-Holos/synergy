@@ -16,7 +16,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       description:
         "General-purpose coding subagent for direct implementation, debugging, refactoring, and test updates when the task is well scoped. Use for the classic synergy workflow when a single executor should make code changes and run relevant validation.",
       prompt: buildDeveloperPrompt(),
-      model: "mid",
+      model: "thinking",
       permission: "codeWrite",
       visibleTo: ["synergy"],
     }),
@@ -52,7 +52,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       description:
         "Read-only code quality auditor for readability, unnecessary indirection, structural density, hygiene, dead code, and patch-over-fix patterns in the classic synergy workflow.",
       prompt: PROMPT_INSPECTOR,
-      model: "mid",
+      model: "thinking",
       permission: "review",
       visibleTo: ["synergy"],
     }),
@@ -61,7 +61,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       description:
         "Writing and documentation subagent for substantial prose, guides, documentation drafts, release notes, and narrative polishing in the classic synergy workflow.",
       prompt: buildScribePrompt(),
-      model: "mid",
+      model: "thinking",
       permission: "docsWrite",
       visibleTo: ["synergy"],
     }),

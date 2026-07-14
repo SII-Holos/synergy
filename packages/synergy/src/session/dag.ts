@@ -21,7 +21,6 @@ export namespace Dag {
     "inspector",
     "scribe",
     "scholar",
-    "intent-analyst",
     "requirements-engineer",
     "code-cartographer",
     "dependency-tracer",
