@@ -37,9 +37,10 @@ import type {
   AgendaUpdateResponses,
   AgendaWebhookErrors,
   AgendaWebhookResponses,
-  ApiPluginsApproveInstallResponses,
-  ApiPluginsGetApprovalErrors,
-  ApiPluginsGetApprovalResponses,
+  ApiPluginsApproveErrors,
+  ApiPluginsApproveResponses,
+  ApiPluginsGetApprovalReviewErrors,
+  ApiPluginsGetApprovalReviewResponses,
   ApiPluginsGetErrors,
   ApiPluginsGetResponses,
   ApiPluginsInstallFromRegistryErrors,
@@ -9357,45 +9358,7 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  public approveInstall<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      pluginId?: string
-      manifest?: unknown
-      capabilities?: Array<string>
-      source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "pluginId" },
-            { in: "body", key: "manifest" },
-            { in: "body", key: "capabilities" },
-            { in: "body", key: "source" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ApiPluginsApproveInstallResponses, unknown, ThrowOnError>({
-      url: "/api/plugins/approve-install",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public getApproval<ThrowOnError extends boolean = false>(
+  public getApprovalReview<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
       directory?: string
@@ -9416,13 +9379,57 @@ export class Plugins extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<
-      ApiPluginsGetApprovalResponses,
-      ApiPluginsGetApprovalErrors,
+      ApiPluginsGetApprovalReviewResponses,
+      ApiPluginsGetApprovalReviewErrors,
       ThrowOnError
     >({
-      url: "/api/plugins/{pluginId}/approval",
+      url: "/api/plugins/{pluginId}/approval-review",
       ...options,
       ...params,
+    })
+  }
+
+  public approve<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      target?:
+        | {
+            kind: "configured"
+            pluginId: string
+          }
+        | {
+            kind: "registry"
+            pluginId: string
+            version: string
+            source: "official" | "local"
+          }
+      reviewToken?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "target" },
+            { in: "body", key: "reviewToken" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ApiPluginsApproveResponses, ApiPluginsApproveErrors, ThrowOnError>({
+      url: "/api/plugins/approve",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

@@ -83,6 +83,14 @@ synergy plugin add file:///absolute/path/to/my-plugin
 
 For a directory spec, Synergy uses `dist/plugin.json` when it exists. The Plugins workspace shows the registration under both **Installed** and **Development**. A local registry package is different: it is a catalog artifact and appears under **Discover** when the Local registry source is selected.
 
+If the generated manifest or permissions have not been approved, the plugin remains disabled as `Needs approval`. Review the server-generated permissions and approve with:
+
+```bash
+synergy plugin approve my-plugin
+```
+
+Approval records are tied to the exact manifest and permissions hashes. Rebuilds that change generated metadata, capabilities, trusted UI, handlers, or packaged assets require another approval review.
+
 ## Live Development
 
 Use an isolated Synergy instance with an explicit `SYNERGY_HOME`, then run:
@@ -91,7 +99,7 @@ Use an isolated Synergy instance with an explicit `SYNERGY_HOME`, then run:
 synergy-plugin dev --server-url http://127.0.0.1:PORT
 ```
 
-The watcher builds into generation directories under `dist/dev/`. A successful build updates the generation pointer and asks the isolated server to reload atomically. A failed build leaves the previous generation active. Live reload refuses to contact a server unless `SYNERGY_HOME` is explicitly set.
+The watcher builds into generation directories under `dist/dev/`. A successful build updates the generation pointer and asks the isolated server to reload atomically. A failed build leaves the previous generation active. Live reload refuses to contact a server unless `SYNERGY_HOME` is explicitly set. Dev generation hot reload is separate from approval, config schema, and migration behavior.
 
 ## Publish
 

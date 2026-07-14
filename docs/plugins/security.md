@@ -10,7 +10,11 @@ Source `plugin.json` is forbidden because it would create a second declaration p
 
 ## Approval
 
-Approval covers the generated capability ceiling and trusted UI. It is bound to plugin ID, version/source metadata, manifest hash, and capability hash. A changed declaration requires another decision. A handler cannot request a Host Service that is absent from the approved manifest.
+Approval covers the full generated manifest, permission set, and trusted UI. Loading is gated by the exact manifest hash and permissions hash recorded at approval time; any ordinary manifest or permission change requires a new approval review before executable code or trusted UI is imported. A handler cannot request a Host Service that is absent from the approved manifest.
+
+Approval review is server-authoritative. Configured plugins use `GET /api/plugins/:pluginId/approval-review` to fetch the current review. Submission uses `POST /api/plugins/approve` with only the canonical `target` and opaque `reviewToken`; Web and CLI clients never send manifests, capabilities, source specs, or paths as approval evidence. The `reviewToken` binds the canonical target, current manifest hash, and permissions hash. If the artifact changes before submit, the server returns `stale_review` with a refreshed review and performs no writes.
+
+Plugins disabled for approval keep their canonical identity, version, capabilities, risk, contribution summary, and disabled status. User-facing surfaces should label that state as `Needs approval`.
 
 Capabilities govern Synergy Host Services. They do not pretend to block direct OS filesystem or network calls made by an external plugin process. Review external plugin code and provenance accordingly.
 

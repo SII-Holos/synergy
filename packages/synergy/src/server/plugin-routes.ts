@@ -1,30 +1,32 @@
 import fs from "fs/promises"
 import path from "path"
-import { pathToFileURL } from "url"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Plugin } from "../plugin"
-import { riskForCapabilities } from "../plugin/capability"
 import { getPluginConfig, replacePluginConfig } from "../plugin/config-store"
-import {
-  computeManifestHash,
-  computePermissionsHash,
-  getApproval,
-  saveApproval,
-} from "../plugin/consent/approval-store"
-import { diffPermissions } from "../plugin/consent/diff"
 import { PluginApprovalRequiredError } from "../plugin/install"
-import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../plugin/local-registry-store"
-import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { invokePluginOperation, PluginOperationError } from "../plugin/operation"
-import { reloadDevelopmentGeneration } from "../plugin/loader"
+import { reloadDevelopmentGeneration, getLoadedPlugins } from "../plugin/loader"
 import { PluginStatusSchema } from "../plugin/status"
 import { isPathContained } from "../util/path-contain"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
 import { ToolRegistry } from "../tool/registry"
+import {
+  buildApprovalReview,
+  approve as approvePlugin,
+  resolveRegistrySpec,
+  ApprovalStaleReviewError,
+  ApprovalPluginNotFoundError,
+  ApprovalNotRequiredError,
+  ApprovalInvalidError,
+  ApprovalApproveBodySchema,
+  ApprovalReviewSchema,
+} from "../plugin/consent/approval-service"
+import { PluginInstallationTransaction } from "../plugin/installation-transaction"
+import { reload } from "../plugin/lifecycle"
+import { readApprovals } from "../plugin/consent/approval-store"
 
 const JsonValue = z.any()
 const UIContribution = z.object({
@@ -40,12 +42,6 @@ const UIContribution = z.object({
 
 const InvokeBody = z.object({ input: JsonValue.optional(), sessionId: z.string().optional() })
 const PluginConfigUpdate = z.record(z.string(), z.unknown()).meta({ ref: "PluginConfigUpdate" })
-const ApprovalBody = z.object({
-  pluginId: z.string(),
-  manifest: JsonValue,
-  capabilities: z.array(z.string()),
-  source: z.enum(["local", "official", "npm", "git", "url", "builtin"]),
-})
 
 function uiContributions(plugin: Plugin.LoadedPlugin) {
   return {
@@ -74,39 +70,13 @@ function operationStatus(code: PluginOperationError["code"]): 400 | 403 | 404 | 
   return 400
 }
 
-async function installSpec(id: string, version: string, source: "official" | "local") {
-  if (source === "official") {
-    const artifact = await PluginMarketplaceRegistry.verifyOfficialArtifact(id, version)
-    return { spec: pathToFileURL(artifact.tarballPath).href, source }
-  }
-  const registry = JSON.parse(await Bun.file(localRegistryPath()).text()) as {
-    plugins?: Array<Record<string, unknown>>
-  }
-  const entry = registry.plugins?.find((item) => item.id === id)
-  if (!entry) throw new Error(`Local registry plugin not found: ${id}`)
-  const versions = Array.isArray(entry.versions) ? entry.versions : []
-  const target = versions.find(
-    (item) => item && typeof item === "object" && (item as Record<string, unknown>).version === version,
-  )
-  if (!target) throw new Error(`Local registry plugin version not found: ${id}@${version}`)
-  return { spec: resolveLocalRegistryInstallSpec(entry, target), source }
-}
-
-async function approvalRequired(error: PluginApprovalRequiredError, source: string) {
-  const oldManifest = await Plugin.manifest(error.pluginId)
-  const oldCapabilities = oldManifest?.capabilities.map((item) => item.id) ?? []
-  return {
-    code: error.code,
-    message: error.message,
-    pluginId: error.pluginId,
-    version: error.version,
-    source,
-    manifest: error.manifest,
-    capabilities: error.capabilities,
-    risk: error.risk,
-    diff: diffPermissions(error.pluginId, oldManifest, error.manifest, oldCapabilities, error.capabilities),
-  }
-}
+const StructuredErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+})
+const ApprovalReviewErrorSchema = StructuredErrorSchema.extend({
+  review: ApprovalReviewSchema,
+})
 
 export const PluginRoute = new Hono()
   .get(
@@ -287,65 +257,152 @@ export const ApiPluginRoute = new Hono()
       return context.json({ removed: true })
     },
   )
-  .post(
-    "/approve-install",
-    describeRoute({ operationId: "api.plugins.approveInstall", responses: { 200: { description: "Approved" } } }),
-    validator("json", ApprovalBody),
-    async (context) => {
-      const body = context.req.valid("json")
-      const manifest = PluginManifest.parse(body.manifest)
-      if (manifest.id !== body.pluginId) return context.json({ message: "Manifest plugin id mismatch" }, 400)
-      const declared = manifest.capabilities.map((item) => item.id)
-      if (JSON.stringify([...declared].sort()) !== JSON.stringify([...body.capabilities].sort()))
-        return context.json({ message: "Capability list mismatch" }, 400)
-      const trusted = manifest.contributions.some(
-        (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
-      )
-      await saveApproval({
-        pluginId: manifest.id,
-        source: body.source,
-        version: manifest.version,
-        manifestHash: computeManifestHash(manifest),
-        capabilitiesHash: computePermissionsHash(manifest, declared),
-        approvedAt: Date.now(),
-        approvedBy: "user",
-        trustTier: trusted ? "trusted-import" : "declarative",
-        approvedCapabilities: declared,
-        risk: riskForCapabilities(declared),
-        status: "approved",
-      })
-      return context.json({ approved: true })
-    },
-  )
   .get(
-    "/:pluginId/approval",
+    "/:pluginId/approval-review",
     describeRoute({
-      operationId: "api.plugins.getApproval",
-      responses: { 200: { description: "Approval" }, ...errors(404) },
+      operationId: "api.plugins.getApprovalReview",
+      responses: {
+        200: {
+          description: "Approval review",
+          content: { "application/json": { schema: resolver(ApprovalReviewSchema) } },
+        },
+        404: {
+          description: "Plugin not found",
+          content: { "application/json": { schema: resolver(StructuredErrorSchema) } },
+        },
+        409: {
+          description: "Approval not required",
+          content: { "application/json": { schema: resolver(StructuredErrorSchema) } },
+        },
+        422: {
+          description: "Invalid plugin",
+          content: { "application/json": { schema: resolver(StructuredErrorSchema) } },
+        },
+      },
     }),
     async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      const approval = await getApproval(context.req.param("pluginId"), plugin?.manifest)
-      return approval ? context.json(approval) : context.json({ message: "Approval not found" }, 404)
+      const pluginId = context.req.param("pluginId")
+      try {
+        const review = await buildApprovalReview({ kind: "configured", pluginId })
+        return context.json(review)
+      } catch (err) {
+        if (err instanceof ApprovalPluginNotFoundError)
+          return context.json({ code: err.code, message: err.message }, 404)
+        if (err instanceof ApprovalNotRequiredError) return context.json({ code: err.code, message: err.message }, 409)
+        if (err instanceof ApprovalInvalidError) return context.json({ code: err.code, message: err.message }, 422)
+        throw err
+      }
+    },
+  )
+  .post(
+    "/approve",
+    describeRoute({
+      operationId: "api.plugins.approve",
+      responses: {
+        200: { description: "Approved", content: { "application/json": { schema: resolver(PluginStatusSchema) } } },
+        400: { description: "Bad request" },
+        404: {
+          description: "Plugin not found",
+          content: { "application/json": { schema: resolver(StructuredErrorSchema) } },
+        },
+        409: {
+          description: "Stale review",
+          content: { "application/json": { schema: resolver(ApprovalReviewErrorSchema) } },
+        },
+        422: {
+          description: "Invalid plugin",
+          content: { "application/json": { schema: resolver(StructuredErrorSchema) } },
+        },
+      },
+    }),
+    validator("json", ApprovalApproveBodySchema),
+    async (context) => {
+      const body = context.req.valid("json")
+      try {
+        if (body.target.kind === "configured") {
+          const candidate = await approvePlugin(body.target, body.reviewToken)
+          const existing = await Plugin.get(body.target.pluginId)
+          const persisted = (await readApprovals()).some(
+            (approval) =>
+              approval.pluginId === candidate.pluginId &&
+              approval.status === "approved" &&
+              approval.manifestHash === candidate.manifestHash &&
+              approval.capabilitiesHash === candidate.capabilitiesHash,
+          )
+          if (existing && persisted) {
+            const status = await Plugin.getStatus(body.target.pluginId)
+            return context.json(status ?? { approved: true })
+          }
+          await PluginInstallationTransaction.approve({
+            pluginId: body.target.pluginId,
+            approval: () => approvePlugin(body.target, body.reviewToken),
+            reload,
+            getLoaded: async () => getLoadedPlugins(),
+          })
+          const status = await Plugin.getStatus(body.target.pluginId)
+          return context.json(status ?? { approved: true })
+        }
+
+        if (body.target.kind === "registry") {
+          const approval = await approvePlugin(body.target, body.reviewToken)
+          const { spec, source } = await resolveRegistrySpec(
+            body.target.pluginId,
+            body.target.version,
+            body.target.source,
+          )
+          const plugin = await Plugin.add(spec, { autoReload: true, source, preApproved: approval })
+          return context.json({ ...(await Plugin.getStatus(plugin.id)), manifest: plugin.manifest })
+        }
+      } catch (err) {
+        if (err instanceof ApprovalStaleReviewError)
+          return context.json({ code: err.code, message: err.message, review: err.review }, 409)
+        if (err instanceof ApprovalPluginNotFoundError)
+          return context.json({ code: err.code, message: err.message }, 404)
+        if (err instanceof ApprovalInvalidError) return context.json({ code: err.code, message: err.message }, 422)
+        throw err
+      }
     },
   )
   .post(
     "/registry/install",
     describeRoute({
       operationId: "api.plugins.installFromRegistry",
-      responses: { 200: { description: "Installed" }, 409: { description: "Approval required" } },
+      responses: {
+        200: { description: "Installed" },
+        409: {
+          description: "Approval required",
+          content: { "application/json": { schema: resolver(ApprovalReviewErrorSchema) } },
+        },
+        422: { description: "Invalid", content: { "application/json": { schema: resolver(StructuredErrorSchema) } } },
+      },
     }),
     validator("json", z.object({ id: z.string(), version: z.string(), source: z.enum(["official", "local"]) })),
     async (context) => {
       const body = context.req.valid("json")
-      const target = await installSpec(body.id, body.version, body.source)
       try {
-        const plugin = await Plugin.add(target.spec, { autoReload: true, source: target.source })
-        return context.json({ ...(await Plugin.getStatus(plugin.id)), manifest: plugin.manifest })
-      } catch (error) {
-        if (error instanceof PluginApprovalRequiredError)
-          return context.json(await approvalRequired(error, body.source), 409)
-        throw error
+        const { spec, source } = await resolveRegistrySpec(body.id, body.version, body.source)
+        const plugin = await Plugin.add(spec, { autoReload: true, source })
+        const status = await Plugin.getStatus(plugin.id)
+        return context.json({ ...status, manifest: plugin.manifest })
+      } catch (err) {
+        if (err instanceof PluginApprovalRequiredError) {
+          try {
+            const review = await buildApprovalReview({
+              kind: "registry",
+              pluginId: body.id,
+              version: body.version,
+              source: body.source,
+            })
+            return context.json({ code: err.code, message: err.message, review }, 409)
+          } catch (reviewErr) {
+            if (reviewErr instanceof ApprovalPluginNotFoundError)
+              return context.json({ code: reviewErr.code, message: reviewErr.message }, 404)
+            throw reviewErr
+          }
+        }
+        if (err instanceof ApprovalPluginNotFoundError)
+          return context.json({ code: err.code, message: err.message }, 422)
+        throw err
       }
     },
   )
@@ -353,19 +410,42 @@ export const ApiPluginRoute = new Hono()
     "/registry/update",
     describeRoute({
       operationId: "api.plugins.updateFromRegistry",
-      responses: { 200: { description: "Updated" }, 409: { description: "Approval required" } },
+      responses: {
+        200: { description: "Updated" },
+        409: {
+          description: "Approval required",
+          content: { "application/json": { schema: resolver(ApprovalReviewErrorSchema) } },
+        },
+        422: { description: "Invalid", content: { "application/json": { schema: resolver(StructuredErrorSchema) } } },
+      },
     }),
     validator("json", z.object({ pluginId: z.string(), version: z.string(), source: z.enum(["official", "local"]) })),
     async (context) => {
       const body = context.req.valid("json")
-      const target = await installSpec(body.pluginId, body.version, body.source)
       try {
-        const plugin = await Plugin.add(target.spec, { autoReload: true, source: target.source })
-        return context.json({ ...(await Plugin.getStatus(plugin.id)), manifest: plugin.manifest })
-      } catch (error) {
-        if (error instanceof PluginApprovalRequiredError)
-          return context.json(await approvalRequired(error, body.source), 409)
-        throw error
+        const { spec, source } = await resolveRegistrySpec(body.pluginId, body.version, body.source)
+        const plugin = await Plugin.add(spec, { autoReload: true, source })
+        const status = await Plugin.getStatus(plugin.id)
+        return context.json({ ...status, manifest: plugin.manifest })
+      } catch (err) {
+        if (err instanceof PluginApprovalRequiredError) {
+          try {
+            const review = await buildApprovalReview({
+              kind: "registry",
+              pluginId: body.pluginId,
+              version: body.version,
+              source: body.source,
+            })
+            return context.json({ code: err.code, message: err.message, review }, 409)
+          } catch (reviewErr) {
+            if (reviewErr instanceof ApprovalPluginNotFoundError)
+              return context.json({ code: reviewErr.code, message: reviewErr.message }, 404)
+            throw reviewErr
+          }
+        }
+        if (err instanceof ApprovalPluginNotFoundError)
+          return context.json({ code: err.code, message: err.message }, 422)
+        throw err
       }
     },
   )

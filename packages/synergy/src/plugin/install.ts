@@ -89,7 +89,12 @@ async function prepareUpgrade(input: {
 
 export async function add(
   spec: string,
-  options: { autoReload?: boolean; skipConsent?: boolean; source?: PluginSource } = {},
+  options: {
+    autoReload?: boolean
+    skipConsent?: boolean
+    source?: PluginSource
+    preApproved?: PluginApprovalRecord
+  } = {},
 ): Promise<LoadedPlugin> {
   let stagingDir: string | undefined
   let preparedKey: string | undefined
@@ -112,7 +117,16 @@ export async function add(
       options.skipConsent === true || source === "builtin" || (Installation.CHANNEL === "local" && source === "local")
 
     let approval: PluginApprovalRecord
-    if (existingApproval && verifyApproval(existingApproval, manifest, capabilities)) {
+    if (options.preApproved) {
+      if (
+        options.preApproved.pluginId !== manifest.id ||
+        options.preApproved.source !== source ||
+        !verifyApproval(options.preApproved, manifest, capabilities)
+      ) {
+        throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities, risk)
+      }
+      approval = options.preApproved
+    } else if (existingApproval && verifyApproval(existingApproval, manifest, capabilities)) {
       approval = existingApproval
     } else if (automaticallyApproved) {
       approval = {
@@ -131,7 +145,6 @@ export async function add(
     } else {
       throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities, risk)
     }
-
     const oldPlugin = await state()
       .then((current) => current.loaded.find((plugin) => plugin.id === manifest.id))
       .catch(() => undefined)

@@ -13,10 +13,10 @@ import { uninstallPluginConfirm } from "@/components/dialog/confirm-copy"
 import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
-import { InstallConsentDialog } from "../consent/InstallConsentDialog"
+import { PluginConsentDialog, type PluginConsentIntent } from "../consent/PluginConsentDialog"
 import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import type { RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
+import type { ApprovalReview, RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin, PluginDetail } from "./types"
 import {
   collectAllPermissions,
@@ -25,44 +25,62 @@ import {
   registryPluginSummary,
   toTimestamp,
 } from "./plugin-detail-model"
-import { installationLabel, installedPluginFromSnapshot } from "./view-model"
-import type { PermissionSeverity, PluginPermissionDiff } from "../consent/schema"
+import {
+  installationLabel,
+  installedPluginFromSnapshot,
+  installedPluginStatusView,
+  isDevelopmentPlugin,
+} from "./view-model"
+import type { PermissionSeverity } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
 
-interface ApprovalRequiredError {
-  code: "approval_required"
-  source?: RegistrySource
-  pluginId: string
-  version: string
-  manifest: { name: string; version: string; displayName?: string; [key: string]: unknown }
-  capabilities: string[]
-  diff: PluginPermissionDiff
-  risk: PermissionSeverity
-  artifactCacheKey?: string
-  message?: string
-}
 function formatSigner(signer?: string): string | null {
   if (!signer) return null
   return `${signer.slice(0, 10)}...${signer.slice(-8)}`
 }
 function installErrorMessage(input: unknown): string {
   if (typeof input === "string") return input
-  if (typeof input === "object" && input !== null) {
-    const message = (input as { message?: unknown }).message
+  const records = errorRecords(input)
+  for (const record of records) {
+    const message = record.message
     if (typeof message === "string") return message
   }
-  return "Action failed"
+  return input instanceof Error ? input.message : "Action failed"
 }
 
-function isApprovalRequiredError(input: unknown): input is ApprovalRequiredError {
-  return (
-    typeof input === "object" &&
-    input !== null &&
-    (input as { code?: unknown }).code === "approval_required" &&
-    typeof (input as { pluginId?: unknown }).pluginId === "string" &&
-    typeof (input as { version?: unknown }).version === "string"
+function errorRecords(input: unknown): Record<string, unknown>[] {
+  if (typeof input !== "object" || input === null) return []
+  const record = input as Record<string, unknown>
+  return [record, record.data, record.body, record.error].filter(
+    (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
   )
+}
+
+function isApprovalReview(input: unknown): input is ApprovalReview {
+  if (typeof input !== "object" || input === null) return false
+  const review = input as Partial<ApprovalReview>
+  return (
+    typeof review.pluginId === "string" &&
+    typeof review.name === "string" &&
+    typeof review.version === "string" &&
+    typeof review.reviewToken === "string" &&
+    typeof review.target === "object" &&
+    review.target !== null &&
+    typeof review.diff === "object" &&
+    review.diff !== null
+  )
+}
+
+function approvalReviewFromError(input: unknown): ApprovalReview | undefined {
+  for (const record of errorRecords(input)) {
+    if (isApprovalReview(record.review)) return record.review
+  }
+  return undefined
+}
+
+function isStaleApprovalError(input: unknown): boolean {
+  return errorRecords(input).some((record) => record.code === "approval_stale" || record.code === "stale_review")
 }
 
 function repositoryHost(url: string | undefined): string {
@@ -86,7 +104,7 @@ export function PluginDetailDialog(props: {
   const confirm = useConfirm()
   const { _ } = useLingui()
   const { controller, fmt, i18n } = useLocale()
-  const [action, setAction] = createSignal<"install" | "update" | "uninstall" | null>(null)
+  const [action, setAction] = createSignal<"install" | "update" | "uninstall" | "review" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
 
   const [summary] = createResource(
@@ -161,6 +179,15 @@ export function PluginDetailDialog(props: {
     return version && version !== "0.0.0" ? version : null
   })
   const updateAvailable = createMemo(() => checkUpdateAvailable(latestVersion()?.version, installedVersion()))
+  const installedStatus = createMemo(() => {
+    const installed = installedInfo()
+    return installed
+      ? installedPluginStatusView(installed, isDevelopmentPlugin(installed) ? "development" : "installed")
+      : null
+  })
+  const pluginToolsCount = createMemo(() => installedInfo()?.tools.length ?? plugin()?.tools.length ?? 0)
+  const pluginOperationsCount = createMemo(() => installedInfo()?.operations.length ?? 0)
+  const pluginUiCount = createMemo(() => installedInfo()?.uiContributions ?? plugin()?.uiSurfaces.length ?? 0)
   const permissions = createMemo(() => {
     const registryPermissions = collectAllPermissions(versions() ?? [])
     if (registryPermissions.length > 0) return registryPermissions
@@ -179,6 +206,10 @@ export function PluginDetailDialog(props: {
   const primaryLabel = createMemo(() => {
     if (action() === "install") return _({ id: "app.plugin.detail.action.installing", message: "Installing..." })
     if (action() === "update") return _({ id: "app.plugin.detail.action.updating", message: "Updating..." })
+    if (action() === "review")
+      return _({ id: "app.plugin.detail.action.loadingReview", message: "Loading review..." })
+    if (installedStatus()?.canReviewPermissions)
+      return _({ id: "app.plugin.detail.action.reviewPermissions", message: "Review permissions" })
     if (!installedVersion()) return _({ id: "app.plugin.detail.action.install", message: "Install" })
     if (updateAvailable())
       return _({
@@ -206,16 +237,25 @@ export function PluginDetailDialog(props: {
     setAction(kind)
     setError(null)
     try {
-      await globalSDK.client.api.plugins.installFromRegistry({
-        id: props.pluginId,
-        version: version.version,
-        source,
-      })
+      if (kind === "update") {
+        await globalSDK.client.api.plugins.updateFromRegistry({
+          pluginId: props.pluginId,
+          version: version.version,
+          source,
+        })
+      } else {
+        await globalSDK.client.api.plugins.installFromRegistry({
+          id: props.pluginId,
+          version: version.version,
+          source,
+        })
+      }
       await refreshAfterMutation()
     } catch (err) {
-      if (isApprovalRequiredError(err)) {
+      const review = approvalReviewFromError(err)
+      if (review) {
         setAction(null)
-        openApprovalDialog(err)
+        openApprovalDialog(kind, review)
         return
       }
       setError(installErrorMessage(err))
@@ -224,31 +264,36 @@ export function PluginDetailDialog(props: {
     }
   }
 
-  function openApprovalDialog(approval: ApprovalRequiredError) {
-    const source = approval.source ?? props.source
-    if (!source) return
+  async function approveReview(review: ApprovalReview): Promise<ApprovalReview | undefined> {
+    try {
+      await globalSDK.client.api.plugins.approve({ target: review.target, reviewToken: review.reviewToken })
+      await refreshAfterMutation()
+      return undefined
+    } catch (err) {
+      const staleReview = approvalReviewFromError(err)
+      if (staleReview && isStaleApprovalError(err)) return staleReview
+      throw new Error(installErrorMessage(err))
+    }
+  }
+
+  function openApprovalDialog(intent: PluginConsentIntent, review: ApprovalReview) {
     dialog.show(() => (
-      <InstallConsentDialog
-        manifest={approval.manifest}
-        diff={approval.diff}
-        onApprove={async () => {
-          await globalSDK.client.api.plugins.approveInstall({
-            pluginId: approval.pluginId,
-            manifest: approval.manifest,
-            capabilities: approval.capabilities,
-            source,
-          })
-          await globalSDK.client.api.plugins.installFromRegistry({
-            id: approval.pluginId,
-            version: approval.version,
-            source,
-          })
-          await pluginHost.reload()
-          await props.onChanged?.()
-        }}
-        onDeny={() => undefined}
-      />
+      <PluginConsentDialog intent={intent} review={review} onApprove={approveReview} onCancel={() => undefined} />
     ))
+  }
+
+  async function requestConfiguredApprovalReview() {
+    if (busy()) return
+    setAction("review")
+    setError(null)
+    try {
+      const res = await globalSDK.client.api.plugins.getApprovalReview({ pluginId: props.pluginId })
+      if (res.data) openApprovalDialog("reapprove", res.data)
+    } catch (err) {
+      setError(installErrorMessage(err))
+    } finally {
+      setAction(null)
+    }
   }
 
   async function performUninstall() {
@@ -347,20 +392,31 @@ export function PluginDetailDialog(props: {
                 </section>
 
                 <div class="plugin-detail-action-row">
-                  <Show when={props.source}>
+                  <Show when={props.source || installedStatus()?.canReviewPermissions}>
                     <button
                       type="button"
                       class="plugin-detail-primary-action"
-                      disabled={busy() || Boolean(installedVersion() && !updateAvailable()) || !latestVersion()}
-                      onClick={() => void performInstall(installedVersion() ? "update" : "install")}
+                      disabled={
+                        busy() ||
+                        (installedStatus()?.canReviewPermissions
+                          ? false
+                          : Boolean(installedVersion() && !updateAvailable()) || !latestVersion())
+                      }
+                      onClick={() =>
+                        installedStatus()?.canReviewPermissions
+                          ? void requestConfiguredApprovalReview()
+                          : void performInstall(installedVersion() ? "update" : "install")
+                      }
                     >
                       <Icon
                         name={
                           busy() && action() !== "uninstall"
                             ? "loader-circle"
-                            : installedVersion()
-                              ? "refresh-ccw"
-                              : "download"
+                            : installedStatus()?.canReviewPermissions
+                              ? getSemanticIcon("permission.required")
+                              : installedVersion()
+                                ? "refresh-ccw"
+                                : "download"
                         }
                         size="small"
                         class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
@@ -475,7 +531,9 @@ export function PluginDetailDialog(props: {
                           })}
                         </h3>
                         <span>
-                          {installedInfo()?.health === "disabled"
+                          {installedStatus()?.canReviewPermissions
+                            ? _({ id: "app.plugin.detail.state.needsApproval", message: "Needs approval" })
+                            : installedStatus()?.isDisabled
                             ? _({ id: "app.plugin.detail.state.disabled", message: "Disabled" })
                             : _({ id: "app.plugin.detail.state.active", message: "Active" })}
                         </span>
@@ -512,14 +570,18 @@ export function PluginDetailDialog(props: {
                     <span>
                       {_({
                         id: "app.plugin.detail.section.capabilitiesSummary",
-                        message: "{tools} tools · {surfaces} UI surfaces",
-                        values: { tools: current().tools.length, surfaces: current().uiSurfaces.length },
+                        message: "{tools} tools · {operations} operations · {surfaces} UI surfaces",
+                        values: {
+                          tools: pluginToolsCount(),
+                          operations: pluginOperationsCount(),
+                          surfaces: pluginUiCount(),
+                        },
                       })}
                     </span>
                   </div>
                   <div class="plugin-detail-chip-cloud">
                     <Show
-                      when={current().tools.length > 0}
+                      when={pluginToolsCount() > 0}
                       fallback={
                         <span class="plugin-detail-muted">
                           {_({ id: "app.plugin.detail.section.noTools", message: "No tools declared" })}
@@ -527,8 +589,13 @@ export function PluginDetailDialog(props: {
                       }
                     >
                       {/* tool names are plugin-author content — pass through */}
-                      <For each={current().tools}>{(tool) => <span class="plugin-detail-chip">{tool}</span>}</For>
+                      <For each={installedInfo()?.tools.map((tool) => tool.id) ?? current().tools}>
+                        {(tool) => <span class="plugin-detail-chip">{tool}</span>}
+                      </For>
                     </Show>
+                    <For each={installedInfo()?.operations.map((operation) => operation.id) ?? []}>
+                      {(operation) => <span class="plugin-detail-chip">{operation}</span>}
+                    </For>
                     {/* ui surface ids are plugin-author content — pass through */}
                     <For each={current().uiSurfaces}>
                       {(surface) => <span class="plugin-detail-chip">{surface}</span>}
