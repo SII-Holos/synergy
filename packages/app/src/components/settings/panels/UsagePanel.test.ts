@@ -12,9 +12,12 @@ import {
 describe("Usage panel model", () => {
   const now = Date.UTC(2026, 6, 3, 12, 0, 0)
 
+  test("does not infer a fixed duration from provider session labels", () => {
+    expect(formatUsageWindowLabel("Session")).toBe("Session window")
+    expect(formatUsageWindowLabel("Current session")).toBe("Session window")
+  })
+
   test("uses human-facing quota window labels and values", () => {
-    expect(formatUsageWindowLabel("Session")).toBe("5-hour window")
-    expect(formatUsageWindowLabel("Current session")).toBe("5-hour window")
     expect(formatUsageWindowLabel("Weekly")).toBe("Weekly window")
     expect(formatUsageWindowLabel("Current week")).toBe("Weekly window")
     expect(formatUsageWindowValue({ label: "Session", remainingPercent: 94 })).toBe("94% remaining")
