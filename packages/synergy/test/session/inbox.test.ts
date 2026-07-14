@@ -318,6 +318,68 @@ describe("SessionInbox", () => {
 })
 
 describe("inbox peek / commit", () => {
+  test("nextTask materializes the message before committing the inbox item", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const delivered = await SessionInbox.deliver({
+          sessionID: session.id,
+          mode: "task",
+          message: {
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test-model" },
+            parts: [{ type: "text", text: "materialize me durably" }],
+          },
+        })
+
+        const consumed = await SessionInbox.nextTask(session.id)
+
+        expect(consumed?.messageID).toBe(delivered.messageID)
+        expect(await SessionInbox.list(session.id)).toHaveLength(0)
+        const messages = await Session.messages({ sessionID: session.id })
+        expect(messages).toHaveLength(1)
+        expect(messages[0]?.info.id).toBe(delivered.messageID)
+        expect(messages[0]?.parts[0]).toMatchObject({ type: "text", text: "materialize me durably" })
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("nextTask commits an already-materialized retry without duplicating the message", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const delivered = await SessionInbox.deliver({
+          sessionID: session.id,
+          mode: "task",
+          message: {
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test-model" },
+            parts: [{ type: "text", text: "replay this materialization" }],
+          },
+        })
+        const stored = await SessionInbox.getStored(session.id, delivered.itemID)
+        await SessionInbox.materializeItem(stored)
+
+        const consumed = await SessionInbox.nextTask(session.id)
+
+        expect(consumed?.id).toBe(delivered.itemID)
+        expect(await SessionInbox.list(session.id)).toHaveLength(0)
+        const messages = await Session.messages({ sessionID: session.id })
+        expect(messages.filter((message) => message.info.id === delivered.messageID)).toHaveLength(1)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("peekReady returns queued items without deleting them", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

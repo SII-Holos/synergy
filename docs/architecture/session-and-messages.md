@@ -152,7 +152,7 @@ Every item has one scheduling axis:
 | `steer`   | Existing root | Materialized before the next `needsModelCall` decision. | Wakes the latest root if one exists.          |
 | `context` | Existing root | Piggybacks only after a model call is already required. | Remains stored and does not wake the session. |
 
-The item pre-allocates its message ID so materialization is idempotent. Task, steer, and context order is stable through `orderKey`.
+The item pre-allocates its message ID so materialization is idempotent. Task consumption persists that message first and removes the Inbox item only after materialization succeeds; replay across either write cannot lose the payload or create a second message. Task, steer, and context order is stable through `orderKey`. Domain scheduling fences may keep an otherwise-ready item stored—for example, a paused WorkflowRun seat becomes runnable again only after resume.
 
 Typical mappings:
 
@@ -207,6 +207,7 @@ Recovery covers:
 - interrupted Cortex delegations
 - active BlueprintLoops and their execution/audit bindings
 - Light Loop and Lattice workflow sessions
+- active WorkflowRuns, Boss/seat bindings, leases, pending effects, contractor terminal facts, and handoff acknowledgements
 - stale note `activeLoopID` and session loop metadata
 
 An interrupted assistant that never reached terminal persistence is completed with an explicit error during repair. Recovery state is surfaced as `recovering`; it is not presented as ordinary busy work.

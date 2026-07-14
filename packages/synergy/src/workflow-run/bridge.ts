@@ -5,6 +5,7 @@ import { CortexTypes } from "../cortex/types"
 import { MessageV2 } from "../session/message-v2"
 import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
+import { WorkflowEvent } from "./event"
 import { WorkflowMachine } from "./machine"
 import { WorkflowRunStore } from "./store"
 import { WorkflowTypes } from "./types"
@@ -41,7 +42,14 @@ export namespace WorkflowBridge {
           log.error("workflow bridge contractor handler failed", { error }),
         ),
       )
-      return { unsubscribe: () => [unsubLoop, unsubMessage, unsubCortex].forEach((u) => u()) }
+      const unsubWorkflow = Bus.subscribe(WorkflowEvent.EventAppended, (event) => {
+        if (event.properties.event.kind !== "run_resumed") return
+        const { scopeID, runID } = event.properties.event
+        return wakeRunnableSeats(scopeID, runID).catch((error) =>
+          log.error("workflow bridge resume wake failed", { scopeID, runID, error }),
+        )
+      })
+      return { unsubscribe: () => [unsubLoop, unsubMessage, unsubCortex, unsubWorkflow].forEach((u) => u()) }
     },
     async (state) => state.unsubscribe(),
   )
@@ -78,33 +86,121 @@ export namespace WorkflowBridge {
 
   async function handleMessage(info: MessageV2.Info): Promise<void> {
     if (info.role !== "user") return
-    const workflow = (info.metadata as Record<string, any> | undefined)?.workflowRun as
-      | { runID?: string; entityID?: string; handoffID?: string }
-      | undefined
-    const handoffID = workflow?.handoffID
-    const runID = workflow?.runID
-    if (!handoffID || !runID) return
-
     const scopeID = await scopeForSession(info.sessionID)
     if (!scopeID) return
-    const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
-    if (!run || run.status !== "active") return
+    await projectHandoffMessage(scopeID, info, { evaluate: true })
+  }
 
-    const events = await WorkflowRunStore.listEvents(scopeID, runID)
-    if (events.some((e) => e.kind === "handoff_acked" && e.data?.handoffID === handoffID)) return
+  async function projectHandoffMessage(
+    scopeID: string,
+    info: MessageV2.Info,
+    options?: { evaluate?: boolean },
+  ): Promise<boolean> {
+    if (info.role !== "user") return false
+    const workflow = workflowMetadata(info.metadata)
+    const handoffID = workflow?.handoffID
+    const runID = workflow?.runID
+    const entityID = workflow?.entityID
+    if (!handoffID || !runID || !entityID) return false
+
+    const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
+    if (!run || run.status !== "active") return false
+    const binding = run.seats.find((seat) => seat.sessionID === info.sessionID && seat.entityID === entityID)
+    const entity = run.entities.find((candidate) => candidate.id === entityID)
+    if (!binding || entity?.pendingHandoffID !== handoffID) return false
+    if (
+      entity.bindings.seatSessionID !== info.sessionID ||
+      entity.assignedSeat?.seat !== binding.seat ||
+      entity.assignedSeat.instance !== binding.instance
+    ) {
+      return false
+    }
 
     await WorkflowRunStore.appendEvent(
       scopeID,
       { id: runID },
       {
+        id: handoffAckEventID(handoffID),
         kind: "handoff_acked",
-        entityID: workflow?.entityID,
-        data: { handoffID, sessionID: info.sessionID },
+        entityID,
+        data: { handoffID, sessionID: info.sessionID, messageID: info.id },
       },
     )
-    if (workflow?.entityID) {
-      await WorkflowMachine.evaluateEventTransitions(scopeID, runID, workflow.entityID)
+    if (options?.evaluate !== false) {
+      await WorkflowMachine.evaluateEventTransitions(scopeID, runID, entityID)
     }
+    return true
+  }
+
+  export async function projectPersistedHandoffAck(
+    input: { scopeID: string; runID: string; entityID: string; handoffID: string },
+    options?: { evaluate?: boolean },
+  ): Promise<boolean> {
+    const run = await WorkflowRunStore.getOrUndefined(input.scopeID, input.runID)
+    if (!run || run.status !== "active") return false
+    const entity = run.entities.find((candidate) => candidate.id === input.entityID)
+    if (entity?.pendingHandoffID !== input.handoffID) return false
+    const binding = run.seats.find(
+      (candidate) => candidate.entityID === input.entityID && candidate.sessionID !== undefined,
+    )
+    if (!binding?.sessionID) return false
+    if (
+      entity.bindings.seatSessionID !== binding.sessionID ||
+      entity.assignedSeat?.seat !== binding.seat ||
+      entity.assignedSeat.instance !== binding.instance
+    ) {
+      return false
+    }
+
+    const { Session } = await import("../session")
+    const message = (await Session.messages({ sessionID: binding.sessionID, raw: true })).find((candidate) => {
+      if (candidate.info.role !== "user") return false
+      const metadata = workflowMetadata(candidate.info.metadata)
+      return (
+        metadata?.runID === input.runID &&
+        metadata.entityID === input.entityID &&
+        metadata.handoffID === input.handoffID
+      )
+    })
+    if (!message) return false
+    return projectHandoffMessage(input.scopeID, message.info, options)
+  }
+
+  export async function projectPersistedHandoffAcks(scopeID: string, runID: string): Promise<number> {
+    const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
+    if (!run || run.status !== "active") return 0
+    let projected = 0
+    for (const entity of run.entities) {
+      if (!entity.pendingHandoffID) continue
+      if (
+        await projectPersistedHandoffAck(
+          { scopeID, runID, entityID: entity.id, handoffID: entity.pendingHandoffID },
+          { evaluate: false },
+        )
+      ) {
+        projected++
+      }
+    }
+    return projected
+  }
+
+  async function wakeRunnableSeats(scopeID: string, runID: string): Promise<void> {
+    const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
+    if (!run || run.status !== "active") return
+    const { SessionInbox } = await import("../session/inbox")
+    const { SessionManager } = await import("../session/manager")
+    for (const binding of run.seats) {
+      if (!binding.sessionID || !binding.entityID) continue
+      const entity = run.entities.find((candidate) => candidate.id === binding.entityID)
+      if (entity?.assignedSeat?.seat !== binding.seat || entity.assignedSeat.instance !== binding.instance) continue
+      if (SessionManager.isRunning(binding.sessionID)) continue
+      if (!(await SessionInbox.hasRunnableItem(binding.sessionID))) continue
+      SessionManager.scheduleWake(binding.sessionID, "workflow_resumed")
+    }
+  }
+
+  function handoffAckEventID(handoffID: string): string {
+    return `wfv_handoff_ack_${handoffID.slice("wfh_".length)}`
   }
 
   async function handleContractor(task: CortexTypes.Task): Promise<void> {
@@ -116,28 +212,68 @@ export namespace WorkflowBridge {
     const run = await WorkflowRunStore.getOrUndefined(scopeID, owner.runID)
     if (!run || run.status !== "active") return
     const entityID = owner.entityID
+    if (!entityID) throw new Error(`workflow contractor ${task.id} has no entity owner`)
+    if (!run.entities.some((entity) => entity.id === entityID)) {
+      throw new Error(`workflow contractor ${task.id} owns unknown entity ${entityID}`)
+    }
 
-    // Clear seat active-task allocation when a seat Cortex task finishes.
-    if (owner.seat !== undefined && owner.instance !== undefined) {
-      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-        const binding = draft.seats.find((seat) => seat.seat === owner.seat && seat.instance === owner.instance)
-        if (binding && binding.activeTaskID === task.id) {
-          binding.activeTaskID = undefined
-          if (!binding.entityID) binding.status = "idle"
-          else binding.status = "waiting"
-        }
-      }).catch(() => undefined)
+    if (task.status === "completed") {
+      const submission: WorkflowTypes.Submission = {
+        id: task.id,
+        kind: "deliverable",
+        seat: owner.seat ?? "contractor",
+        sessionID: task.sessionID,
+        summary: contractorSummary(task),
+        refs: [task.sessionID],
+        time: task.completedAt ?? task.startedAt,
+      }
+      await WorkflowRunStore.update(
+        scopeID,
+        run.id,
+        (draft) => {
+          const entity = draft.entities.find((candidate) => candidate.id === entityID)
+          if (!entity) throw new Error(`workflow contractor ${task.id} owns unknown entity ${entityID}`)
+          const existing = entity.submissions.find((candidate) => candidate.id === task.id)
+          if (existing) {
+            if (JSON.stringify(existing) !== JSON.stringify(submission)) {
+              throw new Error(`workflow contractor ${task.id} conflicts with an existing submission`)
+            }
+            return
+          }
+          entity.submissions.push(submission)
+          entity.time.updated = Date.now()
+        },
+        { expectedRunStatus: "active" },
+      )
+      await WorkflowRunStore.appendEvent(
+        scopeID,
+        { id: run.id },
+        {
+          id: `wfv_${task.id}_submission`,
+          kind: "submission_recorded",
+          entityID,
+          seat: submission.seat,
+          data: {
+            kind: submission.kind,
+            taskID: task.id,
+            correlationID: owner.correlationID,
+          },
+        },
+      )
     }
 
     await WorkflowRunStore.appendEvent(
       scopeID,
       { id: run.id },
       {
+        id: `wfv_${task.id}_finished`,
         kind: "contractor_finished",
         entityID,
         data: {
           taskID: task.id,
           status: task.status,
+          sessionID: task.sessionID,
+          error: task.error,
           correlationID: owner.correlationID,
           outputMode: task.output?.mode,
           seat: owner.seat,
@@ -145,7 +281,19 @@ export namespace WorkflowBridge {
         },
       },
     )
-    if (entityID) await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entityID)
+    await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entityID)
+  }
+
+  function contractorSummary(task: CortexTypes.Task): string {
+    if (task.output?.mode === "summary" || task.output?.mode === "final_response") {
+      const value = task.output.value.trim()
+      if (value) return value
+    }
+    if (task.output?.mode === "structured") {
+      const value = JSON.stringify(task.output.value)
+      if (value) return value
+    }
+    return `Contractor ${task.id} completed without a textual result.`
   }
 
   async function scopeForSession(sessionID: string): Promise<string | undefined> {
@@ -153,5 +301,17 @@ export namespace WorkflowBridge {
     const session = await SessionManager.getSession(sessionID).catch(() => undefined)
     if (!session) return undefined
     return (session.scope as { id: string }).id
+  }
+
+  function workflowMetadata(metadata: unknown): { runID?: string; entityID?: string; handoffID?: string } | undefined {
+    if (!metadata || typeof metadata !== "object") return undefined
+    const workflow = (metadata as Record<string, unknown>).workflowRun
+    if (!workflow || typeof workflow !== "object") return undefined
+    const record = workflow as Record<string, unknown>
+    return {
+      runID: typeof record.runID === "string" ? record.runID : undefined,
+      entityID: typeof record.entityID === "string" ? record.entityID : undefined,
+      handoffID: typeof record.handoffID === "string" ? record.handoffID : undefined,
+    }
   }
 }

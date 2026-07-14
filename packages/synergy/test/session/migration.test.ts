@@ -725,6 +725,57 @@ describe("session migrations", () => {
     })
   })
 
+  test("adds the plugin discriminator to legacy Cortex task owners", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent" })
+        const child = await Session.create({
+          title: "Plugin task",
+          parentID: parent.id,
+          cortex: {
+            taskID: "ctx_plugin_owner_migration",
+            parentSessionID: parent.id,
+            parentMessageID: Identifier.ascending("message"),
+            description: "Legacy plugin task",
+            agent: "developer",
+            startedAt: 1,
+            status: "completed",
+            owner: {
+              kind: "plugin",
+              pluginId: "legacy-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: tmpScope.id,
+              correlationId: "correlation-one",
+            },
+          },
+        })
+        const key = StoragePath.sessionInfo(Identifier.asScopeID(tmpScope.id), Identifier.asSessionID(child.id))
+        const legacy = await Storage.read<any>(key)
+        delete legacy.cortex.owner.kind
+        await Storage.write(key, legacy)
+
+        const migration = migrations.find((entry) => entry.id === "20260714-cortex-task-owner-kind")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const first = await Storage.read<any>(key)
+        expect(first.cortex.owner).toEqual({
+          kind: "plugin",
+          pluginId: "legacy-plugin",
+          pluginGeneration: "generation-one",
+          scopeId: tmpScope.id,
+          correlationId: "correlation-one",
+        })
+        await migration!.up(() => {})
+        expect(await Storage.read<any>(key)).toEqual(first)
+      },
+    })
+  })
+
   test("migrates legacy workflow session fields and message metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

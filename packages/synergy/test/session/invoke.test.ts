@@ -19,6 +19,9 @@ import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
 import { Worktree } from "../../src/project/worktree"
+import { WorkflowRunStore } from "../../src/workflow-run/store"
+import { IssueToPrCharter } from "../../src/workflow-run/builtin/issue-to-pr"
+import { ExternalAgent } from "../../src/external-agent/bridge"
 
 const sessionID = "ses_test"
 
@@ -75,6 +78,7 @@ function installBasicLoopMocks(options?: {
   onBuildPlan?: (input: any) => void
   onProcess?: (input: any, assistant: MessageV2.Assistant, callIndex: number) => Promise<void> | void
   config?: Record<string, unknown>
+  agent?: Partial<Agent.Info>
 }) {
   const originalGetModel = Provider.getModel
   const originalGetAgent = Agent.get
@@ -112,6 +116,7 @@ function installBasicLoopMocks(options?: {
     mode: "primary",
     permission: PermissionNext.fromConfig({ "*": "allow" }),
     options: {},
+    ...options?.agent,
   }))
   ;(Config.current as any) = mock(async () => ({
     ...(await originalConfigCurrent()),
@@ -192,6 +197,36 @@ async function createSessionWithUser(options?: { silent?: boolean }) {
     text: "Run the session",
   })
   return { session, user }
+}
+
+async function bindWorkflowRun(
+  sessionID: string,
+  input: { role: "boss" | "seat"; status?: "active" | "paused" | "cancelled" },
+) {
+  const scopeID = ScopeContext.current.scope.id
+  const charter = await IssueToPrCharter.ensureSeeded(scopeID)
+  const run = await WorkflowRunStore.create({
+    scopeID,
+    charterRef: { id: charter.id, version: charter.version },
+    title: "Invoke budget",
+    bossSessionID: input.role === "boss" ? sessionID : "ses_boss",
+    seats: [],
+    maxModelCalls: 10,
+  })
+  if (input.status && input.status !== "active") {
+    await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+      draft.status = input.status!
+      if (input.status === "cancelled") draft.time.completed = Date.now()
+    })
+  }
+  await Session.update(sessionID, (draft) => {
+    draft.workflowRun = {
+      runID: run.id,
+      role: input.role,
+      ...(input.role === "seat" ? { seat: "executor", instance: 0 } : {}),
+    }
+  })
+  return run
 }
 
 function withTimeout<T>(promise: Promise<T>, label: string, ms = 2_000): Promise<T> {
@@ -1061,6 +1096,117 @@ describe("SessionInvoke completion notices", () => {
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
 
           expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke WorkflowRun provider reservations", () => {
+  test("counts an active Boss call before invoking the provider", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let providerCalls = 0
+    const restore = installBasicLoopMocks({
+      onProcess: () => {
+        providerCalls++
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          const run = await bindWorkflowRun(session.id, { role: "boss" })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(providerCalls).toBe(1)
+          expect((await WorkflowRunStore.get(ScopeContext.current.scope.id, run.id)).budget.used).toBe(1)
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("lets a paused Boss reach the provider without consuming execution budget", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let providerCalls = 0
+    const restore = installBasicLoopMocks({
+      onProcess: () => {
+        providerCalls++
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          const run = await bindWorkflowRun(session.id, { role: "boss", status: "paused" })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(providerCalls).toBe(1)
+          expect((await WorkflowRunStore.get(ScopeContext.current.scope.id, run.id)).budget.used).toBe(0)
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("fences a paused external-agent seat before its provider turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let started = false
+    let providerCalls = 0
+    const adapterName = `workflow-budget-${Date.now()}`
+    const adapter: ExternalAgent.Adapter = {
+      name: adapterName,
+      get started() {
+        return started
+      },
+      capabilities: { modelSwitch: false, interrupt: true },
+      async discover() {
+        return { available: true }
+      },
+      async start() {
+        started = true
+      },
+      async *turn() {
+        providerCalls++
+        yield { type: "turn_complete" }
+      },
+      async interrupt() {},
+      async shutdown() {},
+    }
+    ExternalAgent.register(adapterName, () => adapter)
+    const restore = installBasicLoopMocks({ agent: { external: { adapter: adapterName, config: {} } } })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          const run = await bindWorkflowRun(session.id, { role: "seat", status: "paused" })
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("paused")
+
+          expect(started).toBe(true)
+          expect(providerCalls).toBe(0)
+          expect((await WorkflowRunStore.get(ScopeContext.current.scope.id, run.id)).budget.used).toBe(0)
         },
       })
     } finally {

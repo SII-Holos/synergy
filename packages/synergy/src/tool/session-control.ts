@@ -24,7 +24,6 @@ const Action = z.enum([
   "set_model",
   "set_mode",
   "set_control_profile",
-  "set_charter",
   "question_reply",
   "question_reject",
   "permission_reply",
@@ -71,10 +70,6 @@ const parameters = z.object({
     .enum(["guarded", "autonomous", "full_access"])
     .optional()
     .describe("Control profile for create or set_control_profile."),
-  charterNoteID: z
-    .string()
-    .optional()
-    .describe("Charter note id (kind:'charter') for set_charter. Injected into the target's system prompt every turn."),
   worktreeTarget: z.string().min(1).optional().describe("Worktree name, ID, branch, or path for worktree_enter."),
   baseRef: z
     .enum(["current", "fresh"])
@@ -160,9 +155,6 @@ export const SessionControlTool = Tool.define("session_control", {
       }
       case "set_control_profile": {
         return handleSetControlProfile(sessionID, params)
-      }
-      case "set_charter": {
-        return handleSetCharter(sessionID, params)
       }
       case "question_reply": {
         if (!params.requestID) {
@@ -500,29 +492,6 @@ async function handleSetControlProfile(sessionID: string, params: Parameters) {
       action: "set_control_profile",
       session: sessionSummary(updated),
       controlProfile: params.controlProfile,
-    } as Record<string, any>,
-  }
-}
-
-async function handleSetCharter(sessionID: string, params: Parameters) {
-  if (params.charterNoteID) {
-    const { NoteStore } = await import("../note")
-    const note = await NoteStore.getAny(ScopeContext.current.scope.id, params.charterNoteID).catch(() => undefined)
-    if (!note) throw new Error(`Charter note ${params.charterNoteID} not found`)
-  }
-  const updated = await Session.update(sessionID, (draft) => {
-    draft.charter = params.charterNoteID ? { noteID: params.charterNoteID } : undefined
-  })
-  return {
-    title: params.charterNoteID ? `Charter set for ${sessionID}` : `Charter cleared for ${sessionID}`,
-    output: params.charterNoteID
-      ? `Session ${sessionID} now runs under charter note ${params.charterNoteID} (injected every turn, compaction-immune).`
-      : `Session ${sessionID} charter cleared.`,
-    metadata: {
-      action: "set_charter",
-      sessionID,
-      charterNoteID: params.charterNoteID,
-      session: sessionSummary(updated),
     } as Record<string, any>,
   }
 }

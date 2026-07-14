@@ -1497,10 +1497,11 @@ export namespace ToolResolver {
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const currentSession = await Session.get(runtimeInput.sessionID)
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,
                   args: args as Record<string, any>,
-                  session: runtimeInput.session,
+                  session: currentSession,
                   capabilities: envelope.capabilities,
                 })
                 if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
@@ -1754,10 +1755,11 @@ export namespace ToolResolver {
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const currentSession = await Session.get(runtimeInput.sessionID)
                   const modeDiagnostic = SessionModePolicy.evaluateCall({
                     toolName: key,
                     args: args as Record<string, any>,
-                    session: runtimeInput.session,
+                    session: currentSession,
                     capabilities: envelope.capabilities,
                   })
                   if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)

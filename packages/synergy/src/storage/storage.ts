@@ -113,6 +113,21 @@ export namespace Storage {
     )
   }
 
+  export async function writeIfAbsent<T>(key: string[], content: T, options?: WriteOptions): Promise<boolean> {
+    const dir = resolveDir()
+    const target = path.join(dir, ...key) + ".json"
+    return measureStorage("writeIfAbsent", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        if (await Bun.file(target).exists()) return false
+        const serialized = serialize(content, options)
+        await writeJsonAtomic(target, serialized)
+        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
+        return true
+      }),
+    )
+  }
+
   export async function scan(prefix: string[]): Promise<string[]> {
     const dir = resolveDir()
     const target = path.join(dir, ...prefix)

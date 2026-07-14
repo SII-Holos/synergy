@@ -31,6 +31,7 @@ export function isActiveLoopStatus(status: LoopStatus) {
 
 export namespace BlueprintLoopStore {
   export async function create(input: {
+    id?: string
     noteID: string
     noteVersion?: number
     title: string
@@ -47,6 +48,22 @@ export namespace BlueprintLoopStore {
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
+    if (input.id) {
+      try {
+        const existing = await get(scopeID, input.id)
+        if (
+          existing.noteID !== input.noteID ||
+          existing.title !== input.title ||
+          existing.sessionID !== input.sessionID ||
+          existing.source !== (input.source ?? "user")
+        ) {
+          throw new Error(`BlueprintLoop id ${input.id} is already used by a different operation.`)
+        }
+        return existing
+      } catch (error) {
+        if (!(error instanceof Storage.NotFoundError)) throw error
+      }
+    }
     const activeLoop = (await list(scopeID)).find(
       (loop) => loop.noteID === input.noteID && isActiveLoopStatus(loop.status),
     )
@@ -60,7 +77,7 @@ export namespace BlueprintLoopStore {
     }
 
     const now = Date.now()
-    const id = Identifier.ascending("blueprint_loop")
+    const id = Identifier.ascending("blueprint_loop", input.id)
     const loop: Info = {
       id,
       noteID: input.noteID,
@@ -80,7 +97,9 @@ export namespace BlueprintLoopStore {
       model: input.model,
       time: { created: now, updated: now },
     }
-    await Storage.write(StoragePath.blueprintLoop(sid, id), loop)
+    if (!(await Storage.writeIfAbsent(StoragePath.blueprintLoop(sid, id), loop))) {
+      return create(input)
+    }
 
     // Link to note: increment runCount, set lastRunAt, activeLoopID
     try {

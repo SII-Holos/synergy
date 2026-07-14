@@ -6,6 +6,7 @@ import { WorkflowContinuationPolicy } from "../../src/workflow-run/policy"
 import { WorkflowRunStore } from "../../src/workflow-run/store"
 import { WorkflowTypes } from "../../src/workflow-run/types"
 import type { Info as SessionInfo } from "../../src/session/types"
+import { Session } from "../../src/session"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -13,31 +14,33 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   return ScopeContext.provide({ scope, fn })
 }
 
-function gateFor(sessionID: string, role: "boss" | "seat", seat?: string) {
+function gateFor(sessionID: string, role: "boss" | "seat", seat?: string, runID = "") {
   return {
     scopeID: ScopeContext.current.scope.id,
     sessionID,
     terminalMessageID: "msg_terminal",
     session: {
       id: sessionID,
-      workflowRun: { runID: "", role, seat, instance: 0 },
+      workflowRun: { runID, role, seat, instance: 0 },
     } as unknown as SessionInfo,
   }
 }
 
-async function seedRun(seatSessionID: string, entityState: string) {
+async function seedRun(entityState: string) {
   const scopeID = ScopeContext.current.scope.id
+  const boss = await Session.create({})
+  const seat = await Session.create({ parentID: boss.id })
   const run = await WorkflowRunStore.create({
     scopeID,
     charterRef: { id: "cht_x", version: 1 },
     title: "R",
-    bossSessionID: "ses_boss",
+    bossSessionID: boss.id,
     seats: [
       {
         seat: "executor",
         instance: 0,
         status: "working",
-        sessionID: seatSessionID,
+        sessionID: seat.id,
         entityID: "wfe_1",
         lastEntityIDs: [],
       },
@@ -50,7 +53,7 @@ async function seedRun(seatSessionID: string, entityState: string) {
     runID: run.id,
     title: "E",
     state: entityState,
-    bindings: { seatSessionID },
+    bindings: { seatSessionID: seat.id },
     submissions: [],
     assignedSeat: { seat: "executor", instance: 0 },
     time: { created: now, updated: now, stateEntered: now },
@@ -58,7 +61,7 @@ async function seedRun(seatSessionID: string, entityState: string) {
   await WorkflowRunStore.update(scopeID, run.id, (draft) => {
     draft.entities.push(entity)
   })
-  return run
+  return { run, seat }
 }
 
 describe("WorkflowContinuationPolicy", () => {
@@ -71,9 +74,8 @@ describe("WorkflowContinuationPolicy", () => {
 
   test("nudges a seat that has an assigned, non-blocked entity", async () => {
     await withScope(async () => {
-      const run = await seedRun("ses_worker", "executing")
-      const gate = { ...gateFor("ses_worker", "seat", "executor") }
-      ;(gate.session as any).workflowRun.runID = run.id
+      const { run, seat } = await seedRun("executing")
+      const gate = gateFor(seat.id, "seat", "executor", run.id)
       const handled = await WorkflowContinuationPolicy.handle(gate)
       expect(handled).toBe(true) // delivered a continuation nudge
     })
@@ -81,11 +83,27 @@ describe("WorkflowContinuationPolicy", () => {
 
   test("does not nudge a seat whose entity is blocked", async () => {
     await withScope(async () => {
-      const run = await seedRun("ses_worker", WorkflowTypes.BLOCKED_STATE)
-      const gate = { ...gateFor("ses_worker", "seat", "executor") }
-      ;(gate.session as any).workflowRun.runID = run.id
+      const { run, seat } = await seedRun(WorkflowTypes.BLOCKED_STATE)
+      const gate = gateFor(seat.id, "seat", "executor", run.id)
       const handled = await WorkflowContinuationPolicy.handle(gate)
       expect(handled).toBe(false)
+    })
+  })
+
+  test("does not consume an idle when continuation delivery fails", async () => {
+    await withScope(async () => {
+      const run = await seedRun("executing")
+      const missingSessionID = "ses_missing_worker"
+      await WorkflowRunStore.update(ScopeContext.current.scope.id, run.run.id, (draft) => {
+        const binding = draft.seats[0]
+        const entity = draft.entities[0]
+        if (binding) binding.sessionID = missingSessionID
+        if (entity) entity.bindings.seatSessionID = missingSessionID
+      })
+
+      await expect(
+        WorkflowContinuationPolicy.handle(gateFor(missingSessionID, "seat", "executor", run.run.id)),
+      ).rejects.toThrow()
     })
   })
 })

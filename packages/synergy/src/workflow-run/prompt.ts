@@ -1,5 +1,3 @@
-import { NoteStore } from "../note"
-import { NoteMarkdown } from "../note/markdown"
 import type { WorkflowRunSessionInfo } from "../session/types"
 import { CharterStore } from "./charter-store"
 import { WorkflowRunStore } from "./store"
@@ -19,15 +17,11 @@ export namespace WorkflowPrompt {
   ): Promise<string | undefined> {
     const binding = session.workflowRun
     if (!binding) return undefined
-    const run = await WorkflowRunStore.getOrUndefined(scopeID, binding.runID).catch(() => undefined)
-    if (!run) return undefined
-    const charter = await CharterStore.getOrUndefined(scopeID, run.charterRef.id, run.charterRef.version).catch(
-      () => undefined,
-    )
-    if (!charter) return undefined
+    const run = await WorkflowRunStore.get(scopeID, binding.runID)
+    const charter = await CharterStore.get(scopeID, run.charterRef.id, run.charterRef.version)
 
     if (binding.role === "boss") return buildBoss(run, charter)
-    if (binding.role === "seat") return buildSeat(scopeID, run, charter, binding)
+    if (binding.role === "seat") return buildSeat(run, charter, binding, session.id)
     return undefined
   }
 
@@ -61,21 +55,20 @@ export namespace WorkflowPrompt {
   }
 
   async function buildSeat(
-    scopeID: string,
     run: WorkflowTypes.Run,
     charter: WorkflowTypes.Charter,
     binding: WorkflowRunSessionInfo,
+    sessionID: string,
   ): Promise<string> {
     const seat = binding.seat!
     const instance = binding.instance ?? 0
     const seatDef = charter.seats.find((s) => s.name === seat)
-    const seatSessionID = WorkflowSeats.find(run, seat, instance)?.sessionID
-    const entity = run.entities.find((e) => e.assignedSeat?.seat === seat && e.bindings.seatSessionID === seatSessionID)
+    const entity = WorkflowSeats.currentEntity(run, { seat, instance, sessionID })
     const allowedTransitions = charter.transitions.filter(
       (t) => t.trigger.kind === "intent" && t.trigger.allowedSeats.includes(seat),
     )
 
-    const charterBody = await resolveSeatCharter(scopeID, seatDef)
+    const charterBody = seatDef?.charterPrompt?.trim()
 
     const lines: string[] = [
       "<workflow-seat-context>",
@@ -108,17 +101,5 @@ export namespace WorkflowPrompt {
       "</workflow-seat-context>",
     )
     return lines.join("\n")
-  }
-
-  async function resolveSeatCharter(
-    scopeID: string,
-    seatDef: WorkflowTypes.SeatDef | undefined,
-  ): Promise<string | undefined> {
-    if (!seatDef) return undefined
-    if (seatDef.charterNoteID) {
-      const note = await NoteStore.getAny(scopeID, seatDef.charterNoteID).catch(() => undefined)
-      if (note) return NoteMarkdown.toMarkdown(note.content)
-    }
-    return seatDef.charterPrompt?.trim() || undefined
   }
 }

@@ -1,4 +1,4 @@
-import { z } from "zod"
+import z from "zod"
 import { Identifier } from "../id/id"
 
 export namespace CortexTypes {
@@ -82,19 +82,24 @@ export namespace CortexTypes {
   export const WorkflowTaskOwner = z
     .object({
       kind: z.literal("workflow_run"),
-      runID: z.string().optional(),
-      entityID: z.string().optional(),
+      runID: z.string(),
+      entityID: z.string(),
       seat: z.string().optional(),
       instance: z.number().int().optional(),
-      correlationID: z.string().optional(),
+      correlationID: z.string(),
     })
     .meta({ ref: "CortexWorkflowTaskOwner" })
   export type WorkflowTaskOwner = z.infer<typeof WorkflowTaskOwner>
 
-  export const TaskOwner = z.discriminatedUnion("kind", [PluginTaskOwner, WorkflowTaskOwner]).meta({
-    ref: "CortexTaskOwner",
-  })
+  export const TaskOwner = z
+    .discriminatedUnion("kind", [PluginTaskOwner, WorkflowTaskOwner])
+    .meta({ ref: "CortexTaskOwner" })
   export type TaskOwner = z.infer<typeof TaskOwner>
+
+  export function taskOwnerFromStored(value: unknown): TaskOwner | undefined {
+    if (value === undefined) return undefined
+    return TaskOwner.parse(value)
+  }
 
   export const Task = z
     .object({
@@ -128,6 +133,7 @@ export namespace CortexTypes {
       outputConfig: OutputConfig.optional(),
       output: TaskOutput.optional(),
       timeoutMs: z.number().int().positive().optional(),
+      ownedWorktreeID: z.string().optional(),
       usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })

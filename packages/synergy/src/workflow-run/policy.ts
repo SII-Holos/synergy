@@ -3,8 +3,8 @@ import { Log } from "../util/log"
 import type { ContinuationKernel } from "../session/continuation-kernel"
 import { SessionInbox } from "../session/inbox"
 import { SessionManager } from "../session/manager"
-import { WorkflowModelCalls } from "./model-calls"
 import { WorkflowRunStore } from "./store"
+import { WorkflowSeats } from "./seats"
 import { WorkflowTypes } from "./types"
 
 const log = Log.create({ service: "workflow.policy" })
@@ -23,31 +23,68 @@ export const WorkflowContinuationPolicy: ContinuationKernel.Policy = {
     const binding = gate.session.workflowRun
     if (!binding || binding.role !== "seat") return false
 
-    const run = await WorkflowRunStore.getOrUndefined(gate.scopeID, binding.runID).catch(() => undefined)
+    const run = await WorkflowRunStore.getOrUndefined(gate.scopeID, binding.runID)
     if (!run || run.status !== "active") return false
 
-    // Flush budget accounting; pause + notify boss when exhausted.
-    const used = (await WorkflowModelCalls.flush(gate.scopeID, binding.runID)) ?? run.budget.used
-    if (run.budget.maxModelCalls > 0 && used >= run.budget.maxModelCalls) {
-      await WorkflowRunStore.update(gate.scopeID, binding.runID, (draft) => {
-        draft.status = "paused"
-        draft.statusReason = "model_call_budget_exhausted"
-      })
+    if (run.budget.maxModelCalls > 0 && run.budget.used >= run.budget.maxModelCalls) {
+      await WorkflowRunStore.update(
+        gate.scopeID,
+        binding.runID,
+        (draft) => {
+          draft.status = "paused"
+          draft.statusReason = "model_call_budget_exhausted"
+        },
+        { expectedRunStatus: "active" },
+      )
       await WorkflowRunStore.appendEvent(gate.scopeID, { id: binding.runID }, { kind: "budget_exhausted" })
       return true
     }
 
+    const seat = binding.seat
+    const instance = binding.instance ?? 0
+    if (!seat) return false
+    const seatBinding = WorkflowSeats.find(run, seat, instance)
+    const boundEntity = WorkflowSeats.currentEntity(run, { seat, instance, sessionID: gate.sessionID })
+    if (
+      seatBinding?.entityID &&
+      (!boundEntity || boundEntity.assignedSeat?.seat !== seat || boundEntity.assignedSeat.instance !== instance)
+    ) {
+      let released = false
+      await WorkflowRunStore.update(
+        gate.scopeID,
+        binding.runID,
+        (draft) => {
+          const current = WorkflowSeats.find(draft, seat, instance)
+          const entity = current?.entityID ? draft.entities.find((item) => item.id === current.entityID) : undefined
+          if (
+            current?.sessionID !== gate.sessionID ||
+            !current.entityID ||
+            (entity?.assignedSeat?.seat === seat && entity.assignedSeat.instance === instance)
+          ) {
+            return
+          }
+          current.entityID = undefined
+          current.status = "idle"
+          released = true
+        },
+        { expectedRunStatus: "active" },
+      )
+      if (!released) return false
+      const { WorkflowMachine } = await import("./machine")
+      await WorkflowMachine.redrivePending(gate.scopeID, binding.runID)
+      const refreshed = await WorkflowRunStore.getOrUndefined(gate.scopeID, binding.runID)
+      const target = boundEntity?.assignedSeat
+      const targetSessionID = target
+        ? WorkflowSeats.find(refreshed ?? run, target.seat, target.instance)?.sessionID
+        : undefined
+      if (targetSessionID && !SessionManager.isRunning(targetSessionID)) {
+        SessionManager.scheduleWake(targetSessionID, "workflow_handoff_after_release")
+      }
+      return true
+    }
+
     const seatSessionID = gate.sessionID
-    const entity = run.entities.find(
-      (e) =>
-        e.bindings.seatSessionID === seatSessionID &&
-        e.assignedSeat?.seat === binding.seat &&
-        // The seat binding must still own this entity — release_seat
-        // clears binding.entityID but entity.bindings.seatSessionID
-        // may still be stale. Only deliver a continuation when the
-        // binding and entity agree.
-        run.seats.some((s) => s.seat === binding.seat && s.instance === binding.instance && s.entityID === e.id),
-    )
+    const entity = boundEntity
     if (!entity) return false
     if (entity.state === WorkflowTypes.BLOCKED_STATE) return false
 
@@ -84,12 +121,12 @@ async function deliverContinuation(
           type: "text",
           text,
           origin: "system",
-        } as any,
+        },
       ],
       summary: { title: `Continue ${entity.title}` },
       metadata: { workflowRun: { runID: run.id, entityID: entity.id } },
     },
-  }).catch((error) => log.error("workflow continuation delivery failed", { sessionID, error }))
+  })
   if (!SessionManager.isRunning(sessionID)) {
     SessionManager.scheduleWake(sessionID, "workflow_continuation")
   }

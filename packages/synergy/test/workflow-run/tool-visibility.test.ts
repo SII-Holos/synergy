@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { SessionModePolicy } from "../../src/session/tool-mode-policy"
+import type { Info as SessionInfo } from "../../src/session/types"
 
-function withRole(role: "boss" | "seat" | "contractor" | undefined) {
+function withRole(role: "boss" | "seat" | undefined) {
   return role ? { workflowRun: { runID: "wfr_1", role } } : {}
 }
 
@@ -58,5 +59,15 @@ describe("workflow tool visibility", () => {
       // see them.
       expect(SessionModePolicy.visibility({ toolName: tool, session: withRole(undefined) })).toBeUndefined()
     }
+  })
+
+  test("execution-time policy rechecks Boss restrictions", () => {
+    const diagnostic = SessionModePolicy.evaluateCall({
+      toolName: "edit",
+      args: { filePath: "src/index.ts" },
+      session: withRole("boss") as unknown as SessionInfo,
+      capabilities: [],
+    })
+    expect(diagnostic).toBeDefined()
   })
 })

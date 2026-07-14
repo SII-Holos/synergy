@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Identifier } from "../id/id"
 import { ScopeContext } from "../scope/context"
+import { SessionInbox } from "../session/inbox"
 import { SessionManager } from "../session/manager"
 import { WorkflowRunStore, WorkflowTypes } from "../workflow-run"
 import { WorkflowToolShared } from "./workflow-shared"
@@ -16,53 +17,57 @@ export const WorkflowBlockTool = Tool.define("workflow_block", {
   parameters,
   async execute(params, ctx) {
     const scopeID = ScopeContext.current.scope.id
-    const { run, entity } = await WorkflowToolShared.requireSeat(ctx.sessionID)
-    if (!entity) throw new Error("You have no entity assigned; nothing to block.")
+    const seatContext = await WorkflowToolShared.requireSeat(ctx.sessionID)
+    if (!seatContext.entity) throw new Error("You have no entity assigned; nothing to block.")
 
-    await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-      const e = draft.entities.find((x) => x.id === entity.id)
-      if (e && e.state !== WorkflowTypes.BLOCKED_STATE) {
-        e.state = WorkflowTypes.BLOCKED_STATE
-        e.blockedReason = params.reason
-        e.time.updated = Date.now()
-        e.time.stateEntered = Date.now()
-      }
+    const { run, entity } = await WorkflowToolShared.updateActiveSeatEntity({
+      sessionID: ctx.sessionID,
+      context: { ...seatContext, entity: seatContext.entity },
+      edit(draftEntity) {
+        draftEntity.state = WorkflowTypes.BLOCKED_STATE
+        draftEntity.blockedReason = params.reason
+        draftEntity.time.updated = Date.now()
+        draftEntity.time.stateEntered = Date.now()
+      },
+      async afterCommit(result) {
+        await WorkflowRunStore.appendEvent(
+          scopeID,
+          { id: result.run.id },
+          {
+            kind: "entity_blocked",
+            entityID: result.entity.id,
+            message: params.reason,
+          },
+        )
+        await SessionInbox.deliver({
+          sessionID: result.run.bossSessionID,
+          mode: "steer",
+          message: {
+            role: "user",
+            origin: { type: "system", detail: "workflow_boss_notice" },
+            visible: true,
+            parts: [
+              {
+                id: Identifier.ascending("part"),
+                type: "text",
+                text: `[workflow ${result.run.title}] Entity "${result.entity.title}" (${result.entity.id}) is blocked: ${params.reason}`,
+                origin: "system",
+              },
+            ],
+            summary: { title: `Blocked: ${result.entity.title}` },
+            metadata: { workflowRun: { runID: result.run.id, entityID: result.entity.id } },
+          },
+        })
+        if (!SessionManager.isRunning(result.run.bossSessionID)) {
+          SessionManager.scheduleWake(result.run.bossSessionID, "workflow_boss_notice")
+        }
+      },
     })
-    await WorkflowRunStore.appendEvent(
-      scopeID,
-      { id: run.id },
-      {
-        kind: "entity_blocked",
-        entityID: entity.id,
-        message: params.reason,
-      },
-    )
-
-    // Notify the boss.
-    const part = {
-      id: Identifier.ascending("part"),
-      sessionID: run.bossSessionID,
-      messageID: Identifier.ascending("message"),
-      type: "text" as const,
-      text: `[workflow ${run.title}] Entity "${entity.title}" (${entity.id}) is blocked: ${params.reason}`,
-      synthetic: true,
-    }
-    await SessionManager.deliver({
-      target: run.bossSessionID,
-      mail: {
-        type: "user",
-        noReply: true,
-        parts: [part],
-        summary: { title: `Blocked: ${entity.title}` },
-        metadata: { source: "workflow_boss_notice", workflowRun: { runID: run.id } },
-      },
-      waitForProcessing: false,
-    }).catch(() => undefined)
 
     return {
       title: "Entity blocked",
       output: `Entity ${entity.id} is now blocked. The Boss has been notified.`,
-      metadata: { runID: run.id, entityID: entity.id } as Record<string, any>,
+      metadata: { runID: run.id, entityID: entity.id },
     }
   },
 })

@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
+import { Identifier } from "../../src/id/id"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { WorkflowRunStore } from "../../src/workflow-run/store"
+import { WorkflowTypes } from "../../src/workflow-run/types"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -24,6 +28,24 @@ async function makeRun() {
 }
 
 describe("WorkflowRunStore", () => {
+  test("rejects negative and fractional model-call budgets", async () => {
+    await withScope(async () => {
+      const scopeID = ScopeContext.current.scope.id
+      for (const maxModelCalls of [-1, 1.5]) {
+        await expect(
+          WorkflowRunStore.create({
+            scopeID,
+            charterRef: { id: "cht_invalid_budget", version: 1 },
+            title: "Invalid budget",
+            bossSessionID: "ses_boss",
+            seats: [],
+            maxModelCalls,
+          }),
+        ).rejects.toThrow()
+      }
+    })
+  })
+
   test("events are appended and returned in chronological order", async () => {
     await withScope(async () => {
       const { scopeID, run } = await makeRun()
@@ -33,6 +55,27 @@ describe("WorkflowRunStore", () => {
       // run_created is appended by create(), then the two above.
       const kinds = events.map((e) => e.kind)
       expect(kinds).toEqual(["run_created", "entity_added", "entity_transitioned"])
+    })
+  })
+
+  test("a stable event id makes audit projection replay idempotent", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await makeRun()
+      const id = "wfv_stable_gate_opened"
+
+      const first = await WorkflowRunStore.appendEvent(scopeID, run, {
+        id,
+        kind: "gate_opened",
+        data: { gateID: "wfg_stable" },
+      })
+      const replay = await WorkflowRunStore.appendEvent(scopeID, run, {
+        id,
+        kind: "gate_opened",
+        data: { gateID: "wfg_stable" },
+      })
+
+      expect(replay).toEqual(first)
+      expect((await WorkflowRunStore.listEvents(scopeID, run.id)).filter((event) => event.id === id)).toHaveLength(1)
     })
   })
 
@@ -88,7 +131,7 @@ describe("WorkflowRunStore", () => {
     await withScope(async () => {
       const { scopeID, run } = await makeRun()
       await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-        draft.entities.push({
+        const entity: WorkflowTypes.Entity = {
           id: "wfe_1",
           runID: run.id,
           title: "E",
@@ -96,7 +139,8 @@ describe("WorkflowRunStore", () => {
           bindings: {},
           submissions: [],
           time: { created: Date.now(), updated: Date.now(), stateEntered: Date.now() },
-        } as any)
+        }
+        draft.entities.push(entity)
       })
       const first = await WorkflowRunStore.tryUpdate(
         scopeID,
@@ -121,6 +165,40 @@ describe("WorkflowRunStore", () => {
       if (!second.ok) expect(second.reason).toBe("conflict")
       const latest = await WorkflowRunStore.get(scopeID, run.id)
       expect(latest.entities[0]?.state).toBe("executing")
+    })
+  })
+
+  test("tryUpdate rejects a transition after the run leaves active status", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await makeRun()
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.status = "cancelled"
+        draft.time.completed = Date.now()
+      })
+
+      const result = await WorkflowRunStore.tryUpdate(
+        scopeID,
+        run.id,
+        (draft) => {
+          draft.title = "must not commit"
+        },
+        { expectedRunStatus: "active" },
+      )
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.reason).toBe("conflict")
+      expect((await WorkflowRunStore.get(scopeID, run.id)).title).toBe("R")
+    })
+  })
+
+  test("getOrUndefined only suppresses a missing run, not corrupted state", async () => {
+    await withScope(async () => {
+      const scopeID = ScopeContext.current.scope.id
+      expect(await WorkflowRunStore.getOrUndefined(scopeID, "wfr_missing")).toBeUndefined()
+
+      const runID = Identifier.ascending("workflow_run")
+      await Storage.write(StoragePath.workflowRun(Identifier.asScopeID(scopeID), runID), { corrupt: true })
+      await expect(WorkflowRunStore.getOrUndefined(scopeID, runID)).rejects.toThrow()
     })
   })
 })

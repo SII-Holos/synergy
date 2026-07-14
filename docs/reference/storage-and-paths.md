@@ -46,6 +46,9 @@ data/superplan/runs/<scope>/
 data/superplan/events/<scope>/<run>/
 data/lattice/runs/<scope>/
 data/lattice/events/<scope>/
+data/workflow/charters/<scope>/<charter>/<version>.json
+data/workflow/runs/<scope>/<run>.json
+data/workflow/events/<scope>/<run>/
 data/holos/contacts/
 data/holos/mailbox/
 data/stats/
@@ -54,6 +57,8 @@ data/stats/
 Inside a session, `info.json`, `summary.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
 The session index, paged-session index, child-session index, and navigation index are derived but operationally important. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
+
+Workflow Charters are immutable within a version. A WorkflowRun snapshot is the canonical, frequently updated record for status, entities, seats, gates, budget, pending effects, and effect receipts. Its sibling event collection is an append-only audit and pagination surface, not a state-reconstruction log. Seat handoffs are persisted in the target session's ordinary `inbox/` records. Move or restore these records through their owning Scope workflow rather than copying an individual run or seat session in isolation.
 
 ## Library Database
 

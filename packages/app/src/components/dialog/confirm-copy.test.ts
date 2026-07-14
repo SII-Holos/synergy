@@ -3,6 +3,7 @@ import {
   agendaActionConfirm,
   archiveProjectConfirm,
   archiveSessionConfirm,
+  cancelWorkflowRunConfirm,
   deleteLibraryItemsConfirm,
   deleteNoteConfirm,
   deleteSkillConfirm,
@@ -108,5 +109,16 @@ describe("confirm copy", () => {
     expect(remove.title).toBe("Delete agenda?")
     expect(remove.confirmLabel).toBe("Delete")
     expect(remove.tone).toBe("danger")
+  })
+
+  test("explains that cancelling a workflow run stops its delegated work", () => {
+    const copy = cancelWorkflowRunConfirm("Issue to PR")
+
+    expect(copy.title).toBe("Cancel workflow run?")
+    expect(copy.description).toContain("Issue to PR")
+    expect(copy.description).toContain("seats, tasks, and loops")
+    expect(copy.description).toContain("cannot be resumed")
+    expect(copy.confirmLabel).toBe("Cancel run")
+    expect(copy.tone).toBe("danger")
   })
 })

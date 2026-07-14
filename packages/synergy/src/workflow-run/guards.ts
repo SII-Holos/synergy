@@ -1,4 +1,5 @@
 import { WorkflowTypes } from "./types"
+import { Storage } from "../storage/storage"
 
 /**
  * Guard predicate library. Each predicate is backed by a deterministic platform
@@ -19,6 +20,7 @@ export namespace WorkflowGuards {
   export interface Result {
     ok: boolean
     reason?: string
+    retryable?: boolean
   }
 
   export type Predicate = (ctx: Context, args: Record<string, string>) => Promise<Result> | Result
@@ -67,7 +69,13 @@ export namespace WorkflowGuards {
   export async function evaluateAll(ctx: Context, refs: WorkflowTypes.PredicateRef[]): Promise<Result> {
     for (const ref of refs) {
       const result = await evaluate(ref.name, ctx, ref.args)
-      if (!result.ok) return { ok: false, reason: `${ref.name}: ${result.reason ?? "failed"}` }
+      if (!result.ok) {
+        return {
+          ok: false,
+          reason: `${ref.name}: ${result.reason ?? "failed"}`,
+          retryable: result.retryable,
+        }
+      }
     }
     return { ok: true }
   }
@@ -78,7 +86,10 @@ export namespace WorkflowGuards {
     const loopID = resolveArg(args.loopID ?? "$entity.bindings.loopID", ctx)
     if (!loopID) return { ok: false, reason: "no loopID bound" }
     const { BlueprintLoopStore } = await import("../blueprint/loop-store")
-    const loop = await BlueprintLoopStore.get(ctx.scopeID, loopID).catch(() => undefined)
+    const loop = await BlueprintLoopStore.get(ctx.scopeID, loopID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!loop) return { ok: false, reason: `loop ${loopID} not found` }
     const wanted = args.status ?? "completed"
     if (loop.status !== wanted) return { ok: false, reason: `loop is ${loop.status}, not ${wanted}` }
@@ -108,14 +119,23 @@ export namespace WorkflowGuards {
     const { WorkflowRunStore } = await import("./store")
     const events = await WorkflowRunStore.listEvents(ctx.scopeID, ctx.run.id)
     const acked = events.some((e) => e.kind === "handoff_acked" && e.data?.handoffID === handoffID)
-    return acked ? { ok: true } : { ok: false, reason: `handoff ${handoffID} not acknowledged` }
+    if (acked) return { ok: true }
+    const { WorkflowBridge } = await import("./bridge")
+    const projected = await WorkflowBridge.projectPersistedHandoffAck(
+      { scopeID: ctx.scopeID, runID: ctx.run.id, entityID: ctx.entity.id, handoffID },
+      { evaluate: false },
+    )
+    return projected ? { ok: true } : { ok: false, reason: `handoff ${handoffID} not acknowledged` }
   })
 
   register("worktree_clean", async (ctx, args) => {
     const seatSessionID = resolveArg(args.sessionID ?? "$entity.bindings.seatSessionID", ctx)
     if (!seatSessionID) return { ok: false, reason: "no seat session bound" }
     const { Worktree } = await import("../project/worktree")
-    const status = await Worktree.status(seatSessionID).catch(() => undefined)
+    const status = await Worktree.status(seatSessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError || error instanceof Worktree.NotFoundError) return undefined
+      throw error
+    })
     if (!status) return { ok: false, reason: "worktree status unavailable" }
     return status.dirty === false ? { ok: true } : { ok: false, reason: "worktree has uncommitted changes" }
   })
@@ -125,7 +145,10 @@ export namespace WorkflowGuards {
     const baseCommit = resolveArg(args.baseCommit ?? "$entity.bindings.baseCommit", ctx)
     if (!seatSessionID) return { ok: false, reason: "no seat session bound" }
     const { Worktree } = await import("../project/worktree")
-    const status = await Worktree.status(seatSessionID).catch(() => undefined)
+    const status = await Worktree.status(seatSessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError || error instanceof Worktree.NotFoundError) return undefined
+      throw error
+    })
     if (!status?.path) return { ok: false, reason: "worktree status unavailable" }
     if (!baseCommit) {
       // No base to diff against — accept a recorded resultCommit as evidence.
@@ -143,7 +166,7 @@ export namespace WorkflowGuards {
   register("session_idle", async (ctx, args) => {
     const seat = args.seat
     const binding = ctx.run.seats.find((s) => s.seat === seat && s.status === "idle")
-    if (!binding) return { ok: false, reason: `no idle instance of seat '${seat}'` }
+    if (!binding) return { ok: false, reason: `no idle instance of seat '${seat}'`, retryable: true }
     return { ok: true }
   })
 
@@ -153,7 +176,7 @@ export namespace WorkflowGuards {
   register("seat_available", (ctx, args) => {
     const seat = args.seat
     const free = ctx.run.seats.some((s) => s.seat === seat && (s.status === "idle" || s.status === "unbound"))
-    return free ? { ok: true } : { ok: false, reason: `no free instance of seat '${seat}'` }
+    return free ? { ok: true } : { ok: false, reason: `no free instance of seat '${seat}'`, retryable: true }
   })
 
   register("gate_resolved", (ctx, args) => {
@@ -182,7 +205,10 @@ export namespace WorkflowGuards {
     const noteID = resolveArg(args.noteID ?? "", ctx)
     if (!noteID) return { ok: false, reason: "no note id" }
     const { NoteStore } = await import("../note")
-    const note = await NoteStore.getAny(ctx.scopeID, noteID).catch(() => undefined)
+    const note = await NoteStore.getAny(ctx.scopeID, noteID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     return note ? { ok: true } : { ok: false, reason: `note ${noteID} missing` }
   })
 }

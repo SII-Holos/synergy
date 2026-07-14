@@ -3528,11 +3528,11 @@ export type SessionHistoryInfo = {
 
 export type CortexWorkflowTaskOwner = {
   kind: "workflow_run"
-  runID?: string
-  entityID?: string
+  runID: string
+  entityID: string
   seat?: string
   instance?: number
-  correlationID?: string
+  correlationID: string
 }
 
 export type CortexTaskOwner =
@@ -3593,6 +3593,7 @@ export type SessionCortexDelegation = {
       }
   owner?: CortexTaskOwner
   timeoutMs?: number
+  ownedWorktreeID?: string
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -3634,7 +3635,7 @@ export type SessionWorkspace = {
 
 export type SessionWorkflowRunInfo = {
   runID: string
-  role: "boss" | "seat" | "contractor"
+  role: "boss" | "seat"
   seat?: string
   instance?: number
 }
@@ -3735,13 +3736,6 @@ export type Session = {
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
-  }
-  /**
-   * Charter note injected into the system prompt every turn (compaction-immune standing instructions)
-   */
-  charter?: {
-    noteID: string
-    version?: number
   }
   workflowRun?: SessionWorkflowRunInfo
   workflow?: SessionWorkflowInfo
@@ -4498,7 +4492,7 @@ export type NoteInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
-  kind?: "note" | "blueprint" | "charter"
+  kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -4695,6 +4689,7 @@ export type CortexTask = {
         value: unknown
       }
   timeoutMs?: number
+  ownedWorktreeID?: string
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -5323,7 +5318,7 @@ export type NoteMetaInfo = {
   originScope?: string
   archived?: boolean
   tags: Array<string>
-  kind?: "note" | "blueprint" | "charter"
+  kind?: "note" | "blueprint"
   version: number
   time: {
     created: number
@@ -5357,7 +5352,7 @@ export type NoteCreateInput = {
   title: string
   content?: unknown
   tags?: Array<string>
-  kind?: "note" | "blueprint" | "charter"
+  kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -5375,7 +5370,7 @@ export type NotePatchInput = {
   global?: boolean
   archived?: boolean
   tags?: Array<string>
-  kind?: "note" | "blueprint" | "charter"
+  kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
     defaultAgent?: string
@@ -5611,7 +5606,6 @@ export type WorkflowSeatBinding = {
   instance: number
   sessionID?: string
   entityID?: string
-  activeTaskID?: string
   status?: "unbound" | "idle" | "working" | "waiting"
   /**
    * Recently handled entity ids (for affinity)
@@ -5703,10 +5697,15 @@ export type WorkflowRun = {
   statusReason?: string
   revision?: number
   bossSessionID: string
+  bossControlProfile?: "guarded" | "autonomous" | "full_access"
+  bossPreviousControlProfile?: "guarded" | "autonomous" | "full_access"
   seats: Array<WorkflowSeatBinding>
   entities: Array<WorkflowEntity>
   gates: Array<WorkflowGateInstance>
   pendingEffects?: Array<WorkflowPendingEffect>
+  effectReceipts?: {
+    [key: string]: number
+  }
   budget: {
     maxModelCalls: number
     used: number
@@ -5758,6 +5757,36 @@ export type WorkflowEvent = {
   }
 }
 
+export type WorkflowEventPage = {
+  items: Array<WorkflowEvent>
+  nextCursor?: string
+}
+
+export type WorkflowNotAuthorized = {
+  name: "WorkflowNotAuthorized"
+  data: {
+    reason: string
+  }
+}
+
+export type WorkflowCharterConflict = {
+  name: "WorkflowCharterConflict"
+  data: {
+    charterID: string
+    version: number
+    reason: string
+  }
+}
+
+export type WorkflowTransitionRejected = {
+  name: "WorkflowTransitionRejected"
+  data: {
+    reason: string
+  }
+}
+
+export type WorkflowConflictError = WorkflowCharterConflict | WorkflowTransitionRejected
+
 export type WorkflowSeatDef = {
   /**
    * Seat identifier, e.g. 'executor' | 'reviewer' | 'tester'
@@ -5771,11 +5800,6 @@ export type WorkflowSeatDef = {
    * Inline standing instructions for this seat
    */
   charterPrompt?: string
-  /**
-   * kind:'charter' note holding this seat's charter (takes precedence)
-   */
-  charterNoteID?: string
-  controlProfile?: "guarded" | "autonomous" | "full_access"
   interaction?: "unattended" | "interactive"
   /**
    * Number of parallel instances of this seat
@@ -13548,7 +13572,7 @@ export type WorkflowRunListResponses = {
 export type WorkflowRunListResponse = WorkflowRunListResponses[keyof WorkflowRunListResponses]
 
 export type WorkflowRunCreateData = {
-  body?: {
+  body: {
     charterID: string
     version?: number
     title: string
@@ -13568,6 +13592,18 @@ export type WorkflowRunCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Workflow operation is not authorized
+   */
+  403: WorkflowNotAuthorized
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Workflow state conflict
+   */
+  409: WorkflowConflictError
 }
 
 export type WorkflowRunCreateError = WorkflowRunCreateErrors[keyof WorkflowRunCreateErrors]
@@ -13598,6 +13634,10 @@ export type WorkflowRunGetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
 }
 
 export type WorkflowRunGetError = WorkflowRunGetErrors[keyof WorkflowRunGetErrors]
@@ -13606,7 +13646,7 @@ export type WorkflowRunGetResponses = {
   /**
    * Workflow run
    */
-  200: WorkflowRun | null
+  200: WorkflowRun
 }
 
 export type WorkflowRunGetResponse = WorkflowRunGetResponses[keyof WorkflowRunGetResponses]
@@ -13620,6 +13660,7 @@ export type WorkflowRunEventsData = {
     directory?: string
     scopeID?: string
     after?: string
+    limit?: number
   }
   url: "/workflow-run/run/{id}/events"
 }
@@ -13641,13 +13682,13 @@ export type WorkflowRunEventsResponses = {
   /**
    * Workflow events
    */
-  200: Array<WorkflowEvent>
+  200: WorkflowEventPage
 }
 
 export type WorkflowRunEventsResponse = WorkflowRunEventsResponses[keyof WorkflowRunEventsResponses]
 
 export type WorkflowRunControlData = {
-  body?: {
+  body: {
     action: "pause" | "resume" | "cancel"
   }
   path: {
@@ -13669,6 +13710,10 @@ export type WorkflowRunControlErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Workflow state conflict
+   */
+  409: WorkflowConflictError
 }
 
 export type WorkflowRunControlError = WorkflowRunControlErrors[keyof WorkflowRunControlErrors]
@@ -13683,7 +13728,7 @@ export type WorkflowRunControlResponses = {
 export type WorkflowRunControlResponse = WorkflowRunControlResponses[keyof WorkflowRunControlResponses]
 
 export type WorkflowRunEntityAddData = {
-  body?: {
+  body: {
     title: string
     description?: string
     affinityKey?: string
@@ -13706,6 +13751,14 @@ export type WorkflowRunEntityAddErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Workflow state conflict
+   */
+  409: WorkflowConflictError
 }
 
 export type WorkflowRunEntityAddError = WorkflowRunEntityAddErrors[keyof WorkflowRunEntityAddErrors]
@@ -13720,7 +13773,7 @@ export type WorkflowRunEntityAddResponses = {
 export type WorkflowRunEntityAddResponse = WorkflowRunEntityAddResponses[keyof WorkflowRunEntityAddResponses]
 
 export type WorkflowRunGateResolveData = {
-  body?: {
+  body: {
     resolution: string
   }
   path: {
@@ -13739,6 +13792,14 @@ export type WorkflowRunGateResolveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Workflow state conflict
+   */
+  409: WorkflowConflictError
 }
 
 export type WorkflowRunGateResolveError = WorkflowRunGateResolveErrors[keyof WorkflowRunGateResolveErrors]

@@ -166,6 +166,16 @@ export function agendaActionConfirm(action: AgendaConfirmAction, title: string |
   }
 }
 
+export function cancelWorkflowRunConfirm(title: string | undefined): ConfirmCopy {
+  return {
+    title: "Cancel workflow run?",
+    description: `Cancel ${quoted(title, "Untitled workflow run")}? Its seats, tasks, and loops will stop, and the run cannot be resumed.`,
+    confirmLabel: "Cancel run",
+    cancelLabel: "Keep running",
+    tone: "danger",
+  }
+}
+
 export type LibraryConfirmKind = "memory" | "experience"
 
 export function deleteLibraryItemsConfirm(kind: LibraryConfirmKind, count: number): ConfirmCopy {

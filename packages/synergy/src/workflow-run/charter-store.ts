@@ -35,11 +35,16 @@ export namespace CharterStore {
     const sid = Identifier.asScopeID(scopeID)
     const resolved = version ?? (await latestVersion(scopeID, charterID))
     if (resolved < 1) throw new WorkflowError.CharterNotFound({ charterID, version })
-    const charter = await Storage.read<WorkflowTypes.Charter>(StoragePath.charter(sid, charterID, resolved)).catch(
-      () => undefined,
-    )
-    if (!charter) throw new WorkflowError.CharterNotFound({ charterID, version: resolved })
-    return charter
+    try {
+      return WorkflowTypes.Charter.parse(
+        await Storage.read<WorkflowTypes.Charter>(StoragePath.charter(sid, charterID, resolved)),
+      )
+    } catch (error) {
+      if (error instanceof Storage.NotFoundError) {
+        throw new WorkflowError.CharterNotFound({ charterID, version: resolved })
+      }
+      throw error
+    }
   }
 
   export async function getOrUndefined(
@@ -47,7 +52,12 @@ export namespace CharterStore {
     charterID: string,
     version?: number,
   ): Promise<WorkflowTypes.Charter | undefined> {
-    return get(scopeID, charterID, version).catch(() => undefined)
+    try {
+      return await get(scopeID, charterID, version)
+    } catch (error) {
+      if (error instanceof WorkflowError.CharterNotFound) return undefined
+      throw error
+    }
   }
 
   export async function list(scopeID: string): Promise<WorkflowTypes.Charter[]> {
@@ -70,33 +80,48 @@ export namespace CharterStore {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
     const charterID = input.id ?? Identifier.ascending("charter")
-    const nextVersion = (await latestVersion(scopeID, charterID)) + 1
-
-    const charter = WorkflowTypes.Charter.parse({
-      id: charterID,
-      version: nextVersion,
-      name: input.name,
-      description: input.description,
-      entityType: input.entityType,
-      entityInitialState: input.entityInitialState,
-      states: input.states,
-      terminalStates: input.terminalStates ?? [],
-      seats: input.seats,
-      transitions: input.transitions,
-      gates: input.gates ?? [],
-      budget: input.budget ?? { maxModelCalls: 0 },
-      time: { created: Date.now() },
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const nextVersion = (await latestVersion(scopeID, charterID)) + 1
+      const charter = WorkflowTypes.Charter.parse({
+        id: charterID,
+        version: nextVersion,
+        name: input.name,
+        description: input.description,
+        entityType: input.entityType,
+        entityInitialState: input.entityInitialState,
+        states: input.states,
+        terminalStates: input.terminalStates ?? [],
+        seats: input.seats,
+        transitions: input.transitions,
+        gates: input.gates ?? [],
+        budget: input.budget ?? { maxModelCalls: 0 },
+        time: { created: Date.now() },
+      })
+      if (await Storage.writeIfAbsent(StoragePath.charter(sid, charterID, nextVersion), charter)) return charter
+    }
+    throw new WorkflowError.CharterConflict({
+      charterID,
+      version: await latestVersion(scopeID, charterID),
+      reason: "could not allocate an immutable charter version",
     })
-
-    await Storage.write(StoragePath.charter(sid, charterID, nextVersion), charter)
-    return charter
   }
 
   /** Persist a charter object verbatim (used for seeding built-in templates). */
   export async function put(scopeID: string, charter: WorkflowTypes.Charter): Promise<WorkflowTypes.Charter> {
     const sid = Identifier.asScopeID(scopeID)
     const parsed = WorkflowTypes.Charter.parse(charter)
-    await Storage.write(StoragePath.charter(sid, parsed.id, parsed.version), parsed)
-    return parsed
+    const key = StoragePath.charter(sid, parsed.id, parsed.version)
+    if (await Storage.writeIfAbsent(key, parsed)) return parsed
+    const existing = WorkflowTypes.Charter.parse(await Storage.read<WorkflowTypes.Charter>(key))
+    if (sameDefinition(existing, parsed)) return existing
+    throw new WorkflowError.CharterConflict({
+      charterID: parsed.id,
+      version: parsed.version,
+      reason: "charter versions are immutable once written",
+    })
+  }
+
+  function sameDefinition(left: WorkflowTypes.Charter, right: WorkflowTypes.Charter): boolean {
+    return JSON.stringify({ ...left, time: undefined }) === JSON.stringify({ ...right, time: undefined })
   }
 }

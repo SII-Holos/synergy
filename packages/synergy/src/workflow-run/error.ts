@@ -11,6 +11,11 @@ export namespace WorkflowError {
 
   export const CharterInvalid = NamedError.create("WorkflowCharterInvalid", z.object({ errors: z.array(z.string()) }))
 
+  export const CharterConflict = NamedError.create(
+    "WorkflowCharterConflict",
+    z.object({ charterID: z.string(), version: z.number(), reason: z.string() }),
+  )
+
   export const TransitionRejected = NamedError.create("WorkflowTransitionRejected", z.object({ reason: z.string() }))
 
   export const NotAuthorized = NamedError.create("WorkflowNotAuthorized", z.object({ reason: z.string() }))

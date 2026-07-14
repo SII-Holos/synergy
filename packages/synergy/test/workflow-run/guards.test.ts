@@ -26,6 +26,7 @@ function makeRun(entity: WorkflowTypes.Entity, overrides: Partial<WorkflowTypes.
     status: "active",
     revision: 0,
     bossSessionID: "ses_boss",
+    bossControlProfile: "guarded",
     seats: [],
     entities: [entity],
     gates: [],

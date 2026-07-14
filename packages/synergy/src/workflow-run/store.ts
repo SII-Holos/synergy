@@ -15,10 +15,13 @@ import { WorkflowTypes } from "./types"
  */
 export namespace WorkflowRunStore {
   export type CreateInput = {
+    id?: string
     scopeID: string
     charterRef: { id: string; version: number }
     title: string
     bossSessionID: string
+    bossControlProfile?: WorkflowTypes.Run["bossControlProfile"]
+    bossPreviousControlProfile?: WorkflowTypes.Run["bossPreviousControlProfile"]
     seats: WorkflowTypes.SeatBinding[]
     maxModelCalls: number
   }
@@ -27,12 +30,25 @@ export namespace WorkflowRunStore {
     | { ok: true; run: WorkflowTypes.Run }
     | { ok: false; reason: "conflict" | "not_found"; run?: WorkflowTypes.Run }
 
+  export type UpdateOptions = {
+    expectedRevision?: number
+    expectedRunStatus?: WorkflowTypes.RunStatus | WorkflowTypes.RunStatus[]
+    expectedEntityState?: { entityID: string; state: string }
+  }
+
   export async function get(scopeID: string, runID: string): Promise<WorkflowTypes.Run> {
-    return Storage.read<WorkflowTypes.Run>(StoragePath.workflowRun(Identifier.asScopeID(scopeID), runID))
+    return WorkflowTypes.Run.parse(
+      await Storage.read<WorkflowTypes.Run>(StoragePath.workflowRun(Identifier.asScopeID(scopeID), runID)),
+    )
   }
 
   export async function getOrUndefined(scopeID: string, runID: string): Promise<WorkflowTypes.Run | undefined> {
-    return get(scopeID, runID).catch(() => undefined)
+    try {
+      return await get(scopeID, runID)
+    } catch (error) {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    }
   }
 
   export async function list(scopeID: string): Promise<WorkflowTypes.Run[]> {
@@ -43,6 +59,7 @@ export namespace WorkflowRunStore {
     const runs = await Storage.readMany<WorkflowTypes.Run>(keys)
     return runs
       .filter((run): run is WorkflowTypes.Run => run !== undefined)
+      .map((run) => WorkflowTypes.Run.parse(run))
       .sort((a, b) => b.time.created - a.time.created)
   }
 
@@ -50,21 +67,26 @@ export namespace WorkflowRunStore {
     const sid = Identifier.asScopeID(input.scopeID)
     const now = Date.now()
     const run = WorkflowTypes.Run.parse({
-      id: Identifier.ascending("workflow_run"),
+      id: input.id ?? Identifier.ascending("workflow_run"),
       scopeID: input.scopeID,
       charterRef: input.charterRef,
       title: input.title,
       status: "active",
       revision: 0,
       bossSessionID: input.bossSessionID,
+      bossControlProfile: input.bossControlProfile,
+      bossPreviousControlProfile: input.bossPreviousControlProfile,
       seats: input.seats,
       entities: [],
       gates: [],
       pendingEffects: [],
+      effectReceipts: {},
       budget: { maxModelCalls: input.maxModelCalls, used: 0 },
       time: { created: now, updated: now },
     })
-    await Storage.write(StoragePath.workflowRun(sid, run.id), run)
+    if (!(await Storage.writeIfAbsent(StoragePath.workflowRun(sid, run.id), run))) {
+      throw new Error(`Workflow run ${run.id} already exists.`)
+    }
     await Bus.publish(WorkflowEvent.RunCreated, { run })
     await appendEvent(input.scopeID, run, { kind: "run_created", message: `Workflow run created: ${run.title}` })
     return run
@@ -78,18 +100,17 @@ export namespace WorkflowRunStore {
     scopeID: string,
     runID: string,
     editor: (run: WorkflowTypes.Run) => void,
-    options?: {
-      expectedRevision?: number
-      expectedEntityState?: { entityID: string; state: string }
-    },
+    options?: UpdateOptions,
   ): Promise<WorkflowTypes.Run> {
     const result = await tryUpdate(scopeID, runID, editor, options)
     if (!result.ok) {
       if (result.reason === "not_found") throw new Storage.NotFoundError({ message: `Workflow run ${runID} not found` })
       throw new Error(
-        options?.expectedEntityState
-          ? `workflow run CAS failed for entity ${options.expectedEntityState.entityID}`
-          : `workflow run CAS conflict on revision ${options?.expectedRevision}`,
+        options?.expectedRunStatus
+          ? `workflow run is not in expected status ${String(options.expectedRunStatus)}`
+          : options?.expectedEntityState
+            ? `workflow run CAS failed for entity ${options.expectedEntityState.entityID}`
+            : `workflow run CAS conflict on revision ${options?.expectedRevision}`,
       )
     }
     return result.run
@@ -99,10 +120,7 @@ export namespace WorkflowRunStore {
     scopeID: string,
     runID: string,
     editor: (run: WorkflowTypes.Run) => void,
-    options?: {
-      expectedRevision?: number
-      expectedEntityState?: { entityID: string; state: string }
-    },
+    options?: UpdateOptions,
   ): Promise<UpdateResult> {
     const sid = Identifier.asScopeID(scopeID)
     let committed: WorkflowTypes.Run | undefined
@@ -114,6 +132,16 @@ export namespace WorkflowRunStore {
           conflict = true
           conflictRun = structuredClone(run)
           return
+        }
+        if (options?.expectedRunStatus) {
+          const expected = Array.isArray(options.expectedRunStatus)
+            ? options.expectedRunStatus
+            : [options.expectedRunStatus]
+          if (!expected.includes(run.status)) {
+            conflict = true
+            conflictRun = structuredClone(run)
+            return
+          }
         }
         if (options?.expectedEntityState) {
           const entity = run.entities.find((item) => item.id === options.expectedEntityState!.entityID)
@@ -166,20 +194,47 @@ export namespace WorkflowRunStore {
       data: input.data,
       time: { created: Date.now() },
     })
-    await Storage.write(StoragePath.workflowEvent(sid, run.id, event.id), event)
+    const key = StoragePath.workflowEvent(sid, run.id, event.id)
+    if (!(await Storage.writeIfAbsent(key, event))) {
+      const existing = WorkflowTypes.EventInfo.parse(await Storage.read<WorkflowTypes.EventInfo>(key))
+      const sameEvent =
+        existing.runID === event.runID &&
+        existing.kind === event.kind &&
+        existing.entityID === event.entityID &&
+        existing.seat === event.seat &&
+        existing.transitionID === event.transitionID &&
+        existing.message === event.message &&
+        JSON.stringify(existing.data) === JSON.stringify(event.data)
+      if (!sameEvent) throw new Error(`Workflow event id ${event.id} is already used by a different event.`)
+      return existing
+    }
     await Bus.publish(WorkflowEvent.EventAppended, { event })
     return event
   }
 
   export async function listEvents(scopeID: string, runID: string): Promise<WorkflowTypes.EventInfo[]> {
+    return (await listEventsPage(scopeID, runID, { limit: Number.MAX_SAFE_INTEGER })).items
+  }
+
+  export async function listEventsPage(
+    scopeID: string,
+    runID: string,
+    input: { after?: string; limit?: number } = {},
+  ): Promise<{ items: WorkflowTypes.EventInfo[]; nextCursor?: string }> {
     const sid = Identifier.asScopeID(scopeID)
     const ids = await Storage.scan(StoragePath.workflowEventsRoot(sid, runID))
-    if (ids.length === 0) return []
-    const keys = ids.map((eventID) => StoragePath.workflowEvent(sid, runID, eventID))
+    if (ids.length === 0) return { items: [] }
+    const start = input.after ? ids.findIndex((eventID) => eventID > input.after!) : 0
+    if (start < 0) return { items: [] }
+    const limit = Math.max(1, input.limit ?? 100)
+    const pageIDs = ids.slice(start, start + limit)
+    const keys = pageIDs.map((eventID) => StoragePath.workflowEvent(sid, runID, eventID))
     const events = await Storage.readMany<WorkflowTypes.EventInfo>(keys)
-    return events
+    const items = events
       .filter((event): event is WorkflowTypes.EventInfo => event !== undefined)
       .sort((a, b) => a.time.created - b.time.created)
+    const nextCursor = start + pageIDs.length < ids.length ? pageIDs.at(-1) : undefined
+    return { items, nextCursor }
   }
 
   /**
@@ -188,6 +243,8 @@ export namespace WorkflowRunStore {
    * key in the effect_executed event's data.
    */
   export async function effectAlreadyExecuted(scopeID: string, runID: string, effectKey: string): Promise<boolean> {
+    const run = await getOrUndefined(scopeID, runID)
+    if (run?.effectReceipts?.[effectKey]) return true
     const events = await listEvents(scopeID, runID)
     return events.some((e) => e.kind === "effect_executed" && e.data?.effectKey === effectKey)
   }

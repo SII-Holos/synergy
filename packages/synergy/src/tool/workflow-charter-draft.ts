@@ -7,8 +7,6 @@ const SeatInput = z.object({
   name: z.string(),
   agent: z.string(),
   charterPrompt: z.string().optional(),
-  charterNoteID: z.string().optional(),
-  controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
   interaction: z.enum(["unattended", "interactive"]).optional(),
   pool: z.number().int().min(1).optional(),
   worktree: z.enum(["none", "per_entity", "shared"]).optional(),
@@ -123,7 +121,7 @@ export const WorkflowCharterDraftTool = Tool.define("workflow_charter_draft", {
         charterRef,
         availableGuards: CharterValidate.availableGuards(),
         availableEffects: CharterValidate.availableEffects(),
-      } as Record<string, any>,
+      },
     }
   },
 })

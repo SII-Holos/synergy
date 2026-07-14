@@ -28,6 +28,7 @@ function run(seats: WorkflowTypes.SeatBinding[], entities: WorkflowTypes.Entity[
     status: "active",
     revision: 0,
     bossSessionID: "ses_boss",
+    bossControlProfile: "guarded",
     seats,
     entities,
     gates: [],
@@ -127,5 +128,49 @@ describe("WorkflowSeats.liveStatus", () => {
       ]),
     )
     expect(projected.seats[0]?.status).toBe("waiting")
+  })
+})
+
+describe("WorkflowSeats.currentEntity", () => {
+  test("resolves only the entity currently owned by the seat binding", () => {
+    const now = Date.now()
+    const stale: WorkflowTypes.Entity = {
+      id: "wfe_stale",
+      runID: "wfr_1",
+      title: "stale",
+      state: "done",
+      bindings: { seatSessionID: "ses_seat" },
+      submissions: [],
+      assignedSeat: { seat: "executor", instance: 0 },
+      time: { created: now, updated: now, stateEntered: now },
+    }
+    const current: WorkflowTypes.Entity = {
+      id: "wfe_current",
+      runID: "wfr_1",
+      title: "current",
+      state: "queued",
+      bindings: { seatSessionID: "ses_seat" },
+      submissions: [],
+      assignedSeat: { seat: "executor", instance: 0 },
+      time: { created: now, updated: now, stateEntered: now },
+    }
+    const r = run(
+      [
+        {
+          seat: "executor",
+          instance: 0,
+          status: "waiting",
+          sessionID: "ses_seat",
+          entityID: current.id,
+          lastEntityIDs: [stale.id],
+        },
+      ],
+      [stale, current],
+    )
+
+    expect(WorkflowSeats.currentEntity(r, { seat: "executor", instance: 0, sessionID: "ses_seat" })?.id).toBe(
+      current.id,
+    )
+    expect(WorkflowSeats.currentEntity(r, { seat: "executor", instance: 0, sessionID: "ses_other" })).toBeUndefined()
   })
 })

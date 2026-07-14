@@ -2,14 +2,16 @@ import z from "zod"
 import { Tool } from "./tool"
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
-import { WorkflowRunStore, CharterStore, WorkflowTypes } from "../workflow-run"
+import { WorkflowRunStore, CharterStore, WorkflowSeats, WorkflowTypes } from "../workflow-run"
 import DESCRIPTION from "./workflow-status.txt"
 
 const parameters = z.object({
   entityID: z.string().optional().describe("Focus on a single entity."),
 })
 
-export const WorkflowStatusTool = Tool.define("workflow_status", {
+type WorkflowStatusMetadata = { runID: string; entityID?: string; state?: string }
+
+export const WorkflowStatusTool = Tool.define<typeof parameters, WorkflowStatusMetadata>("workflow_status", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
@@ -25,7 +27,7 @@ export const WorkflowStatusTool = Tool.define("workflow_status", {
       return {
         title: `Entity ${entity.title}`,
         output: renderEntity(entity),
-        metadata: { runID: run.id, entityID: entity.id, state: entity.state } as Record<string, any>,
+        metadata: { runID: run.id, entityID: entity.id, state: entity.state },
       }
     }
 
@@ -33,17 +35,21 @@ export const WorkflowStatusTool = Tool.define("workflow_status", {
       return {
         title: `Run ${run.title}`,
         output: await renderBossOverview(scopeID, run),
-        metadata: { runID: run.id } as Record<string, any>,
+        metadata: { runID: run.id },
       }
     }
 
-    const entity = run.entities.find(
-      (e) => e.assignedSeat?.seat === binding.seat && e.bindings.seatSessionID === ctx.sessionID,
-    )
+    const entity = binding.seat
+      ? WorkflowSeats.currentEntity(run, {
+          seat: binding.seat,
+          instance: binding.instance ?? 0,
+          sessionID: ctx.sessionID,
+        })
+      : undefined
     return {
       title: entity ? `Your entity: ${entity.title}` : "No entity assigned",
       output: entity ? renderEntity(entity) : "You have no entity assigned right now. Wait for a handoff.",
-      metadata: { runID: run.id, entityID: entity?.id } as Record<string, any>,
+      metadata: { runID: run.id, entityID: entity?.id },
     }
   },
 })
@@ -63,9 +69,7 @@ function renderEntity(entity: WorkflowTypes.Entity): string {
 }
 
 async function renderBossOverview(scopeID: string, run: WorkflowTypes.Run): Promise<string> {
-  const charter = await CharterStore.getOrUndefined(scopeID, run.charterRef.id, run.charterRef.version).catch(
-    () => undefined,
-  )
+  const charter = await CharterStore.getOrUndefined(scopeID, run.charterRef.id, run.charterRef.version)
   const byState = new Map<string, WorkflowTypes.Entity[]>()
   for (const e of run.entities) {
     const list = byState.get(e.state) ?? []

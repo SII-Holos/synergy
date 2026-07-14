@@ -1,17 +1,26 @@
 import z from "zod"
 import { Identifier } from "../id/id"
+import { Session } from "../session"
+import { SessionInbox } from "../session/inbox"
+import { SessionManager } from "../session/manager"
 import { CharterStore } from "./charter-store"
 import { WorkflowRunStore } from "./store"
 import { WorkflowTypes } from "./types"
 
 /**
- * Structured handoff (A2A v1.5). The engine delivers a handoff to a seat
- * session as a Cortex-owned task on the seat's durable session. Its metadata
- * carries the handoffID. Acknowledgement is deterministic: WorkflowBridge
- * observes the handoff user message materialise in the target session and only
- * then appends `handoff_acked`.
+ * Structured handoff (A2A v1.5). The engine delivers a durable task to the
+ * seat's SessionInbox. Its metadata carries the handoffID. Acknowledgement is
+ * deterministic: WorkflowBridge observes the handoff user message materialise
+ * in the target session and only then appends `handoff_acked`.
  */
 export namespace WorkflowHandoff {
+  export interface Delivery {
+    itemID?: string
+    messageID: string
+  }
+
+  const deliveries = new Map<string, Promise<Delivery>>()
+
   export const ContextRef = z.object({
     kind: z.enum(["note", "session", "message", "file", "commit"]),
     ref: z.string(),
@@ -63,46 +72,85 @@ export namespace WorkflowHandoff {
     return lines.join("\n")
   }
 
-  /**
-   * Deliver a handoff by launching a Cortex task on the seat session. Returns
-   * the Cortex task id so the seat binding can track active work.
-   */
+  /** Deliver one durable task for a stable handoff id. */
   export async function deliver(
     scopeID: string,
     sessionID: string,
     handoff: Info,
     entity: WorkflowTypes.Entity,
-  ): Promise<string> {
+    options?: { wake?: boolean },
+  ): Promise<Delivery> {
+    const key = `${sessionID}:${handoff.id}`
+    const active = deliveries.get(key)
+    if (active) return active
+    const delivery = deliverOnce(scopeID, sessionID, handoff, entity, options).finally(() => deliveries.delete(key))
+    deliveries.set(key, delivery)
+    return delivery
+  }
+
+  async function deliverOnce(
+    scopeID: string,
+    sessionID: string,
+    handoff: Info,
+    entity: WorkflowTypes.Entity,
+    options?: { wake?: boolean },
+  ): Promise<Delivery> {
+    const existing = await findExisting(sessionID, handoff.id)
+    if (existing) {
+      scheduleWake(sessionID, options)
+      return existing
+    }
+
     const text = render(handoff, entity)
     const run = await WorkflowRunStore.get(scopeID, handoff.runID)
     const charter = await CharterStore.get(scopeID, run.charterRef.id, run.charterRef.version)
     const def = charter.seats.find((seat) => seat.name === handoff.toSeat.seat)
     if (!def) throw new Error(`Charter has no seat '${handoff.toSeat.seat}'`)
 
-    const { Cortex } = await import("../cortex")
-    const task = await Cortex.launch({
-      description: `Seat ${handoff.toSeat.seat}#${handoff.toSeat.instance}: ${entity.title}`,
-      prompt: text,
-      agent: def.agent,
-      parentSessionID: run.bossSessionID,
-      parentMessageID: Identifier.ascending("message"),
+    const result = await SessionInbox.deliver({
       sessionID,
-      model: def.model,
-      tools: def.tools,
-      visibility: "hidden",
-      notifyParentOnComplete: false,
-      owner: {
-        kind: "workflow_run",
-        runID: handoff.runID,
-        entityID: handoff.entityID,
-        seat: handoff.toSeat.seat,
-        instance: handoff.toSeat.instance,
-        correlationID: `workflow:${handoff.runID}:entity:${handoff.entityID}:seat:${handoff.toSeat.seat}#${handoff.toSeat.instance}`,
-      },
-      metadata: {
-        workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
+      mode: "task",
+      message: {
+        role: "user",
+        agent: def.agent,
+        origin: { type: "system", detail: "workflow_handoff" },
+        visible: true,
+        parts: [{ id: Identifier.ascending("part"), type: "text", text, origin: "system" }],
+        summary: { title: `Workflow task: ${entity.title}` },
+        metadata: {
+          workflowRun: { runID: handoff.runID, entityID: handoff.entityID, handoffID: handoff.id },
+        },
+        model: def.model,
+        tools: def.tools,
       },
     })
-    return task.id
+    scheduleWake(sessionID, options)
+    return result
+  }
+
+  function scheduleWake(sessionID: string, options?: { wake?: boolean }): void {
+    if (options?.wake !== false && !SessionManager.isRunning(sessionID)) {
+      SessionManager.scheduleWake(sessionID, "workflow_handoff")
+    }
+  }
+
+  async function findExisting(sessionID: string, handoffID: string): Promise<Delivery | undefined> {
+    const pending = (await SessionInbox.list(sessionID)).find(
+      (item) => workflowHandoffID(item.message?.metadata) === handoffID,
+    )
+    if (pending) return { itemID: pending.id, messageID: pending.messageID }
+
+    const materialized = (await Session.messages({ sessionID })).find(
+      (message) => message.info.role === "user" && workflowHandoffID(message.info.metadata) === handoffID,
+    )
+    if (materialized) return { messageID: materialized.info.id }
+  }
+
+  function workflowHandoffID(metadata: unknown): string | undefined {
+    if (!metadata || typeof metadata !== "object") return undefined
+    const workflow = (metadata as Record<string, unknown>).workflowRun
+    if (!workflow || typeof workflow !== "object") return undefined
+    const handoffID = (workflow as Record<string, unknown>).handoffID
+    return typeof handoffID === "string" ? handoffID : undefined
   }
 }

@@ -4,6 +4,9 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { WorkflowRun, WorkflowEntity, WorkflowEvent, WorkflowCharter } from "@ericsanchezok/synergy-sdk/client"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { cancelWorkflowRunConfirm } from "@/components/dialog/confirm-copy"
+import type { ScopedSDK } from "@/context/sdk"
 import { BossData } from "./boss-data"
 
 const ICON = {
@@ -67,107 +70,168 @@ function SectionHeader(props: { icon: IconName; title: string; count?: number })
  * scoped SDK (from useSDK) cast to this — same decoupling pattern as
  * LatticePanelSDK.
  */
-export interface BossPanelSDK {
-  event: {
-    on: (type: string, cb: (event: { properties: { run?: WorkflowRun; event?: WorkflowEvent } }) => void) => () => void
-  }
-  client: {
-    // The generated hey-api client takes parameters flat as the first argument
-    // (path + body + query keys together); the scoped client injects
-    // directory/scopeID itself.
-    workflowRun: {
-      list: () => Promise<{ data?: WorkflowRun[] | null }>
-      create: (params: {
-        charterID: string
-        title: string
-        bossSessionID: string
-      }) => Promise<{ data?: WorkflowRun | null }>
-      events: (params: { id: string; after?: string }) => Promise<{ data?: WorkflowEvent[] | null }>
-      control: (params: { id: string; action: "pause" | "resume" | "cancel" }) => Promise<{ data?: WorkflowRun | null }>
-      entity: {
-        add: (params: {
-          id: string
-          title: string
-          description?: string
-          affinityKey?: string
-        }) => Promise<{ data?: WorkflowEntity | null }>
-      }
-      gate: {
-        resolve: (params: { id: string; gid: string; resolution: string }) => Promise<{ data?: WorkflowRun | null }>
-      }
-    }
-    workflowCharter: {
-      get: (params: { id: string; version: number }) => Promise<{ data?: WorkflowCharter | null }>
-    }
-  }
+export type BossPanelSDK = Pick<ScopedSDK, "event"> & {
+  client: Pick<ScopedSDK["client"], "workflowRun" | "workflowCharter">
 }
 
 export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconnectVersion?: number }) {
+  const confirm = useConfirm()
   const [runs, setRuns] = createSignal<WorkflowRun[]>([])
   const [selectedRunID, setSelectedRunID] = createSignal<string | undefined>()
-  const [charter, setCharter] = createSignal<WorkflowCharter | null>(null)
-  const [events, setEvents] = createSignal<WorkflowEvent[]>([])
+  const [runsLoaded, setRunsLoaded] = createSignal(false)
+  const [runListError, setRunListError] = createSignal<string | undefined>()
+  const [chartersByRun, setChartersByRun] = createSignal(new Map<string, WorkflowCharter>())
+  const [eventsByRun, setEventsByRun] = createSignal(new Map<string, WorkflowEvent[]>())
+  const [charterError, setCharterError] = createSignal<string | undefined>()
+  const [eventsError, setEventsError] = createSignal<string | undefined>()
   const [busy, setBusy] = createSignal(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = createSignal(false)
   const [newIssue, setNewIssue] = createSignal("")
   const [timelineOpen, setTimelineOpen] = createSignal(false)
 
   // list() already returns full run objects, so the selected run is derived
   // directly from the list — no separate get() round-trip that could return null
   // and blank the whole panel.
-  const run = createMemo(() => runs().find((r) => r.id === selectedRunID()) ?? null)
+  const run = createMemo(() => runs().find((r) => r.id === selectedRunID()) ?? runs()[0] ?? null)
+  const runListState = createMemo(() => BossData.runListState(runsLoaded(), runs()))
+  const charter = createMemo(() => {
+    const selected = run()
+    return selected ? (chartersByRun().get(selected.id) ?? null) : null
+  })
+  const events = createMemo(() => {
+    const selected = run()
+    return selected ? (eventsByRun().get(selected.id) ?? []) : []
+  })
+  const detailError = createMemo(() => [charterError(), eventsError()].filter(Boolean).join(" "))
+  const runListRequest = BossData.createLatestRequestRunner()
+  const charterRequest = BossData.createLatestRequestRunner()
+  const eventsRequest = BossData.createLatestRequestRunner()
+  let liveRunSequence = 0
+  const liveRunsByID = new Map<string, { sequence: number; run: WorkflowRun }>()
 
-  const loadRuns = async () => {
-    const res = await props.sdk.client.workflowRun.list().catch(() => ({ data: [] }))
-    const list = (res.data ?? []).filter(BossData.isActive)
-    setRuns(list)
-    // Prefer the run owned by the current session, else the first active run.
-    if (!selectedRunID() || !list.some((r) => r.id === selectedRunID())) {
-      const owned = list.find((r) => r.bossSessionID === props.sessionID)
-      setSelectedRunID(owned?.id ?? list[0]?.id)
-    }
+  const loadRuns = (sessionID: string | undefined) => {
+    const baseline = runs()
+    const requestSequence = liveRunSequence
+    setRunListError(undefined)
+    return runListRequest.run(() => props.sdk.client.workflowRun.list(), {
+      success: (res) => {
+        if (props.sessionID !== sessionID) return
+        const liveChanges = [...liveRunsByID.values()]
+          .filter((entry) => entry.sequence > requestSequence || !BossData.isActive(entry.run))
+          .sort((a, b) => a.sequence - b.sequence)
+          .map((entry) => entry.run)
+        const next = BossData.reconcileRunSnapshot(runs(), res.data ?? [], baseline, sessionID, liveChanges)
+        setRuns(next)
+        setSelectedRunID((selected) => BossData.selectRunID(next, selected))
+        setRunsLoaded(true)
+      },
+      failure: () => {
+        if (props.sessionID !== sessionID) return
+        setRunsLoaded(true)
+        setRunListError("Workflow runs could not be refreshed.")
+      },
+    })
   }
 
-  const loadCharterAndEvents = async (r: WorkflowRun) => {
-    const [charterRes, eventsRes] = await Promise.all([
-      props.sdk.client.workflowCharter
-        .get({ id: r.charterRef.id, version: r.charterRef.version })
-        .catch(() => ({ data: null })),
-      props.sdk.client.workflowRun.events({ id: r.id }).catch(() => ({ data: [] })),
-    ])
-    setCharter(charterRes.data ?? null)
-    setEvents(eventsRes.data ?? [])
+  const loadCharter = (selected: WorkflowRun) => {
+    setCharterError(undefined)
+    return charterRequest.run(
+      () => props.sdk.client.workflowCharter.get({ id: selected.charterRef.id, version: selected.charterRef.version }),
+      {
+        success: (res) => {
+          const nextCharter = res.data
+          if (!nextCharter) {
+            setCharterError("The workflow charter could not be refreshed.")
+            return
+          }
+          setChartersByRun((current) => {
+            const next = new Map(current)
+            next.set(selected.id, nextCharter)
+            return next
+          })
+        },
+        failure: () => setCharterError("The workflow charter could not be refreshed."),
+      },
+    )
   }
 
+  const loadEvents = (selected: WorkflowRun) => {
+    setEventsError(undefined)
+    return eventsRequest.run(
+      (signal) =>
+        BossData.collectEventPages(async (after) => {
+          const response = await props.sdk.client.workflowRun.events({ id: selected.id, after }, { signal })
+          return response.data ?? { items: [] }
+        }, signal),
+      {
+        success: (snapshot) => {
+          setEventsByRun((current) => {
+            const next = new Map(current)
+            next.set(selected.id, BossData.mergeEventSnapshot(current.get(selected.id) ?? [], snapshot))
+            return next
+          })
+        },
+        failure: () => setEventsError("Workflow activity could not be refreshed."),
+      },
+    )
+  }
+
+  let activeSessionID: string | undefined
   createEffect(() => {
     // Re-fetch authoritative snapshot after websocket reconnect so missed
     // run.created / run.updated / event.appended envelopes cannot leave the
     // panel permanently stale.
     void props.reconnectVersion
-    void loadRuns()
+    const sessionID = props.sessionID
+    if (activeSessionID !== sessionID) {
+      activeSessionID = sessionID
+      setRuns([])
+      setSelectedRunID(undefined)
+      setRunListError(undefined)
+      setChartersByRun(new Map())
+      setEventsByRun(new Map())
+      setCharterError(undefined)
+      setEventsError(undefined)
+      setRunsLoaded(false)
+      liveRunSequence = 0
+      liveRunsByID.clear()
+    }
+    if (!sessionID) {
+      runListRequest.cancel()
+      setRunsLoaded(true)
+      return
+    }
+    void loadRuns(sessionID)
+
+    const reconcileRun = (incoming: WorkflowRun) => {
+      if (incoming.bossSessionID !== sessionID) return
+      const known = liveRunsByID.get(incoming.id)?.run ?? runs().find((item) => item.id === incoming.id)
+      const latest = BossData.latestRun(known, incoming)
+      if (known && latest === known) return
+      liveRunSequence += 1
+      liveRunsByID.set(incoming.id, { sequence: liveRunSequence, run: latest })
+      const next = BossData.reconcileActiveRun(runs(), latest, sessionID)
+      setRuns(next)
+      setSelectedRunID((selected) => BossData.selectRunID(next, selected))
+    }
     const unsubCreated = props.sdk.event.on("workflow.run.created", (event) => {
       const created = event.properties.run
       if (!created) return
-      setRuns((prev) => {
-        const next = prev.filter((r) => r.id !== created.id)
-        if (BossData.isActive(created)) next.push(created)
-        return next
-      })
-      if (!selectedRunID() && BossData.isActive(created)) setSelectedRunID(created.id)
+      reconcileRun(created)
     })
     const unsubRun = props.sdk.event.on("workflow.run.updated", (event) => {
       const updated = event.properties.run
       if (!updated) return
-      setRuns((prev) => {
-        const next = prev.filter((r) => r.id !== updated.id)
-        if (BossData.isActive(updated)) next.push(updated)
-        return next
-      })
-      if (!selectedRunID() && BossData.isActive(updated)) setSelectedRunID(updated.id)
+      reconcileRun(updated)
     })
     const unsubEvent = props.sdk.event.on("workflow.event.appended", (event) => {
       const appended = event.properties.event
-      if (!appended || appended.runID !== selectedRunID()) return
-      setEvents((prev) => BossData.mergeEvents(prev, [appended]))
+      if (!appended || !runs().some((item) => item.id === appended.runID)) return
+      setEventsByRun((current) => {
+        const next = new Map(current)
+        next.set(appended.runID, BossData.mergeEvents(current.get(appended.runID) ?? [], [appended]))
+        return next
+      })
     })
     onCleanup(() => {
       unsubCreated()
@@ -176,12 +240,30 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
     })
   })
 
-  // Load the (separate) charter + event log whenever the selected run changes
-  // or after reconnect.
+  let detailKey: string | undefined
   createEffect(() => {
-    void props.reconnectVersion
-    const r = run()
-    if (r) void loadCharterAndEvents(r)
+    const reconnectVersion = props.reconnectVersion ?? 0
+    const selected = run()
+    const nextKey = selected
+      ? `${selected.id}:${selected.charterRef.id}:${selected.charterRef.version}:${reconnectVersion}`
+      : undefined
+    if (nextKey === detailKey) return
+    detailKey = nextKey
+    setCharterError(undefined)
+    setEventsError(undefined)
+    if (!selected) {
+      charterRequest.cancel()
+      eventsRequest.cancel()
+      return
+    }
+    void loadCharter(selected)
+    void loadEvents(selected)
+  })
+
+  onCleanup(() => {
+    runListRequest.cancel()
+    charterRequest.cancel()
+    eventsRequest.cancel()
   })
 
   const stateOrder = createMemo(() => charter()?.states ?? [])
@@ -214,17 +296,36 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
     }
   }
 
-  const control = async (action: "pause" | "resume" | "cancel") => {
-    const id = selectedRunID()
-    if (!id) return
+  const performControl = async (id: string, action: "pause" | "resume" | "cancel") => {
     setBusy(true)
     try {
       await props.sdk.client.workflowRun.control({ id, action })
-    } catch (err) {
-      showToast({ type: "error", title: "Control failed", description: err instanceof Error ? err.message : "Unknown" })
     } finally {
       setBusy(false)
     }
+  }
+
+  const control = async (action: "pause" | "resume") => {
+    const id = selectedRunID()
+    if (!id) return
+    try {
+      await performControl(id, action)
+    } catch (err) {
+      showToast({ type: "error", title: "Control failed", description: err instanceof Error ? err.message : "Unknown" })
+    }
+  }
+
+  const requestCancel = () => {
+    const current = run()
+    if (!current || busy() || cancelConfirmOpen()) return
+
+    setCancelConfirmOpen(true)
+    confirm.show({
+      ...cancelWorkflowRunConfirm(current.title),
+      onConfirm: () => performControl(current.id, "cancel"),
+      onConfirmed: () => setCancelConfirmOpen(false),
+      onDismiss: () => setCancelConfirmOpen(false),
+    })
   }
 
   const createRun = async () => {
@@ -244,7 +345,7 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
         bossSessionID: props.sessionID,
       })
       if (res.data) setSelectedRunID(res.data.id)
-      await loadRuns()
+      await loadRuns(props.sessionID)
     } catch (err) {
       showToast({ type: "error", title: "Create failed", description: err instanceof Error ? err.message : "Unknown" })
     } finally {
@@ -267,20 +368,42 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
     }
   }
 
+  const retryDetails = () => {
+    const selected = run()
+    if (!selected) return
+    if (charterError()) void loadCharter(selected)
+    if (eventsError()) void loadEvents(selected)
+  }
+
   return (
     <div class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 text-13-regular text-text-base">
+      <Show when={runListError()}>
+        {(message) => <LoadError message={message()} onRetry={() => void loadRuns(props.sessionID)} />}
+      </Show>
       <Show
-        when={runs().length > 0}
+        when={runListState() !== "loading"}
         fallback={
           <div class="flex flex-col items-center gap-3 px-2 py-8 text-center text-text-weak">
-            <span>No active workflow runs in this scope.</span>
-            <Button size="small" variant="primary" disabled={busy()} onClick={createRun}>
-              Start Issue → PR → Test run
-            </Button>
+            <span>Loading workflow runs…</span>
           </div>
         }
       >
-        <Show when={run()}>
+        <Show
+          when={runListState() === "ready" && run()}
+          fallback={
+            <div class="flex flex-col items-center gap-3 px-2 py-8 text-center text-text-weak">
+              <Show
+                when={!runListError()}
+                fallback={<span>Workflow runs are unavailable. Retry the refresh above.</span>}
+              >
+                <span>No active workflow runs for this session.</span>
+                <Button size="small" variant="primary" disabled={busy()} onClick={createRun}>
+                  Start Issue → PR → Test run
+                </Button>
+              </Show>
+            </div>
+          }
+        >
           {(r) => {
             const pill = () => statusPill(r().status)
             const budgetPct = () =>
@@ -340,11 +463,20 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
                       </Button>
                     </Show>
                     <div class="flex-1" />
-                    <Button size="small" variant="ghost" disabled={busy()} onClick={() => control("cancel")}>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      disabled={busy() || cancelConfirmOpen()}
+                      onClick={requestCancel}
+                    >
                       Cancel run
                     </Button>
                   </div>
                 </header>
+
+                <Show when={detailError()}>
+                  {(message) => <LoadError message={message()} onRetry={retryDetails} />}
+                </Show>
 
                 {/* Gates — the only thing that needs the human */}
                 <Show when={gates().length > 0}>
@@ -494,6 +626,20 @@ export function BossPanel(props: { sdk: BossPanelSDK; sessionID?: string; reconn
           }}
         </Show>
       </Show>
+    </div>
+  )
+}
+
+function LoadError(props: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      class="flex items-center gap-2 rounded-md border border-border-critical-base/40 bg-surface-critical-weak px-2.5 py-2 text-12-regular text-text-on-critical-base"
+    >
+      <span class="min-w-0 flex-1">{props.message}</span>
+      <Button size="small" variant="ghost" onClick={props.onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }

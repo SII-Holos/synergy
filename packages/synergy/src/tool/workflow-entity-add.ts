@@ -32,7 +32,7 @@ export const WorkflowEntityAddTool = Tool.define("workflow_entity_add", {
     return {
       title: `Entity added: ${entity.title}`,
       output: `Entity ${entity.id} entered state "${entity.state}".`,
-      metadata: { runID: run.id, entityID: entity.id, state: entity.state } as Record<string, any>,
+      metadata: { runID: run.id, entityID: entity.id, state: entity.state },
     }
   },
 })

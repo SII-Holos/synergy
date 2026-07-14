@@ -31,6 +31,29 @@ import { Identifier } from "../../src/id/id"
  */
 
 describe("BlueprintLoopStore transitions", () => {
+  test("replays a create with the same durable operation id", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const input = {
+          id: "bll_wfv_transition_0",
+          noteID: "note_test",
+          title: "Workflow loop",
+          sessionID: "ses_worker",
+          source: "workflow" as const,
+        }
+        const first = await BlueprintLoopStore.create(input)
+        const replay = await BlueprintLoopStore.create(input)
+
+        expect(replay).toEqual(first)
+        expect((await BlueprintLoopStore.list(scope.id)).filter((loop) => loop.id === input.id)).toHaveLength(1)
+      },
+    })
+  })
+
   test("rejects a second active loop for the same Blueprint", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope

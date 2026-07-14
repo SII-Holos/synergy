@@ -562,44 +562,6 @@
   color: var(--icon-info-base);
 }
 
-/* --- Boss Mode: nested seat sessions --- */
-.sb-boss-seats {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: 1px 0 2px 15px;
-  padding-left: 9px;
-  border-left: 1px solid var(--border-weak, var(--sb-hover-bg));
-}
-.sb-boss-seats-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: var(--font-size-smaller, 11px);
-  color: var(--text-weak);
-  background: transparent;
-  cursor: pointer;
-  transition: background-color 100ms;
-}
-.sb-boss-seats-toggle:hover {
-  background: var(--sb-hover-bg);
-  color: var(--text-base);
-}
-.sb-boss-seats-chevron {
-  color: var(--icon-weak);
-}
-.sb-boss-seat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.sb-boss-seat-list .sb-session-row {
-  height: 28px;
-}
-
 .sb-session-title {
   font-size: var(--font-size-small);
   font-weight: 400;

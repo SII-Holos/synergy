@@ -53,6 +53,7 @@ import { isToolCardHidden } from "./tool-result-presentation"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
+import { getWorkflowToolInfo } from "./tool/workflow"
 import { renderableTextPartMarkdownText } from "./text-part-render"
 
 export type UserMessageVariant = "default" | "turn-bubble"
@@ -514,6 +515,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   if (browser) return browser
 
   if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
+  const workflow = getWorkflowToolInfo(tool, input, metadata)
+  if (workflow) return workflow
 
   switch (tool) {
     case "read":

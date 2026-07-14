@@ -63,7 +63,16 @@ export namespace CharterValidate {
     }
 
     const states = new Set(draft.states)
-    const seatNames = new Set(draft.seats.map((s) => s.name))
+    const seatNames = new Set<string>()
+    for (const seat of draft.seats) {
+      if (seatNames.has(seat.name)) errors.push(`duplicate seat name '${seat.name}'`)
+      seatNames.add(seat.name)
+    }
+    const gateNames = new Set<string>()
+    for (const gate of draft.gates ?? []) {
+      if (gateNames.has(gate.name)) errors.push(`duplicate gate name '${gate.name}'`)
+      gateNames.add(gate.name)
+    }
 
     // --- Layer 1: hard structural errors ---
     if (!states.has(draft.entityInitialState)) {
@@ -76,7 +85,7 @@ export namespace CharterValidate {
 
     const transitionIDs = new Set<string>()
     for (const t of draft.transitions) {
-      if (transitionIDs.has(t.id)) fixes.push(`duplicate transition id '${t.id}' (later definition wins)`)
+      if (transitionIDs.has(t.id)) errors.push(`duplicate transition id '${t.id}'`)
       transitionIDs.add(t.id)
       if (!states.has(t.from)) errors.push(`transition '${t.id}' from-state '${t.from}' is not in states`)
       if (!states.has(t.to)) errors.push(`transition '${t.id}' to-state '${t.to}' is not in states`)
@@ -146,9 +155,7 @@ export namespace CharterValidate {
       if (!hasExit) warnings.push(`state '${state}' has no outgoing transition — verify this is intentional`)
     }
     for (const seat of draft.seats) {
-      if (!seat.charterPrompt?.trim() && !seat.charterNoteID) {
-        warnings.push(`seat '${seat.name}' has no charter prompt or note`)
-      }
+      if (!seat.charterPrompt?.trim()) warnings.push(`seat '${seat.name}' has no charter prompt`)
     }
     if (!draft.budget || draft.budget.maxModelCalls === 0) {
       warnings.push("no model-call budget set — the run can consume unbounded model calls")

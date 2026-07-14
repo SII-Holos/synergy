@@ -8,12 +8,10 @@ import { Identifier } from "../id/id"
  * an entity state machine, guards (fixed predicate library), effects (fixed
  * effect library), and human-responsibility gates. A WorkflowRun is one
  * instantiation of a Charter: a scope-level entity that owns persistent seat
- * sessions, entities flowing through the state machine, and an append-only
- * event log that is the single source of truth for audit and recovery.
+ * sessions and entities flowing through the state machine. The run snapshot is
+ * the recovery source of truth; the sibling event stream is an audit projection.
  */
 export namespace WorkflowTypes {
-  export const ControlProfile = z.enum(["guarded", "autonomous", "full_access"])
-
   // --- Charter (immutable within a version) -------------------------------
 
   export const WorktreePolicy = z.enum(["none", "per_entity", "shared"])
@@ -24,11 +22,6 @@ export namespace WorkflowTypes {
       name: z.string().describe("Seat identifier, e.g. 'executor' | 'reviewer' | 'tester'"),
       agent: z.string().describe("Agent name (validated against the agent registry at run creation)"),
       charterPrompt: z.string().optional().describe("Inline standing instructions for this seat"),
-      charterNoteID: z
-        .string()
-        .optional()
-        .describe("kind:'charter' note holding this seat's charter (takes precedence)"),
-      controlProfile: ControlProfile.default("autonomous"),
       interaction: z.enum(["unattended", "interactive"]).default("unattended"),
       pool: z.number().int().min(1).default(1).describe("Number of parallel instances of this seat"),
       worktree: WorktreePolicy.default("none"),
@@ -128,7 +121,6 @@ export namespace WorkflowTypes {
       instance: z.number().int().min(0),
       sessionID: Identifier.schema("session").optional(),
       entityID: Identifier.schema("workflow_entity").optional(),
-      activeTaskID: Identifier.schema("cortex").optional(),
       status: z.enum(["unbound", "idle", "working", "waiting"]).default("unbound"),
       lastEntityIDs: z.array(z.string()).default([]).describe("Recently handled entity ids (for affinity)"),
     })
@@ -205,18 +197,21 @@ export namespace WorkflowTypes {
     .object({
       id: Identifier.schema("workflow_run"),
       scopeID: z.string(),
-      charterRef: z.object({ id: Identifier.schema("charter"), version: z.number() }),
+      charterRef: z.object({ id: Identifier.schema("charter"), version: z.number().int().min(1) }),
       title: z.string(),
       status: RunStatus,
       statusReason: z.string().optional(),
       // Monotonic revision used as a CAS token for concurrent command commits.
       revision: z.number().int().min(0).default(0),
       bossSessionID: Identifier.schema("session"),
+      bossControlProfile: z.enum(["guarded", "autonomous", "full_access"]).default("guarded"),
+      bossPreviousControlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
       seats: z.array(SeatBinding),
       entities: z.array(Entity),
       gates: z.array(GateInstance),
       pendingEffects: z.array(PendingEffect).default([]),
-      budget: z.object({ maxModelCalls: z.number(), used: z.number() }),
+      effectReceipts: z.record(z.string(), z.number()).optional(),
+      budget: z.object({ maxModelCalls: z.number().int().min(0), used: z.number().int().min(0) }),
       time: z.object({ created: z.number(), updated: z.number(), completed: z.number().optional() }),
     })
     .meta({ ref: "WorkflowRun" })

@@ -1,5 +1,6 @@
 export * from "./classifier"
 export * from "./trigger"
 export * from "./body-primitives"
+export * from "./workflow"
 export { BasicTool, SmartTool } from "../basic-tool"
 export * from "./renders"

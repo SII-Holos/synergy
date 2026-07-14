@@ -50,6 +50,8 @@ The effective profile is resolved in this order:
 
 Ordinary interactive sessions default to `guarded`. Root sessions created for Channels or Agenda default to `autonomous`. A delegated child therefore inherits an explicit profile from its parent chain unless it defines its own.
 
+Persisted orchestration definitions are not authorization sources. WorkflowRun creation freezes the Boss session's then-effective profile as an explicit durable cap, records the prior raw session profile, and every seat inherits the cap; a Charter cannot select `autonomous` or `full_access` to widen the permissions, filesystem roots, network policy, or sandbox of the session that created the run. Generic session profile updates are rejected while either a Boss or seat binding remains, so callers cannot bypass the frozen cap through another API. Cancellation conditionally removes only that run's Boss binding and restores the recorded raw profile, so the temporary cap does not leak into later ordinary conversation. Recovery performs the same binding/profile repair or cleanup atomically. This same-value snapshot is an orchestration fence, not a child-selected override. Any future broader child-profile override requires its own explicit high-risk authorization contract at execution time, not merely approval to write internal workflow state.
+
 ## Approval Sources
 
 An authorization decision combines several sources without treating them as interchangeable:
@@ -108,3 +110,4 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - Sensitive values are never sent raw to SmartAllow.
 - Worktree isolation protects writes and execution outside the active worktree.
 - A workflow or agent restriction can remove a tool even when the control profile would allow its capability.
+- Persisted workflow, agent, or plugin data cannot elevate a child beyond the authority that launched it.

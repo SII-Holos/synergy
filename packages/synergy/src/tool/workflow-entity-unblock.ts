@@ -40,7 +40,7 @@ export const WorkflowEntityUnblockTool = Tool.define("workflow_entity_unblock", 
         `Entity ${params.entityID} was blocked (${previous}).`,
         `It has returned to "${result.entityState}" and will re-enter the normal pipeline.`,
       ].join("\n"),
-      metadata: { runID: run.id, entityID: params.entityID, state: result.entityState } as Record<string, any>,
+      metadata: { runID: run.id, entityID: params.entityID, state: result.entityState },
     }
   },
 })

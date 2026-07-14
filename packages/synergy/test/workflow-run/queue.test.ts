@@ -3,10 +3,12 @@ import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Session } from "../../src/session"
+import { SessionManager } from "../../src/session/manager"
 import { CharterStore } from "../../src/workflow-run/charter-store"
 import { WorkflowRunStore } from "../../src/workflow-run/store"
 import { WorkflowRunService } from "../../src/workflow-run/service"
 import { WorkflowMachine } from "../../src/workflow-run/machine"
+import { WorkflowContinuationPolicy } from "../../src/workflow-run/policy"
 import { WorkflowSeats } from "../../src/workflow-run/seats"
 import { WorkflowTypes } from "../../src/workflow-run/types"
 
@@ -74,6 +76,23 @@ async function seed(pool: number) {
 }
 
 describe("seat pool queueing", () => {
+  test("a pool of one atomically admits only one concurrent entity", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await seed(1)
+
+      await Promise.all([
+        WorkflowRunService.addEntity({ runID: run.id, title: "first" }),
+        WorkflowRunService.addEntity({ runID: run.id, title: "second" }),
+      ])
+
+      const after = await WorkflowRunStore.get(scopeID, run.id)
+      expect(after.entities.map((entity) => entity.state).sort()).toEqual(["queued", "working"])
+      expect(after.entities.every((entity) => entity.blockedReason === undefined)).toBe(true)
+      expect(after.entities.filter((entity) => entity.state === WorkflowTypes.BLOCKED_STATE)).toHaveLength(0)
+      expect(after.seats.filter((seat) => seat.entityID)).toHaveLength(1)
+    })
+  })
+
   test("entities beyond the pool wait in the initial state instead of blocking", async () => {
     await withScope(async () => {
       const { scopeID, run } = await seed(2)
@@ -112,6 +131,53 @@ describe("seat pool queueing", () => {
       expect(after.entities.filter((e) => e.state === "done")).toHaveLength(1)
       expect(after.entities.filter((e) => e.state === "working")).toHaveLength(2) // still 2 busy
       expect(after.entities.filter((e) => e.state === "queued")).toHaveLength(0) // queue drained
+    })
+  })
+
+  test("does not reuse a released seat until its running session reaches idle", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await seed(1)
+      await WorkflowRunService.addEntity({ runID: run.id, title: "first" })
+      await WorkflowRunService.addEntity({ runID: run.id, title: "second" })
+
+      let after = await WorkflowRunStore.get(scopeID, run.id)
+      const first = after.entities.find((entity) => entity.state === "working")!
+      const seatSessionID = first.bindings.seatSessionID!
+      const lease = SessionManager.acquire(seatSessionID)
+      expect(lease).toBeDefined()
+      try {
+        const result = await WorkflowMachine.submitIntent({
+          scopeID,
+          runID: run.id,
+          entityID: first.id,
+          transitionID: "finish",
+          actorSessionID: seatSessionID,
+        })
+        expect(result.ok).toBe(true)
+
+        after = await WorkflowRunStore.get(scopeID, run.id)
+        expect(after.entities.filter((entity) => entity.state === "working")).toHaveLength(0)
+        expect(after.entities.filter((entity) => entity.state === "queued")).toHaveLength(1)
+        expect(after.seats[0]?.entityID).toBe(first.id)
+        expect(after.entities.find((entity) => entity.id === first.id)?.assignedSeat).toBeUndefined()
+      } finally {
+        await SessionManager.release(lease!)
+        SessionManager.unregisterRuntime(seatSessionID)
+      }
+
+      const seatSession = await Session.get(seatSessionID)
+      const handled = await WorkflowContinuationPolicy.handle({
+        scopeID,
+        sessionID: seatSessionID,
+        terminalMessageID: "msg_idle",
+        session: seatSession,
+      })
+      expect(handled).toBe(true)
+
+      after = await WorkflowRunStore.get(scopeID, run.id)
+      expect(after.entities.filter((entity) => entity.state === "working")).toHaveLength(1)
+      expect(after.entities.filter((entity) => entity.state === "queued")).toHaveLength(0)
+      expect(after.seats[0]?.entityID).not.toBe(first.id)
     })
   })
 })

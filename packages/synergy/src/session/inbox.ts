@@ -341,7 +341,7 @@ export namespace SessionInbox {
     options?: { allowSteer?: boolean; excludeIDs?: Set<string> },
   ): Promise<boolean> {
     const items = await peekReady(sessionID, options?.excludeIDs)
-    if (items.some((item) => item.mode === "task")) return true
+    if (items.some((item) => item.mode === "task")) return taskConsumptionAllowed(sessionID)
     if (options?.allowSteer === false) return false
     if (!items.some((item) => item.mode === "steer")) return false
     return !!(await latestRootID(sessionID))
@@ -575,16 +575,49 @@ export namespace SessionInbox {
 
   /**
    * Drain the next task item from the inbox.
-   * Materialization is idempotent (pre-allocated messageID), so removing
-   * the inbox item before materialization is safe for crash recovery.
+   * Materialization is idempotent (pre-allocated messageID). Commit the inbox
+   * removal only after the message is durable, so a crash can replay the same
+   * item without losing work or creating a second message.
    */
   export async function nextTask(sessionID: string): Promise<StoredItem | undefined> {
     const items = await listStored(sessionID)
     const task = items.find((item) => item.mode === "task")
     if (!task) return undefined
-    await removeItems(sessionID, [task.id])
-    log.info("drained next task", { sessionID, itemID: task.id })
+    const workflow = await workflowSeatBinding(sessionID)
+    if (!workflow) return materializeAndCommit(task)
+
+    const { WorkflowRunExecutor } = await import("../workflow-run/executor")
+    return WorkflowRunExecutor.run(workflow.scopeID, workflow.runID, async () => {
+      if (!(await taskConsumptionAllowed(sessionID))) return undefined
+      return materializeAndCommit(task)
+    })
+  }
+
+  async function materializeAndCommit(task: StoredItem): Promise<StoredItem> {
+    const message = await materializeItem(task)
+    if (!message) throw new Error(`Inbox task ${task.id} has no materializable message payload`)
+    await removeItems(task.sessionID, [task.id])
+    log.info("materialized and committed next task", {
+      sessionID: task.sessionID,
+      itemID: task.id,
+      messageID: task.messageID,
+    })
     return task
+  }
+
+  async function workflowSeatBinding(sessionID: string): Promise<{ scopeID: string; runID: string } | undefined> {
+    const session = await readSession(sessionID)
+    const binding = session.workflowRun
+    if (binding?.role !== "seat") return undefined
+    return { scopeID: (session.scope as Scope).id, runID: binding.runID }
+  }
+
+  async function taskConsumptionAllowed(sessionID: string): Promise<boolean> {
+    const workflow = await workflowSeatBinding(sessionID)
+    if (!workflow) return true
+    const { WorkflowRunStore } = await import("../workflow-run/store")
+    const run = await WorkflowRunStore.getOrUndefined(workflow.scopeID, workflow.runID)
+    return run?.status === "active"
   }
 
   export async function removeByMode(sessionID: string, modes: ItemMode[]): Promise<void> {

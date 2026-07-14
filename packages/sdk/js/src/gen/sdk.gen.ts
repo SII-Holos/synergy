@@ -8325,6 +8325,7 @@ export class WorkflowRun extends HeyApiClient {
       directory?: string
       scopeID?: string
       after?: string
+      limit?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8337,6 +8338,7 @@ export class WorkflowRun extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "after" },
+            { in: "query", key: "limit" },
           ],
         },
       ],

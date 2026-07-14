@@ -17,7 +17,7 @@ export const WorkflowRunControlTool = Tool.define("workflow_run_control", {
     return {
       title: `Run ${params.action}`,
       output: `Workflow run ${updated.id} is now ${updated.status}.`,
-      metadata: { runID: updated.id, status: updated.status } as Record<string, any>,
+      metadata: { runID: updated.id, status: updated.status },
     }
   },
 })

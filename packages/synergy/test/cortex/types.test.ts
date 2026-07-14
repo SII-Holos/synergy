@@ -2,6 +2,29 @@ import { describe, expect, test } from "bun:test"
 import { CortexTypes } from "../../src/cortex/types"
 
 describe("CortexTypes", () => {
+  test("requires complete workflow task ownership", () => {
+    expect(CortexTypes.WorkflowTaskOwner.safeParse({ kind: "workflow_run" }).success).toBe(false)
+    expect(
+      CortexTypes.WorkflowTaskOwner.safeParse({
+        kind: "workflow_run",
+        runID: "wfr_owner",
+        entityID: "wfe_owner",
+        correlationID: "effect-owner",
+      }).success,
+    ).toBe(true)
+  })
+
+  test("rejects legacy task ownership after migration", () => {
+    expect(() =>
+      CortexTypes.taskOwnerFromStored({
+        pluginId: "legacy-plugin",
+        pluginGeneration: "generation-one",
+        scopeId: "scope-one",
+        correlationId: "correlation-one",
+      }),
+    ).toThrow()
+  })
+
   describe("TaskStatus", () => {
     test("accepts valid status values", () => {
       expect(CortexTypes.TaskStatus.safeParse("pending").success).toBe(false)
@@ -98,6 +121,7 @@ describe("CortexTypes", () => {
         output: { mode: "summary", value: "Task completed successfully" },
         notifyParentOnComplete: false,
         owner: {
+          kind: "plugin",
           pluginId: "truthward",
           pluginGeneration: "generation-one",
           scopeId: "scope-one",

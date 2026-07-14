@@ -1,8 +1,9 @@
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
+import { Storage } from "../storage/storage"
 import {
   WorkflowRunStore,
   WorkflowRunService,
@@ -12,7 +13,75 @@ import {
   WorkflowSeats,
 } from "../workflow-run"
 
-const RunOrNull = WorkflowTypes.Run.nullable()
+const WorkflowEventPage = z
+  .object({
+    items: WorkflowTypes.EventInfo.array(),
+    nextCursor: z.string().optional(),
+  })
+  .meta({ ref: "WorkflowEventPage" })
+
+const WorkflowConflictError = z
+  .union([WorkflowError.CharterConflict.Schema, WorkflowError.TransitionRejected.Schema])
+  .meta({ ref: "WorkflowConflictError" })
+
+const workflowConflictResponse = {
+  409: {
+    description: "Workflow state conflict",
+    content: { "application/json": { schema: resolver(WorkflowConflictError) } },
+  },
+} as const
+
+const workflowForbiddenResponse = {
+  403: {
+    description: "Workflow operation is not authorized",
+    content: { "application/json": { schema: resolver(WorkflowError.NotAuthorized.Schema) } },
+  },
+} as const
+
+type ValidationResult =
+  | { success: true; data: unknown; target: unknown }
+  | { success: false; data: unknown; error: readonly unknown[]; target: unknown }
+
+function validationHook(result: ValidationResult, c: Context) {
+  if (result.success) return
+  return c.json({ data: result.data, errors: result.error, success: false as const }, 400)
+}
+
+async function getWorkflowRun(scopeID: string, runID: string) {
+  try {
+    return await WorkflowRunStore.get(scopeID, runID)
+  } catch (error) {
+    if (error instanceof Storage.NotFoundError) {
+      throw new Storage.NotFoundError({ message: `Workflow run not found: ${runID}` })
+    }
+    throw error
+  }
+}
+
+function workflowErrorResponse(error: unknown, c: Context) {
+  if (error instanceof WorkflowError.RunNotFound) {
+    throw new Storage.NotFoundError({ message: `Workflow run not found: ${error.data.runID}` })
+  }
+  if (error instanceof WorkflowError.CharterNotFound) {
+    const version = error.data.version === undefined ? "" : ` version ${error.data.version}`
+    throw new Storage.NotFoundError({ message: `Workflow charter not found: ${error.data.charterID}${version}` })
+  }
+  if (error instanceof WorkflowError.CharterConflict || error instanceof WorkflowError.TransitionRejected) {
+    return c.json(error.toObject(), 409)
+  }
+  if (error instanceof WorkflowError.NotAuthorized) return c.json(error.toObject(), 403)
+  if (error instanceof WorkflowError.CharterInvalid) {
+    return c.json(
+      {
+        data: error.data,
+        errors: error.data.errors.map((message: string) => ({ message })),
+        success: false as const,
+      },
+      400,
+    )
+  }
+  throw error
+}
 
 export const WorkflowRunRoute = new Hono()
   .get(
@@ -29,12 +98,8 @@ export const WorkflowRunRoute = new Hono()
       },
     }),
     async (c) => {
-      try {
-        const runs = await WorkflowRunStore.list(ScopeContext.current.scope.id)
-        return c.json(runs.map(WorkflowSeats.withProjectedStatus))
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
+      const runs = await WorkflowRunStore.list(ScopeContext.current.scope.id)
+      return c.json(runs.map(WorkflowSeats.withProjectedStatus))
     },
   )
   .get(
@@ -43,18 +108,17 @@ export const WorkflowRunRoute = new Hono()
       summary: "Get a workflow run",
       operationId: "workflowRun.get",
       responses: {
-        200: { description: "Workflow run", content: { "application/json": { schema: resolver(RunOrNull) } } },
-        ...errors(400),
+        200: {
+          description: "Workflow run",
+          content: { "application/json": { schema: resolver(WorkflowTypes.Run) } },
+        },
+        ...errors(400, 404),
       },
     }),
-    validator("param", z.object({ id: z.string() })),
+    validator("param", z.object({ id: z.string() }), validationHook),
     async (c) => {
-      try {
-        const run = await WorkflowRunStore.getOrUndefined(ScopeContext.current.scope.id, c.req.valid("param").id)
-        return c.json(run ? WorkflowSeats.withProjectedStatus(run) : null)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
+      const run = await getWorkflowRun(ScopeContext.current.scope.id, c.req.valid("param").id)
+      return c.json(WorkflowSeats.withProjectedStatus(run))
     },
   )
   .get(
@@ -65,25 +129,25 @@ export const WorkflowRunRoute = new Hono()
       responses: {
         200: {
           description: "Workflow events",
-          content: { "application/json": { schema: resolver(WorkflowTypes.EventInfo.array()) } },
+          content: { "application/json": { schema: resolver(WorkflowEventPage) } },
         },
         ...errors(400, 404),
       },
     }),
-    validator("param", z.object({ id: z.string() })),
-    validator("query", z.object({ after: z.string().optional() })),
+    validator("param", z.object({ id: z.string() }), validationHook),
+    validator(
+      "query",
+      z.object({
+        after: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(100),
+      }),
+      validationHook,
+    ),
     async (c) => {
-      try {
-        const scopeID = ScopeContext.current.scope.id
-        const run = await WorkflowRunStore.getOrUndefined(scopeID, c.req.valid("param").id)
-        if (!run) return c.json({ message: `Workflow run not found: ${c.req.valid("param").id}` }, 404)
-        const events = await WorkflowRunStore.listEvents(scopeID, run.id)
-        const after = c.req.valid("query").after
-        const filtered = after ? events.filter((e) => e.id > after) : events
-        return c.json(filtered)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
+      const scopeID = ScopeContext.current.scope.id
+      const run = await getWorkflowRun(scopeID, c.req.valid("param").id)
+      const query = c.req.valid("query")
+      return c.json(await WorkflowRunStore.listEventsPage(scopeID, run.id, query))
     },
   )
   .post(
@@ -91,28 +155,32 @@ export const WorkflowRunRoute = new Hono()
     describeRoute({
       summary: "Create a workflow run",
       operationId: "workflowRun.create",
+      requestBody: { required: true, content: {} },
       responses: {
         200: { description: "Created run", content: { "application/json": { schema: resolver(WorkflowTypes.Run) } } },
-        ...errors(400),
+        ...errors(400, 404),
+        ...workflowConflictResponse,
+        ...workflowForbiddenResponse,
       },
     }),
     validator(
       "json",
       z.object({
         charterID: z.string(),
-        version: z.number().optional(),
+        version: z.number().int().min(1).optional(),
         title: z.string(),
         bossSessionID: z.string(),
-        maxModelCalls: z.number().optional(),
+        maxModelCalls: z.number().int().min(0).optional(),
       }),
+      validationHook,
     ),
     async (c) => {
       try {
         const body = c.req.valid("json")
         const run = await WorkflowRunService.create(body)
         return c.json(run)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
+      } catch (error) {
+        return workflowErrorResponse(error, c)
       }
     },
   )
@@ -121,20 +189,21 @@ export const WorkflowRunRoute = new Hono()
     describeRoute({
       summary: "Control a workflow run",
       operationId: "workflowRun.control",
+      requestBody: { required: true, content: {} },
       responses: {
         200: { description: "Updated run", content: { "application/json": { schema: resolver(WorkflowTypes.Run) } } },
         ...errors(400, 404),
+        ...workflowConflictResponse,
       },
     }),
-    validator("param", z.object({ id: z.string() })),
-    validator("json", z.object({ action: z.enum(["pause", "resume", "cancel"]) })),
+    validator("param", z.object({ id: z.string() }), validationHook),
+    validator("json", z.object({ action: z.enum(["pause", "resume", "cancel"]) }), validationHook),
     async (c) => {
       try {
         const run = await WorkflowRunService.control(c.req.valid("param").id, c.req.valid("json").action)
         return c.json(run)
-      } catch (err: any) {
-        if (err instanceof WorkflowError.RunNotFound) return c.json({ message: err.message }, 404)
-        return c.json({ message: err?.message ?? String(err) }, 400)
+      } catch (error) {
+        return workflowErrorResponse(error, c)
       }
     },
   )
@@ -143,15 +212,17 @@ export const WorkflowRunRoute = new Hono()
     describeRoute({
       summary: "Add an entity to a workflow run",
       operationId: "workflowRun.entity.add",
+      requestBody: { required: true, content: {} },
       responses: {
         200: {
           description: "Created entity",
           content: { "application/json": { schema: resolver(WorkflowTypes.Entity) } },
         },
-        ...errors(400),
+        ...errors(400, 404),
+        ...workflowConflictResponse,
       },
     }),
-    validator("param", z.object({ id: z.string() })),
+    validator("param", z.object({ id: z.string() }), validationHook),
     validator(
       "json",
       z.object({
@@ -160,13 +231,14 @@ export const WorkflowRunRoute = new Hono()
         affinityKey: z.string().optional(),
         bindings: z.record(z.string(), z.string()).optional(),
       }),
+      validationHook,
     ),
     async (c) => {
       try {
         const entity = await WorkflowRunService.addEntity({ runID: c.req.valid("param").id, ...c.req.valid("json") })
         return c.json(entity)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
+      } catch (error) {
+        return workflowErrorResponse(error, c)
       }
     },
   )
@@ -175,13 +247,15 @@ export const WorkflowRunRoute = new Hono()
     describeRoute({
       summary: "Resolve a gate (human decision)",
       operationId: "workflowRun.gate.resolve",
+      requestBody: { required: true, content: {} },
       responses: {
         200: { description: "Updated run", content: { "application/json": { schema: resolver(WorkflowTypes.Run) } } },
-        ...errors(400),
+        ...errors(400, 404),
+        ...workflowConflictResponse,
       },
     }),
-    validator("param", z.object({ id: z.string(), gid: z.string() })),
-    validator("json", z.object({ resolution: z.string() })),
+    validator("param", z.object({ id: z.string(), gid: z.string() }), validationHook),
+    validator("json", z.object({ resolution: z.string() }), validationHook),
     async (c) => {
       try {
         const run = await WorkflowRunService.resolveGate({
@@ -191,8 +265,8 @@ export const WorkflowRunRoute = new Hono()
           resolvedBy: "human_ui",
         })
         return c.json(run)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
+      } catch (error) {
+        return workflowErrorResponse(error, c)
       }
     },
   )
@@ -210,12 +284,8 @@ export const WorkflowRunRoute = new Hono()
       },
     }),
     async (c) => {
-      try {
-        const charters = await CharterStore.list(ScopeContext.current.scope.id)
-        return c.json(charters)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
+      const charters = await CharterStore.list(ScopeContext.current.scope.id)
+      return c.json(charters)
     },
   )
   .get(
@@ -228,18 +298,17 @@ export const WorkflowRunRoute = new Hono()
         ...errors(400, 404),
       },
     }),
-    validator("param", z.object({ id: z.string(), version: z.coerce.number() })),
+    validator("param", z.object({ id: z.string(), version: z.coerce.number().int().min(1) }), validationHook),
     async (c) => {
       try {
-        const charter = await CharterStore.getOrUndefined(
+        const charter = await CharterStore.get(
           ScopeContext.current.scope.id,
           c.req.valid("param").id,
           c.req.valid("param").version,
         )
-        if (!charter) return c.json({ message: "Charter not found" }, 404)
         return c.json(charter)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
+      } catch (error) {
+        return workflowErrorResponse(error, c)
       }
     },
   )

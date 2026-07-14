@@ -13064,6 +13064,38 @@
           }
         ],
         "summary": "Create a workflow run",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "charterID": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "bossSessionID": {
+                    "type": "string"
+                  },
+                  "maxModelCalls": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["charterID", "title", "bossSessionID"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Created run",
@@ -13084,31 +13116,34 @@
                 }
               }
             }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "charterID": {
-                    "type": "string"
-                  },
-                  "version": {
-                    "type": "number"
-                  },
-                  "title": {
-                    "type": "string"
-                  },
-                  "bossSessionID": {
-                    "type": "string"
-                  },
-                  "maxModelCalls": {
-                    "type": "number"
-                  }
-                },
-                "required": ["charterID", "title", "bossSessionID"]
+          },
+          "403": {
+            "description": "Workflow operation is not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowNotAuthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowConflictError"
+                }
               }
             }
           }
@@ -13155,14 +13190,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/WorkflowRun"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/WorkflowRun"
                 }
               }
             }
@@ -13173,6 +13201,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -13218,6 +13256,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           }
         ],
         "summary": "List workflow run events",
@@ -13227,10 +13275,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/WorkflowEvent"
-                  }
+                  "$ref": "#/components/schemas/WorkflowEventPage"
                 }
               }
             }
@@ -13292,6 +13337,23 @@
           }
         ],
         "summary": "Control a workflow run",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["pause", "resume", "cancel"]
+                  }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Updated run",
@@ -13322,20 +13384,14 @@
                 }
               }
             }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "action": {
-                    "type": "string",
-                    "enum": ["pause", "resume", "cancel"]
-                  }
-                },
-                "required": ["action"]
+          },
+          "409": {
+            "description": "Workflow state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowConflictError"
+                }
               }
             }
           }
@@ -13376,29 +13432,8 @@
           }
         ],
         "summary": "Add an entity to a workflow run",
-        "responses": {
-          "200": {
-            "description": "Created entity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowEntity"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -13424,6 +13459,48 @@
                   }
                 },
                 "required": ["title"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEntity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowConflictError"
+                }
               }
             }
           }
@@ -13472,6 +13549,22 @@
           }
         ],
         "summary": "Resolve a gate (human decision)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resolution": {
+                    "type": "string"
+                  }
+                },
+                "required": ["resolution"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Updated run",
@@ -13492,19 +13585,24 @@
                 }
               }
             }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "resolution": {
-                    "type": "string"
-                  }
-                },
-                "required": ["resolution"]
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowConflictError"
+                }
               }
             }
           }
@@ -13600,7 +13698,9 @@
             "in": "path",
             "name": "version",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
             },
             "required": true
           }
@@ -26665,7 +26765,7 @@
             "type": "string"
           }
         },
-        "required": ["kind"]
+        "required": ["kind", "runID", "entityID", "correlationID"]
       },
       "CortexTaskOwner": {
         "anyOf": [
@@ -26866,6 +26966,9 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
+          "ownedWorktreeID": {
+            "type": "string"
+          },
           "usage": {
             "type": "object",
             "properties": {
@@ -26993,7 +27096,7 @@
           },
           "role": {
             "type": "string",
-            "enum": ["boss", "seat", "contractor"]
+            "enum": ["boss", "seat"]
           },
           "seat": {
             "type": "string"
@@ -27297,19 +27400,6 @@
                 "enum": ["execution", "audit"]
               }
             }
-          },
-          "charter": {
-            "description": "Charter note injected into the system prompt every turn (compaction-immune standing instructions)",
-            "type": "object",
-            "properties": {
-              "noteID": {
-                "type": "string"
-              },
-              "version": {
-                "type": "number"
-              }
-            },
-            "required": ["noteID"]
           },
           "workflowRun": {
             "$ref": "#/components/schemas/SessionWorkflowRunInfo"
@@ -29445,7 +29535,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint", "charter"]
+            "enum": ["note", "blueprint"]
           },
           "blueprint": {
             "type": "object",
@@ -29981,6 +30071,9 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "ownedWorktreeID": {
+            "type": "string"
           },
           "usage": {
             "type": "object",
@@ -31956,7 +32049,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint", "charter"]
+            "enum": ["note", "blueprint"]
           },
           "version": {
             "type": "number"
@@ -32058,7 +32151,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint", "charter"]
+            "enum": ["note", "blueprint"]
           },
           "blueprint": {
             "type": "object",
@@ -32110,7 +32203,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["note", "blueprint", "charter"]
+            "enum": ["note", "blueprint"]
           },
           "blueprint": {
             "anyOf": [
@@ -32689,10 +32782,6 @@
             "type": "string",
             "pattern": "^wfe.*"
           },
-          "activeTaskID": {
-            "type": "string",
-            "pattern": "^ctx.*"
-          },
           "status": {
             "default": "unbound",
             "type": "string",
@@ -32935,7 +33024,9 @@
                 "pattern": "^cht.*"
               },
               "version": {
-                "type": "number"
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               }
             },
             "required": ["id", "version"]
@@ -32959,6 +33050,15 @@
           "bossSessionID": {
             "type": "string",
             "pattern": "^ses.*"
+          },
+          "bossControlProfile": {
+            "default": "guarded",
+            "type": "string",
+            "enum": ["guarded", "autonomous", "full_access"]
+          },
+          "bossPreviousControlProfile": {
+            "type": "string",
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "seats": {
             "type": "array",
@@ -32985,14 +33085,27 @@
               "$ref": "#/components/schemas/WorkflowPendingEffect"
             }
           },
+          "effectReceipts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
           "budget": {
             "type": "object",
             "properties": {
               "maxModelCalls": {
-                "type": "number"
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               },
               "used": {
-                "type": "number"
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": ["maxModelCalls", "used"]
@@ -33100,6 +33213,94 @@
         },
         "required": ["id", "runID", "scopeID", "kind", "time"]
       },
+      "WorkflowEventPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEvent"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": ["items"]
+      },
+      "WorkflowNotAuthorized": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorkflowNotAuthorized"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkflowCharterConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorkflowCharterConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "charterID": {
+                "type": "string"
+              },
+              "version": {
+                "type": "number"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["charterID", "version", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkflowTransitionRejected": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorkflowTransitionRejected"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkflowConflictError": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/WorkflowCharterConflict"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowTransitionRejected"
+          }
+        ]
+      },
       "WorkflowSeatDef": {
         "type": "object",
         "properties": {
@@ -33114,15 +33315,6 @@
           "charterPrompt": {
             "description": "Inline standing instructions for this seat",
             "type": "string"
-          },
-          "charterNoteID": {
-            "description": "kind:'charter' note holding this seat's charter (takes precedence)",
-            "type": "string"
-          },
-          "controlProfile": {
-            "default": "autonomous",
-            "type": "string",
-            "enum": ["guarded", "autonomous", "full_access"]
           },
           "interaction": {
             "default": "unattended",

@@ -264,6 +264,15 @@ const SAFE_PSEUDO_PATHS = new Set([
 ])
 
 const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
+const WORKFLOW_STATE_TOOLS = new Set([
+  "workflow_run_create",
+  "workflow_run_control",
+  "workflow_entity_add",
+  "workflow_entity_unblock",
+  "workflow_gate_resolve",
+  "workflow_submit",
+  "workflow_block",
+])
 const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 // const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
 //
@@ -852,6 +861,16 @@ export namespace EnforcementGate {
       }
       if (toolName === "worktree_enter" || toolName === "worktree_leave") {
         caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      if (toolName === "workflow_status" || (toolName === "workflow_charter_draft" && args.persist !== true)) {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      if (WORKFLOW_STATE_TOOLS.has(toolName) || (toolName === "workflow_charter_draft" && args.persist === true)) {
+        caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
 

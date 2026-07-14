@@ -121,6 +121,10 @@ Lattice is the structured workflow for larger goals that need staged planning, e
 
 An `auto` run starts the current step's bound Blueprint as the session becomes idle. A `collaborative` run pauses at Blueprint review so the user can inspect or refine the step before continuing. Lattice tracks phases, step outcomes, model-call budget, events, and pause/resume state, and it can revise remaining Pathway steps without rewriting terminal history.
 
+### Boss Mode
+
+Boss Mode coordinates many similar work items across durable worker seats. A versioned Charter defines the entity state machine, role boundaries, gates, worktree policy, and budget; one Boss session owns the resulting Scope-level WorkflowRun and remains the human control point. Workers receive persistent handoffs, submit role-limited outcomes, and share or follow entity workspaces according to the Charter. The session-scoped Boss panel exposes current state and audit history without turning worker sessions into global navigation.
+
 ### Delegated work
 
 An agent can delegate bounded tasks to specialist agents through Cortex. Each delegated task runs in a child session with an explicit parent-child link to the originating session, keeps its own context and history, and can continue in the background. It returns a summary, final response, or structured result to its parent. Re-delegation is available only where agent policy explicitly permits it.

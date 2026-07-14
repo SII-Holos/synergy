@@ -1,6 +1,8 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { ScopeContext } from "../scope/context"
+import { Agent } from "../agent/agent"
+import { Session } from "../session"
 import { WorkflowRunService, IssueToPrCharter } from "../workflow-run"
 import DESCRIPTION from "./workflow-run-create.txt"
 
@@ -10,8 +12,8 @@ const parameters = z.object({
     .string()
     .optional()
     .describe("Charter id to instantiate. Omit to use the built-in Issue → PR → Test charter."),
-  version: z.number().optional().describe("Charter version. Omit for the latest."),
-  maxModelCalls: z.number().optional().describe("Model-call budget for the whole run (0 = unlimited)."),
+  version: z.number().int().min(1).optional().describe("Charter version. Omit for the latest."),
+  maxModelCalls: z.number().int().min(0).optional().describe("Model-call budget for the whole run (0 = unlimited)."),
 })
 
 export const WorkflowRunCreateTool = Tool.define("workflow_run_create", {
@@ -25,12 +27,18 @@ export const WorkflowRunCreateTool = Tool.define("workflow_run_create", {
       charterID = seeded.id
     }
 
+    const agent = await Agent.get(ctx.agent)
+    const bossControlProfile = await Session.resolveEffectiveControlProfile({
+      sessionID: ctx.sessionID,
+      agentControlProfile: agent.controlProfile,
+    })
     const run = await WorkflowRunService.create({
       charterID,
       version: params.version,
       title: params.title,
       bossSessionID: ctx.sessionID,
       maxModelCalls: params.maxModelCalls,
+      bossControlProfile,
     })
 
     return {
@@ -41,7 +49,7 @@ export const WorkflowRunCreateTool = Tool.define("workflow_run_create", {
         `Seats: ${run.seats.map((s) => `${s.seat}#${s.instance}`).join(", ")}`,
         "Enqueue work with workflow_entity_add.",
       ].join("\n"),
-      metadata: { runID: run.id, charterRef: run.charterRef } as Record<string, any>,
+      metadata: { runID: run.id, charterRef: run.charterRef },
     }
   },
 })

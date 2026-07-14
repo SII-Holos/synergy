@@ -21,13 +21,16 @@ const parameters = z.object({
     .describe("The transition this submission satisfies. Omit to record the submission without advancing."),
 })
 
-export const WorkflowSubmitTool = Tool.define("workflow_submit", {
+type WorkflowSubmitMetadata = { runID: string; entityID: string; state?: string }
+
+export const WorkflowSubmitTool = Tool.define<typeof parameters, WorkflowSubmitMetadata>("workflow_submit", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
     const scopeID = ScopeContext.current.scope.id
-    const { run, seat, entity } = await WorkflowToolShared.requireSeat(ctx.sessionID)
-    if (!entity) throw new Error("You have no entity assigned; nothing to submit.")
+    const seatContext = await WorkflowToolShared.requireSeat(ctx.sessionID)
+    if (!seatContext.entity) throw new Error("You have no entity assigned; nothing to submit.")
+    const { run, seat, entity } = seatContext
 
     const submission: WorkflowTypes.Submission = {
       id: Identifier.ascending("workflow_event"),
@@ -41,25 +44,29 @@ export const WorkflowSubmitTool = Tool.define("workflow_submit", {
     }
 
     if (!params.transitionID) {
-      // Record the submission without a transition.
-      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
-        const e = draft.entities.find((x) => x.id === entity.id)
-        if (e) e.submissions.push(submission)
-      })
-      await WorkflowRunStore.appendEvent(
-        scopeID,
-        { id: run.id },
-        {
-          kind: "submission_recorded",
-          entityID: entity.id,
-          seat,
-          data: { kind: submission.kind, verdict: submission.verdict },
+      await WorkflowToolShared.updateActiveSeatEntity({
+        sessionID: ctx.sessionID,
+        context: { ...seatContext, entity },
+        edit(draftEntity) {
+          draftEntity.submissions.push(submission)
         },
-      )
+        async afterCommit(result) {
+          await WorkflowRunStore.appendEvent(
+            scopeID,
+            { id: result.run.id },
+            {
+              kind: "submission_recorded",
+              entityID: result.entity.id,
+              seat,
+              data: { kind: submission.kind, verdict: submission.verdict },
+            },
+          )
+        },
+      })
       return {
         title: `Submission recorded (${params.kind})`,
         output: "Recorded without advancing (no transitionID given).",
-        metadata: { runID: run.id, entityID: entity.id } as Record<string, any>,
+        metadata: { runID: run.id, entityID: entity.id },
       }
     }
 
@@ -77,7 +84,7 @@ export const WorkflowSubmitTool = Tool.define("workflow_submit", {
     return {
       title: `Submitted (${params.kind}) → ${result.entityState}`,
       output: `Entity ${entity.id} advanced to "${result.entityState}".`,
-      metadata: { runID: run.id, entityID: entity.id, state: result.entityState } as Record<string, any>,
+      metadata: { runID: run.id, entityID: entity.id, state: result.entityState },
     }
   },
 })

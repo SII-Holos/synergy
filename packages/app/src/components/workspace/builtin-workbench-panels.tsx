@@ -69,7 +69,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         icon: getSemanticIcon("performance.network"),
         surface: "side",
         cardinality: "singleton",
-        requiresSession: false,
+        requiresSession: true,
         pluginId: "builtin",
         order: 19,
         loader: async () => ({ default: (await import("./tool-boss")).BossWorkbenchContent }),

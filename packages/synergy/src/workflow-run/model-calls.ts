@@ -1,38 +1,112 @@
+import { WorkflowRunExecutor } from "./executor"
 import { WorkflowRunStore } from "./store"
 
-/**
- * In-memory model-call accumulator keyed by runID (boss + every seat +
- * contractor session contributes). invoke increments per LLM call; the count is
- * flushed to the Run at policy entry so `workflow.run.updated` is not published
- * on every call.
- */
 export namespace WorkflowModelCalls {
-  const pending = new Map<string, number>()
+  export type Role = "boss" | "seat" | "contractor"
 
-  export function record(runID: string): void {
-    pending.set(runID, (pending.get(runID) ?? 0) + 1)
+  export type Attribution = {
+    runID: string
+    role: Role
   }
 
-  export function peek(runID: string): number {
-    return pending.get(runID) ?? 0
+  export interface AttributionSource {
+    workflowRun?: { runID: string; role: "boss" | "seat" }
+    cortex?: { owner?: { kind?: string; runID?: string } }
   }
 
-  export async function flush(scopeID: string, runID: string): Promise<number | undefined> {
-    const delta = pending.get(runID) ?? 0
-    if (delta === 0) {
-      const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
-      return run?.budget.used
-    }
-    pending.delete(runID)
-    const run = await WorkflowRunStore.getOrUndefined(scopeID, runID)
-    if (!run) return undefined
-    const updated = await WorkflowRunStore.update(scopeID, runID, (draft) => {
-      draft.budget.used += delta
+  export type Reservation =
+    | { ok: true; counted: boolean; used: number; maxModelCalls: number }
+    | {
+        ok: false
+        reason: "budget_exhausted" | "run_not_active" | "run_not_found"
+        message: string
+        used?: number
+        maxModelCalls?: number
+      }
+
+  /**
+   * Persist one model-call reservation before the provider is invoked. The run
+   * snapshot is the counter of record, so every active Boss, seat, and
+   * contractor competes for the same hard limit even when their turns start
+   * concurrently. A paused or terminal run fences workers but leaves its Boss
+   * control plane conversational so it can resume, cancel, or start something
+   * new without consuming execution budget.
+   */
+  export async function reserve(scopeID: string, attribution: Attribution): Promise<Reservation> {
+    const { runID, role } = attribution
+    return WorkflowRunExecutor.run(scopeID, runID, async () => {
+      let exhausted = false
+      const result = await WorkflowRunStore.tryUpdate(
+        scopeID,
+        runID,
+        (run) => {
+          if (run.budget.maxModelCalls > 0 && run.budget.used >= run.budget.maxModelCalls) {
+            run.status = "paused"
+            run.statusReason = "model_call_budget_exhausted"
+            exhausted = true
+            return
+          }
+          run.budget.used += 1
+        },
+        { expectedRunStatus: "active" },
+      )
+
+      if (!result.ok) {
+        if (result.reason === "not_found") {
+          return {
+            ok: false,
+            reason: "run_not_found",
+            message: `Workflow run ${runID} no longer exists; the model call was not started.`,
+          }
+        }
+        if (role === "boss" && result.run) {
+          return {
+            ok: true,
+            counted: false,
+            used: result.run.budget.used,
+            maxModelCalls: result.run.budget.maxModelCalls,
+          }
+        }
+        const status = result.run?.status ?? "unknown"
+        return {
+          ok: false,
+          reason: "run_not_active",
+          message: `Workflow run ${runID} is ${status}; the model call was not started.`,
+          used: result.run?.budget.used,
+          maxModelCalls: result.run?.budget.maxModelCalls,
+        }
+      }
+
+      if (exhausted) {
+        await WorkflowRunStore.appendEvent(scopeID, result.run, {
+          kind: "budget_exhausted",
+          message: `Model-call budget exhausted at ${result.run.budget.used}/${result.run.budget.maxModelCalls}.`,
+        })
+        return {
+          ok: false,
+          reason: "budget_exhausted",
+          message: `Workflow run ${runID} exhausted its model-call budget (${result.run.budget.used}/${result.run.budget.maxModelCalls}); the run was paused and the model call was not started.`,
+          used: result.run.budget.used,
+          maxModelCalls: result.run.budget.maxModelCalls,
+        }
+      }
+
+      return {
+        ok: true,
+        counted: true,
+        used: result.run.budget.used,
+        maxModelCalls: result.run.budget.maxModelCalls,
+      }
     })
-    return updated.budget.used
   }
 
-  export function clear(runID: string): void {
-    pending.delete(runID)
+  export function attribution(session: AttributionSource): Attribution | undefined {
+    if (session.workflowRun) {
+      return { runID: session.workflowRun.runID, role: session.workflowRun.role }
+    }
+    if (session.cortex?.owner?.kind === "workflow_run" && session.cortex.owner.runID) {
+      return { runID: session.cortex.owner.runID, role: "contractor" }
+    }
+    return undefined
   }
 }

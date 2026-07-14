@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
+import { Session } from "../../src/session"
 import { CharterStore } from "../../src/workflow-run/charter-store"
 import { WorkflowRunStore } from "../../src/workflow-run/store"
 import { WorkflowMachine } from "../../src/workflow-run/machine"
+import { WorkflowGuards } from "../../src/workflow-run/guards"
 import { WorkflowTypes } from "../../src/workflow-run/types"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -50,14 +52,14 @@ function testCharter(overrides: Partial<WorkflowTypes.Charter> = {}): WorkflowTy
   })
 }
 
-async function seedRun(charter: WorkflowTypes.Charter) {
+async function seedRun(charter: WorkflowTypes.Charter, bossSessionID = "ses_boss") {
   const scopeID = ScopeContext.current.scope.id
   await CharterStore.put(scopeID, charter)
   const run = await WorkflowRunStore.create({
     scopeID,
     charterRef: { id: charter.id, version: charter.version },
     title: "Run",
-    bossSessionID: "ses_boss",
+    bossSessionID,
     seats: [{ seat: "worker", instance: 0, status: "idle", sessionID: "ses_worker", lastEntityIDs: [] }],
     maxModelCalls: 0,
   })
@@ -78,6 +80,8 @@ async function addEntity(scopeID: string, runID: string, state: string) {
   }
   await WorkflowRunStore.update(scopeID, runID, (draft) => {
     draft.entities.push(entity)
+    const seat = draft.seats.find((binding) => binding.sessionID === "ses_worker")
+    if (seat) seat.entityID = entity.id
   })
   return entity
 }
@@ -90,6 +94,106 @@ describe("WorkflowMachine", () => {
       await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
       const updated = await WorkflowRunStore.get(scopeID, run.id)
       expect(updated.entities[0].state).toBe("working")
+    })
+  })
+
+  test("event transition blocks by default when a non-retryable guard fails", async () => {
+    await withScope(async () => {
+      const charter = testCharter({
+        transitions: [
+          {
+            id: "guarded_start",
+            from: "queued",
+            to: "working",
+            trigger: { kind: "event" },
+            guards: [{ name: "submission_recorded", args: { kind: "deliverable" } }],
+            effects: [],
+          },
+        ],
+      })
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "queued")
+
+      await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
+
+      const updated = await WorkflowRunStore.get(scopeID, run.id)
+      expect(updated.entities[0]?.state).toBe(WorkflowTypes.BLOCKED_STATE)
+      expect(updated.entities[0]?.blockedReason).toContain("submission_recorded")
+      const events = await WorkflowRunStore.listEvents(scopeID, run.id)
+      expect(events.some((event) => event.kind === "guard_failed" && event.transitionID === "guarded_start")).toBe(true)
+      expect(events.some((event) => event.kind === "entity_blocked" && event.entityID === entity.id)).toBe(true)
+    })
+  })
+
+  test("event transition with blockOnGuardFail false waits and can be retried", async () => {
+    await withScope(async () => {
+      const charter = testCharter({
+        transitions: [
+          {
+            id: "guarded_start",
+            from: "queued",
+            to: "working",
+            trigger: { kind: "event" },
+            guards: [{ name: "submission_recorded", args: { kind: "deliverable" } }],
+            effects: [],
+            blockOnGuardFail: false,
+          },
+        ],
+      })
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "queued")
+
+      await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
+      expect((await WorkflowRunStore.get(scopeID, run.id)).entities[0]?.state).toBe("queued")
+
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        const current = draft.entities.find((candidate) => candidate.id === entity.id)
+        current?.submissions.push({
+          id: "sub_deliverable",
+          kind: "deliverable",
+          seat: "worker",
+          sessionID: "ses_worker",
+          summary: "ready",
+          refs: [],
+          time: Date.now(),
+        })
+      })
+      await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
+
+      expect((await WorkflowRunStore.get(scopeID, run.id)).entities[0]?.state).toBe("working")
+    })
+  })
+
+  test("retryable event guard waits without blocking and advances on redrive", async () => {
+    await withScope(async () => {
+      let ready = false
+      WorkflowGuards.register("test_retryable_event_guard", () =>
+        ready ? { ok: true } : { ok: false, reason: "resource unavailable", retryable: true },
+      )
+      const charter = testCharter({
+        transitions: [
+          {
+            id: "retryable_start",
+            from: "queued",
+            to: "working",
+            trigger: { kind: "event" },
+            guards: [{ name: "test_retryable_event_guard", args: {} }],
+            effects: [],
+          },
+        ],
+      })
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "queued")
+
+      await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
+      expect((await WorkflowRunStore.get(scopeID, run.id)).entities[0]?.state).toBe("queued")
+
+      ready = true
+      await WorkflowMachine.redrivePending(scopeID, run.id)
+
+      expect((await WorkflowRunStore.get(scopeID, run.id)).entities[0]?.state).toBe("working")
+      const events = await WorkflowRunStore.listEvents(scopeID, run.id)
+      expect(events.some((event) => event.kind === "entity_blocked" && event.entityID === entity.id)).toBe(false)
     })
   })
 
@@ -200,6 +304,64 @@ describe("WorkflowMachine", () => {
     })
   })
 
+  test("intent commit rechecks seat ownership after an asynchronous guard", async () => {
+    await withScope(async () => {
+      let notifyGuardEntered: () => void = () => undefined
+      const guardEntered = new Promise<void>((resolve) => {
+        notifyGuardEntered = resolve
+      })
+      let releaseGuard: () => void = () => undefined
+      const guardRelease = new Promise<void>((resolve) => {
+        releaseGuard = resolve
+      })
+      WorkflowGuards.register("test_wait_for_reassignment", async () => {
+        notifyGuardEntered()
+        await guardRelease
+        return { ok: true }
+      })
+      const charter = testCharter()
+      const submit = charter.transitions.find((transition) => transition.id === "submit")
+      if (!submit) throw new Error("missing submit transition")
+      submit.guards.push({ name: "test_wait_for_reassignment", args: {} })
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "working")
+      const now = Date.now()
+      const replacement: WorkflowTypes.Entity = {
+        id: "wfe_replacement",
+        runID: run.id,
+        title: "Replacement",
+        state: "working",
+        bindings: { seatSessionID: "ses_worker" },
+        submissions: [],
+        assignedSeat: { seat: "worker", instance: 0 },
+        time: { created: now, updated: now, stateEntered: now },
+      }
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.entities.push(replacement)
+      })
+
+      const pending = WorkflowMachine.submitIntent({
+        scopeID,
+        runID: run.id,
+        entityID: entity.id,
+        transitionID: "submit",
+        actorSessionID: "ses_worker",
+      })
+      await guardEntered
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        const seat = draft.seats.find((binding) => binding.sessionID === "ses_worker")
+        if (seat) seat.entityID = replacement.id
+      })
+      releaseGuard()
+
+      const result = await pending
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.reason).toContain("does not own")
+      const unchanged = await WorkflowRunStore.get(scopeID, run.id)
+      expect(unchanged.entities.find((candidate) => candidate.id === entity.id)?.state).toBe("working")
+    })
+  })
+
   test("effect failure blocks the entity and is not silent", async () => {
     await withScope(async () => {
       // assign_entity with no 'seat' arg throws → the transition's effect fails.
@@ -215,7 +377,8 @@ describe("WorkflowMachine", () => {
           },
         ],
       })
-      const { scopeID, run } = await seedRun(charter)
+      const boss = await Session.create({})
+      const { scopeID, run } = await seedRun(charter, boss.id)
       const entity = await addEntity(scopeID, run.id, "queued")
       await WorkflowMachine.evaluateEventTransitions(scopeID, run.id, entity.id)
       const updated = await WorkflowRunStore.get(scopeID, run.id)
@@ -269,6 +432,7 @@ describe("WorkflowMachine gates", () => {
           time: { created: Date.now() },
         })
       })
+      const beforeResolution = await WorkflowRunStore.get(scopeID, run.id)
       const updated = await WorkflowMachine.resolveGate({
         scopeID,
         runID: run.id,
@@ -279,6 +443,7 @@ describe("WorkflowMachine gates", () => {
       expect(updated.entities[0].state).toBe("merged")
       expect(updated.gates[0].status).toBe("resolved")
       expect(updated.gates[0].resolvedBy).toBe("human_ui")
+      expect(updated.revision).toBe(beforeResolution.revision + 1)
     })
   })
 
@@ -304,6 +469,110 @@ describe("WorkflowMachine gates", () => {
         resolvedBy: "boss_agent",
       })
       expect(updated.entities[0].state).toBe("rework")
+    })
+  })
+
+  test("a terminal run rejects gate resolution without mutating the gate or entity", async () => {
+    await withScope(async () => {
+      const { scopeID, run } = await seedRun(gateCharter())
+      const entity = await addEntity(scopeID, run.id, "awaiting_merge")
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.status = "cancelled"
+        draft.time.completed = Date.now()
+        draft.gates.push({
+          id: "wfg_cancelled",
+          gate: "final_merge",
+          entityID: entity.id,
+          transitionID: "merge",
+          status: "pending",
+          time: { created: Date.now() },
+        })
+      })
+
+      await expect(
+        WorkflowMachine.resolveGate({
+          scopeID,
+          runID: run.id,
+          gateInstanceID: "wfg_cancelled",
+          resolution: "merge",
+          resolvedBy: "human_ui",
+        }),
+      ).rejects.toThrow(/WorkflowTransitionRejected/)
+
+      const unchanged = await WorkflowRunStore.get(scopeID, run.id)
+      expect(unchanged.gates[0]?.status).toBe("pending")
+      expect(unchanged.entities[0]?.state).toBe("awaiting_merge")
+    })
+  })
+
+  test("a valid resolution with no matching transition leaves the gate pending", async () => {
+    await withScope(async () => {
+      const charter = gateCharter()
+      charter.transitions = charter.transitions.filter((transition) => transition.id === "merge")
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "awaiting_merge")
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.gates.push({
+          id: "wfg_no_match",
+          gate: "final_merge",
+          entityID: entity.id,
+          transitionID: "merge",
+          status: "pending",
+          time: { created: Date.now() },
+        })
+      })
+
+      await expect(
+        WorkflowMachine.resolveGate({
+          scopeID,
+          runID: run.id,
+          gateInstanceID: "wfg_no_match",
+          resolution: "rework",
+          resolvedBy: "human_ui",
+        }),
+      ).rejects.toThrow(/WorkflowTransitionRejected/)
+
+      const unchanged = await WorkflowRunStore.get(scopeID, run.id)
+      expect(unchanged.gates[0]?.status).toBe("pending")
+      expect(unchanged.entities[0]?.state).toBe("awaiting_merge")
+      const events = await WorkflowRunStore.listEvents(scopeID, run.id)
+      expect(events.some((event) => event.kind === "gate_resolved")).toBe(false)
+    })
+  })
+
+  test("a matching gate transition whose guards fail leaves the gate pending", async () => {
+    await withScope(async () => {
+      const charter = gateCharter()
+      const merge = charter.transitions.find((transition) => transition.id === "merge")
+      if (!merge) throw new Error("missing merge transition")
+      merge.guards.push({ name: "submission_recorded", args: { kind: "deliverable" } })
+      merge.blockOnGuardFail = true
+      const { scopeID, run } = await seedRun(charter)
+      const entity = await addEntity(scopeID, run.id, "awaiting_merge")
+      await WorkflowRunStore.update(scopeID, run.id, (draft) => {
+        draft.gates.push({
+          id: "wfg_guard_failed",
+          gate: "final_merge",
+          entityID: entity.id,
+          transitionID: "merge",
+          status: "pending",
+          time: { created: Date.now() },
+        })
+      })
+
+      await expect(
+        WorkflowMachine.resolveGate({
+          scopeID,
+          runID: run.id,
+          gateInstanceID: "wfg_guard_failed",
+          resolution: "merge",
+          resolvedBy: "boss_agent",
+        }),
+      ).rejects.toThrow(/WorkflowTransitionRejected/)
+
+      const unchanged = await WorkflowRunStore.get(scopeID, run.id)
+      expect(unchanged.gates[0]?.status).toBe("pending")
+      expect(unchanged.entities[0]?.state).toBe("awaiting_merge")
     })
   })
 })

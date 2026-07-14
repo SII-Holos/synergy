@@ -123,13 +123,12 @@ export namespace SessionModePolicy {
   export function evaluateCall(input: {
     toolName: string
     args: Record<string, any>
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "workflowRun">
     capabilities: Capability[]
   }): ToolDiagnostic | undefined {
-    if (!isPlan(input.session)) return undefined
-
     const staticDiagnostic = visibility({ toolName: input.toolName, session: input.session })
     if (staticDiagnostic) return staticDiagnostic
+    if (!isPlan(input.session)) return undefined
     return undefined
   }
 
@@ -252,6 +251,22 @@ export namespace SessionModePolicy {
   ): ToolDiagnostic | undefined {
     const role = session?.workflowRun?.role
 
+    if (WORKFLOW_BOSS_TOOLS.has(toolName) && role !== "boss") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a Boss session that owns a workflow run.`,
+      }
+    }
+    if (WORKFLOW_SEAT_TOOLS.has(toolName) && role !== "seat") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a workflow-run seat session.`,
+      }
+    }
+    if (toolName.startsWith("workflow_")) return undefined
+
     // Boss sessions are the control plane — they must not use implementation
     // tools. Work should be enqueued as entities via workflow_entity_add so
     // seat sessions pick it up. This is a technical gate, not just a prompt
@@ -272,20 +287,6 @@ export namespace SessionModePolicy {
       }
     }
 
-    if (WORKFLOW_BOSS_TOOLS.has(toolName) && role !== "boss") {
-      return {
-        code: "tool_unavailable",
-        toolName,
-        message: `The "${toolName}" tool is only available to a Boss session that owns a workflow run.`,
-      }
-    }
-    if (WORKFLOW_SEAT_TOOLS.has(toolName) && role !== "seat") {
-      return {
-        code: "tool_unavailable",
-        toolName,
-        message: `The "${toolName}" tool is only available to a workflow-run seat session.`,
-      }
-    }
     return undefined
   }
 
