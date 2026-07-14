@@ -9,7 +9,7 @@ import { ComponentProps, createEffect, createResource, onCleanup, splitProps } f
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
-import { applyMarkdownTerminalCrossfade } from "./markdown-terminal-transition"
+import { createMarkdownTerminalTransitionController } from "./markdown-terminal-transition"
 
 type Entry = MarkdownRenderEntry
 
@@ -220,6 +220,7 @@ export function Markdown(
   // consumes only the suffix after its offset. A shorter snapshot resets the
   // append-only parser without scanning the accumulated prefix.
   let stream: MarkdownStreamController | undefined
+  const terminalTransition = createMarkdownTerminalTransitionController()
   const endStream = () => {
     if (!stream) return
     stream.end()
@@ -228,6 +229,7 @@ export function Markdown(
 
   createEffect(() => {
     if (!local.streaming) return
+    terminalTransition.reset()
     if (!stream) stream = createMarkdownStreamController(container)
     stream.update(local.text, local.cacheKey)
   })
@@ -240,13 +242,14 @@ export function Markdown(
     if (local.streaming) return
     const rendered = html()
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
-    const hadStreamContent = Boolean(stream) || container.childNodes.length > 0
+    const hadStreamContent = Boolean(stream)
     endStream()
     const prefersReducedMotion =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    const cleanup = applyMarkdownTerminalCrossfade({
+    terminalTransition.apply({
+      hash: rendered.hash,
       container,
       html: rendered.html,
       enhance: (root) => enhanceMarkdown(root as HTMLDivElement),
@@ -254,10 +257,12 @@ export function Markdown(
       markdownLength: local.text.length,
       hadStreamContent,
     })
-    onCleanup(cleanup)
   })
 
-  onCleanup(endStream)
+  onCleanup(() => {
+    terminalTransition.reset()
+    endStream()
+  })
 
   return (
     <div

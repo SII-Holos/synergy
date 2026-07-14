@@ -2022,11 +2022,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const part = () => props.part as TextPart
-  const isTerminal = () =>
+  const isTerminal = createMemo(() =>
     isTextPartTerminal({
       partEnd: part().time?.end,
       messageCompleted: (props.message as AssistantMessage).time.completed,
-    })
+    }),
+  )
 
   const projection = createTextPartProjection()
   const renderedText = createMemo(() =>
@@ -2049,11 +2050,12 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const part = () => props.part as ReasoningPart
-  const isTerminal = () =>
+  const isTerminal = createMemo(() =>
     isTextPartTerminal({
       partEnd: part().time?.end,
       messageCompleted: (props.message as AssistantMessage).time.completed,
-    })
+    }),
+  )
 
   const projection = createTextPartProjection()
   const renderedText = createMemo(() =>

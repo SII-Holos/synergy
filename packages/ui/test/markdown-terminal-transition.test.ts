@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   applyMarkdownTerminalCrossfade,
+  createMarkdownTerminalTransitionController,
   MARKDOWN_TERMINAL_CROSSFADE_MAX_CHARS,
   MARKDOWN_TERMINAL_CROSSFADE_MS,
   markdownTerminalTransitionMode,
@@ -317,5 +318,52 @@ describe("applyMarkdownTerminalCrossfade", () => {
 
     expect(container.innerHTML).toBe("<p>final</p>")
     expect(enhanceLive).toBe(1)
+  })
+})
+
+describe("createMarkdownTerminalTransitionController", () => {
+  test("does not restart the same terminal render when sibling tool state updates", () => {
+    const container = createContainer("<p>stream partial</p>", "stream partial")
+    const frames: Array<() => void> = []
+    let enhanceCalls = 0
+    let enhanceLive = 0
+    const controller = createMarkdownTerminalTransitionController()
+
+    for (let update = 0; update < 100; update++) {
+      const applied = controller.apply({
+        hash: "terminal-render-v1",
+        container,
+        html: "<p><strong>final</strong></p>",
+        enhance: () => {
+          enhanceCalls += 1
+          enhanceLive += 1
+          return () => {
+            enhanceLive -= 1
+          }
+        },
+        nextFrame: (callback) => {
+          frames.push(callback)
+          return frames.length
+        },
+        cancelFrame: () => {},
+        schedule: () => 1,
+        cancel: () => {},
+        prefersReducedMotion: false,
+        markdownLength: 32,
+        hadStreamContent: true,
+      })
+
+      expect(applied).toBe(update === 0)
+      expect(countSlot(container as unknown as NodeLike, "markdown-terminal-crossfade")).toBe(1)
+    }
+
+    expect(frames).toHaveLength(1)
+    expect(enhanceCalls).toBe(1)
+    expect(enhanceLive).toBe(1)
+
+    controller.reset()
+    expect(countSlot(container as unknown as NodeLike, "markdown-terminal-crossfade")).toBe(0)
+    expect(container.innerHTML).toBe("<p><strong>final</strong></p>")
+    expect(enhanceLive).toBe(0)
   })
 })
