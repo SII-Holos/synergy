@@ -316,10 +316,9 @@ export namespace SessionInvoke {
         const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
-          // Pre-jobs (compaction especially) can rewrite history in ways the
-          // incremental cache maintenance does not model; drop the cache so the
-          // next step re-reads authoritative state (#350 D2, R2).
-          SessionMessageCache.invalidate(sessionID)
+          // Pre-jobs write through Session.updateMessage/updatePart, which keep
+          // the loop-scoped cache current. Invalidating here made the detached
+          // prune job race a full history reload on every tool turn (#597).
           if (result === "stop") break
           if (result === "continue") {
             // A processed compaction re-arms the emergency-compaction fallback so
