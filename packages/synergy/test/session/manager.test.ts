@@ -336,6 +336,57 @@ describe("SessionManager.getSession", () => {
 })
 
 describe("loop ownership", () => {
+  test("leaves a failed run's pending inbox item for explicit retry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { SessionInvoke } = await import("../../src/session/invoke")
+        const originalLoop = SessionInvoke.loop
+        const wakes: string[] = []
+        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+          wakes.push(sessionID)
+        })
+
+        let sessionID = ""
+        try {
+          const session = await Session.create({})
+          sessionID = session.id
+          await SessionInbox.enqueueMail({
+            sessionID,
+            mail: {
+              type: "user",
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "missing-model" },
+              parts: [
+                {
+                  id: "prt_failed_run",
+                  sessionID,
+                  messageID: "msg_failed_run",
+                  type: "text",
+                  text: "Retry after provider recovery",
+                },
+              ],
+            },
+          })
+
+          await expect(
+            SessionManager.run(sessionID, async () => {
+              throw new Error("model resolution failed")
+            }),
+          ).rejects.toThrow("model resolution failed")
+          await Bun.sleep(20)
+
+          expect(wakes).toEqual([])
+          expect(await SessionInbox.hasRunnableItem(sessionID)).toBe(true)
+        } finally {
+          ;(SessionInvoke.loop as any) = originalLoop
+          if (sessionID) SessionManager.unregisterRuntime(sessionID)
+        }
+      },
+    })
+  })
+
   test("reserves ownership before async session setup can yield", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

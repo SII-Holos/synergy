@@ -313,6 +313,7 @@ export namespace SessionManager {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
+    let completed = false
 
     try {
       const session = await requireSession(sessionID)
@@ -345,11 +346,17 @@ export namespace SessionManager {
             }
           },
         })
-      if (workspace.type !== "git_worktree") return await runWithScope()
-      const { Worktree } = await import("../project/worktree")
-      return await Worktree.withUse(workspace.path, session.id, runWithScope)
+      let result: T
+      if (workspace.type !== "git_worktree") {
+        result = await runWithScope()
+      } else {
+        const { Worktree } = await import("../project/worktree")
+        result = await Worktree.withUse(workspace.path, session.id, runWithScope)
+      }
+      completed = true
+      return result
     } finally {
-      await release(lease)
+      await release(lease, { reschedulePendingInbox: completed })
       const runtime = getRuntime(sessionID)
       if (runtime && !occupied(runtime)) unregisterRuntime(sessionID)
     }
@@ -425,7 +432,10 @@ export namespace SessionManager {
     return true
   }
 
-  export async function release(lease: LoopLease): Promise<boolean> {
+  export async function release(
+    lease: LoopLease,
+    options: { reschedulePendingInbox?: boolean } = {},
+  ): Promise<boolean> {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
 
@@ -441,7 +451,9 @@ export namespace SessionManager {
     const { Cortex } = await import("../cortex/manager")
     await Cortex.flushDeferredParentNotifications(lease.sessionID)
 
-    if (await SessionInbox.hasRunnableItem(lease.sessionID)) {
+    // If the loop failed before consuming its inbox item, leave that item durable
+    // for an explicit retry instead of creating an immediate failure/wake cycle.
+    if (options.reschedulePendingInbox !== false && (await SessionInbox.hasRunnableItem(lease.sessionID))) {
       scheduleWake(lease.sessionID, "release")
     }
     return true
