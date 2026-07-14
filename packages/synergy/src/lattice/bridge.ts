@@ -38,7 +38,7 @@ export namespace LatticeBridge {
     sessionID: string
     status: string
     error?: string
-    source: "user" | "lattice"
+    source: "user" | "lattice" | "workflow"
   }): Promise<void> {
     if (loop.source !== "lattice") return
     if (loop.status !== "completed" && loop.status !== "failed" && loop.status !== "cancelled") return

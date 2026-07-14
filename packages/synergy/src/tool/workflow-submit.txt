@@ -1,0 +1,7 @@
+Submit a structured result for your currently assigned entity (seat sessions only).
+
+Record a deliverable, review_verdict, or test_report and (optionally) drive the
+transition it satisfies by passing transitionID. The engine verifies your seat is
+allowed to perform that transition and that its guards pass before advancing the
+entity. This is how you "hand your work back" to the workflow — a normal chat reply
+does not advance anything.

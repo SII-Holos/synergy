@@ -21,7 +21,7 @@ Product documents explain what users work with and how the major capabilities re
 - [Product overview](product/overview.md) — positioning, product objects, surfaces, and durable principles
 - [Workspaces and sessions](product/workspaces-and-sessions.md) — Scope, projects, sessions, agents, tools, history, and Browser ownership
 - [Agents, tools, skills, and commands](product/agents-and-tools.md) — catalogs, external agents, exposure, customization, and ACP
-- [Workflows](product/workflows.md) — direct work, Plan, Blueprints, BlueprintLoop, Light Loop, Lattice, delegation, and compaction
+- [Workflows](product/workflows.md) — direct work, Plan, Blueprints, BlueprintLoop, Light Loop, Lattice, WorkflowRun/Boss Mode, delegation, and compaction
 - [Knowledge](product/knowledge.md) — Library memories and experiences, Notes, Blueprints, recall, and search
 - [Activity and statistics](product/activity-and-statistics.md) — usage, tokens, costs, agents, tools, code changes, trends, and derived-data freshness
 - [Automation](product/automation.md) — Agenda triggers, session modes, delivery, recovery, and failure behavior
@@ -41,7 +41,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 - [Frontend data sync](architecture/frontend-data-sync.md)
 - [Execution boundaries](architecture/execution-boundaries.md)
 - [Cortex and delegated work](architecture/cortex.md)
-- [Workflow engine](architecture/workflows.md)
+- [Workflow engine](architecture/workflows.md) — session-local workflows plus Scope-level WorkflowRun/Boss Mode
 - [Browser runtime](architecture/browser-runtime.md)
 
 ## Reference

@@ -22,6 +22,7 @@ import { CortexOutput } from "./output"
 import { ScopeContext } from "../scope/context"
 import { Observability } from "../observability"
 import { pluginTaskSnapshotFromTask } from "./plugin-task"
+import type { Info as SessionInfo } from "../session/types"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -52,6 +53,44 @@ export namespace Cortex {
   ]
 
   export const Event = CortexEvent
+
+  export async function publishRecoveredInterruptedTask(session: SessionInfo): Promise<void> {
+    const cortex = session.cortex
+    if (!cortex || cortex.status !== "interrupted") return
+    await publishRecoveredWorkflowTask(session)
+  }
+
+  export async function publishRecoveredWorkflowTask(session: SessionInfo): Promise<void> {
+    const cortex = session.cortex
+    if (!cortex || !isTerminal(cortex.status)) return
+    const owner = CortexTypes.taskOwnerFromStored(cortex.owner)
+    if (owner?.kind !== "workflow_run") return
+
+    const task = CortexTypes.Task.parse({
+      id: cortex.taskID,
+      sessionID: session.id,
+      parentSessionID: cortex.parentSessionID,
+      parentMessageID: cortex.parentMessageID,
+      description: cortex.description,
+      prompt: "",
+      agent: cortex.agent,
+      model: cortex.model,
+      executionRole: cortex.executionRole,
+      owner,
+      status: cortex.status,
+      startedAt: cortex.startedAt,
+      completedAt: cortex.completedAt,
+      error: cortex.error,
+      visibility: cortex.visibility,
+      tools: cortex.tools,
+      outputConfig: cortex.outputConfig,
+      output: cortex.output,
+      timeoutMs: cortex.timeoutMs,
+      ownedWorktreeID: cortex.ownedWorktreeID,
+      usage: cortex.usage,
+    })
+    await Bus.publish(Event.TaskCompleted, { task })
+  }
 
   /** Extract final text from an external-agent subagent session.
    *  Reads all assistant text parts (excluding synthetic, ignored, tool output, reasoning)
@@ -159,16 +198,19 @@ export namespace Cortex {
         completionNotice: { silent: input.visibility === "hidden" },
       })
     }
+    let ownedWorktreeID: string | undefined
     if (input.worktree?.create) {
       const parentWorkspace = (parent as import("../session/types").Info).workspace
       if (parentWorkspace?.type !== "git_worktree") {
         try {
           const created = await Worktree.create({
             name: input.worktree.name,
+            sessionID: session.id,
             baseRef: input.worktree.baseRef,
             bind: false,
           })
           await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
+          ownedWorktreeID = created.id
           log.info("worktree bound to child session", {
             taskID,
             worktreeID: created.id,
@@ -193,6 +235,7 @@ export namespace Cortex {
       model: input.model,
       executionRole: input.executionRole,
       category: input.category,
+      owner: input.owner,
       dagNodeId: input.dagNodeId,
       status: "queued",
       startedAt: Date.now(),
@@ -205,8 +248,9 @@ export namespace Cortex {
       visibility: input.visibility,
       tools: input.tools,
       outputConfig: input.output,
-      owner: input.owner,
+      metadata: input.metadata,
       timeoutMs: input.timeoutMs,
+      ownedWorktreeID,
     }
 
     await Session.update(session.id, (draft) => {
@@ -225,6 +269,7 @@ export namespace Cortex {
       draft.cortex.output = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
+      draft.cortex.ownedWorktreeID = ownedWorktreeID
     })
 
     tasks.set(taskID, task)
@@ -292,16 +337,18 @@ export namespace Cortex {
   }
 
   function emitPluginTaskObservability(task: CortexTypes.Task, phase: string): void {
-    if (!task.owner) return
+    const parsed = CortexTypes.PluginTaskOwner.safeParse(task.owner)
+    if (!parsed.success) return
+    const owner = parsed.data
     void Observability.emit(`plugin.task.${phase}`, {
-      traceId: task.owner.correlationId,
+      traceId: owner.correlationId,
       sessionID: task.sessionID,
-      scopeID: task.owner.scopeId,
+      scopeID: owner.scopeId,
       level: phase === "error" || phase === "interrupted" ? "error" : "info",
       data: {
-        pluginId: task.owner.pluginId,
-        pluginGeneration: task.owner.pluginGeneration,
-        correlationId: task.owner.correlationId,
+        pluginId: owner.pluginId,
+        pluginGeneration: owner.pluginGeneration,
+        correlationId: owner.correlationId,
         taskId: task.id,
         status: task.status,
         agent: task.agent,
@@ -417,6 +464,7 @@ export namespace Cortex {
         parts,
         tools: invokeTools,
         ephemeralTools,
+        metadata: task.metadata as Record<string, any> | undefined,
       })
 
       let outputResolution = await CortexOutput.resolve({
@@ -634,9 +682,7 @@ export namespace Cortex {
       emitPluginTaskObservability(terminalTask, terminalTask.status)
       publishVisibleTasksUpdate()
 
-      if (terminalTask.visibility !== "hidden") {
-        Bus.publish(Event.TaskCompleted, { task: terminalTask })
-      }
+      Bus.publish(Event.TaskCompleted, { task: terminalTask })
       if (shouldNotifyParent && !SessionManager.isRunning(terminalTask.parentSessionID)) {
         await flushDeferredParentNotifications(terminalTask.parentSessionID)
       }
@@ -1086,12 +1132,13 @@ export namespace Cortex {
   }
 
   async function cleanupChildWorktree(task: CortexTypes.Task) {
+    if (!task.ownedWorktreeID) return
     try {
       const session = await Session.get(task.sessionID)
       const workspace = session.workspace
-      if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
+      if (workspace?.type !== "git_worktree" || workspace.worktreeID !== task.ownedWorktreeID) return
       const state = await Worktree.status(task.sessionID)
-      if (!state.worktree || !state.worktree.managed) return
+      if (!state.worktree || state.worktree.id !== task.ownedWorktreeID || !state.worktree.managed) return
       const owner = state.worktree.owner
       if (owner?.type !== "session" || owner.sessionID !== task.sessionID) return
       if (state.dirty) {

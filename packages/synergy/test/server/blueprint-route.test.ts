@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
-import { BlueprintLoopStore } from "../../src/blueprint"
+import { BlueprintLoopService, BlueprintLoopStore } from "../../src/blueprint"
 import { NoteStore } from "../../src/note"
 import { BlueprintRoute } from "../../src/server/blueprint"
 import { Session } from "../../src/session"
@@ -277,7 +277,7 @@ describe("BlueprintRoute start prompt", () => {
     })
   })
 
-  test("start returns after scheduling the first prompt", async () => {
+  test("start requests asynchronous processing after durable first-prompt delivery", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -285,29 +285,70 @@ describe("BlueprintRoute start prompt", () => {
         const session = await Session.create({})
         const note = await createBlueprint("synergy")
         const loop = await createLoop(note.id, session.id)
-        let releaseDeliver: (() => void) | undefined
-        ;(SessionManager.deliver as any) = mock(async () => {
-          await new Promise<void>((resolve) => {
-            releaseDeliver = resolve
-          })
+        let delivery: Parameters<typeof SessionManager.deliver>[0] | undefined
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          delivery = input
         })
 
-        const request = app().request(`/blueprint/loop/${loop.id}/start`, {
+        const response = await app().request(`/blueprint/loop/${loop.id}/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         })
-        const response = await Promise.race([
-          request,
-          new Promise<Response | undefined>((resolve) => setTimeout(() => resolve(undefined), 1000)),
-        ])
 
-        try {
-          expect(response?.status).toBe(200)
-        } finally {
-          releaseDeliver?.()
-          await request
-        }
+        expect(response.status).toBe(200)
+        expect(delivery?.waitForProcessing).toBe(false)
+      },
+    })
+  })
+
+  test("start fails the loop when its first prompt cannot be durably delivered", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy")
+        const loop = await createLoop(note.id, session.id)
+        ;(SessionManager.deliver as any) = mock(async () => {
+          throw new Error("inbox unavailable")
+        })
+
+        await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
+          "inbox unavailable",
+        )
+        const stored = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(stored.status).toBe("failed")
+        expect(stored.error).toContain("inbox unavailable")
+      },
+    })
+  })
+
+  test("createAndStart repairs a running loop whose first prompt was not delivered", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy")
+        const loop = await createLoop(note.id, session.id)
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          deliveries.push(input)
+        })
+
+        const replayed = await BlueprintLoopService.createAndStart({
+          id: loop.id,
+          noteID: note.id,
+          title: "Prompt split",
+          sessionID: session.id,
+          runMode: "current",
+        })
+
+        expect(replayed.status).toBe("running")
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0]?.waitForProcessing).toBe(false)
       },
     })
   })

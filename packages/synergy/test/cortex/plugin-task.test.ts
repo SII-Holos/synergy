@@ -4,6 +4,7 @@ import type { CortexTypes } from "../../src/cortex/types"
 import type { CortexDelegationInfo } from "../../src/session/types"
 
 const owner = {
+  kind: "plugin" as const,
   pluginId: "example-plugin",
   pluginGeneration: "generation-a",
   scopeId: "scope-a",

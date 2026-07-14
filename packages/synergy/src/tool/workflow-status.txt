@@ -1,0 +1,5 @@
+Read WorkflowRun status.
+
+From a Boss session: a run overview (entities by state, seats, pending gates, budget).
+From a seat session: your currently assigned entity and your allowed transitions.
+Pass entityID to focus on one entity.

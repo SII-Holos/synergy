@@ -1,0 +1,14 @@
+Create a WorkflowRun (Boss Mode) and become its Boss session.
+
+Boss Mode runs a team of persistent AI "seat" agents through an entity state machine; you (this
+session) become the Boss — the single control plane — and only step in at human gates. Seats and
+their sessions are created lazily as work is assigned. After creating a run, enqueue work with
+workflow_entity_add; the engine dispatches each entity to a seat automatically.
+
+Charter selection:
+- Omit charterID (recommended for a standard code workflow) to use the built-in Issue → PR → Test
+  charter: parallel executors, a review loop, an integration tester, and a final-merge gate. It is
+  known-good and dispatches entities automatically.
+- Pass a charterID from workflow_charter_draft only when you genuinely need a custom company shape.
+
+Only call this from a session that is not already bound to a workflow run.

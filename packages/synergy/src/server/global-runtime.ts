@@ -13,6 +13,8 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { WorkflowBridge } from "@/workflow-run/bridge"
+import { WorkflowRunRecovery } from "@/workflow-run/recovery"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -33,6 +35,10 @@ export namespace GlobalRuntime {
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
+          WorkflowBridge.init()
+          await WorkflowRunRecovery.reconcile(Scope.home().id).catch((error) => {
+            log.warn("workflow run recovery failed", { scopeID: Scope.home().id, error })
+          })
           await SessionInvoke.resumePending()
           await Agenda.start()
           await AgendaBootstrap.seed()

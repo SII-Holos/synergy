@@ -1,5 +1,5 @@
 import type { PluginTaskHandle, PluginTaskSnapshot } from "@ericsanchezok/synergy-plugin"
-import type { CortexTypes } from "./types"
+import { CortexTypes } from "./types"
 import type { CortexDelegationInfo } from "../session/types"
 
 type DurablePluginTask = Pick<
@@ -18,11 +18,12 @@ type DurablePluginTask = Pick<
 >
 
 function snapshot(handle: PluginTaskHandle, task: DurablePluginTask): PluginTaskSnapshot | undefined {
-  if (!task.owner) return undefined
+  const owner = CortexTypes.PluginTaskOwner.safeParse(task.owner)
+  if (!owner.success) return undefined
   return {
     ...handle,
     status: task.status,
-    owner: task.owner,
+    owner: owner.data,
     agent: task.agent,
     startedAt: task.startedAt,
     ...(task.model ? { model: task.model } : {}),

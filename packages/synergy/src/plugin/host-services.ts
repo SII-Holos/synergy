@@ -6,6 +6,7 @@ import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy } from "@/control-profile/approval"
 import { Cortex } from "@/cortex"
+import { CortexTypes } from "@/cortex/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { PermissionNext } from "@/permission/next"
 import { Provider } from "@/provider/provider"
@@ -71,6 +72,7 @@ export async function startPluginTask(input: {
     notifyParentOnComplete: request.visibility === "hidden" ? false : undefined,
     timeoutMs,
     owner: {
+      kind: "plugin",
       pluginId: input.pluginId,
       pluginGeneration: input.pluginGeneration,
       scopeId: input.scopeId,
@@ -113,16 +115,17 @@ export async function cancelPluginTask(input: {
 }
 
 function assertPluginTaskOwner(
-  owner: { pluginId: string; pluginGeneration: string; scopeId: string } | undefined,
+  owner: CortexTypes.TaskOwner | undefined,
   pluginId: string,
   pluginGeneration: string,
   scopeId: string,
 ): void {
+  const parsed = CortexTypes.PluginTaskOwner.safeParse(owner)
   if (
-    !owner ||
-    owner.pluginId !== pluginId ||
-    owner.pluginGeneration !== pluginGeneration ||
-    owner.scopeId !== scopeId
+    !parsed.success ||
+    parsed.data.pluginId !== pluginId ||
+    parsed.data.pluginGeneration !== pluginGeneration ||
+    parsed.data.scopeId !== scopeId
   ) {
     throw new Error("Plugin task does not belong to the invoking plugin generation and Scope")
   }

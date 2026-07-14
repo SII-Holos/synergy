@@ -1,0 +1,5 @@
+Enqueue a new entity (unit of work, e.g. an issue) into a WorkflowRun you own as Boss.
+
+The entity enters the charter's initial state and the engine immediately evaluates
+whether it can be assigned to a seat. Provide an affinityKey to prefer routing related
+entities (e.g. same module) to the same seat instance.

@@ -62,6 +62,30 @@ export namespace SessionModePolicy {
 
   const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
 
+  // Workflow-run (Boss Mode) tools, gated by the caller's role in a run.
+  const WORKFLOW_BOSS_TOOLS = new Set([
+    "workflow_run_control",
+    "workflow_entity_add",
+    "workflow_gate_resolve",
+    "workflow_entity_unblock",
+  ])
+  const WORKFLOW_SEAT_TOOLS = new Set(["workflow_submit", "workflow_block"])
+  // workflow_run_create / workflow_status / workflow_charter_draft are available
+  // broadly (create from an unbound session, status from either role, draft
+  // anywhere) so they are intentionally not gated here.
+
+  /**
+   * Boss is the control plane. Block implementation-shaped tools by taxonomy
+   * kind rather than a growing name blacklist so new write/execute/dispatch
+   * tools stay covered by default.
+   */
+  const BOSS_BLOCKED_KINDS = new Set([
+    "code.write",
+    "code.execute",
+    "orchestration.task",
+    "orchestration.dag",
+    "knowledge.note",
+  ])
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "plan"
   }
@@ -72,10 +96,13 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "workflowRun">
   }): ToolDiagnostic | undefined {
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
+
+    const workflowDiagnostic = workflowVisibility(input.toolName, input.session)
+    if (workflowDiagnostic) return workflowDiagnostic
 
     if (!isPlan(input.session)) return undefined
     if (PLAN_EXPLICIT_ALLOW.has(input.toolName)) return undefined
@@ -96,13 +123,12 @@ export namespace SessionModePolicy {
   export function evaluateCall(input: {
     toolName: string
     args: Record<string, any>
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "workflowRun">
     capabilities: Capability[]
   }): ToolDiagnostic | undefined {
-    if (!isPlan(input.session)) return undefined
-
     const staticDiagnostic = visibility({ toolName: input.toolName, session: input.session })
     if (staticDiagnostic) return staticDiagnostic
+    if (!isPlan(input.session)) return undefined
     return undefined
   }
 
@@ -211,6 +237,56 @@ export namespace SessionModePolicy {
         ].join("\n"),
       }
     }
+    return undefined
+  }
+
+  /**
+   * Workflow-run tool visibility. Boss tools are hidden outside a boss session;
+   * seat tools (workflow_submit / workflow_block) are hidden outside a seat
+   * session. Runtime execute() re-checks role server-side regardless.
+   */
+  function workflowVisibility(
+    toolName: string,
+    session?: Pick<SessionInfo, "workflowRun">,
+  ): ToolDiagnostic | undefined {
+    const role = session?.workflowRun?.role
+
+    if (WORKFLOW_BOSS_TOOLS.has(toolName) && role !== "boss") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a Boss session that owns a workflow run.`,
+      }
+    }
+    if (WORKFLOW_SEAT_TOOLS.has(toolName) && role !== "seat") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to a workflow-run seat session.`,
+      }
+    }
+    if (toolName.startsWith("workflow_")) return undefined
+
+    // Boss sessions are the control plane — they must not use implementation
+    // tools. Work should be enqueued as entities via workflow_entity_add so
+    // seat sessions pick it up. This is a technical gate, not just a prompt
+    // suggestion.
+    if (role === "boss") {
+      const taxonomy = ToolTaxonomy.classify(toolName)
+      if (BOSS_BLOCKED_KINDS.has(taxonomy.kind)) {
+        return {
+          code: "tool_unavailable",
+          toolName,
+          message: [
+            `The "${toolName}" tool is unavailable in a workflow Boss session.`,
+            "You are the control plane — you observe, unblock, and decide at gates.",
+            "Do not implement yourself. Enqueue the work as an entity with workflow_entity_add so a seat session picks it up.",
+          ].join("\n"),
+          metadata: { kind: taxonomy.kind, domain: taxonomy.domain },
+        }
+      }
+    }
+
     return undefined
   }
 

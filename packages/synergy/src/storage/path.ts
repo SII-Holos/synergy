@@ -146,6 +146,30 @@ export namespace StoragePath {
     eventID,
   ]
 
+  // WorkflowRun: runs are keyed by runID (a scope can host several concurrent
+  // runs, each spanning multiple sessions). Charters are versioned & immutable
+  // per version. Events live in a sibling collection for the same reason Lattice
+  // splits them out — the run document is rewritten frequently.
+  export const charterRoot = (scopeID: ScopeID) => ["workflow", "charters", scopeID as string]
+  export const charter = (scopeID: ScopeID, charterID: string, version: number) => [
+    ...charterRoot(scopeID),
+    charterID,
+    String(version),
+  ]
+  export const charterVersionsRoot = (scopeID: ScopeID, charterID: string) => [...charterRoot(scopeID), charterID]
+  export const workflowRunsRoot = (scopeID: ScopeID) => ["workflow", "runs", scopeID as string]
+  export const workflowRun = (scopeID: ScopeID, runID: string) => [...workflowRunsRoot(scopeID), runID]
+  export const workflowEventsRoot = (scopeID: ScopeID, runID: string) => [
+    "workflow",
+    "events",
+    scopeID as string,
+    runID,
+  ]
+  export const workflowEvent = (scopeID: ScopeID, runID: string, eventID: string) => [
+    ...workflowEventsRoot(scopeID, runID),
+    eventID,
+  ]
+
   export const holosContactsRoot = () => ["holos", "contacts"]
   export const holosContact = (id: string) => ["holos", "contacts", id]
 

@@ -8,6 +8,8 @@ import { LSP } from "@/lsp"
 import { Plugin } from "@/plugin"
 import { Vcs } from "@/project/vcs"
 import { SessionRecovery } from "@/session/recovery"
+import { WorkflowBridge } from "@/workflow-run/bridge"
+import { WorkflowRunRecovery } from "@/workflow-run/recovery"
 import { Scope } from "."
 import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
@@ -34,6 +36,10 @@ export namespace ScopeRuntime {
             FileWatcher.init()
             File.init()
             Vcs.init()
+            WorkflowBridge.init()
+            await WorkflowRunRecovery.reconcile(scope.id).catch((error) => {
+              log.warn("workflow run recovery failed", { scopeID: scope.id, error })
+            })
             const commandState = ScopedState.create(
               () => {
                 const unsub = Bus.subscribe(Command.Event.Executed, async (payload) => {

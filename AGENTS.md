@@ -83,7 +83,7 @@ Read the owning architecture document before changing these areas:
 - frontend snapshots, events, replay, reconcile, and eviction: `frontend-data-sync.md`
 - capability classification, control profiles, permissions, and sandbox: `execution-boundaries.md`
 - Cortex child sessions and task outputs: `cortex.md`
-- Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
+- Plan, Blueprints, BlueprintLoop, Light Loop, Lattice, and WorkflowRun/Boss Mode: `workflows.md`
 - Browser native/WebRTC presentation and one-session/one-page ownership: `browser-runtime.md`
 
 Do not create compatibility paths that violate those contracts. In particular:

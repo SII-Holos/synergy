@@ -55,8 +55,9 @@ const CortexDelegationInfoInner = z.object({
   tools: z.record(z.string(), z.boolean()).optional(),
   outputConfig: CortexTypes.OutputConfig.optional(),
   output: CortexTypes.TaskOutput.optional(),
-  owner: CortexTypes.PluginTaskOwner.optional(),
+  owner: CortexTypes.TaskOwner.optional(),
   timeoutMs: z.number().int().positive().optional(),
+  ownedWorktreeID: z.string().optional(),
   usage: CortexTypes.TaskUsage.optional(),
 })
 
@@ -74,6 +75,16 @@ export const SuperPlanSessionInfo = z
   })
   .meta({ ref: "SessionSuperPlanInfo" })
 export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
+
+export const WorkflowRunSessionInfo = z
+  .object({
+    runID: Identifier.schema("workflow_run"),
+    role: z.enum(["boss", "seat"]),
+    seat: z.string().optional(),
+    instance: z.number().optional(),
+  })
+  .meta({ ref: "SessionWorkflowRunInfo" })
+export type WorkflowRunSessionInfo = z.infer<typeof WorkflowRunSessionInfo>
 
 export const WorkflowInfo = z
   .discriminatedUnion("kind", [
@@ -249,6 +260,7 @@ export const Info = z
           loopRole: z.enum(["execution", "audit"]).optional(),
         })
         .optional(),
+      workflowRun: WorkflowRunSessionInfo.optional(),
       workflow: WorkflowInfo.optional(),
     }),
   )

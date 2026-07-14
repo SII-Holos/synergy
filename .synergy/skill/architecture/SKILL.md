@@ -15,7 +15,7 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
    - Web state: `frontend-data-sync.md`
    - permissions/tools: `execution-boundaries.md`
    - delegation: `cortex.md`
-   - Plan, BlueprintLoop, Light Loop, Lattice: `workflows.md`
+   - Plan, BlueprintLoop, Light Loop, Lattice, WorkflowRun/Boss Mode: `workflows.md`
    - Browser: `browser-runtime.md`
 3. Read the nearest `AGENTS.md` before inspecting package code.
 4. Load the focused implementation workflow when the trace becomes a change:

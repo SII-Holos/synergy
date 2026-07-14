@@ -41,6 +41,7 @@ export type ToolKind =
   | "orchestration.session_control"
   | "orchestration.agenda"
   | "orchestration.research"
+  | "orchestration.workflow"
   | "platform.config"
   | "platform.tooling"
   | "platform.compute"
@@ -164,6 +165,15 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   research_submission: entry("orchestration.research", { stateful: true }),
   research_wiki: entry("knowledge.wiki", { stateful: true }),
   research_timeline: entry("orchestration.research"),
+  workflow_status: entry("orchestration.workflow"),
+  workflow_run_create: entry("orchestration.workflow", { stateful: true }),
+  workflow_run_control: entry("orchestration.workflow", { stateful: true }),
+  workflow_entity_add: entry("orchestration.workflow", { stateful: true }),
+  workflow_entity_unblock: entry("orchestration.workflow", { stateful: true }),
+  workflow_gate_resolve: entry("orchestration.workflow", { stateful: true }),
+  workflow_submit: entry("orchestration.workflow", { stateful: true }),
+  workflow_block: entry("orchestration.workflow", { stateful: true }),
+  workflow_charter_draft: entry("orchestration.workflow", { stateful: true }),
 
   // platform
   search_tools: entry("platform.tooling", { auxiliary: true }),
@@ -326,6 +336,7 @@ export namespace ToolTaxonomy {
     "orchestration.session_control": "Control",
     "orchestration.agenda": "Schedule",
     "orchestration.research": "Research",
+    "orchestration.workflow": "Workflow",
     "platform.config": "Config",
     "platform.tooling": "Tools",
     "platform.compute": "Compute",

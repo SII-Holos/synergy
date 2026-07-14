@@ -102,7 +102,7 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Static project instructions | Discovered instruction files and explicit instruction additions.                                    |
 | Permission context          | Effective control profile, sandbox/workspace boundaries, and execution guidance.                    |
 | Cortex context              | Parent task and delegated execution context.                                                        |
-| Workflow context            | Plan, Lattice, Light Loop, or BlueprintLoop execution/audit contract.                               |
+| Workflow context            | Plan, Lattice, Light Loop, BlueprintLoop, or WorkflowRun Boss/seat contract.                        |
 | Recall                      | Loop-stable Library memory and experience context.                                                  |
 | Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.                            |
 | Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, planning reminder, and elapsed time. |

@@ -470,6 +470,24 @@ import type {
   ToolListErrors,
   ToolListResponses,
   VcsGetResponses,
+  WorkflowCharterGetErrors,
+  WorkflowCharterGetResponses,
+  WorkflowCharterListErrors,
+  WorkflowCharterListResponses,
+  WorkflowRunControlErrors,
+  WorkflowRunControlResponses,
+  WorkflowRunCreateErrors,
+  WorkflowRunCreateResponses,
+  WorkflowRunEntityAddErrors,
+  WorkflowRunEntityAddResponses,
+  WorkflowRunEventsErrors,
+  WorkflowRunEventsResponses,
+  WorkflowRunGateResolveErrors,
+  WorkflowRunGateResolveResponses,
+  WorkflowRunGetErrors,
+  WorkflowRunGetResponses,
+  WorkflowRunListErrors,
+  WorkflowRunListResponses,
   WorkflowSessionSetErrors,
   WorkflowSessionSetResponses,
   WorkflowSetInput,
@@ -8100,6 +8118,342 @@ export class Workflow extends HeyApiClient {
   session = new Session({ client: this.client })
 }
 
+export class Entity extends HeyApiClient {
+  /**
+   * Add an entity to a workflow run
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      title?: string
+      description?: string
+      affinityKey?: string
+      bindings?: {
+        [key: string]: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "title" },
+            { in: "body", key: "description" },
+            { in: "body", key: "affinityKey" },
+            { in: "body", key: "bindings" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkflowRunEntityAddResponses,
+      WorkflowRunEntityAddErrors,
+      ThrowOnError
+    >({
+      url: "/workflow-run/run/{id}/entity",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Gate extends HeyApiClient {
+  /**
+   * Resolve a gate (human decision)
+   */
+  public resolve<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      gid: string
+      directory?: string
+      scopeID?: string
+      resolution?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "gid" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "resolution" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkflowRunGateResolveResponses,
+      WorkflowRunGateResolveErrors,
+      ThrowOnError
+    >({
+      url: "/workflow-run/run/{id}/gate/{gid}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class WorkflowRun extends HeyApiClient {
+  /**
+   * List workflow runs
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkflowRunListResponses, WorkflowRunListErrors, ThrowOnError>({
+      url: "/workflow-run/run",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a workflow run
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      charterID?: string
+      version?: number
+      title?: string
+      bossSessionID?: string
+      maxModelCalls?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "charterID" },
+            { in: "body", key: "version" },
+            { in: "body", key: "title" },
+            { in: "body", key: "bossSessionID" },
+            { in: "body", key: "maxModelCalls" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkflowRunCreateResponses, WorkflowRunCreateErrors, ThrowOnError>({
+      url: "/workflow-run/run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get a workflow run
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkflowRunGetResponses, WorkflowRunGetErrors, ThrowOnError>({
+      url: "/workflow-run/run/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List workflow run events
+   */
+  public events<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      after?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "after" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkflowRunEventsResponses, WorkflowRunEventsErrors, ThrowOnError>({
+      url: "/workflow-run/run/{id}/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Control a workflow run
+   */
+  public control<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      action?: "pause" | "resume" | "cancel"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkflowRunControlResponses, WorkflowRunControlErrors, ThrowOnError>({
+      url: "/workflow-run/run/{id}/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  entity = new Entity({ client: this.client })
+
+  gate = new Gate({ client: this.client })
+}
+
+export class WorkflowCharter extends HeyApiClient {
+  /**
+   * List charters
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkflowCharterListResponses, WorkflowCharterListErrors, ThrowOnError>({
+      url: "/workflow-run/charter",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get a charter version
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      version: number
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "version" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkflowCharterGetResponses, WorkflowCharterGetErrors, ThrowOnError>({
+      url: "/workflow-run/charter/{id}/{version}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -10007,6 +10361,10 @@ export class SynergyClient extends HeyApiClient {
   lattice = new Lattice({ client: this.client })
 
   workflow = new Workflow({ client: this.client })
+
+  workflowRun = new WorkflowRun({ client: this.client })
+
+  workflowCharter = new WorkflowCharter({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

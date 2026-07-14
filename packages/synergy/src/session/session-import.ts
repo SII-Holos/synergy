@@ -268,6 +268,7 @@ export namespace SessionImport {
       ? {
           ...input.info.cortex,
           parentSessionID: input.idMap.get(input.info.cortex.parentSessionID) ?? input.info.cortex.parentSessionID,
+          owner: input.info.cortex.owner?.kind === "workflow_run" ? undefined : input.info.cortex.owner,
         }
       : undefined
     const forkedFrom = input.info.forkedFrom
@@ -291,6 +292,7 @@ export namespace SessionImport {
       endpoint: undefined,
       agenda: undefined,
       pendingReply: undefined,
+      workflowRun: undefined,
       cortex,
       workspace,
       time,

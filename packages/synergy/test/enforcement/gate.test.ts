@@ -722,6 +722,73 @@ describe("EnforcementGate session_send classification", () => {
   })
 })
 
+describe("EnforcementGate workflow tool classification", () => {
+  test("classifies workflow status and non-persisted charter drafts as read-only", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const [toolName, args] of [
+      ["workflow_status", {}],
+      ["workflow_charter_draft", {}],
+      ["workflow_charter_draft", { persist: false }],
+    ] as const) {
+      expect(gate.classify(toolName, args).capabilities).toEqual([{ class: "file_read", nonBypassable: false }])
+    }
+  })
+
+  test("classifies workflow persistence and control as internal session state", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const toolName of [
+      "workflow_run_create",
+      "workflow_run_control",
+      "workflow_entity_add",
+      "workflow_entity_unblock",
+      "workflow_gate_resolve",
+      "workflow_submit",
+      "workflow_block",
+    ]) {
+      expect(gate.classify(toolName, {}).capabilities).toEqual([{ class: "session_state", nonBypassable: false }])
+    }
+
+    expect(gate.classify("workflow_charter_draft", { persist: true }).capabilities).toEqual([
+      { class: "session_state", nonBypassable: false },
+    ])
+  })
+
+  test("allows workflow reads and state transitions in every standard profile", async () => {
+    const calls = [
+      ["workflow_status", {}],
+      ["workflow_run_create", {}],
+      ["workflow_run_control", { action: "pause" }],
+      ["workflow_entity_add", {}],
+      ["workflow_entity_unblock", {}],
+      ["workflow_gate_resolve", {}],
+      ["workflow_submit", {}],
+      ["workflow_block", {}],
+      ["workflow_charter_draft", { persist: false }],
+      ["workflow_charter_draft", { persist: true }],
+    ] as const
+
+    for (const profileId of ["guarded", "autonomous", "full_access"] as const) {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId,
+      })
+
+      for (const [toolName, args] of calls) {
+        expect(gate.evaluate(toolName, args).decision).toBe("allow")
+      }
+    }
+  })
+})
+
 // ------------------------------------------------------------------
 // 4. Gate produces execution envelope and audit
 // ------------------------------------------------------------------

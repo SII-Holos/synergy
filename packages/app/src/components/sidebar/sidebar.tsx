@@ -1074,6 +1074,8 @@ function SidebarSessionRow(props: {
           "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
           "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
           "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
+          "sb-session-icon-workflow-boss-tone": visual()?.tone === "workflow-boss",
+          "sb-session-icon-workflow-seat-tone": visual()?.tone === "workflow-seat",
           "sb-session-icon-pulse": !!visual()?.pulse,
         }}
         title={visual()?.label ?? ""}

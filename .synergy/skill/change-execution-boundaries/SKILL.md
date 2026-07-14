@@ -20,6 +20,7 @@ description: Add, modify, or review Synergy capability classification, control p
 4. Keep the active workspace as the default write/execute boundary. Preserve original-checkout and sibling-worktree protection, trusted-root containment, protected metadata, and credential-path rules.
 5. Treat sandboxing as post-authorization containment. Preserve filesystem roots, network mode, approved external roots, shell-bypass semantics, and the configured `deny`/`warn`/`allow` fallback.
 6. Change platform helpers and TypeScript policy together. Do not claim parity without the relevant macOS Seatbelt, Linux helper/Bubblewrap, Windows helper, or WSL evidence.
+7. Treat persisted workflow, agent, and plugin definitions as untrusted policy inputs, not authorization grants. A child session must inherit its launcher's effective boundary unless a separate execution-time authorization explicitly permits an override; writing `session_state` alone must never mint `autonomous` or `full_access` authority.
 
 ## Implement and Verify
 

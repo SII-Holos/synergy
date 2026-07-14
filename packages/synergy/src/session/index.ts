@@ -13,7 +13,6 @@ import { MessageV2 } from "./message-v2"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { fn } from "@/util/fn"
-import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
@@ -330,6 +329,8 @@ export namespace Session {
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
     superplan?: SuperPlanSessionInfoType
+    workflowRun?: Info["workflowRun"]
+    modelOverride?: Info["modelOverride"]
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
     completionNotice?: {
@@ -379,6 +380,8 @@ export namespace Session {
       agenda: input?.agenda,
       cortex: input?.cortex,
       superplan: input?.superplan,
+      workflowRun: input?.workflowRun,
+      modelOverride: input?.modelOverride,
       workspace,
       completionNotice,
       time: {
@@ -525,6 +528,9 @@ export namespace Session {
     SessionManager.assertIdle(sessionID)
 
     const updated = await update(sessionID, (draft) => {
+      if (draft.workflowRun) {
+        throw new Error("Cannot change the control profile while the session is bound to a workflow run")
+      }
       draft.controlProfile = controlProfile
       editor?.(draft)
     })
@@ -803,6 +809,8 @@ export namespace Session {
       const session = await get(sessionID)
       const scope = session.scope as Scope
       const scopeID = asScopeID(scope.id)
+      const { WorkflowRunLifecycle } = await import("../workflow-run/lifecycle")
+      await WorkflowRunLifecycle.beforeSessionDelete(session)
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }

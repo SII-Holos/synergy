@@ -64,6 +64,17 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         },
       }),
       registerWorkbenchPanel({
+        id: "boss",
+        label: "Boss",
+        icon: getSemanticIcon("performance.network"),
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        pluginId: "builtin",
+        order: 19,
+        loader: async () => ({ default: (await import("./tool-boss")).BossWorkbenchContent }),
+      }),
+      registerWorkbenchPanel({
         id: "browser",
         label: "Browser",
         icon: getSemanticIcon("browser.main"),

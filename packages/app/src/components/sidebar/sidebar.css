@@ -554,6 +554,14 @@
   color: var(--text-weaker);
 }
 
+.sb-session-icon-workflow-boss-tone {
+  color: var(--icon-interactive-base);
+}
+
+.sb-session-icon-workflow-seat-tone {
+  color: var(--icon-info-base);
+}
+
 .sb-session-title {
   font-size: var(--font-size-small);
   font-weight: 400;

@@ -2,6 +2,7 @@ import { Identifier } from "../id/id"
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
+import { SessionInbox } from "../session/inbox"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
 import { NoteStore } from "../note"
@@ -23,6 +24,7 @@ const CODING_BLUEPRINT_AGENTS = new Set(["synergy-max", "developer", "implementa
  */
 export namespace BlueprintLoopService {
   export type CreateInput = {
+    id?: string
     noteID: string
     noteVersion?: number
     title: string
@@ -127,6 +129,10 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
     },
     userPrompt?: string,
   ) {
+    if (await hasFirstPrompt(sessionID, loop.id)) {
+      if (!SessionManager.isRunning(sessionID)) SessionManager.scheduleWake(sessionID, "blueprint_loop_start")
+      return
+    }
     const agentName = loop.executionAgent ?? (await resolveBlueprintAgent(sessionID, loop.noteID))
     let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop, agentName)
     if (userPrompt) {
@@ -156,7 +162,25 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
         ...(userPrompt ? { userPrompt } : {}),
       },
     }
-    await SessionManager.deliver({ target: sessionID, mail })
+    await SessionManager.deliver({ target: sessionID, mail, waitForProcessing: false })
+  }
+
+  async function hasFirstPrompt(sessionID: string, loopID: string): Promise<boolean> {
+    const inbox = await SessionInbox.list(sessionID)
+    if (
+      inbox.some(
+        (item) => item.message?.metadata?.source === "blueprint_loop_start" && item.message.metadata.loopID === loopID,
+      )
+    ) {
+      return true
+    }
+    const messages = await Session.messages({ sessionID, raw: true })
+    return messages.some(
+      (message) =>
+        message.info.role === "user" &&
+        message.info.metadata?.source === "blueprint_loop_start" &&
+        message.info.metadata.loopID === loopID,
+    )
   }
 
   /**
@@ -191,13 +215,16 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
       status: "running",
       userPrompt: normalized ?? null,
     })
-    void deliverFirstPrompt(before.sessionID, before, normalized).catch((err) => {
+    try {
+      await deliverFirstPrompt(before.sessionID, before, normalized)
+    } catch (err) {
       log.error("failed to deliver BlueprintLoop start prompt", { loopID, error: err })
-      BlueprintLoopStore.updateStatus(scopeID, loopID, {
+      await BlueprintLoopStore.updateStatus(scopeID, loopID, {
         status: "failed",
-        error: err?.message ?? String(err),
-      }).catch(() => undefined)
-    })
+        error: err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    }
     return loop
   }
 
@@ -207,7 +234,15 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
    */
   export async function createAndStart(input: CreateInput & { userPrompt?: string }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
-    const armed = await create(input)
-    return start(scopeID, armed.id, input.userPrompt)
+    const loop = await create(input)
+    if (loop.status === "armed") return start(scopeID, loop.id, input.userPrompt)
+    if (loop.status === "running") {
+      await deliverFirstPrompt(loop.sessionID, loop, loop.userPrompt ?? input.userPrompt)
+      return loop
+    }
+    if (loop.status === "failed" || loop.status === "cancelled") {
+      throw new Error(`BlueprintLoop ${loop.id} is ${loop.status}; it cannot be started`)
+    }
+    return loop
   }
 }

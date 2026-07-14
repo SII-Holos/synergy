@@ -16,6 +16,8 @@ export type SessionVisualState = {
     | "blueprint-running"
     | "blueprint-waiting"
     | "blueprint-audit"
+    | "workflow-boss"
+    | "workflow-seat"
   pulse?: boolean
   completionUnread?: boolean
 }
@@ -31,6 +33,7 @@ export interface SessionVisualStore {
     category?: string
     workspace?: { type?: string }
     blueprint?: { loopID?: string; loopRole?: "execution" | "audit" }
+    workflowRun?: { role?: "boss" | "seat" | "contractor"; seat?: string }
   }[]
 }
 
@@ -76,6 +79,22 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
           pulse: true,
         }
       return { icon: blueprintIcon, label: "Blueprint session", tone: "blueprint" }
+    }
+    if (fullSession?.workflowRun?.role === "boss") {
+      return {
+        icon: getSemanticIcon("performance.network"),
+        label: waiting ? "Boss — decision needed" : "Boss session",
+        tone: "workflow-boss",
+        pulse: waiting || undefined,
+      }
+    }
+    if (fullSession?.workflowRun?.role === "seat") {
+      return {
+        icon: getSemanticIcon("agents.main"),
+        label: `Workflow seat${fullSession.workflowRun.seat ? ` (${fullSession.workflowRun.seat})` : ""}`,
+        tone: "workflow-seat",
+        pulse: running || childTasksRunning ? true : undefined,
+      }
     }
     if (waiting)
       return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }

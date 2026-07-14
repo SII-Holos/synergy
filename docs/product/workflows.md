@@ -1,6 +1,6 @@
 # Workflows
 
-This document covers session-local workflow modes. Plan, Light Loop, and Lattice are owned by one session, while BlueprintLoop has a separate execution lifecycle bound to a session.
+This document covers both session-local workflow modes and Boss Mode. Plan, Light Loop, and Lattice are owned by one session, BlueprintLoop has a separate execution lifecycle bound to a session, and Boss Mode coordinates a Scope-level WorkflowRun across persistent worker sessions.
 
 Synergy workflows change how a session should continue beyond a single model response. They are durable session modes with explicit completion rules, not prompt labels.
 
@@ -14,8 +14,19 @@ Only one of Plan, Light Loop, or Lattice can be active on a session at a time. B
 | Execute an authored Blueprint with independent review                          | BlueprintLoop |
 | Keep working on one bounded task until an independent reviewer accepts it      | Light Loop    |
 | Decompose a larger goal into an ordered sequence of planned and reviewed steps | Lattice       |
+| Move many similar entities through a durable multi-role operating process      | Boss Mode     |
 
 Normal chat remains the right choice when the work does not need a durable outer loop.
+
+## Boss Mode and WorkflowRun
+
+Boss Mode is for repeatable operations such as moving several issues through implementation, review, and testing. A versioned Charter defines the states, transitions, worker seats, gates, workspaces, and budget. Starting the mode binds one Boss session to a WorkflowRun; that session remains the place to talk with the orchestrator and make human decisions.
+
+Entities are the individual work items. Worker seat sessions are created only when needed and can be pooled for parallel work. A seat receives restart-safe handoffs, records submissions, and can perform only the transitions permitted for its role. When no seat is free, an entity waits in its current queue instead of being treated as failed.
+
+The Boss workbench panel is scoped to the current session. It shows entity state, seat activity, pending gates, and paged event history. Opening a worker uses the current session's child-session navigation. Cancelling uses the shared confirmation flow because it terminally fences the run and stops its active worker execution; it does not cancel the Boss conversation.
+
+The built-in Issue → PR → Test Charter uses entity-owned worktrees. The same issue workspace follows an entity from executor to reviewer to tester, while the tester seat still serializes integration decisions through a pool size of one. A passed test marks the entity ready for a human merge; the workflow does not merge automatically.
 
 ## Plan and Blueprints
 
@@ -77,12 +88,12 @@ An optional model-call budget pauses the run when exhausted. Runs can also be pa
 
 ## Shared Continuation
 
-BlueprintLoop, Lattice, and Light Loop share one continuation kernel. It acts only when:
+BlueprintLoop, Lattice, WorkflowRun seats, and Light Loop share one continuation kernel. It acts only when:
 
 - the session exists and is not archived
 - no Cortex child task for the session is queued or running
 - the latest reply-required user task has a terminal assistant response without an error
 
-If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. A terminal response is consumed at most once by each policy, preventing duplicate continuation messages.
+If more than one policy could react, the priority is BlueprintLoop, then Lattice, then WorkflowRun, then Light Loop. A terminal response is consumed at most once by each policy, preventing duplicate continuation messages.
 
-This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state.
+This ordering gives the innermost execution loop control while a Lattice step is running, returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state, and lets an active WorkflowRun seat consume its next durable handoff before the session-local Light Loop can continue.

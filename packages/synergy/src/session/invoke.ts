@@ -69,6 +69,10 @@ import { LatticeBridge } from "../lattice/bridge"
 import { LatticeStore } from "../lattice/store"
 import { LatticePrompt } from "../lattice/prompt"
 import { LatticeModelCalls } from "../lattice/model-calls"
+import { WorkflowBridge } from "../workflow-run/bridge"
+import { WorkflowRunStore } from "../workflow-run/store"
+import { WorkflowPrompt } from "../workflow-run/prompt"
+import { WorkflowModelCalls } from "../workflow-run/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
@@ -78,6 +82,7 @@ import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SkillPaths } from "@/skill/paths"
+import { CortexTypes } from "@/cortex/types"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -202,6 +207,7 @@ export namespace SessionInvoke {
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
     LatticeBridge.init()
+    WorkflowBridge.init()
     const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
@@ -421,6 +427,15 @@ export namespace SessionInvoke {
 
           const approvalDelegate: ExternalAgent.ApprovalDelegate = async () => false
 
+          const workflowAttribution = WorkflowModelCalls.attribution(session)
+          if (workflowAttribution) {
+            const reservation = await WorkflowModelCalls.reserve(scopeID, workflowAttribution)
+            if (!reservation.ok) {
+              await writeErrorAssistantIfMissing(sessionID, R, new Error(reservation.message))
+              break outer
+            }
+          }
+
           await ExternalAgentProcessor.process({
             sessionID,
             agent: agent.name,
@@ -593,6 +608,12 @@ export namespace SessionInvoke {
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
+
+        // Layer 2.4: WorkflowRun seat / boss standing context
+        if (session?.workflowRun) {
+          const workflowBlock = await WorkflowPrompt.build(scopeID, session)
+          if (workflowBlock) systemParts.push(workflowBlock)
+        }
 
         // Layer 2.5: Semi-static workflow / BlueprintLoop context
         const sessionBlueprint = session?.blueprint
@@ -818,8 +839,17 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
-        // Count LLM calls for an active Lattice run in memory; flushed to the
-        // run at turn boundaries / policy entry (never written per call).
+        const workflowAttribution = WorkflowModelCalls.attribution(session)
+        if (workflowAttribution) {
+          const reservation = await WorkflowModelCalls.reserve(scopeID, workflowAttribution)
+          if (!reservation.ok) {
+            await completeAssistantWithError({ sessionID, processor, model, error: new Error(reservation.message) })
+            releaseTurnReferences(false)
+            break outer
+          }
+        }
+        // Lattice accounting remains turn-local; a denied WorkflowRun
+        // reservation never reaches the provider and therefore is not counted.
         if (session?.workflow?.kind === "lattice") LatticeModelCalls.record(sessionID)
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
@@ -1835,6 +1865,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       })
       const updated = await Session.get(sessionID)
       if (!updated?.cortex) continue
+      const { Cortex } = await import("@/cortex/manager")
+      await Cortex.publishRecoveredInterruptedTask(updated)
       const snapshot = pluginTaskSnapshotFromSession(
         { taskId: updated.cortex.taskID, sessionId: updated.id },
         updated.cortex,

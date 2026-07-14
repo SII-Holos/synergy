@@ -15,4 +15,29 @@ describe("tool taxonomy", () => {
     expect(entry.kind).toBe("communication.visual")
     expect(entry.domain).toBe("communication")
   })
+
+  test("classifies workflow tools as orchestration with exact stateful traits", () => {
+    expect(ToolTaxonomy.classify("workflow_status")).toEqual({
+      kind: "orchestration.workflow",
+      domain: "orchestration",
+      traits: {},
+    })
+
+    for (const toolName of [
+      "workflow_run_create",
+      "workflow_run_control",
+      "workflow_entity_add",
+      "workflow_entity_unblock",
+      "workflow_gate_resolve",
+      "workflow_submit",
+      "workflow_block",
+      "workflow_charter_draft",
+    ]) {
+      expect(ToolTaxonomy.classify(toolName)).toEqual({
+        kind: "orchestration.workflow",
+        domain: "orchestration",
+        traits: { stateful: true },
+      })
+    }
+  })
 })

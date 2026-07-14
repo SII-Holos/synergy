@@ -35,6 +35,7 @@ export type SemanticCategory =
   | "communication"
   | "skill"
   | "research"
+  | "workflow"
   | "generic"
 
 export interface CategorySpec {
@@ -163,6 +164,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["action", "title", "project"],
     argsKeys: ["action"],
   },
+  workflow: {
+    icon: "workflow",
+    label: "Workflow",
+    subtitleKeys: ["title", "name", "entityID", "gateInstanceID", "reason", "kind", "runID"],
+    argsKeys: ["action", "resolution", "verdict"],
+  },
   generic: {
     icon: "settings",
     label: "",
@@ -274,6 +281,15 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   research_submission: "research",
   research_wiki: "research",
   research_timeline: "research",
+  workflow_status: "workflow",
+  workflow_run_create: "workflow",
+  workflow_run_control: "workflow",
+  workflow_entity_add: "workflow",
+  workflow_entity_unblock: "workflow",
+  workflow_gate_resolve: "workflow",
+  workflow_submit: "workflow",
+  workflow_block: "workflow",
+  workflow_charter_draft: "workflow",
 
   // platform
   search_tools: "search",
@@ -369,6 +385,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^scope[-_]/i, category: "session" },
   { pattern: /^(agenda|schedule|cron|timer|remind)/i, category: "schedule" },
   { pattern: /^research[-_]/i, category: "research" },
+  { pattern: /^workflow[-_]/i, category: "workflow" },
   { pattern: /^(config|setting|profile|runtime)/i, category: "config" },
   { pattern: /^inspire[-_]/i, category: "shell" },
   //  { pattern: /^agora[-_]/i, category: "community" },

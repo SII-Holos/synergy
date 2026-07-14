@@ -20,7 +20,7 @@ Task status moves through `queued`, `running`, and one terminal state: `complete
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, and output.
 
-Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
+The task owner is a discriminated union. Plugin-owned tasks persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. WorkflowRun-owned contractor tasks require a run ID, entity ID, and stable correlation ID; the durable child session supplies Scope identity. These fields let each control plane resume from its durable domain state without treating the in-memory Cortex map as durable state.
 
 ## Launch and Concurrency
 
@@ -47,7 +47,7 @@ The child still uses the normal session loop, control-profile resolution, capabi
 
 A background task returns its identity immediately and continues independently. A foreground task waits for the child result for up to 300 seconds. If the wait expires, the task keeps running in the background rather than being cancelled.
 
-Completion is event-driven. The parent does not need to poll `task_output` in a loop. When a synchronous waiter exists, Cortex resolves that waiter directly. Otherwise, a visible task can notify the parent session when the parent is available; hidden reviewer tasks normally suppress parent-facing task events and notifications.
+Completion is event-driven. The parent does not need to poll `task_output` in a loop. When a synchronous waiter exists, Cortex resolves that waiter directly. Otherwise, a visible task can notify the parent session when the parent is available; hidden reviewer tasks suppress parent-facing notifications. Terminal task events are still published internally so an owning workflow can advance deterministically.
 
 When the parent explicitly reads a terminal task through `task_output`, the persisted tool result satisfies any deferred completion notification for that task. Reading live progress does not consume the future terminal notification.
 
@@ -81,7 +81,7 @@ Parent delivery and child persistence are separate:
 2. Cortex resolves and persists the configured output
 3. a foreground waiter receives it directly, or an eligible parent notification is emitted
 4. a linked DAG node is updated and may be auto-promoted
-5. temporary child-worktree resources are cleaned up when appropriate
+5. a worktree created and explicitly owned by that Cortex task is cleaned up when appropriate
 
 A running parent is not interrupted with a normal completion notice in the middle of its turn. Callers that need a direct result should await the task; orchestration features can bind the task to a DAG node or use their own continuation trigger.
 
@@ -101,3 +101,5 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 - Backgrounding changes who waits; it does not change the task's execution or persistence.
 - Output mode is an explicit contract, not a best-effort prompt convention.
 - Cancellation covers descendant tasks and runtime resources without deleting durable history.
+- Cortex removes only the worktree recorded as owned by the task; inherited, seat-owned, and entity-owned worktrees outlive that task.
+- Durable WorkflowRun seats use ordinary persistent sessions and Session Inbox; Cortex is reserved for bounded contractor/reviewer work.

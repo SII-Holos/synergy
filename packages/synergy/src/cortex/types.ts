@@ -6,6 +6,7 @@ export namespace CortexTypes {
   export type TaskStatus = z.infer<typeof TaskStatus>
 
   export const PluginTaskOwner = z.object({
+    kind: z.literal("plugin").default("plugin"),
     pluginId: z.string(),
     pluginGeneration: z.string(),
     scopeId: z.string(),
@@ -78,6 +79,28 @@ export namespace CortexTypes {
   ])
   export type TaskOutput = z.infer<typeof TaskOutput>
 
+  export const WorkflowTaskOwner = z
+    .object({
+      kind: z.literal("workflow_run"),
+      runID: z.string(),
+      entityID: z.string(),
+      seat: z.string().optional(),
+      instance: z.number().int().optional(),
+      correlationID: z.string(),
+    })
+    .meta({ ref: "CortexWorkflowTaskOwner" })
+  export type WorkflowTaskOwner = z.infer<typeof WorkflowTaskOwner>
+
+  export const TaskOwner = z
+    .discriminatedUnion("kind", [PluginTaskOwner, WorkflowTaskOwner])
+    .meta({ ref: "CortexTaskOwner" })
+  export type TaskOwner = z.infer<typeof TaskOwner>
+
+  export function taskOwnerFromStored(value: unknown): TaskOwner | undefined {
+    if (value === undefined) return undefined
+    return TaskOwner.parse(value)
+  }
+
   export const Task = z
     .object({
       id: Identifier.schema("cortex"),
@@ -95,6 +118,7 @@ export namespace CortexTypes {
         .optional(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
+      owner: TaskOwner.optional(),
 
       dagNodeId: z.string().optional(),
       status: TaskStatus,
@@ -105,10 +129,11 @@ export namespace CortexTypes {
       notifyParentOnComplete: z.boolean().optional(),
       visibility: z.enum(["visible", "hidden"]).optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
       outputConfig: OutputConfig.optional(),
       output: TaskOutput.optional(),
-      owner: PluginTaskOwner.optional(),
       timeoutMs: z.number().int().positive().optional(),
+      ownedWorktreeID: z.string().optional(),
       usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })
@@ -120,6 +145,7 @@ export namespace CortexTypes {
     agent: z.string(),
     executionRole: ExecutionRole.optional(),
     category: z.string().optional(),
+    owner: TaskOwner.optional(),
     parentSessionID: Identifier.schema("session"),
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),
@@ -140,8 +166,8 @@ export namespace CortexTypes {
     notifyParentOnComplete: z.boolean().optional(),
     visibility: z.enum(["visible", "hidden"]).optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     output: OutputConfig.optional(),
-    owner: PluginTaskOwner.optional(),
     timeoutMs: z.number().int().positive().optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>

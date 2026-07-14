@@ -2,6 +2,29 @@ import { describe, expect, test } from "bun:test"
 import { CortexTypes } from "../../src/cortex/types"
 
 describe("CortexTypes", () => {
+  test("requires complete workflow task ownership", () => {
+    expect(CortexTypes.WorkflowTaskOwner.safeParse({ kind: "workflow_run" }).success).toBe(false)
+    expect(
+      CortexTypes.WorkflowTaskOwner.safeParse({
+        kind: "workflow_run",
+        runID: "wfr_owner",
+        entityID: "wfe_owner",
+        correlationID: "effect-owner",
+      }).success,
+    ).toBe(true)
+  })
+
+  test("rejects legacy task ownership after migration", () => {
+    expect(() =>
+      CortexTypes.taskOwnerFromStored({
+        pluginId: "legacy-plugin",
+        pluginGeneration: "generation-one",
+        scopeId: "scope-one",
+        correlationId: "correlation-one",
+      }),
+    ).toThrow()
+  })
+
   describe("TaskStatus", () => {
     test("accepts valid status values", () => {
       expect(CortexTypes.TaskStatus.safeParse("pending").success).toBe(false)
@@ -98,6 +121,7 @@ describe("CortexTypes", () => {
         output: { mode: "summary", value: "Task completed successfully" },
         notifyParentOnComplete: false,
         owner: {
+          kind: "plugin",
           pluginId: "truthward",
           pluginGeneration: "generation-one",
           scopeId: "scope-one",
@@ -113,7 +137,9 @@ describe("CortexTypes", () => {
       expect(result.category).toBe("visual-engineering")
       expect(result.output).toEqual({ mode: "summary", value: "Task completed successfully" })
       expect(result.notifyParentOnComplete).toBe(false)
-      expect(result.owner?.correlationId).toBe("stage-one")
+      expect(result.owner?.kind).toBe("plugin")
+      if (result.owner?.kind !== "plugin") throw new Error("expected plugin task owner")
+      expect(result.owner.correlationId).toBe("stage-one")
       expect(result.timeoutMs).toBe(1_800_000)
     })
 
