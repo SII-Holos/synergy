@@ -247,7 +247,7 @@ export namespace SmartAllow {
       retries: 0,
     })
 
-    const text = (await stream.text.catch(() => "")) ?? ""
+    const text = (await LLM.collectText(stream).catch(() => "")) ?? ""
     return parseClassification(text)
   }
 

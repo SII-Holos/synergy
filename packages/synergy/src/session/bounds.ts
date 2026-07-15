@@ -1,9 +1,18 @@
 export namespace SessionBounds {
+  export const TOOL_INPUT_MAX_BYTES = 1_048_576
   export const TOOL_OUTPUT_MAX_CHARS = 32_000
   export const DIFF_PREVIEW_MAX_CHARS = 8_000
 
   export function byteLength(value: string): number {
     return Buffer.byteLength(value, "utf8")
+  }
+
+  export function toolInputByteLength(input: unknown): number {
+    return byteLength(JSON.stringify(input) ?? "")
+  }
+
+  export function toolInputExceededMessage(): string {
+    return `Tool input exceeded ${TOOL_INPUT_MAX_BYTES} bytes`
   }
 
   export function middlePreview(value: string, maxChars: number): { text: string; truncated: boolean } {
