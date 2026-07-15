@@ -143,6 +143,43 @@ describe("config import planning", () => {
       )
     })
   })
+
+  test("treats redacted secret sentinels as unchanged stored values", async () => {
+    await withProject(async ({ root }) => {
+      await Config.domainUpdate(
+        "providers",
+        {
+          provider: {
+            custom: {
+              name: "Custom",
+              npm: "@ai-sdk/openai-compatible",
+              options: { apiKey: "stored-secret" },
+              models: {},
+            },
+          },
+        },
+        { root, mode: "replace-domain" },
+      )
+
+      const imported = {
+        provider: {
+          custom: {
+            name: "Custom",
+            npm: "@ai-sdk/openai-compatible",
+            options: { apiKey: Config.REDACTED_SENTINEL },
+            models: {},
+          },
+        },
+      }
+      const plan = await ConfigImport.plan({ config: imported, scope: "project" })
+      expect(plan.domains[0]?.changes).toEqual([])
+
+      await ConfigImport.apply({ config: imported, scope: "project", revision: plan.revision, yes: true })
+      expect(await Config.domainGet("providers", root)).toMatchObject({
+        provider: { custom: { options: { apiKey: "stored-secret" } } },
+      })
+    })
+  })
 })
 
 describe("config import apply", () => {
@@ -271,6 +308,29 @@ describe("config import apply", () => {
     })
   })
 
+  test("rejects a domain edit made during commit", async () => {
+    await withProject(async ({ root }) => {
+      await Config.domainUpdate("models", { model: "test/original" }, { root, mode: "replace-domain" })
+      const filepath = ConfigDomain.filepath("models", root)
+
+      await expect(
+        ConfigImport.apply(
+          {
+            config: { model: "test/imported" },
+            scope: "project",
+            yes: true,
+          },
+          {
+            beforeCommitDomain: async () => {
+              await Config.domainUpdate("models", { model: "test/concurrent" }, { root, mode: "replace-domain" })
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ name: "ConfigImportRevisionConflictError" })
+      expect(await Bun.file(filepath).text()).toContain('"model": "test/concurrent"')
+    })
+  })
+
   test("force bypasses a stale revision", async () => {
     await withProject(async ({ root }) => {
       await Config.domainUpdate("models", { model: "test/original" }, { root, mode: "replace-domain" })
@@ -300,5 +360,31 @@ describe("config import sources", () => {
     expect(() =>
       ConfigImport.parseSourceText(`{"username":"${"x".repeat(ConfigImport.MAX_SOURCE_BYTES)}"}`, "large.jsonc"),
     ).toThrow("CONFIG_TOO_LARGE")
+  })
+
+  test("does not follow redirects while fetching config URLs", async () => {
+    let redirected = false
+    using server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/redirect") return Response.redirect(`${url.origin}/target`, 302)
+        redirected = true
+        return Response.json({ username: "redirected" })
+      },
+    })
+
+    await expect(ConfigImport.fetchSource(`http://127.0.0.1:${server.port}/redirect`)).rejects.toMatchObject({
+      name: "ConfigImportSourceFetchError",
+      data: { message: "CONFIG_URL_FETCH_FAILED: Unable to fetch the requested URL" },
+    })
+    expect(redirected).toBe(false)
+  })
+
+  test("does not expose low-level network errors in fetch failures", async () => {
+    await expect(ConfigImport.fetchSource("http://127.0.0.1:1/config.jsonc")).rejects.toMatchObject({
+      name: "ConfigImportSourceFetchError",
+      data: { message: "CONFIG_URL_FETCH_FAILED: Unable to fetch the requested URL" },
+    })
   })
 })

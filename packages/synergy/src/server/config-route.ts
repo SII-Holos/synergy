@@ -1,4 +1,4 @@
-import { Hono } from "hono"
+import { type Context, Hono, type Next } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { mapValues } from "remeda"
 import z from "zod"
@@ -10,6 +10,7 @@ import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
 import { Log } from "../util/log"
 import { BadRequestError, errors } from "./error"
+import { requestWithinLimit } from "./request-body-limit"
 
 const log = Log.create({ service: "config-route" })
 
@@ -57,6 +58,21 @@ const ConfigImportBadRequestError = z.union([
 ])
 
 const ConfigImportConflictError = z.union([ConfigImport.RevisionConflictError.Schema, ConfigImport.LockedError.Schema])
+
+function limitConfigImportBody(maxBytes: number) {
+  return async (c: Context, next: Next) => {
+    const declared = Number(c.req.header("content-length") ?? 0)
+    if ((Number.isFinite(declared) && declared > maxBytes) || !(await requestWithinLimit(c.req.raw, maxBytes))) {
+      const error = new ConfigImport.SourceTooLargeError({
+        source: c.req.path,
+        maxBytes,
+        message: `CONFIG_TOO_LARGE: Config import request exceeds ${maxBytes} bytes`,
+      })
+      return c.json(error.toObject(), 413)
+    }
+    await next()
+  }
+}
 
 function domainOpenError(error: unknown) {
   if (error instanceof ConfigDomainOpen.UnsupportedPlatformError) {
@@ -239,8 +255,13 @@ export const ConfigRoute = new Hono()
           description: "Invalid import or missing project scope",
           content: { "application/json": { schema: resolver(ConfigImportBadRequestError) } },
         },
+        413: {
+          description: "Config import request is too large",
+          content: { "application/json": { schema: resolver(ConfigImport.SourceTooLargeError.Schema) } },
+        },
       },
     }),
+    limitConfigImportBody(ConfigImport.MAX_REQUEST_BYTES),
     validator("json", ConfigImport.PlanInput),
     async (c) => c.json(await ConfigImport.plan(c.req.valid("json"))),
   )
@@ -263,8 +284,13 @@ export const ConfigRoute = new Hono()
           description: "Stale plan or concurrent import",
           content: { "application/json": { schema: resolver(ConfigImportConflictError) } },
         },
+        413: {
+          description: "Config import request is too large",
+          content: { "application/json": { schema: resolver(ConfigImport.SourceTooLargeError.Schema) } },
+        },
       },
     }),
+    limitConfigImportBody(ConfigImport.MAX_REQUEST_BYTES),
     validator("json", ConfigImport.ApplyInput),
     async (c) => c.json(await ConfigImport.apply(c.req.valid("json"))),
   )

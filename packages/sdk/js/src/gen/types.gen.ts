@@ -3220,6 +3220,15 @@ export type ConfigImportInvalidConfigError = {
   }
 }
 
+export type ConfigImportSourceTooLargeError = {
+  name: "ConfigImportSourceTooLargeError"
+  data: {
+    message: string
+    source: string
+    maxBytes: number
+  }
+}
+
 export type ConfigDomainImportPlanInput = {
   config: Config
   only?: Array<
@@ -8636,6 +8645,10 @@ export type ConfigImportPlanErrors = {
    * Invalid import or missing project scope
    */
   400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
@@ -8668,6 +8681,10 @@ export type ConfigImportApplyErrors = {
    * Stale plan or concurrent import
    */
   409: ConfigImportRevisionConflictError | ConfigImportLockedError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]

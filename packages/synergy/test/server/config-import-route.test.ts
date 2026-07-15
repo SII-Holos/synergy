@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
+import { ConfigImport } from "../../src/config/import"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "../fixture/fixture"
 
@@ -111,7 +112,34 @@ describe("config import routes", () => {
     })
 
     expect(response.status).toBe(409)
-    expect(await response.json()).toMatchObject({ name: "ConfigImportLockedError" })
+    expect(await response.json()).toMatchObject({
+      name: "ConfigImportLockedError",
+      data: { scope: "project", message: expect.stringContaining("Another config import") },
+    })
+  })
+
+  test("rejects import request bodies larger than the bounded source allowance", async () => {
+    const response = await post(Server.App(), "/config/import/plan", {
+      config: { username: "x".repeat(ConfigImport.MAX_SOURCE_BYTES) },
+    })
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toMatchObject({
+      name: "ConfigImportSourceTooLargeError",
+      data: { maxBytes: ConfigImport.MAX_SOURCE_BYTES },
+    })
+  })
+
+  test("rejects HTTP request envelopes larger than two MiB", async () => {
+    const response = await post(Server.App(), "/config/import/plan", {
+      config: { username: "x".repeat(ConfigImport.MAX_REQUEST_BYTES) },
+    })
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toMatchObject({
+      name: "ConfigImportSourceTooLargeError",
+      data: { maxBytes: ConfigImport.MAX_REQUEST_BYTES },
+    })
   })
 
   test("rejects project scope without an explicit project context", async () => {

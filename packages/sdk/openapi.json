@@ -3076,6 +3076,16 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -3160,6 +3170,16 @@
                       "$ref": "#/components/schemas/ConfigImportLockedError"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
                 }
               }
             }
@@ -25060,6 +25080,31 @@
               }
             },
             "required": ["path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportSourceTooLargeError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportSourceTooLargeError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "maxBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["message", "source", "maxBytes"]
           }
         },
         "required": ["name", "data"]

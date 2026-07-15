@@ -33,6 +33,7 @@ import { BrowserEvent } from "../browser/event.js"
 import { BrowserNativePresentation } from "../browser/native-presentation.js"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { requestWithinLimit } from "./request-body-limit.js"
 import z from "zod"
 
 const log = Log.create({ service: "browser.route" })
@@ -706,25 +707,5 @@ function limitBrowserBody(maxBytes: number) {
       return c.json(protocolError(new Error("Browser request payload is too large."), "browser_payload_too_large"), 413)
     }
     await next()
-  }
-}
-
-async function requestWithinLimit(request: Request, maxBytes: number): Promise<boolean> {
-  const body = request.clone().body
-  if (!body) return true
-  const reader = body.getReader()
-  let total = 0
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) return true
-      total += value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel()
-        return false
-      }
-    }
-  } finally {
-    reader.releaseLock()
   }
 }

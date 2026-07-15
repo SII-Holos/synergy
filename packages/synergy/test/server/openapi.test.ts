@@ -174,6 +174,12 @@ describe("OpenAPI spec generation", () => {
     expect(applyBadRequest).toContain("ConfigImportProjectScopeRequiredError")
     expect(applyBadRequest).toContain("ConfigImportInvalidConfigError")
 
+    const planPayloadTooLarge = JSON.stringify(responseSchema(plan, "413"))
+    expect(planPayloadTooLarge).toContain("ConfigImportSourceTooLargeError")
+
+    const applyPayloadTooLarge = JSON.stringify(responseSchema(apply, "413"))
+    expect(applyPayloadTooLarge).toContain("ConfigImportSourceTooLargeError")
+
     const conflict = JSON.stringify(responseSchema(apply, "409"))
     expect(conflict).toContain("ConfigImportRevisionConflictError")
     expect(conflict).toContain("ConfigImportLockedError")

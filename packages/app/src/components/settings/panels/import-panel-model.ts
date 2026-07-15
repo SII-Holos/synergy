@@ -47,7 +47,10 @@ export function parseImportText(text: string, source: string): Record<string, un
 }
 
 export async function loadImportUrl(url: string, fetcher: Fetcher = fetch) {
-  const response = await fetcher(url, { headers: { Accept: "application/json, application/jsonc, text/plain" } })
+  const response = await fetcher(url, {
+    redirect: "error",
+    headers: { Accept: "application/json, application/jsonc, text/plain" },
+  })
   if (!response.ok) throw new Error(`Failed to load config: HTTP ${response.status}`)
 
   const declared = Number(response.headers.get("content-length"))

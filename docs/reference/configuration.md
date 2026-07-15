@@ -131,7 +131,7 @@ Binding a server beyond loopback exposes it to other hosts. Configure CORS and t
 
 ## Config Import
 
-`synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds.
+`synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. Direct plan/apply API requests are limited to a 2 MiB JSON envelope.
 
 ### Import flow
 

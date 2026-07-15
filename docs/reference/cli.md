@@ -106,7 +106,7 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 
 ### config import
 
-`synergy config import <source>` imports JSON or JSONC configuration from a local file path or an HTTP(S) URL. Sources are limited to 1 MiB; URL fetches time out after 15 seconds. The command produces a domain-aware plan, shows value-level changes, and asks for confirmation before applying.
+`synergy config import <source>` imports JSON or JSONC configuration from a local file path or an HTTP(S) URL. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. The command produces a domain-aware plan, shows value-level changes, and asks for confirmation before applying.
 
 ```bash
 synergy config import ./settings.jsonc

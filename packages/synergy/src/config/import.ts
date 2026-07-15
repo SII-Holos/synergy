@@ -14,6 +14,7 @@ import * as Schema from "./schema"
 
 export namespace ConfigImport {
   export const MAX_SOURCE_BYTES = 1024 * 1024
+  export const MAX_REQUEST_BYTES = MAX_SOURCE_BYTES * 2
   const LOCK_STALE_MS = 30_000
   export const Scope = z.enum(["global", "project"]).meta({ ref: "ConfigImportScope" })
   export type Scope = z.infer<typeof Scope>
@@ -168,6 +169,7 @@ export namespace ConfigImport {
     let response: Response
     try {
       response = await fetch(url, {
+        redirect: "error",
         signal: AbortSignal.timeout(15_000),
         headers: { Accept: "application/json, application/jsonc, text/plain" },
       })
@@ -177,7 +179,7 @@ export namespace ConfigImport {
         source: url,
         message: timeout
           ? "CONFIG_URL_TIMEOUT: Connection timed out while downloading config"
-          : `CONFIG_URL_FETCH_FAILED: ${error instanceof Error ? error.message : String(error)}`,
+          : "CONFIG_URL_FETCH_FAILED: Unable to fetch the requested URL",
       })
     }
     if (!response.ok) {
@@ -195,6 +197,7 @@ export namespace ConfigImport {
 
   export async function plan(input: PlanInput): Promise<Plan> {
     const parsed = PlanInput.parse(input)
+    assertConfigSize(parsed.config, parsed.source ?? "direct")
     const target = resolveTarget(parsed.scope ?? "global")
     const selected = new Set(parsed.only ?? ConfigDomain.definitions.map((domain) => domain.id))
     const split = ConfigDomain.split(parsed.config)
@@ -213,8 +216,9 @@ export namespace ConfigImport {
       const filepath = ConfigDomain.filepath(definition.id, target.root)
       const raw = await readFileSnapshot(filepath)
       const mode = parsed.mode ?? definition.mergePolicy
-      const next = Config.mergeDomainConfig(current, fragment as Schema.Info, mode)
-      const changes = diffDomain(current, next)
+      const mergedFragment = Config.mergeRedactedSecrets(fragment as Schema.Info, current)
+      const next = Config.mergeDomainConfig(current, mergedFragment, mode)
+      const changes = diffDomain(current, next, fragment as Schema.Info)
       domains.push({
         id: definition.id,
         filename: definition.filename,
@@ -240,6 +244,7 @@ export namespace ConfigImport {
 
   export async function apply(input: ApplyInput, options: ApplyOptions = {}): Promise<ApplyResult> {
     const parsed = ApplyInput.parse(input)
+    assertConfigSize(parsed.config, parsed.source ?? "direct")
     const target = resolveTarget(parsed.scope ?? "global")
     const release = await acquireLock(target)
     try {
@@ -264,7 +269,8 @@ export namespace ConfigImport {
         const fragment = split.get(domain.id)
         if (!fragment) continue
         const current = await Config.domainGet(domain.id, target.root)
-        nextByDomain.set(domain.id, Config.mergeDomainConfig(current, fragment as Schema.Info, domain.mode))
+        const mergedFragment = Config.mergeRedactedSecrets(fragment as Schema.Info, current)
+        nextByDomain.set(domain.id, Config.mergeDomainConfig(current, mergedFragment, domain.mode))
       }
       await withTargetScope(target, () => Config.current())
       await prevalidate(target.root, nextByDomain)
@@ -337,10 +343,11 @@ export namespace ConfigImport {
         const next = nextByDomain.get(domain.id)
         if (!next) continue
         const raw = await readFileSnapshot(domain.path)
+        assertDomainRevision(domain, raw.content)
         const staged = `${domain.path}.tmp-${token}`
         const backup = `${domain.path}.backup-${token}`
         await fs.mkdir(path.dirname(domain.path), { recursive: true })
-        await Bun.write(staged, renderJsonc(raw.content, next))
+        await Bun.write(staged, renderJsonc(raw.content, next, domain.path))
         snapshots.push({
           domain,
           filepath: domain.path,
@@ -355,6 +362,8 @@ export namespace ConfigImport {
 
       for (const [index, snapshot] of snapshots.entries()) {
         await options.beforeCommitDomain?.(snapshot.domain, index)
+        const current = await readFileSnapshot(snapshot.filepath)
+        assertDomainRevision(snapshot.domain, current.content)
         if (snapshot.existed) {
           await fs.rename(snapshot.filepath, snapshot.backup)
           snapshot.backedUp = true
@@ -414,8 +423,10 @@ export namespace ConfigImport {
     }
   }
 
-  function diffDomain(before: Schema.Info, after: Schema.Info): Change[] {
+  function diffDomain(before: Schema.Info, after: Schema.Info, importedForDiagnostics: Schema.Info): Change[] {
     const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+    const redactedBefore = Config.redactForClient(before) as Record<string, unknown>
+    const redactedAfter = Config.redactForClient(after) as Record<string, unknown>
     return [...keys]
       .filter((key) => !sameJson((before as Record<string, unknown>)[key], (after as Record<string, unknown>)[key]))
       .map((key) => {
@@ -425,10 +436,10 @@ export namespace ConfigImport {
         return {
           key,
           type,
-          before: redactSecrets(beforeValue),
-          after: redactSecrets(afterValue),
+          before: redactedBefore[key],
+          after: redactedAfter[key],
           conflict: type === "modify",
-          diagnostics: hardcodedSecretDiagnostics(afterValue, key),
+          diagnostics: hardcodedSecretDiagnostics((importedForDiagnostics as Record<string, unknown>)[key], key),
         }
       })
   }
@@ -457,17 +468,6 @@ export namespace ConfigImport {
     }
   }
 
-  function redactSecrets(value: unknown): unknown {
-    if (!value || typeof value !== "object") return value
-    if (Array.isArray(value)) return value.map(redactSecrets)
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) => [
-        key,
-        isSecretKey(key) && typeof nested === "string" ? Config.REDACTED_SENTINEL : redactSecrets(nested),
-      ]),
-    )
-  }
-
   function isSecretKey(key: string) {
     return ["apiKey", "appSecret", "clientSecret", "password"].includes(key)
   }
@@ -481,12 +481,18 @@ export namespace ConfigImport {
     )
   }
 
-  function renderJsonc(current: string, next: Schema.Info) {
+  function renderJsonc(current: string, next: Schema.Info, filepath: string) {
     if (!current.trim()) return Config.serializeConfig(next)
     const bom = current.charCodeAt(0) === 0xfeff ? "\uFEFF" : ""
     let result = bom ? current.slice(1) : current
-    const parsed = parseJsonc(result)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return Config.serializeConfig(next)
+    const errors: ParseError[] = []
+    const parsed = parseJsonc(result, errors, { allowTrailingComma: true })
+    if (errors.length > 0 || !parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Config.JsonError({
+        path: filepath,
+        message: "CONFIG_IMPORT_INVALID_EXISTING_JSONC: Refusing to overwrite a malformed config domain file.",
+      })
+    }
     const keys = new Set([...Object.keys(parsed), ...Object.keys(next)])
     for (const key of keys) {
       result = applyEdits(
@@ -527,6 +533,19 @@ export namespace ConfigImport {
       offset += chunk.byteLength
     }
     return new TextDecoder().decode(joined)
+  }
+
+  function assertConfigSize(config: Schema.Info, source: string) {
+    assertSourceSize(JSON.stringify(config), source)
+  }
+
+  function assertDomainRevision(domain: DomainPlan, content: string) {
+    if (hash(content) === domain.revision) return
+    throw new RevisionConflictError({
+      domains: [domain.id],
+      message:
+        "CONFIG_REVISION_CONFLICT: Config changed while the import was being applied. Create a new plan and retry.",
+    })
   }
 
   function assertSourceSize(text: string, source: string) {

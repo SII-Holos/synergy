@@ -63,6 +63,15 @@ describe("config import settings model", () => {
     await expect(loadImportUrl("https://example.test/stream.jsonc", streamed)).rejects.toThrow("Config source exceeds")
   })
 
+  test("does not follow redirects while loading URL sources", async () => {
+    const fetcher = (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      expect(init?.redirect).toBe("error")
+      return Promise.reject(new Error("redirect blocked"))
+    }
+
+    await expect(loadImportUrl("https://example.test/redirect", fetcher)).rejects.toThrow("redirect blocked")
+  })
+
   test("lists project targets without the home scope", () => {
     expect(projectImportScopes(scopes)).toEqual([scopes[1]])
   })
