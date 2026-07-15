@@ -1,5 +1,4 @@
 import { BlueprintLoopStore, isActiveLoopStatus } from "./loop-store"
-import { NoteStore } from "../note"
 import { Session } from "../session"
 import { Cortex } from "../cortex"
 
@@ -93,14 +92,4 @@ async function expireLoop(scopeID: string, loopID: string): Promise<void> {
     status: "failed",
     error: "timed_out: budget maxRuntimeMs exceeded",
   })
-
-  // Archive generated resources only for plugin-owned loops
-  if (loop.noteID && loop.source === "plugin") {
-    await NoteStore.update(scopeID, loop.noteID, { archived: true }).catch(() => {})
-  }
-  if (loop.sessionID && loop.source === "plugin") {
-    await Session.update(loop.sessionID, (draft) => {
-      draft.time.archived = Date.now()
-    }).catch(() => {})
-  }
 }

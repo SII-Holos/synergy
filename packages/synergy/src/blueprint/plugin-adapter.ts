@@ -21,7 +21,6 @@ export const BlueprintPluginErrorCode = {
   DIGEST_MISMATCH: "BLUEPRINT_DIGEST_MISMATCH",
   NOT_FOUND: "BLUEPRINT_NOT_FOUND",
   NOT_PLUGIN_OWNED: "BLUEPRINT_NOT_PLUGIN_OWNED",
-  OWNER_MISMATCH: "BLUEPRINT_OWNER_MISMATCH",
 } as const
 
 function pluginAdapterError(code: string, message: string) {

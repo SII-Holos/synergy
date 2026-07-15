@@ -84,15 +84,23 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 ## BlueprintLoop Delegation
 
-`context.blueprint` exists only when `blueprint.delegate` is approved. It exposes three methods for creating and controlling BlueprintLoop workflows:
+`context.blueprint` exists only when `blueprint.delegate` is approved. It exposes three methods for atomically starting and controlling BlueprintLoop workflows:
 
 ```ts
-const loop = await context.blueprint.start({ plan: markdownPlan, digest: noteDigest, sessionID?, runMode?, model? })
-const info = await context.blueprint.get(loopID)
-const cancelled = await context.blueprint.cancel(loopID)
+const loop = await context.blueprint.start({
+  title: "Execute accepted research plan",
+  markdown: acceptedPlanMarkdown,
+  sourceDigest: acceptedPlanDigest,
+  correlationId: stageRunID,
+  executionAgent: "my-plugin.blueprint-executor",
+  auditAgent: "my-plugin.blueprint-auditor",
+  budget: { maxRuntimeMs: 1_800_000, maxIterations: 3 },
+})
+const info = await context.blueprint.get(loop.id)
+const cancelled = await context.blueprint.cancel(loop.id)
 ```
 
-`start()` accepts a `BlueprintStartInput` with a Markdown `plan` body and a `digest` identifier; it creates a new BlueprintLoop bound to a new Note, starts execution, and returns the `BlueprintLoopInfo` snapshot. `get()` returns the current `BlueprintLoopInfo` snapshot with status, audit state, timestamps, and resolved model. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cleanup should inspect the current status first.
+`start()` accepts the frozen Markdown plan and its digest, creates a Blueprint Note and dedicated execution Session, starts the existing BlueprintLoop lifecycle, and returns the `BlueprintLoopInfo` snapshot. The execution and audit agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. `get()` returns the current snapshot with status, audit state, timestamps, and resolved model. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cleanup should inspect the current status first.
 
 The `source` field in `BlueprintLoopInfo` is set to `"plugin"` when the loop was created by a plugin. The `pluginOwner` field records the creating plugin's ID, generation, Scope, and optional correlationId for durable workflow correlation.
 
@@ -128,17 +136,23 @@ The typed payload is `{ loop: BlueprintLoopInfo }`. Synergy invokes this hook on
 
 ## Light Loop
 
-`context.lightloop` exists only when `lightloop.delegate` is approved. It exposes three methods:
+`context.lightloop` exists only when `lightloop.delegate` is approved. It exposes three methods for starting and controlling plugin-owned LightLoop workflows:
 
 ```ts
-const info = await context.lightloop.start({ sessionID?, taskDescription })
-const current = await context.lightloop.get(sessionID)
-await context.lightloop.cancel(sessionID)
+const loop = await context.lightloop.start({
+  instructions: "Explore the problem broadly and submit an auditable plan.",
+  correlationId: stageRunID,
+  executionAgent: "my-plugin.lightloop-executor",
+  reviewAgent: "my-plugin.lightloop-reviewer",
+  budget: { maxRuntimeMs: 1_800_000, maxIterations: 3 },
+})
+const current = await context.lightloop.get(loop.sessionID)
+const cancelled = await context.lightloop.cancel(loop.sessionID)
 ```
 
-`start()` activates the Light Loop workflow in an existing Session and returns a `LightLoopInfo` snapshot. The `taskDescription` feeds into the Light Loop's objective definition. When `sessionID` is omitted the current Session is used.
+`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Optional `model` and `tools` fields select the execution model and narrow per-task tool visibility; reviewer model and tools come from its agent descriptor.
 
-`get()` returns the current `LightLoopInfo` with status, sessionID, and taskDescription. `cancel()` disables the LightLoop workflow on the given Session.
+`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. `cancel()` terminalizes a non-terminal LightLoop and returns its final snapshot.
 
 ### LightLoop After Hook
 
