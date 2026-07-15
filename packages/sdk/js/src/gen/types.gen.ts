@@ -2986,20 +2986,42 @@ export type Config = {
           extensions?: Array<string>
         }
       }
+  /**
+   * Include LSP diagnostics after write, edit, save_file, and revise_file operations (default: true); other LSP features remain available when disabled
+   */
+  lspWriteDiagnostics?: boolean
   lsp?:
     | false
     | {
         [key: string]:
           | {
+              /**
+               * Developer-only per-server lifecycle override
+               */
               disabled: true
             }
           | {
+              /**
+               * Advanced executable and arguments used to start a custom LSP server
+               */
               command: Array<string>
+              /**
+               * Advanced file extensions handled by a custom LSP server
+               */
               extensions?: Array<string>
+              /**
+               * Developer-only per-server lifecycle override
+               */
               disabled?: boolean
+              /**
+               * Advanced environment variables passed to the LSP process; values may contain secrets
+               */
               env?: {
                 [key: string]: string
               }
+              /**
+               * Expert-only server-specific LSP initialization options
+               */
               initialization?: {
                 [key: string]: unknown
               }

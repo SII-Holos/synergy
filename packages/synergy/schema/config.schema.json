@@ -739,6 +739,12 @@
                   "required": ["input", "output"],
                   "additionalProperties": false
                 },
+                "supported_image_media_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
@@ -1071,6 +1077,18 @@
                   "description": "LLM retry count for intent/script/reward generation (default: 3)",
                   "type": "integer",
                   "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "encoderTimeoutMs": {
+                  "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "encoderMaxOutputChars": {
+                  "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+                  "type": "integer",
+                  "minimum": 1,
                   "maximum": 9007199254740991
                 },
                 "digestToolOutputBudget": {
@@ -1883,28 +1901,28 @@
       "additionalProperties": false
     },
     "observability": {
-      "description": "Local logs, traces, and diagnostics settings",
+      "description": "Local logs, indexed telemetry, and diagnostics settings",
       "ref": "ObservabilityConfig",
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Enable local observability trace JSONL events (default: true)",
+          "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
           "type": "boolean"
         },
         "retentionDays": {
-          "description": "Days to retain local trace files (default: 7)",
+          "description": "Days to retain optional observability mirror files (default: 7)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "maxBytes": {
-          "description": "Maximum total trace storage in bytes (default: 250MB)",
+          "description": "Maximum total local observability storage in bytes (default: 250MB)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "stalledToolMs": {
-          "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+          "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
@@ -2020,6 +2038,7 @@
                   "type": "boolean"
                 },
                 "jsonlMirrorEnabled": {
+                  "description": "Enable optional JSONL mirror files for debugging exports",
                   "type": "boolean"
                 },
                 "maxSqliteBytes": {
@@ -2218,6 +2237,10 @@
         }
       ]
     },
+    "lspWriteDiagnostics": {
+      "description": "Include LSP diagnostics after write, edit, save_file, and revise_file operations (default: true); other LSP features remain available when disabled",
+      "type": "boolean"
+    },
     "lsp": {
       "anyOf": [
         {
@@ -2235,6 +2258,7 @@
                 "type": "object",
                 "properties": {
                   "disabled": {
+                    "description": "Developer-only per-server lifecycle override",
                     "type": "boolean",
                     "const": true
                   }
@@ -2246,21 +2270,25 @@
                 "type": "object",
                 "properties": {
                   "command": {
+                    "description": "Advanced executable and arguments used to start a custom LSP server",
                     "type": "array",
                     "items": {
                       "type": "string"
                     }
                   },
                   "extensions": {
+                    "description": "Advanced file extensions handled by a custom LSP server",
                     "type": "array",
                     "items": {
                       "type": "string"
                     }
                   },
                   "disabled": {
+                    "description": "Developer-only per-server lifecycle override",
                     "type": "boolean"
                   },
                   "env": {
+                    "description": "Advanced environment variables passed to the LSP process; values may contain secrets",
                     "type": "object",
                     "propertyNames": {
                       "type": "string"
@@ -2270,6 +2298,7 @@
                     }
                   },
                   "initialization": {
+                    "description": "Expert-only server-specific LSP initialization options",
                     "type": "object",
                     "propertyNames": {
                       "type": "string"

@@ -13,13 +13,28 @@ import { resetMigrations, runMigrations } from "../../src/migration"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 
-test("loads config with defaults when no files exist", async () => {
+test("enables post-write LSP diagnostics by default", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const config = await Config.current()
       expect(config.username).toBeDefined()
+      expect(config.lspWriteDiagnostics).toBe(true)
+    },
+  })
+})
+
+test("loads an explicit post-write LSP diagnostics preference", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "synergy.json"), JSON.stringify({ lspWriteDiagnostics: false }))
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      expect((await Config.current()).lspWriteDiagnostics).toBe(false)
     },
   })
 })

@@ -24552,6 +24552,10 @@
               }
             ]
           },
+          "lspWriteDiagnostics": {
+            "description": "Include LSP diagnostics after write, edit, save_file, and revise_file operations (default: true); other LSP features remain available when disabled",
+            "type": "boolean"
+          },
           "lsp": {
             "anyOf": [
               {
@@ -24569,6 +24573,7 @@
                       "type": "object",
                       "properties": {
                         "disabled": {
+                          "description": "Developer-only per-server lifecycle override",
                           "type": "boolean",
                           "const": true
                         }
@@ -24579,21 +24584,25 @@
                       "type": "object",
                       "properties": {
                         "command": {
+                          "description": "Advanced executable and arguments used to start a custom LSP server",
                           "type": "array",
                           "items": {
                             "type": "string"
                           }
                         },
                         "extensions": {
+                          "description": "Advanced file extensions handled by a custom LSP server",
                           "type": "array",
                           "items": {
                             "type": "string"
                           }
                         },
                         "disabled": {
+                          "description": "Developer-only per-server lifecycle override",
                           "type": "boolean"
                         },
                         "env": {
+                          "description": "Advanced environment variables passed to the LSP process; values may contain secrets",
                           "type": "object",
                           "propertyNames": {
                             "type": "string"
@@ -24603,6 +24612,7 @@
                           }
                         },
                         "initialization": {
+                          "description": "Expert-only server-specific LSP initialization options",
                           "type": "object",
                           "propertyNames": {
                             "type": "string"

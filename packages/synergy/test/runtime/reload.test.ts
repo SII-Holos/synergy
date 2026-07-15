@@ -304,6 +304,10 @@ describe("runtime.reload", () => {
     const toolsCascade = RuntimeReload.inferConfigCascades(["tools"])
     expect(toolsCascade).toContain("tool_registry")
 
+    const diagnosticsCascade = RuntimeReload.inferConfigCascades(["lspWriteDiagnostics"])
+    expect(diagnosticsCascade).toEqual([])
+    expect(RuntimeReload.CONFIG_LIVE_APPLIED.has("lspWriteDiagnostics")).toBe(true)
+
     // Verify email is in restart-required (P13 fix)
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

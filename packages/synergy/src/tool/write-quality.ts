@@ -1,9 +1,20 @@
+import { Config } from "../config/config"
 import { LSP } from "../lsp"
 import { Filesystem } from "../util/filesystem"
 import { type DiagnosticDelta, diffDiagnostics, formatDiagnosticDelta } from "../lsp/diagnostics-delta"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
+
+export async function writeDiagnosticsEnabled() {
+  return (await Config.current()).lspWriteDiagnostics !== false
+}
+
+export async function collectRawWriteDiagnostics(filePath: string) {
+  if (!(await writeDiagnosticsEnabled())) return {}
+  await LSP.touchFile(filePath, true)
+  return LSP.diagnostics()
+}
 
 export async function collectWriteDiagnostics(
   filePath: string,
@@ -13,8 +24,8 @@ export async function collectWriteDiagnostics(
   output: string
   delta?: DiagnosticDelta
 }> {
-  await LSP.touchFile(filePath, true)
-  const diagnostics = await LSP.diagnostics()
+  const diagnostics = await collectRawWriteDiagnostics(filePath)
+
   const before = options?.before
 
   if (before) {

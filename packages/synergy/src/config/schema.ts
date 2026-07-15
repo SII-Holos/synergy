@@ -1479,6 +1479,12 @@ export const Info = z
         ),
       ])
       .optional(),
+    lspWriteDiagnostics: z
+      .boolean()
+      .optional()
+      .describe(
+        "Include LSP diagnostics after write, edit, save_file, and revise_file operations (default: true); other LSP features remain available when disabled",
+      ),
     lsp: z
       .union([
         z.literal(false),
@@ -1486,19 +1492,32 @@ export const Info = z
           z.string(),
           z.union([
             z.object({
-              disabled: z.literal(true),
+              disabled: z.literal(true).describe("Developer-only per-server lifecycle override"),
             }),
             z.object({
-              command: z.array(z.string()),
-              extensions: z.array(z.string()).optional(),
-              disabled: z.boolean().optional(),
-              env: z.record(z.string(), z.string()).optional(),
-              initialization: z.record(z.string(), z.any()).optional(),
+              command: z
+                .array(z.string())
+                .describe("Advanced executable and arguments used to start a custom LSP server"),
+              extensions: z
+                .array(z.string())
+                .optional()
+                .describe("Advanced file extensions handled by a custom LSP server"),
+              disabled: z.boolean().optional().describe("Developer-only per-server lifecycle override"),
+              env: z
+                .record(z.string(), z.string())
+                .optional()
+                .describe("Advanced environment variables passed to the LSP process; values may contain secrets"),
+              initialization: z
+                .record(z.string(), z.any())
+                .optional()
+                .describe("Expert-only server-specific LSP initialization options"),
             }),
           ]),
         ),
       ])
       .optional()
+      .describe("Developer-only LSP server lifecycle and process configuration")
+
       .refine(
         (data) => {
           if (!data) return true

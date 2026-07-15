@@ -58,6 +58,9 @@ describe("settings catalog", () => {
     expect(timeouts.keywords).toContain("agent")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
+    const codeChecks = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "code-checks")!
+    expect(codeChecks.visibility ?? "standard").toBe("standard")
+    expect(codeChecks.rowLabels).toContain("LSP diagnostics after edits")
   })
 
   test("all built-in icon tokens resolve", () => {
@@ -72,6 +75,7 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.lspWriteDiagnostics).toBe("background")
     for (const role of MODEL_ROLES) {
       expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
     }

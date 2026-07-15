@@ -149,6 +149,32 @@ describe("settings config patch", () => {
     ).toEqual({ coauthor_reminder: true })
   })
 
+  test("persists the post-write LSP diagnostics preference without touching LSP server config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.lspWriteDiagnostics = "false"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.lspWriteDiagnostics).toBe(false)
+    expect(patch).not.toHaveProperty("lsp")
+  })
+
+  test("does not re-save an unchanged post-write LSP diagnostics preference", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: { lspWriteDiagnostics: true } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("lspWriteDiagnostics")
+  })
+
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")
     state.safety.sandboxEnabled = "true"

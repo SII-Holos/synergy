@@ -16,6 +16,7 @@ import { Filesystem } from "../util/filesystem"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { RuntimeReload } from "../runtime/reload"
+import { collectRawWriteDiagnostics } from "./write-quality"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
@@ -140,8 +141,8 @@ export const EditTool = Tool.define("edit", {
         : undefined
 
     let output = ""
-    await LSP.touchFile(filePath, true)
-    const diagnostics = await LSP.diagnostics()
+    const diagnostics = await collectRawWriteDiagnostics(filePath)
+
     const normalizedFilePath = Filesystem.normalizePath(filePath)
     const issues = diagnostics[normalizedFilePath] ?? []
     const errors = issues.filter((item) => item.severity === 1)

@@ -12,6 +12,10 @@ test("config domain registry maps every top-level config key exactly once", () =
   expect(new Set(domainKeys).size).toBe(domainKeys.length)
 })
 
+test("runtime domain owns the post-write LSP diagnostics preference", () => {
+  expect(ConfigDomain.domainForKey("lspWriteDiagnostics")?.id).toBe("runtime")
+})
+
 test("config domain filenames are stable and ordered", () => {
   expect(ConfigDomain.definitions.map((domain) => domain.filename)).toEqual([
     "00-general.jsonc",

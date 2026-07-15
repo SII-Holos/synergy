@@ -196,6 +196,12 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.compaction = compaction
   }
 
+  const lspWriteDiagnostics = runtime.lspWriteDiagnostics !== "false"
+  const currentLspWriteDiagnostics = cfg.lspWriteDiagnostics !== false
+  if (lspWriteDiagnostics !== currentLspWriteDiagnostics) {
+    patch.lspWriteDiagnostics = lspWriteDiagnostics
+  }
+
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
 

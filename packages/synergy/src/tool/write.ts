@@ -11,6 +11,7 @@ import { Filesystem } from "../util/filesystem"
 import { ScopeContext } from "../scope/context"
 import { trimDiff } from "./edit"
 import { RuntimeReload } from "../runtime/reload"
+import { collectRawWriteDiagnostics } from "./write-quality"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -62,8 +63,8 @@ export const WriteTool = Tool.define("write", {
         : undefined
 
     let output = ""
-    await LSP.touchFile(filepath, true)
-    const diagnostics = await LSP.diagnostics()
+    const diagnostics = await collectRawWriteDiagnostics(filepath)
+
     const normalizedFilepath = Filesystem.normalizePath(filepath)
     let projectDiagnosticsCount = 0
     for (const [file, issues] of Object.entries(diagnostics)) {

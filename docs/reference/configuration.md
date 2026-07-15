@@ -22,21 +22,21 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                      |
-| ---------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                 |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                   |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                              |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                             |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                  |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                       |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                           |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                       |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                               |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                        |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                      |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, watcher, formatter, LSP, questions, compaction, experimental and observability settings |
+| File                   | Domain      | Owned configuration                                                                                                           |
+| ---------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                      |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                        |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                     |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                   |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                  |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                       |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                            |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                            |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                    |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                             |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                           |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, watcher, formatter, LSP, lspWriteDiagnostics, questions, compaction, experimental and observability settings |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -160,7 +160,6 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_SEARXNG_URL`                         | Replace the built-in Web search service base URL                                          |
 | `SYNERGY_DISABLE_MODELS_FETCH=1`              | Disable the models catalog refresh                                                        |
 | `SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH=true` | Use the last verified provider catalog cache instead of fetching its signed remote source |
-| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`              | Prevent automatic language-server downloads                                               |
 
 ### Compatibility and behavior overrides
 
@@ -176,16 +175,83 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Experimental and diagnostic escape hatches
 
-| Variable                             | Effect                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it              |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                     |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                  |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                         |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped session-message cache and read storage directly            |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare cached messages with disk and fall back when they diverge                 |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the message-cache byte budget; the default is 256 MiB                         |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand            |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two |
+| Variable                          | Effect                                                                 |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `SYNERGY_EXPERIMENTAL=1`          | Enable the grouped experimental behaviors that explicitly consult it   |
+| `SYNERGY_EXPERIMENTAL_OXFMT=1`    | Allow the experimental `oxfmt` formatter path                          |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1` | Bypass the loop-scoped session-message cache and read storage directly |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`  | Compare cached messages with disk and fall back when they diverge      |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES` | Set the message-cache byte budget; the default is 256 MiB              |
 
-Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. LSP-related variables and their safety classifications are documented in [LSP Configuration](#lsp-configuration). Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+
+## LSP Configuration
+
+Synergy starts language servers for supported languages when files are opened. Language servers provide diagnostics, hover information, symbol search, go-to-definition, and code references. The `lsp` key controls developer-oriented server lifecycle and process behavior; the safe `lspWriteDiagnostics` preference is available in the standard **Code Checks** Settings page.
+
+### Developer server configuration (`lsp`)
+
+The `lsp` key under `120-runtime.jsonc` accepts `false` to disable all language servers, or a `Record<serverId, config>` to customize per-server behavior. This is a developer-oriented raw configuration surface and is not exposed through ordinary Settings UI.
+
+To disable every language server:
+
+```jsonc
+{
+  "lsp": false,
+}
+```
+
+To customize individual servers instead:
+
+```jsonc
+{
+  "lsp": {
+    "typescript": {
+      "disabled": true,
+    },
+    "custom-server": {
+      "command": ["my-lang-server", "--stdio"],
+      "extensions": [".myext"],
+      "env": { "MY_VAR": "value" },
+      "initialization": { "option": "value" },
+    },
+  },
+}
+```
+
+Safety classification for per-server fields:
+
+| Field            | Classification                   | Guidance                                                                                                                              |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `disabled`       | Developer-only lifecycle control | Operationally low-risk, but re-enabling requires deleting nested config, which the current Settings deep-merge path cannot do safely. |
+| `extensions`     | Advanced configuration           | Appropriate for custom servers. Incorrect values only affect server matching; built-in defaults normally should not be overridden.    |
+| `command`        | Advanced and execution-sensitive | Runs the selected binary and arguments. Invalid values prevent startup, and Settings must not construct this automatically.           |
+| `env`            | Advanced and secret-sensitive    | Useful for SDK and toolchain paths. Values may alter process behavior or contain secrets, so keep them in raw config.                 |
+| `initialization` | Expert-only                      | Server-specific protocol data. Invalid values can silently change or break language-server behavior.                                  |
+
+### Post-write diagnostics (`lspWriteDiagnostics`)
+
+`lspWriteDiagnostics` is a boolean preference that defaults to `true`. It controls whether Synergy fetches and includes diagnostics after `write`, `edit`, `save_file`, and `revise_file`. When it is `false`, those post-write checks are skipped, but language servers keep running and hover, symbols, references, workspace search, go-to-definition, and direct LSP tools remain available.
+
+This setting is safe and reversible for ordinary users. Change it in **Settings → Code Checks** or in the runtime config file.
+
+```jsonc
+{
+  // Skip post-write diagnostics while retaining other LSP features
+  "lspWriteDiagnostics": false,
+}
+```
+
+### Environment variable overrides
+
+Environment overrides require a process restart and are intended for source development, CI, managed environments, or diagnosis:
+
+| Variable                             | Classification            | Effect                                                                                            |
+| ------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`     | Stable operational flag   | Prevent automatic language-server downloads, useful for CI and offline or managed environments.   |
+| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Experimental flag         | Prefer the experimental `ty` Python language server over Pyright.                                 |
+| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Experimental flag         | Register the experimental direct LSP tool.                                                        |
+| `SYNERGY_DISABLE_LSP_REAP=1`         | Diagnostic flag           | Keep idle clients alive, which may increase memory use.                                           |
+| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Advanced resource control | Trade concurrency against process and memory pressure; the minimum is one and the default is two. |
+
+These variables are not persisted preferences. Use `lsp` or `lspWriteDiagnostics` for durable configuration.
