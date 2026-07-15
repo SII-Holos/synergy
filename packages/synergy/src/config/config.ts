@@ -1037,13 +1037,29 @@ export namespace Config {
     return redactForClient(await domainGet(parsed, options.root))
   }
 
-  function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
+  export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
     if (mode === "replace-domain") return patch
+    if (mode === "append") return mergeAppendArrays(current, patch) as Info
     const merged = mergeDeep(current, patch) as Info
     if (current.plugin || patch.plugin) {
       merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
     }
     return merged
+  }
+
+  function mergeAppendArrays(current: unknown, patch: unknown): unknown {
+    if (Array.isArray(current) && Array.isArray(patch)) return [...current, ...patch]
+    if (!isConfigObject(current) || !isConfigObject(patch)) return patch
+
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+      merged[key] = key in current ? mergeAppendArrays(current[key], value) : value
+    }
+    return merged
+  }
+
+  function isConfigObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
   }
 
   function mergePluginSpecList(current: string[], patch: string[]): string[] {
@@ -1073,103 +1089,13 @@ export namespace Config {
     return parsed.nonRegistry ? `source:${parsed.pkg.replace(/#.*$/, "")}` : `npm:${parsed.pkg}`
   }
 
-  export const DomainImportPlanInput = z
-    .object({
-      config: Info,
-      only: z.array(ConfigDomain.Id).optional(),
-      mode: ConfigDomain.MergeMode.optional(),
-    })
-    .meta({ ref: "ConfigDomainImportPlanInput" })
-  export type DomainImportPlanInput = z.infer<typeof DomainImportPlanInput>
-
-  export const DomainImportChange = z
-    .object({
-      key: z.string(),
-      before: z.unknown().optional(),
-      after: z.unknown().optional(),
-      conflict: z.boolean(),
-    })
-    .meta({ ref: "ConfigDomainImportChange" })
-  export const DomainImportPlan = z
-    .object({
-      domains: z.array(
-        z.object({
-          id: ConfigDomain.Id,
-          filename: z.string(),
-          path: z.string(),
-          mode: ConfigDomain.MergeMode,
-          changes: z.array(DomainImportChange),
-        }),
-      ),
-      conflicts: z.array(DomainImportChange),
-    })
-    .meta({ ref: "ConfigDomainImportPlan" })
-  export type DomainImportPlan = z.infer<typeof DomainImportPlan>
-
-  export async function domainImportPlan(input: DomainImportPlanInput): Promise<DomainImportPlan> {
-    const only = new Set(input.only ?? ConfigDomain.definitions.map((domain) => domain.id))
-    const split = ConfigDomain.split(input.config)
-    const domains: DomainImportPlan["domains"] = []
-    const conflicts: z.infer<typeof DomainImportChange>[] = []
-
-    for (const [id, fragment] of split) {
-      if (!only.has(id)) continue
-      const definition = ConfigDomain.byId.get(id)!
-      if (!definition.importable) continue
-      const current = await domainGet(id)
-      const mode = input.mode ?? definition.mergePolicy
-      const next = mergeDomainConfig(current, fragment as Info, mode)
-      const changes = diffDomain(current, next).map((change) => ({
-        ...change,
-        conflict: change.before !== undefined && change.after !== undefined && !sameJson(change.before, change.after),
-      }))
-      conflicts.push(...changes.filter((change) => change.conflict))
-      domains.push({
-        id,
-        filename: definition.filename,
-        path: ConfigDomain.filepath(id),
-        mode,
-        changes,
-      })
-    }
-    return { domains, conflicts }
-  }
-
-  export async function domainImportApply(input: DomainImportPlanInput & { yes?: boolean }) {
-    const plan = await domainImportPlan(input)
-    if (plan.conflicts.length && !input.yes) {
-      throw new InvalidError({
-        path: ConfigDomain.directory(),
-        message: `Config import has ${plan.conflicts.length} conflict(s). Re-run with confirmation to apply.`,
-      })
-    }
-    const split = ConfigDomain.split(input.config)
-    for (const domain of plan.domains) {
-      const fragment = split.get(domain.id)
-      if (!fragment) continue
-      await domainUpdate(domain.id, fragment, { mode: domain.mode })
-    }
-    return plan
-  }
-
-  function diffDomain(before: Info, after: Info) {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
-    return [...keys]
-      .filter((key) => !sameJson((before as any)[key], (after as any)[key]))
-      .map((key) => ({ key, before: (before as any)[key], after: (after as any)[key] }))
-  }
-
-  function sameJson(a: unknown, b: unknown) {
-    return JSON.stringify(a) === JSON.stringify(b)
-  }
-
   async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
     const filepath = ConfigDomain.filepath(id, root)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
     await Bun.write(filepath, serializeConfig(config))
   }
 
-  function serializeConfig(config: Partial<Info>) {
+  export function serializeConfig(config: Partial<Info>) {
     return `${JSON.stringify(sortConfigKeys(config), null, 2)}\n`
   }
 
