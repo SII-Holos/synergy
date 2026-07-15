@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { BlueprintPluginErrorCode, startBlueprint, getBlueprint, cancelBlueprint } from "../../src/blueprint/plugin-adapter"
+import {
+  BlueprintPluginErrorCode,
+  startBlueprint,
+  getBlueprint,
+  cancelBlueprint,
+} from "../../src/blueprint/plugin-adapter"
 import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
 import { hash as sha256 } from "@ericsanchezok/synergy-util/encode"
 import { ScopeContext } from "../../src/scope/context"
@@ -136,27 +141,43 @@ describe("Blueprint plugin adapter (protocol 5)", () => {
       fn: async () => {
         const base = {
           context: {
-            pluginId: "p", pluginGeneration: "g", scopeId: ScopeContext.current.scope.id,
-            parentSessionID: "ps", parentMessageID: "pm",
+            pluginId: "p",
+            pluginGeneration: "g",
+            scopeId: ScopeContext.current.scope.id,
+            parentSessionID: "ps",
+            parentMessageID: "pm",
           } as const,
           request: {
-            title: "T", markdown: "# M", sourceDigest: "",
-            correlationId: "c1", executionAgent: "a1", auditAgent: "a2",
+            title: "T",
+            markdown: "# M",
+            sourceDigest: "",
+            correlationId: "c1",
+            executionAgent: "a1",
+            auditAgent: "a2",
             budget: { maxRuntimeMs: 1000, maxIterations: 1 },
           },
         }
 
-        await expect(startBlueprint({
-          ...base, request: { ...base.request, title: "" },
-        })).rejects.toThrow("title")
+        await expect(
+          startBlueprint({
+            ...base,
+            request: { ...base.request, title: "" },
+          }),
+        ).rejects.toThrow("title")
 
-        await expect(startBlueprint({
-          ...base, request: { ...base.request, markdown: "" },
-        })).rejects.toThrow("markdown")
+        await expect(
+          startBlueprint({
+            ...base,
+            request: { ...base.request, markdown: "" },
+          }),
+        ).rejects.toThrow("markdown")
 
-        await expect(startBlueprint({
-          ...base, request: { ...base.request, correlationId: "" },
-        })).rejects.toThrow("correlationId")
+        await expect(
+          startBlueprint({
+            ...base,
+            request: { ...base.request, correlationId: "" },
+          }),
+        ).rejects.toThrow("correlationId")
       },
     })
   })

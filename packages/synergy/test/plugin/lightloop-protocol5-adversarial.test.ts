@@ -72,7 +72,15 @@ describe("LightLoop protocol-5 adversarial invariants", () => {
 
   test("LightLoopInfo status includes all protocol-5 statuses", () => {
     // Verify LightLoopInfo supports all required statuses
-    const statuses = ["running", "reviewing", "completed", "cancelled", "timed_out", "iteration_exhausted", "failed"] as const
+    const statuses = [
+      "running",
+      "reviewing",
+      "completed",
+      "cancelled",
+      "timed_out",
+      "iteration_exhausted",
+      "failed",
+    ] as const
     for (const s of statuses) {
       const info = { sessionID: "s1", status: s, instructions: "test" }
       expect(info.status).toBe(s)

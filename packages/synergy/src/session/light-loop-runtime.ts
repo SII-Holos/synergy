@@ -1,7 +1,6 @@
 import { Session } from "."
 import { Plugin } from "../plugin"
 
-
 const activeTimers = new Map<string, Timer>()
 
 function timerKey(executionSessionID: string): string {
@@ -40,7 +39,14 @@ export namespace LightLoopRuntime {
       if (wf?.kind !== "lightloop") continue
       if (!wf.pluginOwner) continue
       if (!wf.deadlineAt) continue
-      if (wf.status === "completed" || wf.status === "failed" || wf.status === "cancelled" || wf.status === "timed_out" || wf.status === "iteration_exhausted") continue
+      if (
+        wf.status === "completed" ||
+        wf.status === "failed" ||
+        wf.status === "cancelled" ||
+        wf.status === "timed_out" ||
+        wf.status === "iteration_exhausted"
+      )
+        continue
       // Only reattach if there isn't already an active timer for this session
       if (activeTimers.has(timerKey(session.id))) continue
       scheduleDeadline(session.id, wf.deadlineAt)

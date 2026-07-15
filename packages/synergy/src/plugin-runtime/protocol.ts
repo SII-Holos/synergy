@@ -29,7 +29,6 @@ export type PluginHostServiceMethod =
   | "blueprint.start"
   | "blueprint.get"
   | "blueprint.cancel"
-
   | "lightloop.start"
   | "lightloop.get"
   | "lightloop.cancel"

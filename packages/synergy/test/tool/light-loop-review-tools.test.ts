@@ -95,7 +95,8 @@ describe("light_loop_approve", () => {
         mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
-          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed") terminalStatusSet = true
+          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed")
+            terminalStatusSet = true
         })
         const deliveries: any[] = []
         ;(SessionManager.deliver as any) = mock(async (input: any) => {

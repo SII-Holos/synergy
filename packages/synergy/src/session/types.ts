@@ -85,7 +85,9 @@ export const WorkflowInfo = z
     z.object({
       kind: z.literal("lightloop"),
       instructions: z.string(),
-      status: z.enum(["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]).optional(),
+      status: z
+        .enum(["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"])
+        .optional(),
       executionAgent: z.string().optional(),
       reviewAgent: z.string().optional(),
       pluginOwner: z
@@ -96,10 +98,12 @@ export const WorkflowInfo = z
           correlationId: z.string().optional(),
         })
         .optional(),
-      budget: z.object({
-        maxRuntimeMs: z.number().int().positive(),
-        maxIterations: z.number().int().positive(),
-      }).optional(),
+      budget: z
+        .object({
+          maxRuntimeMs: z.number().int().positive(),
+          maxIterations: z.number().int().positive(),
+        })
+        .optional(),
       deadlineAt: z.number().positive().optional(),
       terminalError: z.string().optional(),
       terminalHookDeliveredAt: z.number().optional(),

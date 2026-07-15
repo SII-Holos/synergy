@@ -222,9 +222,7 @@ export async function startBlueprint(input: {
       },
       workspace,
       completionNotice: { silent: true },
-      permission: [
-        { permission: "question", pattern: "*", action: "deny" } as any,
-      ],
+      permission: [{ permission: "question", pattern: "*", action: "deny" } as any],
     })
     sessionID = execSession.id
 

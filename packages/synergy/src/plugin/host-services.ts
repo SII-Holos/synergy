@@ -294,8 +294,6 @@ export async function cancelPluginBlueprint(input: {
   return cancelBlueprint(input)
 }
 
-
-
 async function assertLightLoopDelegation(
   input: {
     pluginId: string
@@ -335,7 +333,11 @@ async function assertLightLoopDelegation(
     throw new Error(`Execution agent "${input.executionAgent}" is not owned by this plugin generation`)
   }
   const reviewOwner = Agent.pluginOwner(reviewAgent)
-  if (!reviewOwner || reviewOwner.pluginId !== input.pluginId || reviewOwner.pluginGeneration !== input.pluginGeneration) {
+  if (
+    !reviewOwner ||
+    reviewOwner.pluginId !== input.pluginId ||
+    reviewOwner.pluginGeneration !== input.pluginGeneration
+  ) {
     throw new Error(`Review agent "${input.reviewAgent}" is not owned by this plugin generation`)
   }
 }
@@ -456,7 +458,11 @@ export async function getLightLoop(input: {
 
   const owner = session.workflow.pluginOwner
   if (!owner) throw new Error(`LightLoop ${input.sessionID} is not plugin-owned`)
-  if (owner.pluginId !== input.pluginId || owner.pluginGeneration !== input.pluginGeneration || owner.scopeId !== input.scopeId) {
+  if (
+    owner.pluginId !== input.pluginId ||
+    owner.pluginGeneration !== input.pluginGeneration ||
+    owner.scopeId !== input.scopeId
+  ) {
     throw new Error(`LightLoop not found`)
   }
 
@@ -489,7 +495,11 @@ export async function cancelLightLoop(input: {
 
   const owner = session.workflow.pluginOwner
   if (!owner) throw new Error(`LightLoop ${input.sessionID} is not plugin-owned`)
-  if (owner.pluginId !== input.pluginId || owner.pluginGeneration !== input.pluginGeneration || owner.scopeId !== input.scopeId) {
+  if (
+    owner.pluginId !== input.pluginId ||
+    owner.pluginGeneration !== input.pluginGeneration ||
+    owner.scopeId !== input.scopeId
+  ) {
     throw new Error(`LightLoop not found`)
   }
 
