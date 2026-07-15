@@ -77,17 +77,19 @@ An optional model-call budget pauses the run when exhausted. Runs can also be pa
 
 ## Shared Continuation
 
-BlueprintLoop, Lattice, and Light Loop share one continuation kernel. It acts only when:
+BlueprintLoop, Lattice, and Light Loop share one session drive. Every completion, Agenda wake, workflow resume, or active-turn release asks that drive to arbitrate instead of independently starting another model call.
+
+When the session becomes idle, persisted Inbox work goes first. If no runnable Inbox item exists, the shared workflow gate acts only when:
 
 - the session exists and is not archived
 - no Cortex child task for the session is queued or running
 - the latest reply-required user task has a terminal assistant response without an error
-- **no active or pending Agenda item can wake that session** (the item must have `wake !== false`, `silent !== true`, and a matching `origin.sessionID`)
+- no one-shot Agenda watch is still responsible for the next wake
 
-While a wake-capable Agenda item exists, Agenda owns the continuation cadence. Stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run while such items remain and show the cancellation commands needed to clear them.
+Only wake-capable Agenda items with `autoDone === true` hold that final wait. Ordinary recurring or manually managed schedules can still wake the session at their trigger times, but they do not pause workflow continuation just because they remain active.
 
-The blocker check ignores `nextRunAt`, so an overdue or just-fired item remains a blocker while it is still active or pending. When an automatic run completes the item, ordinary continuation resumes only after the Agenda result has been delivered.
+While a one-shot Agenda watch owns the next wake, stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run and show the cancellation commands needed to clear it. The wait ignores `nextRunAt`, so an overdue or just-fired watch continues to hold until it is cancelled, paused, removed, made silent or non-waking, or automatically completed. After automatic completion, the Agenda result is persisted before ordinary continuation resumes.
 
-If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. A terminal response is consumed at most once by each policy, preventing duplicate continuation messages.
+If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages.
 
 This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state.

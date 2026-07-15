@@ -81,9 +81,13 @@ The Lattice bridge consumes terminal events only from loops whose source is `lat
 
 Model calls are accumulated for the run and flushed at idle. A positive maximum is enforced before the next continuation; reaching it pauses the run with a budget-exhausted event rather than starting more model work.
 
-## Continuation Kernel
+## Continuation Drive
 
-One subscriber handles `SessionEvent.Idle` for all workflows. Its shared gate rejects archived sessions, sessions with queued or running Cortex work, sessions without a terminal assistant for the latest reply-required user message, terminal assistant errors, and sessions where any active or pending Agenda item for that session has `wake !== false` and `silent !== true`.
+`SessionDrive` is the single session-level arbitration entry point. Cortex completion, Agenda delivery or wait release, Lattice resume, and `SessionManager.release` all request the drive instead of delivering workflow continuations independently. Requests are serialized per session: each arbitration is queued after the previous request settles, so reentrant requests are not lost and processing wakes happen outside the tracked arbitration promise.
+
+The driver does nothing while the session owns an active loop lease. Once idle, it first honors runnable durable Inbox work. Only when the Inbox has no runnable item does it ask the ContinuationKernel for a workflow proposal. The winning proposal is persisted with `SessionInbox.deliverUnique` under a stable delivery key, committed to policy deduplication, and then scheduled through the normal session wake path.
+
+The shared continuation gate rejects archived sessions, sessions with an explicit continuation wait, sessions without a terminal assistant for the latest reply-required user message, and terminal assistant errors. `ContinuationWait` currently derives waits from queued or running Cortex child sessions and one-shot Agenda watches that own the next wake.
 
 Policies run in descending priority:
 
@@ -91,19 +95,19 @@ Policies run in descending priority:
 2. Lattice (`50`)
 3. Light Loop (`25`)
 
-The first policy that handles the idle wins. Per-session, per-policy deduplication keys the decision to the terminal assistant message, so the same terminal response does not generate duplicate wakeups.
+The first policy that returns a proposal wins. Per-session, per-policy deduplication keys the decision to the terminal assistant message, while Inbox delivery keys make persistence idempotent across concurrent requests and restart recovery.
 
-BlueprintLoop continues only a `running` bound loop. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or sends a phase continuation. Light Loop sends its task check only when no completion review is pending.
+BlueprintLoop continues only a `running` bound loop. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or proposes a phase continuation. Light Loop proposes its task check only when no completion review is pending.
 
-### Agenda Wake Ownership
+### Agenda Wait Ownership
 
-Agenda items that can wake their owning session (`wake !== false`, `silent !== true`, status `active` or `pending`, with an `origin.sessionID`) temporarily suppress the shared continuation gate. While any such blocker exists, Agenda owns the wake cadence: ordinary Light Loop, BlueprintLoop, and Lattice continuation policies do not fire.
+Only wake-capable Agenda items with `autoDone === true` are continuation waits. These one-shot watch-style items deliver directly to their origin session and complete after that delivery, so ordinary workflow continuation must not race their promised wake. Ordinary recurring or manually managed Agenda schedules remain wakeable but do not suppress workflow continuation merely because they are active.
 
-The blocker check deliberately ignores `nextRunAt`, so an overdue or just-fired item remains a blocker while its status is still `active` or `pending`. Cancelling, pausing, removing, making the item non-waking or silent, or automatically completing it releases the blocker. `AgendaSessionWakeup.resumeIfReleased` then kicks the ContinuationKernel; for automatic completion, that kick is deliberately deferred until after the Agenda result is delivered.
+The wait check deliberately ignores `nextRunAt`, so an overdue or just-fired one-shot watch remains a wait while its status is still `active` or `pending`. Cancelling, pausing, removing, making the item non-waking or silent, or automatically completing it releases the wait. `AgendaSessionWakeup.resumeIfReleased` then requests `SessionDrive`; for automatic completion, that request is deliberately deferred until after the Agenda result is persisted to the Inbox.
 
-When Agenda delivery wakes an active Light Loop or running BlueprintLoop execution session, the delivery appends system-origin cleanup guidance: it lists remaining blockers with their `agenda_cancel` commands, exposes `agenda_cancel`, `agenda_list`, and the correct stop tool, and instructs the loop to cancel Agenda items before requesting stop.
+When Agenda delivery wakes an active Light Loop or running BlueprintLoop execution session, the delivery appends system-origin cleanup guidance: it lists remaining one-shot waits with their `agenda_cancel` commands, exposes `agenda_cancel`, `agenda_list`, and the correct stop tool, and instructs the loop to cancel those waits before requesting review.
 
-`loop_stop` and `blueprint_loop_stop` call `AgendaSessionWakeup.assertClear` to reject the request while any blocker remains, showing the cancellation commands in the error message.
+`loop_stop` and `blueprint_loop_stop` call `AgendaSessionWakeup.assertClear` to reject the request while any one-shot wait remains, showing the cancellation commands in the error message.
 
 ## Invariants
 
@@ -112,7 +116,7 @@ When Agenda delivery wakes an active Light Loop or running BlueprintLoop executi
 - Blueprint writes occur only in Plan or Lattice.
 - Executors request completion; independent reviewer sessions decide it.
 - Lattice owns phase transitions and only its own BlueprintLoops can advance its Pathway.
-- One shared idle gate prevents continuation while child work, an incomplete/erroring turn, or wake-capable Agenda items are still active.
+- One shared drive serializes Inbox work and workflow proposals, and the shared gate prevents continuation while child work, an incomplete or erroring turn, or a one-shot Agenda wait is still active.
 
 ## SuperPlan Storage Substrate
 

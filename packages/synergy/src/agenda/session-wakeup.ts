@@ -54,6 +54,7 @@ export namespace AgendaSessionWakeup {
     session: SessionInfo
     item: AgendaTypes.Item
   }): Promise<LoopInstruction | undefined> {
+    if (!isBlocker(input.item)) return undefined
     const loopID = input.session.blueprint?.loopID
     const lightLoopActive =
       input.session.workflow?.kind === "lightloop" && !input.session.workflow.stopRequest?.reviewSessionID
@@ -72,13 +73,13 @@ export namespace AgendaSessionWakeup {
             "<blueprint-loop-agenda-wakeup>",
             `Agenda \`${input.item.id}\` woke this BlueprintLoop execution session.`,
             `BlueprintLoop ${loop.id} is still running. Evaluate this Agenda result against the complete Blueprint, its start instruction, current deliverables, and verification evidence.`,
-            "While any Agenda item can wake this session, Agenda owns the wake-up cadence and ordinary BlueprintLoop continuation remains paused.",
+            "This Agenda watch owns the wake-up cadence while it remains active, so ordinary BlueprintLoop continuation is paused.",
             "",
-            "If the Blueprint is incomplete, continue the required work and keep or adjust Agenda monitoring only when another wake-up is needed.",
+            "If the Blueprint is incomplete, continue the required work and keep or adjust monitoring only when another wake-up is needed.",
             "If the complete Blueprint is finished and verified:",
-            "1. Cancel every remaining Agenda item listed below.",
+            "1. Cancel every remaining Agenda watch listed below.",
             "2. Call blueprint_loop_stop with the completion summary and concrete evidence.",
-            "Do not request audit while a recurring Agenda can still wake this session.",
+            "Do not request audit while an Agenda watch still holds continuation.",
             "",
             ...cleanup,
             "</blueprint-loop-agenda-wakeup>",
@@ -94,13 +95,13 @@ export namespace AgendaSessionWakeup {
           "<light-loop-agenda-wakeup>",
           `Agenda \`${input.item.id}\` woke this Light Loop session.`,
           "Evaluate this Agenda result against the complete task, current work, and verification evidence.",
-          "While any Agenda item can wake this session, Agenda owns the wake-up cadence and ordinary Light Loop continuation remains paused.",
+          "This Agenda watch owns the wake-up cadence while it remains active, so ordinary Light Loop continuation is paused.",
           "",
-          "If the task is incomplete, continue the required work and keep or adjust Agenda monitoring only when another wake-up is needed.",
+          "If the task is incomplete, continue the required work and keep or adjust monitoring only when another wake-up is needed.",
           "If the complete task is finished and verified:",
-          "1. Cancel every remaining Agenda item listed below.",
+          "1. Cancel every remaining Agenda watch listed below.",
           "2. Call loop_stop with the completion summary and concrete evidence.",
-          "Do not request review while a recurring Agenda can still wake this session.",
+          "Do not request review while an Agenda watch still holds continuation.",
           "",
           ...cleanup,
           "</light-loop-agenda-wakeup>",
@@ -117,8 +118,8 @@ export namespace AgendaSessionWakeup {
     if (!sessionID) return
     if (await has(sessionID, input.before.origin.scope.id)) return
 
-    const { ContinuationKernel } = await import("../session/continuation-kernel")
-    void ContinuationKernel.kick(sessionID).catch((error) => {
+    const { SessionDrive } = await import("../session/drive")
+    void SessionDrive.request(sessionID, "agenda-wait-released").catch((error) => {
       log.error("failed to resume continuation after Agenda release", {
         sessionID,
         itemID: input.before.id,
@@ -128,11 +129,11 @@ export namespace AgendaSessionWakeup {
   }
 
   function cleanupInstructions(wakeups: Awaited<ReturnType<typeof list>>): string[] {
-    if (!wakeups.hasActiveAgenda) return ["No remaining Agenda item can currently wake this session."]
+    if (!wakeups.hasActiveAgenda) return ["No remaining Agenda watch holds continuation for this session."]
 
-    const lines = ["Remaining Agenda items that can wake this session:"]
+    const lines = ["Remaining Agenda watches holding continuation for this session:"]
     lines.push(...wakeups.items.map((item) => `- \`${item.itemID}\`: agenda_cancel(id="${item.itemID}")`))
-    if (wakeups.hasMore) lines.push("- Additional Agenda items exist. Use agenda_list to inspect and cancel them.")
+    if (wakeups.hasMore) lines.push("- Additional Agenda watches exist. Use agenda_list to inspect and cancel them.")
     return lines
   }
 }

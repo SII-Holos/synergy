@@ -228,7 +228,12 @@ export namespace AgendaReactor {
 
     if (!error) {
       const sourceSessionID = sessionID ?? item.origin.sessionID ?? ""
-      await AgendaDelivery.deliver({ item, sessionID: sourceSessionID, lastMessage }).catch((err) => {
+      await AgendaDelivery.deliver({
+        item,
+        sessionID: sourceSessionID,
+        deliveryKey: `agenda:${item.id}:${signal.type}:${signal.timestamp}`,
+        lastMessage,
+      }).catch((err) => {
         log.error("delivery failed", { itemID: item.id, error: err instanceof Error ? err : new Error(String(err)) })
       })
     }

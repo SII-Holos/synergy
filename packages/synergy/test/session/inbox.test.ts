@@ -39,6 +39,40 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("deduplicates concurrent delivery by stable delivery key", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const input = {
+          sessionID: session.id,
+          deliveryKey: "test:completion:once",
+          mode: "steer" as const,
+          message: {
+            role: "user" as const,
+            parts: [{ type: "text" as const, text: "background work completed" }],
+            metadata: { source: "test" },
+          },
+        }
+
+        const [first, second] = await Promise.all([
+          SessionInbox.deliverUnique(input),
+          SessionInbox.deliverUnique(input),
+        ])
+
+        expect(first.itemID).toBe(second.itemID)
+        expect(first.messageID).toBe(second.messageID)
+        expect([first.created, second.created].sort()).toEqual([false, true])
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(1)
+        expect(items[0].deliveryKey).toBe(input.deliveryKey)
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("promotes queued user input into guiding state", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -292,6 +326,7 @@ describe("SessionInbox", () => {
         try {
           await AgendaDelivery.deliver({
             sessionID: "ses_agenda_run",
+            deliveryKey: "agenda:ag_test:manual:1",
             lastMessage: "agenda completed",
             item: {
               id: "ag_test",
@@ -333,6 +368,7 @@ describe("SessionInbox", () => {
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
+          autoDone: true,
           createdBy: "agent",
           sessionID: session.id,
         })
@@ -340,8 +376,12 @@ describe("SessionInbox", () => {
         ;(SessionInvoke.loop as any) = mock(async () => {})
 
         try {
-          await AgendaDelivery.deliver({ sessionID: "ses_agenda_run", lastMessage: "still running", item })
-
+          await AgendaDelivery.deliver({
+            sessionID: "ses_agenda_run",
+            deliveryKey: `agenda:${item.id}:every:1`,
+            lastMessage: "still running",
+            item,
+          })
           const [inboxItem] = await SessionInbox.list(session.id)
           expect(inboxItem.message?.metadata).toMatchObject({ source: "agenda", agendaItemID: item.id })
           const prompt = inboxItem.message?.parts.find((part) => part.type === "text" && part.origin === "system")
@@ -383,6 +423,7 @@ describe("SessionInbox", () => {
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
+          autoDone: true,
           createdBy: "agent",
           sessionID: session.id,
         })
@@ -390,8 +431,12 @@ describe("SessionInbox", () => {
         ;(SessionInvoke.loop as any) = mock(async () => {})
 
         try {
-          await AgendaDelivery.deliver({ sessionID: "ses_agenda_run", lastMessage: "still running", item })
-
+          await AgendaDelivery.deliver({
+            sessionID: "ses_agenda_run",
+            deliveryKey: `agenda:${item.id}:every:1`,
+            lastMessage: "still running",
+            item,
+          })
           const [inboxItem] = await SessionInbox.list(session.id)
           const prompt = inboxItem.message?.parts.find((part) => part.type === "text" && part.origin === "system")
           expect(prompt?.type).toBe("text")

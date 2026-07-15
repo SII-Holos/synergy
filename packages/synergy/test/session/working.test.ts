@@ -8,6 +8,8 @@ import * as SessionWorking from "../../src/session/working"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
 import { SessionInvoke } from "../../src/session/invoke"
+import { Cortex } from "../../src/cortex"
+import { SessionInbox } from "../../src/session/inbox"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -362,6 +364,48 @@ describe("SessionWorking", () => {
           assertExists(assistant)
           expect(assistant.time.completed).toBeNumber()
           expect(assistant.finish).toBe("error")
+        },
+      })
+    })
+
+    test("resumePending restores an undelivered terminal Cortex notification exactly once", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const completedAt = Date.now()
+          const taskID = "cortex-terminal-recovery-test"
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID,
+              parentSessionID: parent.id,
+              parentMessageID: Identifier.ascending("message"),
+              description: "Completed child task",
+              agent: "developer",
+              startedAt: completedAt - 1_000,
+              completedAt,
+              status: "completed",
+              notifyParentOnComplete: true,
+            },
+          })
+          Cortex.reset()
+
+          await SessionInvoke.resumePending()
+
+          const firstItems = await SessionInbox.list(parent.id)
+          expect(firstItems).toHaveLength(1)
+          expect(firstItems[0].deliveryKey).toBe(`cortex:taskNotification:${taskID}`)
+          expect(firstItems[0].source.type).toBe("cortex")
+          const delivered = await Session.get(child.id)
+          expect(delivered.cortex?.deliveryNotifiedAt).toBeNumber()
+          const deliveredAt = delivered.cortex?.deliveryNotifiedAt
+
+          await SessionInvoke.resumePending()
+
+          expect(await SessionInbox.list(parent.id)).toHaveLength(1)
+          expect((await Session.get(child.id)).cortex?.deliveryNotifiedAt).toBe(deliveredAt)
         },
       })
     })

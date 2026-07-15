@@ -1,35 +1,25 @@
-import { Identifier } from "@/id/id"
 import { ContinuationKernel } from "./continuation-kernel"
-import { SessionManager } from "./manager"
 
-/**
- * LightLoopContinuationPolicy: when a Light Loop workflow session goes idle
- * after a terminal assistant response, deliver a continuation message prompting
- * the agent to continue working on the task.
- */
 export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
   id: "light_loop",
   priority: 25,
   async handle(gate) {
-    if (gate.session.workflow?.kind !== "lightloop") return false
-    // Don't deliver generic continuation while a review is pending
-    if (gate.session.workflow.stopRequest?.reviewSessionID) return false
-    await deliverContinuation(gate.sessionID, gate.session.workflow.taskDescription)
-    return true
+    if (gate.session.workflow?.kind !== "lightloop") return undefined
+    if (gate.session.workflow.stopRequest?.reviewSessionID) return undefined
+    return continuationProposal(gate.session.workflow.taskDescription)
   },
 }
 
-async function deliverContinuation(sessionID: string, taskDescription: string): Promise<void> {
-  await SessionManager.deliver({
-    target: sessionID,
-    mail: {
-      type: "user",
+function continuationProposal(taskDescription: string): ContinuationKernel.InboxProposal {
+  return {
+    kind: "inbox",
+    mode: "steer",
+    message: {
+      role: "user",
       summary: { title: "Continue light loop" },
+      origin: { type: "system" },
       parts: [
         {
-          id: Identifier.ascending("part"),
-          sessionID,
-          messageID: "",
           type: "text",
           text: `Task: ${taskDescription}
 
@@ -44,5 +34,5 @@ If anything remains, continue working now. If the task is complete and verified,
       ],
       metadata: { source: "light_loop_continuation" },
     },
-  })
+  }
 }

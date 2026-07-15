@@ -74,7 +74,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 10,
           async handle() {
             calls.push("low")
-            return true
+            return { kind: "handled" }
           },
         })
         ContinuationKernel.register({
@@ -82,7 +82,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 100,
           async handle() {
             calls.push("high")
-            return true
+            return { kind: "handled" }
           },
         })
 
@@ -106,7 +106,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 100,
           async handle() {
             calls.push("high")
-            return false
+            return undefined
           },
         })
         ContinuationKernel.register({
@@ -114,7 +114,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 10,
           async handle() {
             calls.push("low")
-            return true
+            return { kind: "handled" }
           },
         })
         const handled = await ContinuationKernel.evaluate(session.id)
@@ -137,7 +137,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 50,
           async handle() {
             count++
-            return true
+            return { kind: "handled" }
           },
         })
         expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
@@ -159,22 +159,22 @@ describe("ContinuationKernel arbitration", () => {
           id: "p",
           priority: 50,
           async handle() {
-            return true
+            return { kind: "handled" }
           },
         })
         expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
       },
     })
   }, 15_000)
-  test("does not continue while an Agenda item can wake the session", async () => {
+  test("ordinary Agenda schedules do not block workflow continuation", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await terminalSession()
         await AgendaStore.create({
-          title: "Check experiment",
-          prompt: "Inspect experiment progress",
+          title: "Scheduled report",
+          prompt: "Prepare the report",
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
@@ -188,7 +188,40 @@ describe("ContinuationKernel arbitration", () => {
           priority: 50,
           async handle() {
             count++
-            return true
+            return { kind: "handled" }
+          },
+        })
+
+        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+        expect(count).toBe(1)
+      },
+    })
+  }, 15_000)
+
+  test("does not continue while an Agenda watch can wake the session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await terminalSession()
+        await AgendaStore.create({
+          title: "Check experiment",
+          prompt: "Inspect experiment progress",
+          triggers: [{ type: "every", interval: "30m" }],
+          wake: true,
+          silent: false,
+          autoDone: true,
+          createdBy: "agent",
+          sessionID: session.id,
+        })
+        let count = 0
+        ContinuationKernel.reset()
+        ContinuationKernel.register({
+          id: "p",
+          priority: 50,
+          async handle() {
+            count++
+            return { kind: "handled" }
           },
         })
 
@@ -209,6 +242,7 @@ describe("ContinuationKernel arbitration", () => {
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
+          autoDone: true,
           global: true,
           createdBy: "agent",
           sessionID: session.id,
@@ -220,7 +254,7 @@ describe("ContinuationKernel arbitration", () => {
           priority: 50,
           async handle() {
             count++
-            return true
+            return { kind: "handled" }
           },
         })
 
@@ -241,6 +275,7 @@ describe("ContinuationKernel arbitration", () => {
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
+          autoDone: true,
           createdBy: "agent",
           sessionID: session.id,
         })
@@ -253,7 +288,7 @@ describe("ContinuationKernel arbitration", () => {
           async handle() {
             count++
             resumed.resolve()
-            return true
+            return { kind: "handled" }
           },
         })
         expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
@@ -297,7 +332,7 @@ describe("ContinuationKernel arbitration", () => {
           async handle() {
             events.push("continuation")
             resumed.resolve()
-            return true
+            return { kind: "handled" }
           },
         })
 

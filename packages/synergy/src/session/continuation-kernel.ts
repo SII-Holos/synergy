@@ -1,152 +1,142 @@
-import { Bus } from "@/bus"
 import { Log } from "@/util/log"
 import type { Scope } from "../scope"
-import { ScopedState } from "../scope/scoped-state"
-import { SessionEvent } from "./event"
-import { SessionManager } from "./manager"
 import { MessageV2 } from "./message-v2"
 import { SessionProgress } from "./progress"
 import type { Info as SessionInfo } from "./types"
 import { BlueprintContinuationPolicy } from "./blueprint-continuation"
 import { LightLoopContinuationPolicy } from "./light-loop-continuation"
 import { LatticeContinuationPolicy } from "../lattice/policy"
+import { SessionManager } from "./manager"
+import { SessionInbox } from "./inbox"
+import { ContinuationWait } from "./continuation-wait"
 
-/**
- * Session Continuation Kernel.
- *
- * A single subscriber to SessionEvent.Idle that decides whether an idle session
- * should be automatically woken to keep making progress on some outer loop
- * (BlueprintLoop execution, Lattice pathway, ...). It runs the common safety
- * gate once, then offers the idle to registered policies in priority order;
- * the first policy that handles it wins. Per (session, policy, terminal
- * assistant) de-duplication prevents re-delivering the same continuation after
- * the same terminal response.
- */
 export namespace ContinuationKernel {
   const log = Log.create({ service: "session.continuation-kernel" })
 
-  /** Result of the shared safety gate: everything a policy needs to decide. */
   export interface Gate {
     session: SessionInfo
     scopeID: string
     sessionID: string
-    /** messageID of the terminal assistant for the latest reply-required user. */
     terminalMessageID: string
   }
 
+  export interface InboxProposal {
+    kind: "inbox"
+    deliveryKey?: string
+    mode: "task" | "steer" | "context"
+    message: Parameters<typeof SessionInbox.deliver>[0]["message"]
+  }
+
+  export interface HandledProposal {
+    kind: "handled"
+  }
+
+  export type Proposal = InboxProposal | HandledProposal
+  export type PolicyResult = Proposal | undefined
+
   export interface Policy {
     id: string
-    /** Higher runs first; the first policy to return true consumes the idle. */
     priority: number
-    handle(gate: Gate): Promise<boolean>
+    handle(gate: Gate): Promise<PolicyResult>
   }
 
   const policies: Policy[] = []
+  const dedup = new Map<string, Set<string>>()
+  let builtinsRegistered = false
 
   export function register(policy: Policy): void {
-    if (policies.some((p) => p.id === policy.id)) return
+    if (policies.some((candidate) => candidate.id === policy.id)) return
     policies.push(policy)
     policies.sort((a, b) => b.priority - a.priority)
   }
 
-  /** For tests: drop all registered policies. */
   export function reset(): void {
     policies.length = 0
     dedup.clear()
+    builtinsRegistered = false
   }
 
-  // De-dup: sessionID -> `${policyID}:${terminalMessageID}` already delivered.
-  const dedup = new Map<string, Set<string>>()
-
-  function dedupKey(policyID: string, terminalMessageID: string): string {
-    return `${policyID}:${terminalMessageID}`
+  export function init(): () => void {
+    registerBuiltins()
+    return () => undefined
   }
 
-  function alreadyDelivered(sessionID: string, policyID: string, terminalMessageID: string): boolean {
-    return dedup.get(sessionID)?.has(dedupKey(policyID, terminalMessageID)) ?? false
-  }
-
-  function markDelivered(sessionID: string, policyID: string, terminalMessageID: string): void {
-    let set = dedup.get(sessionID)
-    if (!set) {
-      set = new Set()
-      dedup.set(sessionID, set)
-    }
-    set.add(dedupKey(policyID, terminalMessageID))
-  }
-
-  /**
-   * The shared safety gate. Returns a Gate when it is safe for a policy to
-   * continue the session, undefined otherwise.
-   *
-   * Gate checks (policy-agnostic):
-   *  - session exists and is not archived;
-   *  - no active Cortex (queued/running) work;
-   *  - the latest reply-required user message has a terminal assistant reply
-   *    that did not error.
-   */
   export async function passesSharedGate(sessionID: string): Promise<Gate | undefined> {
     const session = await SessionManager.getSession(sessionID)
     if (!session || session.time.archived) return undefined
-
-    const scopeID = (session.scope as Scope).id
-
-    if (await hasActiveCortexWork(sessionID)) return undefined
-    const { AgendaSessionWakeup } = await import("../agenda/session-wakeup")
-    if (await AgendaSessionWakeup.has(sessionID, scopeID)) return undefined
+    if (await ContinuationWait.has(sessionID)) return undefined
 
     const terminalMessageID = await terminalAssistantMessageID(sessionID)
     if (!terminalMessageID) return undefined
 
-    return { session, scopeID, sessionID, terminalMessageID }
+    return {
+      session,
+      scopeID: (session.scope as Scope).id,
+      sessionID,
+      terminalMessageID,
+    }
   }
 
-  /** Evaluate one idle session against all registered policies. */
-  export async function evaluate(sessionID: string): Promise<boolean> {
+  export async function propose(sessionID: string): Promise<Proposal | undefined> {
+    registerBuiltins()
     const gate = await passesSharedGate(sessionID)
-    if (!gate) return false
+    if (!gate) return undefined
 
     for (const policy of policies) {
-      if (alreadyDelivered(sessionID, policy.id, gate.terminalMessageID)) continue
-      const handled = await policy.handle(gate).catch((error) => {
+      const key = dedupKey(policy.id, gate.terminalMessageID)
+      if (dedup.get(sessionID)?.has(key)) continue
+
+      const proposal = await policy.handle(gate).catch((error) => {
         log.error("continuation policy failed", { policy: policy.id, sessionID, error })
-        return false
+        return undefined
       })
-      if (handled) {
-        markDelivered(sessionID, policy.id, gate.terminalMessageID)
-        return true
+      if (!proposal) continue
+      if (proposal.kind === "handled") {
+        markDelivered(sessionID, key)
+        return proposal
+      }
+      return {
+        ...proposal,
+        deliveryKey: proposal.deliveryKey ?? `continuation:${policy.id}:${gate.terminalMessageID}`,
       }
     }
-    return false
   }
 
-  /**
-   * Proactively evaluate a session that is already idle (e.g. after resuming a
-   * paused Lattice run — no fresh Idle event will arrive on its own).
-   */
+  export async function markCommitted(sessionID: string, proposal: Proposal): Promise<void> {
+    if (proposal.kind !== "inbox") return
+    const prefix = "continuation:"
+    if (!proposal.deliveryKey?.startsWith(prefix)) return
+    const remainder = proposal.deliveryKey.slice(prefix.length)
+    const separator = remainder.lastIndexOf(":")
+    if (separator < 0) return
+    markDelivered(sessionID, dedupKey(remainder.slice(0, separator), remainder.slice(separator + 1)))
+  }
+
+  export async function evaluate(sessionID: string): Promise<boolean> {
+    const proposal = await propose(sessionID)
+    if (!proposal) return false
+    if (proposal.kind === "handled") return true
+
+    const deliveryKey = proposal.deliveryKey
+    if (!deliveryKey) {
+      log.error("continuation proposal missing delivery key", { sessionID })
+      return false
+    }
+    const result = await SessionInbox.deliverUnique({
+      sessionID,
+      deliveryKey,
+      mode: proposal.mode,
+      message: proposal.message,
+    })
+    await markCommitted(sessionID, proposal)
+    return result.created
+  }
+
   export async function kick(sessionID: string): Promise<boolean> {
-    if (SessionManager.isRunning(sessionID)) return false
-    return evaluate(sessionID)
+    const { SessionDrive } = await import("./drive")
+    return SessionDrive.request(sessionID, "continuation-kick")
   }
 
-  const subscription = ScopedState.create(
-    () => {
-      const unsubscribe = Bus.subscribe(SessionEvent.Idle, (event) => {
-        evaluate(event.properties.sessionID).catch((error) => {
-          log.error("idle continuation failed", { sessionID: event.properties.sessionID, error })
-        })
-      })
-      return { unsubscribe }
-    },
-    async (state) => state.unsubscribe(),
-  )
-
-  export function init(): () => void {
-    registerBuiltins()
-    return subscription().unsubscribe
-  }
-
-  let builtinsRegistered = false
   function registerBuiltins(): void {
     if (builtinsRegistered) return
     builtinsRegistered = true
@@ -155,9 +145,14 @@ export namespace ContinuationKernel {
     register(LatticeContinuationPolicy)
   }
 
-  async function hasActiveCortexWork(sessionID: string): Promise<boolean> {
-    const { Cortex } = await import("../cortex/manager")
-    return Cortex.getTasksForSession(sessionID).some((task) => task.status === "running" || task.status === "queued")
+  function dedupKey(policyID: string, terminalMessageID: string): string {
+    return `${policyID}:${terminalMessageID}`
+  }
+
+  function markDelivered(sessionID: string, key: string): void {
+    const delivered = dedup.get(sessionID) ?? new Set<string>()
+    delivered.add(key)
+    dedup.set(sessionID, delivered)
   }
 
   async function terminalAssistantMessageID(sessionID: string): Promise<string | undefined> {
@@ -166,9 +161,7 @@ export namespace ContinuationKernel {
     if (!latestUser) return undefined
 
     const assistant = latestAssistantFor(messages, latestUser.id)
-    if (!assistant) return undefined
-    if (assistant.error) return undefined
-    if (!SessionProgress.isTerminalAssistant(assistant)) return undefined
+    if (!assistant || assistant.error || !SessionProgress.isTerminalAssistant(assistant)) return undefined
     return assistant.id
   }
 
@@ -177,16 +170,14 @@ export namespace ContinuationKernel {
       const message = messages[index]
       if (message.info.role !== "assistant") continue
       const assistant = message.info as MessageV2.Assistant
-      if (assistant.parentID !== parentID) continue
-      return assistant
+      if (assistant.parentID === parentID) return assistant
     }
   }
 
   function latestReplyRequiredUser(messages: MessageV2.WithParts[]): MessageV2.User | undefined {
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index]
-      if (message.info.role !== "user") continue
-      if (!MessageV2.isPromptVisible(message)) continue
+      if (message.info.role !== "user" || !MessageV2.isPromptVisible(message)) continue
       const user = message.info as MessageV2.User
       if (SessionProgress.isReplyRequiredUser(user)) return user
     }

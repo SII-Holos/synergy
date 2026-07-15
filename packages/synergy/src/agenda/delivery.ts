@@ -1,4 +1,5 @@
-import { Identifier } from "../id/id"
+import { SessionDrive } from "../session/drive"
+import { SessionInbox } from "../session/inbox"
 import { SessionManager } from "../session/manager"
 import { Log } from "../util/log"
 import { AgendaSessionWakeup } from "./session-wakeup"
@@ -10,6 +11,7 @@ export namespace AgendaDelivery {
   export interface DeliverInput {
     item: AgendaTypes.Item
     sessionID: string
+    deliveryKey: string
     lastMessage: string | undefined
   }
 
@@ -43,26 +45,20 @@ export namespace AgendaDelivery {
         return undefined
       })
 
-      await SessionManager.deliver({
-        target: session.id,
-        mail: {
-          type: "user",
+      await SessionInbox.deliverUnique({
+        sessionID: session.id,
+        deliveryKey: input.deliveryKey,
+        mode: "task",
+        message: {
+          role: "user",
+          origin: { type: "agenda", sessionID: input.sessionID },
           metadata: { source: "agenda", sourceSessionID: input.sessionID, agendaItemID: input.item.id },
           ...(instruction ? { tools: instruction.tools } : {}),
           parts: [
-            {
-              id: Identifier.ascending("part"),
-              sessionID: session.id,
-              messageID: Identifier.ascending("message"),
-              type: "text",
-              text,
-            },
+            { type: "text", text },
             ...(instruction
               ? [
                   {
-                    id: Identifier.ascending("part"),
-                    sessionID: session.id,
-                    messageID: Identifier.ascending("message"),
                     type: "text" as const,
                     text: instruction.text,
                     origin: "system" as const,
@@ -72,6 +68,7 @@ export namespace AgendaDelivery {
           ],
         },
       })
+      await SessionDrive.request(session.id, "agenda-delivery", { waitForProcessing: true })
     } catch (err) {
       log.error("delivery failed", {
         itemID: input.item.id,

@@ -203,6 +203,7 @@ describe("blueprint_loop_stop", () => {
           triggers: [{ type: "every", interval: "30m" }],
           wake: true,
           silent: false,
+          autoDone: true,
           createdBy: "agent",
           sessionID: session.id,
         })

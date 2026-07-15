@@ -1779,6 +1779,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
   export async function resumePending(): Promise<void> {
     await reconcileInterruptedCortexDelegations()
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.reconcileParentNotifications()
 
     const sessionIDs = await SessionManager.listPendingReply()
     for (const sessionID of sessionIDs) {

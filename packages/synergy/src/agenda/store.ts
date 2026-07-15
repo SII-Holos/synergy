@@ -575,7 +575,7 @@ export namespace AgendaStore {
     }
   }
 
-  export function isSessionContinuationBlocker(item: AgendaTypes.Item, sessionID?: string): boolean {
+  export function isSessionWakeup(item: AgendaTypes.Item, sessionID?: string): boolean {
     const originSessionID = item.origin.sessionID
     return (
       (item.status === "active" || item.status === "pending") &&
@@ -584,6 +584,10 @@ export namespace AgendaStore {
       originSessionID !== undefined &&
       (sessionID === undefined || originSessionID === sessionID)
     )
+  }
+
+  export function isSessionContinuationBlocker(item: AgendaTypes.Item, sessionID?: string): boolean {
+    return item.autoDone === true && isSessionWakeup(item, sessionID)
   }
 
   function sortSessionWakeItems(items: AgendaTypes.Item[]): AgendaTypes.Item[] {
@@ -605,7 +609,7 @@ export namespace AgendaStore {
     const items = await listForScope(input.scopeID)
     const matching = sortSessionWakeItems(
       items
-        .filter((item) => isSessionContinuationBlocker(item, input.sessionID))
+        .filter((item) => isSessionWakeup(item, input.sessionID))
         .filter((item) => item.state.nextRunAt === undefined || item.state.nextRunAt > now),
     )
 
