@@ -26,6 +26,8 @@ import { SessionManager } from "./manager"
 import type { Info } from "./types"
 import { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
+import { SessionBounds } from "./bounds"
+import { SessionToolInput } from "./tool-input"
 import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
@@ -1956,7 +1958,15 @@ export namespace ToolResolver {
     return {
       ...runtimeTool,
       execute(args, options) {
-        return input.processor.executeOnce(options.toolCallId, () => execute.call(runtimeTool, args, options))
+        return input.processor.executeOnce(options.toolCallId, () => {
+          const toolInput = SessionToolInput.normalize(args)
+          if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+            const error = SessionBounds.toolInputExceededMessage()
+            input.processor.beginExecution(options.toolCallId).fail({}, error)
+            throw new Error(error)
+          }
+          return execute.call(runtimeTool, args, options)
+        })
       },
     } as AITool
   }

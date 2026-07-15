@@ -29,6 +29,62 @@ export namespace LLM {
 
   export const OUTPUT_TOKEN_MAX = ModelLimit.OUTPUT_TOKEN_MAX
 
+  function cancelResidualStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
+    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  ) {
+    const residual = (result as StreamTextResult<TOOLS, PARTIAL_OUTPUT> & { baseStream?: ReadableStream<unknown> })
+      .baseStream
+    let cancellation: Promise<void> | undefined
+    try {
+      // AI SDK implements fullStream with tee() and retains the second branch as baseStream.
+      // Cancel it immediately, but wait only after the consumed branch settles because tee
+      // cancellation itself waits for the sibling branch to close.
+      cancellation = residual?.cancel().catch((error) => {
+        log.warn("failed to cancel residual stream branch", { error })
+      })
+    } catch (error) {
+      log.warn("failed to cancel residual stream branch", { error })
+    }
+    return cancellation
+  }
+
+  function ownStream<TOOLS extends ToolSet, PARTIAL_OUTPUT, STREAM>(
+    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+    stream: STREAM,
+  ) {
+    const cancellation = cancelResidualStream(result)
+    return {
+      stream,
+      async dispose() {
+        await cancellation
+      },
+    }
+  }
+
+  export function takeFullStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
+    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  ) {
+    return ownStream(result, result.fullStream)
+  }
+
+  export function takeTextStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
+    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  ) {
+    return ownStream(result, result.textStream)
+  }
+
+  export async function collectText<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
+    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  ) {
+    const text = result.text
+    const cancellation = cancelResidualStream(result)
+    try {
+      return await text
+    } finally {
+      await cancellation
+    }
+  }
+
   /**
    * Tool call repair logic, extracted for testability.
    *
