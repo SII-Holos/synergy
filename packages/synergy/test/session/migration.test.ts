@@ -853,4 +853,44 @@ describe("session migrations", () => {
       },
     })
   })
+  test("migrates retired intent-analyst DAG assignments to self", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({ title: "Legacy Intent DAG" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const key = StoragePath.sessionDag(scope, Identifier.asSessionID(session.id))
+        await Storage.write(key, [
+          {
+            id: "classify",
+            content: "Classify the request",
+            status: "completed",
+            deps: [],
+            assign: "intent-analyst",
+          },
+          {
+            id: "research",
+            content: "Research the request",
+            status: "pending",
+            deps: ["classify"],
+            assign: "scout",
+          },
+        ])
+
+        const migration = migrations.find((entry) => entry.id === "20260715-retired-intent-analyst-dag-assign")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const migrated = await Storage.read<any[]>(key)
+        expect(migrated[0].assign).toBe("self")
+        expect(migrated[1].assign).toBe("scout")
+
+        await migration!.up(() => {})
+        expect(await Storage.read<any[]>(key)).toEqual(migrated)
+      },
+    })
+  })
 })

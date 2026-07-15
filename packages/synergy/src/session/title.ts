@@ -86,7 +86,7 @@ export async function ensureTitle(input: {
       ...MessageV2.toModelMessage(contextMessages),
     ],
   })
-  const text = await result.text.catch((err) => log.error("failed to generate title", { error: err }))
+  const text = await LLM.collectText(result).catch((err) => log.error("failed to generate title", { error: err }))
   if (text) {
     const { Session } = await import(".")
     return Session.update(input.session.id, (draft) => {
