@@ -4,6 +4,7 @@ import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
+import { ConfigImport } from "../config/import"
 import { ConfigDomainOpen } from "../config/domain-open"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
@@ -209,40 +210,42 @@ export const ConfigRoute = new Hono()
     "/import/plan",
     describeRoute({
       summary: "Plan config import",
-      description: "Create a dry-run plan for importing selected config domains.",
+      description: "Create a dry-run plan for importing selected config domains into global or project config.",
       operationId: "config.import.plan",
       responses: {
         200: {
           description: "Config import plan",
-          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
+          content: { "application/json": { schema: resolver(ConfigImport.Plan) } },
         },
-        ...errors(400),
+        400: {
+          description: "Invalid import or missing project scope",
+          content: { "application/json": { schema: resolver(ConfigImport.ProjectScopeRequiredError.Schema) } },
+        },
       },
     }),
-    validator("json", Config.DomainImportPlanInput),
-    async (c) => c.json(await Config.domainImportPlan(c.req.valid("json"))),
+    validator("json", ConfigImport.PlanInput),
+    async (c) => c.json(await ConfigImport.plan(c.req.valid("json"))),
   )
   .post(
     "/import/apply",
     describeRoute({
       summary: "Apply config import",
-      description: "Apply a selected-domain config import plan.",
+      description: "Atomically apply a selected-domain config import plan and reload affected runtime state.",
       operationId: "config.import.apply",
       responses: {
         200: {
-          description: "Applied config import plan",
-          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
+          description: "Applied config import result",
+          content: { "application/json": { schema: resolver(ConfigImport.ApplyResult) } },
         },
         ...errors(400),
+        409: {
+          description: "Stale plan or concurrent import",
+          content: { "application/json": { schema: resolver(ConfigImport.RevisionConflictError.Schema) } },
+        },
       },
     }),
-    validator("json", Config.DomainImportPlanInput.extend({ yes: z.boolean().optional() })),
-    async (c) => {
-      const plan = await Config.domainImportApply(c.req.valid("json"))
-      const changedFields = new Set(plan.domains.flatMap((domain) => domain.changes.map((change) => change.key)))
-      await reloadAfterConfigChange(changedFields, "config.import.apply")
-      return c.json(plan)
-    },
+    validator("json", ConfigImport.ApplyInput),
+    async (c) => c.json(await ConfigImport.apply(c.req.valid("json"))),
   )
   .get(
     "/providers",
