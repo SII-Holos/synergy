@@ -68,6 +68,16 @@ test.each([
   expect(capabilities.reasoningEfforts).toBeUndefined()
 })
 
+test("image media type capabilities normalize restrictions and allow explicit clearing", () => {
+  const restricted = Provider.mergeModelCapabilities({
+    supported_image_media_types: [" IMAGE/PNG ", "text/plain", "image/png"],
+  })
+  expect(restricted.input.supportedImageMediaTypes).toEqual(["image/png"])
+
+  const cleared = Provider.mergeModelCapabilities({ supported_image_media_types: [] }, restricted)
+  expect(cleared.input.supportedImageMediaTypes).toBeUndefined()
+})
+
 test.each([
   ["empty values", []],
   ["all invalid values", [null, 3]],

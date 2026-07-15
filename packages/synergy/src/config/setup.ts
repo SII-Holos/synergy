@@ -855,25 +855,19 @@ export namespace ConfigSetup {
 
   async function verifyLanguageModel(
     value: string,
-    options?: { requireMultimodal?: boolean; label?: string; importContext?: ImportProbeContext },
+    options?: { requireImageInput?: boolean; label?: string; importContext?: ImportProbeContext },
   ): Promise<FieldValidationResult> {
     const startedAt = now()
     const label = options?.label ?? "Model"
     try {
       const target = await resolveProbeModelTarget(value, options?.importContext)
 
-      if (options?.requireMultimodal) {
-        const supportsVision =
-          target.model.capabilities.input.image ||
-          target.model.capabilities.input.video ||
-          target.model.capabilities.input.pdf
-        if (!supportsVision) {
-          return withTiming(startedAt, {
-            valid: false,
-            mode: "static",
-            message: `${label} must support image, PDF, or video input`,
-          })
-        }
+      if (options?.requireImageInput && !target.model.capabilities.input.image) {
+        return withTiming(startedAt, {
+          valid: false,
+          mode: "static",
+          message: `${label} must support image input`,
+        })
       }
 
       return withTiming(startedAt, {
@@ -988,7 +982,7 @@ export namespace ConfigSetup {
 
   async function probeLanguageModel(
     value: string,
-    options?: { requireMultimodal?: boolean; label?: string; importContext?: ImportProbeContext },
+    options?: { requireImageInput?: boolean; label?: string; importContext?: ImportProbeContext },
   ): Promise<FieldValidationResult> {
     const startedAt = now()
     const label = options?.label ?? "Model"
@@ -1002,7 +996,7 @@ export namespace ConfigSetup {
           : await createImportedLanguageRuntime(target, options?.importContext?.auth)
       const providerOptions = ProviderTransform.providerOptions(model, ProviderTransform.smallOptions(model))
 
-      const messages: ModelMessage[] = options?.requireMultimodal
+      const messages: ModelMessage[] = options?.requireImageInput
         ? [
             {
               role: "user",
@@ -1026,14 +1020,14 @@ export namespace ConfigSetup {
         maxOutputTokens: 8,
         temperature: 0,
         providerOptions,
-        abortSignal: AbortSignal.timeout(options?.requireMultimodal ? 60_000 : 12_000),
+        abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
       })
 
       return withTiming(startedAt, {
         valid: true,
         mode: "live",
-        message: options?.requireMultimodal
-          ? `${label} passed a multimodal live probe`
+        message: options?.requireImageInput
+          ? `${label} passed an image-input live probe`
           : `${label} passed a live probe`,
       })
     } catch (error) {
@@ -1229,7 +1223,7 @@ export namespace ConfigSetup {
       vision_model: config.vision_model
         ? await verifyLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: context,
           })
         : recommendedSkipped("No vision model configured — look_at will be disabled"),
@@ -1257,7 +1251,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? probeLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: context,
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
@@ -1292,7 +1286,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? verifyLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: { config },
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
@@ -1324,7 +1318,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? probeLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: { config },
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),

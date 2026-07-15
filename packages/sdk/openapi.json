@@ -22914,6 +22914,12 @@
                   },
                   "required": ["input", "output"]
                 },
+                "supported_image_media_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
@@ -25498,6 +25504,12 @@
                   },
                   "pdf": {
                     "type": "boolean"
+                  },
+                  "supportedImageMediaTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "required": ["text", "audio", "image", "video", "pdf"]

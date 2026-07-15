@@ -216,7 +216,7 @@ export namespace SessionSummary {
         system: [],
         retries: 3,
       })
-      const result = await stream.text.catch((err) => {
+      const result = await LLM.collectText(stream).catch((err) => {
         log.error("failed to generate summary title", { error: err })
         return undefined
       })
@@ -256,7 +256,7 @@ export namespace SessionSummary {
         system: [],
         retries: 3,
       })
-      return stream.text.catch((err) => {
+      return LLM.collectText(stream).catch((err) => {
         log.error("failed to generate summary body", { error: err })
         return undefined
       })

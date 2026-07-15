@@ -19,6 +19,7 @@ import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
 import { Worktree } from "../../src/project/worktree"
+import { SessionMessageCache } from "../../src/session/message-cache"
 
 const sessionID = "ses_test"
 
@@ -1064,6 +1065,129 @@ describe("SessionInvoke completion notices", () => {
         },
       })
     } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke turn lifecycle", () => {
+  test("keeps the loop message cache populated across pre-jobs", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let cacheVisibleToProcessor = false
+    const restore = installBasicLoopMocks({
+      onProcess() {
+        cacheVisibleToProcessor = SessionMessageCache.get(activeSessionID) !== undefined
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(cacheVisibleToProcessor).toBe(true)
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("removes the per-turn listener from the session abort signal", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalAcquire = SessionManager.acquire
+    const added: EventListenerOrEventListenerObject[] = []
+    const removed: EventListenerOrEventListenerObject[] = []
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+
+    ;(SessionManager.acquire as any) = mock((id: string) => {
+      const lease = originalAcquire(id)
+      if (!lease) return lease
+      const signal = lease.signal
+      const addEventListener = signal.addEventListener.bind(signal)
+      const removeEventListener = signal.removeEventListener.bind(signal)
+      Object.defineProperties(signal, {
+        addEventListener: {
+          configurable: true,
+          value(
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+            options?: AddEventListenerOptions | boolean,
+          ) {
+            if (type === "abort") added.push(listener)
+            return addEventListener(type, listener, options)
+          },
+        },
+        removeEventListener: {
+          configurable: true,
+          value(type: string, listener: EventListenerOrEventListenerObject, options?: EventListenerOptions | boolean) {
+            if (type === "abort") removed.push(listener)
+            return removeEventListener(type, listener, options)
+          },
+        },
+      })
+      return lease
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(added.length).toBeGreaterThan(0)
+      expect(added.every((listener) => removed.includes(listener))).toBe(true)
+    } finally {
+      ;(SessionManager.acquire as any) = originalAcquire
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("closes the combined turn signal after normal processor completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalParts = MessageV2.parts
+    let activeSessionID = ""
+    let processReturned = false
+    let turnSignal: AbortSignal | undefined
+    let observedAfterTurn: boolean | undefined
+    const restore = installBasicLoopMocks({
+      onProcess(input) {
+        turnSignal = input.abort
+        processReturned = true
+      },
+    })
+
+    ;(MessageV2.parts as any) = mock(async (input: Parameters<typeof MessageV2.parts>[0]) => {
+      const parts = await originalParts(input)
+      if (processReturned && observedAfterTurn === undefined) observedAfterTurn = turnSignal?.aborted
+      return parts
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(observedAfterTurn).toBe(true)
+    } finally {
+      ;(MessageV2.parts as any) = originalParts
       restore()
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }

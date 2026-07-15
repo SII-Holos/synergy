@@ -217,10 +217,15 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
+It operates on the loop's existing immutable message snapshot, and its `Session.updatePart()` writes maintain the loop-scoped message cache incrementally. Running a prune job does not invalidate or reread the complete session history.
 
 ## Streaming and Persistence
 
 Text, reasoning, and tool parts are persisted throughout the step. Streaming text/reasoning writes are coalesced at a short write-behind interval; terminal and discrete updates flush immediately. Before a turn finalizes, pending writes are flushed so a missing terminal callback cannot silently lose accumulated text.
+
+Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
+
+Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
 
 Client wire transport can replace full accumulated streaming parts with incremental delta frames and periodic full checkpoints. That optimization does not change the in-process message or event model; see [Frontend data sync](frontend-data-sync.md).
 
