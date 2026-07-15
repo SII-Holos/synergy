@@ -52,7 +52,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       description:
         "Read-only code quality auditor for readability, unnecessary indirection, structural density, hygiene, dead code, and patch-over-fix patterns in the classic synergy workflow.",
       prompt: PROMPT_INSPECTOR,
-      model: "thinking",
+      model: "mid",
       permission: "review",
       visibleTo: ["synergy"],
     }),
@@ -61,7 +61,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       description:
         "Writing and documentation subagent for substantial prose, guides, documentation drafts, release notes, and narrative polishing in the classic synergy workflow.",
       prompt: buildScribePrompt(),
-      model: "thinking",
+      model: "creative",
       permission: "docsWrite",
       visibleTo: ["synergy"],
     }),

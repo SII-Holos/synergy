@@ -4,7 +4,6 @@ import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
-import { Config } from "../../src/config/config"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { Plugin } from "../../src/plugin"
 
@@ -51,18 +50,36 @@ test("developer agent has correct default properties", async () => {
   })
 })
 
-test("built-in agents expose model role metadata", async () => {
-  await using tmp = await tmpdir()
+test("classic built-in agents resolve the intended model roles", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/default-test",
+      mid_model: "openai/mid-test",
+      thinking_model: "openai/thinking-test",
+      creative_model: "openai/creative-test",
+    },
+  })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const developer = await Agent.get("developer")
-      const advisor = await Agent.get("advisor")
-      const looker = await Agent.get("multimodal-looker")
+      const expected = {
+        developer: { role: "thinking", model: "thinking-test" },
+        explore: { role: "mid", model: "mid-test" },
+        scout: { role: "mid", model: "mid-test" },
+        advisor: { role: "thinking", model: "thinking-test" },
+        inspector: { role: "mid", model: "mid-test" },
+        scribe: { role: "creative", model: "creative-test" },
+        scholar: { role: "thinking", model: "thinking-test" },
+      } as const
 
-      expect(developer?.modelRole).toBe("mid")
-      expect(developer?.modelSource).toBe("role")
-      expect(advisor?.modelRole).toBe("thinking")
+      for (const [name, contract] of Object.entries(expected)) {
+        const agent = await Agent.get(name)
+        expect(agent?.modelRole, name).toBe(contract.role)
+        expect(agent?.modelSource, name).toBe("role")
+        expect(agent?.model?.modelID, name).toBe(contract.model)
+      }
+
+      const looker = await Agent.get("multimodal-looker")
       expect(looker?.modelRole).toBe("vision")
       expect(looker?.model).toBeUndefined()
     },
@@ -77,11 +94,15 @@ test("model role summaries group built-in subagents", async () => {
       const summaries = await Agent.modelRoleSummaries()
       const mid = summaries.find((summary) => summary.id === "mid")
       const thinking = summaries.find((summary) => summary.id === "thinking")
+      const creative = summaries.find((summary) => summary.id === "creative")
       const vision = summaries.find((summary) => summary.id === "vision")
 
-      expect(mid?.usedBy.map((agent) => agent.name)).toContain("developer")
-      expect(mid?.usedBy.map((agent) => agent.name)).toContain("explore")
-      expect(thinking?.usedBy.map((agent) => agent.name)).toContain("advisor")
+      expect(mid?.usedBy.map((agent) => agent.name)).toEqual(expect.arrayContaining(["explore", "scout", "inspector"]))
+      expect(mid?.usedBy.map((agent) => agent.name)).not.toContain("developer")
+      expect(thinking?.usedBy.map((agent) => agent.name)).toEqual(
+        expect.arrayContaining(["developer", "advisor", "scholar"]),
+      )
+      expect(creative?.usedBy.map((agent) => agent.name)).toContain("scribe")
       expect(vision?.fallbackChain).toEqual(["vision_model"])
       expect(vision?.resolvedModel).toBeUndefined()
       expect(vision?.disabledReason).toContain("Image analysis is disabled")
