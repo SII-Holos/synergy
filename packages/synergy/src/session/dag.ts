@@ -21,7 +21,6 @@ export namespace Dag {
     "inspector",
     "scribe",
     "scholar",
-    "intent-analyst",
     "requirements-engineer",
     "code-cartographer",
     "dependency-tracer",
@@ -85,6 +84,16 @@ export namespace Dag {
     })
     .meta({ ref: "DagNode" })
   export type Node = z.infer<typeof Node>
+
+  export function normalizeRetiredAssignments(nodes: Node[]): Node[] {
+    let changed = false
+    const normalized = nodes.map((node) => {
+      if (node.assign !== "intent-analyst") return node
+      changed = true
+      return { ...node, assign: "self" }
+    })
+    return changed ? normalized : nodes
+  }
 
   export const Event = {
     Updated: BusEvent.define(
