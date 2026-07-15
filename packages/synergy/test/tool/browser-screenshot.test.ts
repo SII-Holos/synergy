@@ -29,7 +29,7 @@ afterEach(() => {
   BrowserToolHelper.withActivity = originalWithActivity
 })
 
-function context(supportsImageInput: boolean, lookAtAvailable = true) {
+function context(supportsImageInput: boolean, lookAtAvailable = true, supportedImageMediaTypes?: string[]) {
   return {
     sessionID: "ses_browser_screenshot_test",
     messageID: "msg_browser_screenshot_test",
@@ -38,7 +38,7 @@ function context(supportsImageInput: boolean, lookAtAvailable = true) {
     abort: new AbortController().signal,
     extra: {
       model: {
-        capabilities: { input: { image: supportsImageInput } },
+        capabilities: { input: { image: supportsImageInput, supportedImageMediaTypes } },
       },
       lookAtAvailable,
     },
@@ -59,6 +59,17 @@ describe("tool.browser_screenshot", () => {
       url: PNG_DATA_URL,
       model: { mode: "provider-file" },
     })
+  })
+
+  test("does not send PNG screenshots to models that only accept other image formats", async () => {
+    const tool = await BrowserScreenshotTool.init()
+    const result = await tool.execute({}, context(true, true, ["image/jpeg"]))
+
+    const attachment = result.attachments?.[0]
+    expect(attachment?.url).toStartWith("asset://")
+    expect(attachment?.model).toMatchObject({ mode: "summary" })
+    expect(result.output).toContain("look_at")
+    expect(result.metadata.modelDelivery).toBe("look_at")
   })
 
   test("gives text-only models a real local path and mentions look_at when available", async () => {

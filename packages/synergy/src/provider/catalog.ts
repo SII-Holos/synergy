@@ -8,6 +8,7 @@ import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
@@ -87,6 +88,8 @@ export namespace ProviderCatalog {
     profile?: ProviderProfile.Profile
     npm: string
     patch?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
   }): ModelsDev.Model {
     const base = input.sourceModel
       ? {
@@ -101,6 +104,21 @@ export namespace ProviderCatalog {
         }
       : fallbackModel(input.provider, input.modelID)
     const model = input.patch ? (mergeDeep(base, input.patch) as ModelsDev.Model) : base
+    if (input.inputImage !== undefined) {
+      const modalities = model.modalities ?? { input: ["text"], output: ["text"] }
+      const hasImage = modalities.input.includes("image")
+      model.modalities = {
+        ...modalities,
+        input: input.inputImage
+          ? hasImage
+            ? modalities.input
+            : [...modalities.input, "image"]
+          : modalities.input.filter((modality) => modality !== "image"),
+      }
+    }
+    if (input.supportedImageMediaTypes !== undefined) {
+      model.supported_image_media_types = normalizeImageMediaTypes(input.supportedImageMediaTypes) ?? []
+    }
     model.id = input.modelID
     model.provider = {
       ...(model.provider ?? {}),
@@ -295,6 +313,8 @@ export namespace ProviderCatalog {
         profile,
         npm,
         patch: entry.model,
+        inputImage: entry.inputImage,
+        supportedImageMediaTypes: entry.supportedImageMediaTypes,
       })
     }
     return next

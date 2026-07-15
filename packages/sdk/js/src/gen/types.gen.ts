@@ -1923,6 +1923,7 @@ export type ProviderConfig = {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
         output: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
+      supported_image_media_types?: Array<string>
       status?: "alpha" | "beta" | "deprecated"
       options?: {
         [key: string]: unknown
@@ -3228,6 +3229,7 @@ export type Model = {
       image: boolean
       video: boolean
       pdf: boolean
+      supportedImageMediaTypes?: Array<string>
     }
     output: {
       text: boolean

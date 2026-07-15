@@ -1113,7 +1113,8 @@ export namespace ToolResolver {
     const canUseBlueprintLoopStop = await canStopBlueprintLoop(input)
 
     const supportsImageInput = input.model.capabilities.input.image
-    const lookAtAvailable = !supportsImageInput && (await hasAvailableVisionModel())
+    const hasImageFormatRestrictions = !!input.model.capabilities.input.supportedImageMediaTypes?.length
+    const lookAtAvailable = (!supportsImageInput || hasImageFormatRestrictions) && (await hasAvailableVisionModel())
 
     for (const def of defs) {
       if (def.diagnostic) {

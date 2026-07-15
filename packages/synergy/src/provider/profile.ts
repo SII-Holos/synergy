@@ -90,6 +90,8 @@ export namespace ProviderProfile {
     id: string
     rank?: number
     model?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
   }
 
   export interface Profile {

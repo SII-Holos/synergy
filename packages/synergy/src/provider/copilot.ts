@@ -4,6 +4,7 @@ import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import type { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace CopilotProvider {
   export const PROVIDER_ID = "github-copilot"
@@ -307,18 +308,17 @@ export namespace CopilotProvider {
       if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id.trim()) continue
       const id = entry.id.trim()
       const supportsVision = entry.capabilities?.supports?.vision
-      if (typeof supportsVision !== "boolean") {
-        result.push({ id })
-        continue
-      }
+      const supportedImageMediaTypes = Array.isArray(entry.capabilities?.limits?.vision?.supported_media_types)
+        ? (normalizeImageMediaTypes(
+            entry.capabilities.limits.vision.supported_media_types.filter(
+              (mimeType: unknown): mimeType is string => typeof mimeType === "string",
+            ),
+          ) ?? [])
+        : undefined
       result.push({
         id,
-        model: {
-          modalities: {
-            input: supportsVision ? ["text", "image"] : ["text"],
-            output: ["text"],
-          },
-        },
+        ...(typeof supportsVision === "boolean" ? { inputImage: supportsVision } : {}),
+        ...(supportedImageMediaTypes !== undefined ? { supportedImageMediaTypes } : {}),
       })
     }
     return result

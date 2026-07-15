@@ -44,6 +44,7 @@ import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -247,6 +248,7 @@ export namespace Provider {
           image: z.boolean(),
           video: z.boolean(),
           pdf: z.boolean(),
+          supportedImageMediaTypes: z.array(z.string()).optional(),
         }),
         output: z.object({
           text: z.boolean(),
@@ -330,6 +332,10 @@ export namespace Provider {
         image: model.modalities?.input?.includes("image") ?? fallback.input.image,
         video: model.modalities?.input?.includes("video") ?? fallback.input.video,
         pdf: model.modalities?.input?.includes("pdf") ?? fallback.input.pdf,
+        supportedImageMediaTypes:
+          model.supported_image_media_types !== undefined
+            ? normalizeImageMediaTypes(model.supported_image_media_types)
+            : fallback.input.supportedImageMediaTypes,
       },
       output: {
         text: model.modalities?.output?.includes("text") ?? fallback.output.text,

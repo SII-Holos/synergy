@@ -4,6 +4,7 @@ import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { PromptCachePolicy } from "./prompt-cache-policy"
+import { supportsImageMediaType } from "./image-capability"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -270,6 +271,21 @@ export namespace ProviderTransform {
           }
         }
 
+        if (
+          attachment.modality === "image" &&
+          model.capabilities.input.image &&
+          !supportsImageMediaType(model, attachment.mime)
+        ) {
+          const name = attachment.filename ? `"${attachment.filename}"` : "image"
+          const supported = model.capabilities.input.supportedImageMediaTypes?.join(", ") ?? ""
+          const guidance = options?.lookAtAvailable
+            ? " Use the look_at tool with the file's local path to analyze it."
+            : ""
+          return {
+            type: "text" as const,
+            text: `[${name} was attached as ${attachment.mime}, but this model only supports these image formats: ${supported}.${guidance}]`,
+          }
+        }
         if (model.capabilities.input[attachment.modality]) {
           hasSupportedImage = true
           return part

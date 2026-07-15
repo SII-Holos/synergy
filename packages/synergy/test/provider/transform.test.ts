@@ -556,6 +556,35 @@ describe("ProviderTransform.message - empty image handling", () => {
     expect(result[0].content[2]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
   })
 
+  test("replaces images whose MIME type is not supported by the model", () => {
+    const jpegBase64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2Q=="
+    const restrictedModel = {
+      ...mockModel,
+      capabilities: {
+        ...mockModel.capabilities,
+        input: {
+          ...mockModel.capabilities.input,
+          supportedImageMediaTypes: ["image/png"],
+        },
+      },
+    }
+    const msgs = [
+      {
+        role: "user",
+        content: [{ type: "image", image: `data:image/jpeg;base64,${jpegBase64}` }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, restrictedModel)
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    expect(content.some((part) => part.type === "image")).toBe(false)
+    expect(content[0]).toMatchObject({ type: "text" })
+    expect(content[0]?.type === "text" ? content[0].text : "").toContain("image/jpeg")
+    expect(content[0]?.type === "text" ? content[0].text : "").toContain("image/png")
+  })
+
   test("should handle mixed valid and empty images", () => {
     const validBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="

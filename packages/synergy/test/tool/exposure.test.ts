@@ -45,6 +45,17 @@ const imageModel = {
   },
 } as any
 
+const restrictedImageModel = {
+  ...imageModel,
+  capabilities: {
+    ...imageModel.capabilities,
+    input: {
+      ...imageModel.capabilities.input,
+      supportedImageMediaTypes: ["image/png", "image/jpeg"],
+    },
+  },
+} as any
+
 const allowAllAgent: Agent.Info = {
   name: "synergy",
   mode: "primary",
@@ -192,6 +203,26 @@ describe("tool exposure", () => {
 
         const ids = await definitionIDs(session, { model: imageModel })
         expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(true)
+      },
+    })
+  })
+
+  test("format-restricted image model also exposes configured look_at fallback", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/gpt-4.1-mini",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session, { model: restrictedImageModel })
+        expect(ids.has("look_at")).toBe(true)
         expect(ids.has("view_image")).toBe(true)
       },
     })

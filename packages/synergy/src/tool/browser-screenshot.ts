@@ -4,10 +4,11 @@ import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { Asset } from "../asset/asset"
 import { Identifier } from "../id/id"
+import { supportsImageMediaType } from "../provider/image-capability"
 
 export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   description:
-    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Image-capable models receive it directly; text-only models receive a saved local path and can use look_at when available. A failed requested type never falls back to another capture.",
+    "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Models that accept PNG input receive it directly; other models receive a saved local path and can use look_at when available. A failed requested type never falls back to another capture.",
   parameters: z
     .object({
       fullPage: z.literal(true).optional(),
@@ -41,7 +42,8 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
         const assetId = await Asset.write(buffer, "image/png", filename)
         const filePath = Asset.filePath(assetId)
         const kind = params.target ? "locator" : params.clip ? "clip" : params.fullPage ? "fullPage" : "viewport"
-        const supportsImageInput = ctx.extra?.model?.capabilities?.input?.image === true
+        const supportsImageInput =
+          ctx.extra?.model?.capabilities?.input?.image === true && supportsImageMediaType(ctx.extra.model, "image/png")
         const lookAtAvailable = ctx.extra?.lookAtAvailable === true
         const delivery = supportsImageInput
           ? "The screenshot is available in the current model context."
