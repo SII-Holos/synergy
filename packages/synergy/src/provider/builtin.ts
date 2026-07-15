@@ -69,6 +69,7 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/openai",
     modelFactory: "openaiResponses",
     modelsDevProviderID: CodexProvider.PROVIDER_ID,
+    sourceModelProviderID: "openai",
     fallbackModels: [...CodexProvider.DEFAULT_MODEL_IDS],
     liveModelDiscovery: "codex",
     usageKind: "codex",
@@ -197,7 +198,7 @@ export function registerBuiltinProviderProfiles() {
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot", input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog("github-copilot", input.fetch),
     refreshAuth: (input) =>
       input.auth ? CopilotProvider.refreshAuth("github-copilot", input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,
@@ -233,7 +234,7 @@ export function registerBuiltinProviderProfiles() {
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot-enterprise", input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog("github-copilot-enterprise", input.fetch),
     refreshAuth: (input) =>
       input.auth ? CopilotProvider.refreshAuth("github-copilot-enterprise", input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,

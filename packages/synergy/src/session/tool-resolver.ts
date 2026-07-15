@@ -13,7 +13,7 @@ import { toolCapabilities, toolRisk } from "../plugin/capability"
 import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { markContributionDegraded } from "../plugin/loader"
 import { ProviderTransform } from "@/provider/transform"
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { ToolTimeout } from "@/tool/timeout"
@@ -180,6 +180,7 @@ export namespace ToolResolver {
     userTools?: Record<string, boolean>
     ephemeralTools?: EphemeralTool[]
     includeMCP?: boolean
+    activeToolIDs?: string[]
   }
 
   export interface EphemeralTool {
@@ -945,6 +946,8 @@ export namespace ToolResolver {
         callID: options.toolCallId,
         extra: {
           model: input.model,
+          lookAtAvailable: input.activeToolIDs?.includes("look_at") === true,
+          availableToolIDs: input.activeToolIDs ?? [],
           userMessageID: input.processor.message.parentID,
           toolTiming: {
             requestedAt: match?.state.status === "running" ? match.state.time.start : Date.now(),
@@ -1088,6 +1091,15 @@ export namespace ToolResolver {
     return loop?.status === "running" && loop.sessionID === session.id
   }
 
+  async function hasAvailableVisionModel(): Promise<boolean> {
+    const agent = await Agent.get("multimodal-looker")
+    if (!agent) return false
+    const modelRef = await Agent.getAvailableModel(agent)
+    if (!modelRef) return false
+    const model = await Provider.getModel(modelRef.providerID, modelRef.modelID).catch(() => undefined)
+    return model?.capabilities.input.image === true
+  }
+
   async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
@@ -1103,6 +1115,8 @@ export namespace ToolResolver {
     const canUseBlueprintLoopStop = await canStopBlueprintLoop(input)
 
     const supportsImageInput = input.model.capabilities.input.image
+    const hasImageFormatRestrictions = !!input.model.capabilities.input.supportedImageMediaTypes?.length
+    const lookAtAvailable = (!supportsImageInput || hasImageFormatRestrictions) && (await hasAvailableVisionModel())
 
     for (const def of defs) {
       if (def.diagnostic) {
@@ -1111,7 +1125,7 @@ export namespace ToolResolver {
       }
 
       const isEphemeral = ephemeralToolIds.has(def.id)
-      if (!isEphemeral && def.id === "look_at" && supportsImageInput) continue
+      if (!isEphemeral && def.id === "look_at" && !lookAtAvailable) continue
       if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
 
       const modeDiagnostic = isEphemeral
@@ -1961,22 +1975,27 @@ export namespace ToolResolver {
     using _ = log.time("resolveWithAvailability")
     const tools: Record<string, AITool> = {}
     const availabilityResult = await availability(input)
+    const activeToolIDs = availabilityResult.visible.map((item) => item.id)
+    const runtimeInput = { ...input, activeToolIDs }
 
     for (const item of availabilityResult.visible) {
-      const runtimeTool = item.createRuntimeTool?.(input)
+      const runtimeTool = item.createRuntimeTool?.(runtimeInput)
       if (runtimeTool) {
-        tools[item.id] = withExecutionDeduplication(input, runtimeTool)
+        tools[item.id] = withExecutionDeduplication(runtimeInput, runtimeTool)
       }
     }
 
     for (const diagnostic of availabilityResult.diagnostics.values()) {
       if (tools[diagnostic.toolName]) continue
-      tools[diagnostic.toolName] = withExecutionDeduplication(input, diagnosticRuntimeTool(input, diagnostic))
+      tools[diagnostic.toolName] = withExecutionDeduplication(
+        runtimeInput,
+        diagnosticRuntimeTool(runtimeInput, diagnostic),
+      )
     }
 
     return {
       tools,
-      activeToolIDs: availabilityResult.visible.map((item) => item.id),
+      activeToolIDs,
     }
   }
 
@@ -1984,10 +2003,12 @@ export namespace ToolResolver {
     using _ = log.time("resolve")
     const tools: Record<string, AITool> = {}
     const defs = await definitions(input)
+    const activeToolIDs = defs.map((item) => item.id)
+    const runtimeInput = { ...input, activeToolIDs }
 
     for (const item of defs) {
-      const runtimeTool = item.createRuntimeTool?.(input)
-      if (runtimeTool) tools[item.id] = withExecutionDeduplication(input, runtimeTool)
+      const runtimeTool = item.createRuntimeTool?.(runtimeInput)
+      if (runtimeTool) tools[item.id] = withExecutionDeduplication(runtimeInput, runtimeTool)
     }
 
     return tools

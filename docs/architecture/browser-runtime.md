@@ -81,7 +81,7 @@ Browser page close is asynchronous and idempotent. Desktop detaches diagnostics 
 
 Tool actions keep failures atomic and results directly useful to the agent. Select strings match HTML option values while `{ label }` selects visible text; a missing option does not alter selection. Targeted scroll resolves and scrolls the nearest real scroll container. `includeSnapshot` appends the resulting accessibility snapshot and ID to the tool output so the next action does not require an extra snapshot call. Console and network tools support the clear → reproduce → list → get debugging flow.
 
-`browser_screenshot` persists each PNG as a Synergy asset. When the active model accepts image input, the tool also supplies the PNG directly as a provider-file model attachment. For text-only models, it returns the real local asset path and directs the agent to the available `look_at` tool. Screenshot inspection does not depend on guessed session paths or an unavailable image tool.
+`browser_screenshot` persists each PNG as a Synergy asset. When the active model accepts image input, the tool also supplies the PNG directly as a provider-file model attachment. For text-only models, it returns the real local asset path. The output directs the agent to use `look_at` when the configured `vision_model` is image-capable, or reports only the saved local path otherwise. Screenshot inspection does not depend on guessed session paths or an unavailable image tool.
 
 ## Invariants
 

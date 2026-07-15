@@ -631,3 +631,40 @@ test("logged-in Codex provider loads account-visible models and respects provide
     },
   })
 })
+
+test("live discovery preserves image modalities from upstream OpenAI source", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-live-modalities",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.1-codex", priority: 1 },
+        { slug: "gpt-5.3-codex-spark", priority: 2 },
+      ],
+    }),
+  )
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const codex = catalog[CodexProvider.PROVIDER_ID]
+
+  // gpt-5.1-codex is live-only for Codex but has image metadata in the upstream OpenAI catalog.
+  const liveOnly = codex.models["gpt-5.1-codex"]
+  expect(liveOnly).toBeDefined()
+  expect(liveOnly.modalities?.input ?? []).toContain("text")
+  expect(liveOnly.modalities?.input ?? []).toContain("image")
+  expect(liveOnly.provider?.npm).toBe("@ai-sdk/openai")
+
+  // gpt-5.3-codex-spark must remain text-only per Codex policy
+  const spark = codex.models["gpt-5.3-codex-spark"]
+  expect(spark).toBeDefined()
+  expect(spark.modalities?.input ?? []).toEqual(["text"])
+})

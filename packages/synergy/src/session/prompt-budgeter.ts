@@ -101,7 +101,10 @@ export namespace PromptBudgeter {
       system: normalizedSystem,
       systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
       lateSystem,
-      messages: ProviderTransform.message(input.messages, input.model),
+      messages: ProviderTransform.message(input.messages, input.model, {
+        lookAtAvailable: input.toolDefinitions.some((tool) => tool.id === "look_at"),
+        viewImageAvailable: input.toolDefinitions.some((tool) => tool.id === "view_image"),
+      }),
       toolDefinitions: input.toolDefinitions,
     }
   }
