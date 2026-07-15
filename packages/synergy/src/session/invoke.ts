@@ -632,7 +632,7 @@ export namespace SessionInvoke {
             systemParts.push(`<light-loop-context>
 You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
 
-Task: ${session.workflow.taskDescription}
+Task: ${session.workflow.instructions}
 
 Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
 - Have you produced all requested deliverables, artifacts, or changes?

@@ -48,13 +48,18 @@ function ctx(sessionID: string, agent = "synergy"): Tool.Context {
   }
 }
 
-async function createRunningLoop(input?: { auditAgent?: string; userPrompt?: string }) {
+async function createRunningLoop(input?: {
+  auditAgent?: string
+  userPrompt?: string
+  budget?: { maxRuntimeMs: number; maxIterations: number }
+}) {
   const session = await Session.create({})
   const loop = await BlueprintLoopStore.create({
     noteID: "note_blueprint",
     title: "Test Blueprint",
     sessionID: session.id,
     auditAgent: input?.auditAgent,
+    budget: input?.budget,
   })
   const running = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
     status: "running",
@@ -124,7 +129,7 @@ async function startPendingReview(sessionID: string) {
   })
 }
 
-async function requestReview(input?: { auditAgent?: string; userPrompt?: string }) {
+async function requestReview(input?: Parameters<typeof createRunningLoop>[0]) {
   const running = await createRunningLoop(input)
   const launches = installReviewerLaunch()
   const tool = await BlueprintLoopStopTool.init()
@@ -420,6 +425,43 @@ describe("blueprint_loop_reject", () => {
         const part = deliveries[0].mail.parts[0]
         expect(part.type).toBe("text")
         if (part.type === "text") expect(part.origin).toBe("system")
+      },
+    })
+  })
+
+  test("persists attempts and exhausts the configured iteration budget", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop, reviewSessionID } = await requestReview({
+          budget: { maxRuntimeMs: 60_000, maxIterations: 1 },
+        })
+        ;(SessionManager.deliver as any) = mock(async () => {})
+        const reject = await BlueprintLoopRejectTool.init()
+        const feedback = {
+          sessionID: session.id,
+          reason: "Acceptance evidence is incomplete.",
+          remaining: "Add the missing verification. BLOCKING",
+          instructions: "Run and record the missing verification.",
+        }
+
+        await reject.execute(feedback, ctx(reviewSessionID, "supervisor"))
+        const afterFirst = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(afterFirst.status).toBe("running")
+        expect(afterFirst.audit?.attempts).toBe(1)
+
+        const stop = await BlueprintLoopStopTool.init()
+        await stop.execute({ summary: "Verification is now complete." }, ctx(session.id))
+        const auditingAgain = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(auditingAgain.status).toBe("auditing")
+
+        const result = await reject.execute(feedback, ctx(auditingAgain.auditSessionID!, "supervisor"))
+        const exhausted = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(exhausted.status).toBe("failed")
+        expect(exhausted.error).toContain("iteration_exhausted")
+        expect(exhausted.audit?.attempts).toBe(2)
+        expect(result.metadata.iterationExhausted).toBe(true)
       },
     })
   })

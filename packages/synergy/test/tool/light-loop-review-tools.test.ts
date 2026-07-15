@@ -37,7 +37,7 @@ function ctx(sessionID: string): Tool.Context {
 
 function lightLoopSession(
   opts: {
-    taskDescription?: string
+    instructions?: string
     stopRequest?: any
     review?: any
   } = {},
@@ -46,7 +46,7 @@ function lightLoopSession(
     id: "ses_exec",
     workflow: {
       kind: "lightloop" as const,
-      taskDescription: opts.taskDescription ?? "Build the thing",
+      instructions: opts.instructions ?? "Build the thing",
       ...(opts.stopRequest ? { stopRequest: opts.stopRequest } : {}),
       ...(opts.review ? { review: opts.review } : {}),
     },
@@ -91,11 +91,11 @@ describe("light_loop_approve", () => {
           },
         })
 
-        let workflowCleared = false
+        let terminalStatusSet = false
         mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
-          if (session.workflow === undefined) workflowCleared = true
+          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed") terminalStatusSet = true
         })
         const deliveries: any[] = []
         ;(SessionManager.deliver as any) = mock(async (input: any) => {
@@ -109,7 +109,7 @@ describe("light_loop_approve", () => {
         )
 
         expect(result.metadata.loopApproved).toBe(true)
-        expect(workflowCleared).toBe(true)
+        expect(terminalStatusSet).toBe(true)
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata).toMatchObject({
           source: "light_loop_approved",
@@ -234,7 +234,7 @@ describe("light_loop_reject", () => {
         expect((session.workflow as any)?.stopRequest).toBeUndefined()
         expect((session.workflow as any)?.review?.attempts).toBe(3)
         expect((session.workflow as any)?.review?.lastReason).toBe("tests missing")
-        expect((session.workflow as any)?.taskDescription).toBe("Build the thing")
+        expect((session.workflow as any)?.instructions).toBe("Build the thing")
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata.source).toBe("light_loop_rejected")
         expect(deliveries[0].mail.metadata.sourceSessionID).toBe("ses_reviewer")

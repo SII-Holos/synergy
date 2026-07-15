@@ -5,6 +5,7 @@ import { SessionManager } from "../session/manager"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./light-loop-reject.txt"
 import { LightLoopReviewAccess } from "@/session/light-loop-review-access"
+import { LightLoopRuntime } from "@/session/light-loop-runtime"
 
 const parameters = z.object({
   sessionID: z.string().describe("The execution session ID provided in your launch context"),
@@ -45,18 +46,67 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     })
 
     const currentAttempts = target.workflow.review?.attempts ?? 0
+    const maxIterations = target.workflow.budget?.maxIterations
     const now = Date.now()
 
+    // Check maxIterations exhaustion — use single terminal path
+    if (maxIterations !== undefined && currentAttempts + 1 >= maxIterations) {
+      // Update review state, then transition to iteration_exhausted
+      await Session.update(sessionID, (draft) => {
+        if (draft.workflow?.kind !== "lightloop") return
+        draft.workflow = {
+          ...draft.workflow,
+          stopRequest: undefined,
+          review: {
+            attempts: currentAttempts + 1,
+            lastReason: reason,
+            lastReviewedAt: now,
+          },
+        }
+      })
+
+      await LightLoopRuntime.setTerminalStatus(sessionID, "iteration_exhausted")
+
+      const exhaustText = `Light Loop review rejected — maximum iterations (${maxIterations}) reached.\n\n**Final rejection:** ${reason}\n\n**Remaining:**\n${remaining}`
+      await SessionManager.deliver({
+        target: sessionID,
+        mail: {
+          type: "user",
+          summary: { title: "Light Loop review exhausted" },
+          parts: [
+            {
+              id: Identifier.ascending("part"),
+              sessionID,
+              messageID: "",
+              type: "text",
+              text: exhaustText,
+              origin: "system",
+            },
+          ],
+          metadata: { source: "light_loop_exhausted", sourceSessionID: ctx.sessionID },
+        },
+      })
+      return {
+        title: "Light Loop review exhausted",
+        output: exhaustText,
+        metadata: { sessionID, loopRejected: true, loopExhausted: true, attempts: currentAttempts + 1 },
+      }
+    }
+
+    // Normal reject: reviewing → running, attempts +1, same execution session
+    // Retain the same execution session (do not create new one).
     await Session.update(sessionID, (draft) => {
       if (draft.workflow?.kind !== "lightloop") return
-      const wf = { ...draft.workflow }
-      wf.stopRequest = undefined
-      wf.review = {
-        attempts: currentAttempts + 1,
-        lastReason: reason,
-        lastReviewedAt: now,
+      draft.workflow = {
+        ...draft.workflow,
+        status: "running",
+        stopRequest: undefined,
+        review: {
+          attempts: currentAttempts + 1,
+          lastReason: reason,
+          lastReviewedAt: now,
+        },
       }
-      draft.workflow = wf
     })
 
     const text = [
@@ -92,7 +142,7 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     return {
       title: "Light Loop rejected",
       output: text,
-      metadata: { sessionID, loopRejected: true, attempts: currentAttempts + 1 },
+      metadata: { sessionID, loopRejected: true, loopExhausted: false, attempts: currentAttempts + 1 },
     }
   },
 })

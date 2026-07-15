@@ -9,12 +9,13 @@ export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
     const workflow = gate.session.workflow
     if (workflow?.kind !== "lightloop") return undefined
     const stopRequest = workflow.stopRequest
-    if (!stopRequest) return continuationProposal(workflow.taskDescription)
+    if (!stopRequest) return continuationProposal(workflow.instructions)
     if (stopRequest.reviewSessionID) return undefined
 
     const task = await prepareReviewer({
       sessionID: gate.sessionID,
-      taskDescription: workflow.taskDescription,
+      instructions: workflow.instructions,
+      reviewAgent: workflow.reviewAgent,
       stopRequest,
     })
     await Session.update(gate.sessionID, (draft) => {
@@ -31,13 +32,14 @@ export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
 
 async function prepareReviewer(input: {
   sessionID: string
-  taskDescription: string
+  instructions: string
+  reviewAgent?: string
   stopRequest: NonNullable<Extract<Session.Info["workflow"], { kind: "lightloop" }>["stopRequest"]>
 }) {
   return Cortex.prepare({
-    description: `[Review] Review LightLoop: ${input.taskDescription.slice(0, 80)}`,
+    description: `[Review] Review LightLoop: ${input.instructions.slice(0, 80)}`,
     prompt: reviewPrompt(input),
-    agent: "lightloop-reviewer",
+    agent: input.reviewAgent ?? "lightloop-reviewer",
     executionRole: "delegated_subagent",
     category: "general",
     parentSessionID: input.sessionID,
@@ -50,7 +52,7 @@ async function prepareReviewer(input: {
 
 function reviewPrompt(input: {
   sessionID: string
-  taskDescription: string
+  instructions: string
   stopRequest: NonNullable<Extract<Session.Info["workflow"], { kind: "lightloop" }>["stopRequest"]>
 }): string {
   return [
@@ -58,7 +60,7 @@ function reviewPrompt(input: {
     "Audit this LightLoop stop request.",
     "",
     "## Original task description",
-    input.taskDescription,
+    input.instructions,
     "",
     "## Stop request",
     `**Summary:** ${input.stopRequest.summary}`,
@@ -85,7 +87,7 @@ function reviewPrompt(input: {
     .join("\n")
 }
 
-function continuationProposal(taskDescription: string): ContinuationKernel.InboxProposal {
+function continuationProposal(instructions: string): ContinuationKernel.InboxProposal {
   return {
     kind: "inbox",
     mode: "steer",
@@ -96,7 +98,7 @@ function continuationProposal(taskDescription: string): ContinuationKernel.Inbox
       parts: [
         {
           type: "text",
-          text: `Task: ${taskDescription}
+          text: `Task: ${instructions}
 
 Review the task against the current work:
 - Are all requested deliverables complete?

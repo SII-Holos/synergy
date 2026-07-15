@@ -11,7 +11,7 @@ function context(capabilities: string[]) {
         hostVersion: "test",
         pluginVersion: "1.2.0",
         pluginGeneration: "generation-one",
-        protocolVersion: 4,
+        protocolVersion: 5,
       },
       data: {
         scopeId: "scope-one",
@@ -24,29 +24,31 @@ function context(capabilities: string[]) {
       log: { debug() {}, info() {}, warn() {}, error() {} },
       async invokeHost(method, params) {
         calls.push({ method, params })
-        if (method === "blueprint.create") return { id: "loop-one", ...(params as Record<string, unknown>) }
-        if (method === "blueprint.list") return []
         return { id: "loop-one" }
       },
     }),
   }
 }
 
-describe("plugin Blueprint Host Service context", () => {
-  test("exposes and routes all Blueprint methods through blueprint.delegate", async () => {
+describe("plugin Blueprint Host Service context (protocol 5)", () => {
+  test("exposes start/get/cancel through blueprint.delegate", async () => {
     const value = context(["blueprint.delegate"])
-    const loop = await value.context.blueprint?.create({ noteID: "note-one" })
-    await value.context.blueprint?.start("loop-one")
-    await value.context.blueprint?.get("loop-one")
-    await value.context.blueprint?.list()
-    await value.context.blueprint?.cancel("loop-one")
+    const startInput = {
+      title: "Test",
+      markdown: "# Test",
+      sourceDigest: "hash",
+      correlationId: "c1",
+      executionAgent: "agent1",
+      auditAgent: "agent2",
+      budget: { maxRuntimeMs: 10000, maxIterations: 5 },
+    }
+    await value.context.blueprint!.start(startInput)
+    await value.context.blueprint!.get("loop-one")
+    await value.context.blueprint!.cancel("loop-one")
 
-    expect(loop).toMatchObject({ id: "loop-one", noteID: "note-one" })
     expect(value.calls).toEqual([
-      { method: "blueprint.create", params: { noteID: "note-one" } },
-      { method: "blueprint.start", params: { loopID: "loop-one" } },
+      { method: "blueprint.start", params: startInput },
       { method: "blueprint.get", params: { loopID: "loop-one" } },
-      { method: "blueprint.list", params: {} },
       { method: "blueprint.cancel", params: { loopID: "loop-one" } },
     ])
   })

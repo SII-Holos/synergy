@@ -1,7 +1,8 @@
 import type {
-  BlueprintCreateInput,
   BlueprintLoopInfo,
-  LightLoopEnableInput,
+  BlueprintStartInput,
+  LightLoopInfo,
+  LightLoopStartInput,
   PluginTaskHandle,
   PluginTaskSnapshot,
   PluginTaskStartInput,
@@ -26,14 +27,9 @@ import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
-import {
-  cancelBlueprintLoop,
-  createBlueprintLoop,
-  enableLightLoop,
-  getBlueprintLoop,
-  listBlueprintLoops,
-  startBlueprintLoop,
-} from "../blueprint/plugin-adapter"
+import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
+import { SessionWorkflowService } from "../session/workflow"
+import { LightLoopRuntime } from "../session/light-loop-runtime"
 
 type RuntimeContext = {
   pluginId?: string
@@ -243,51 +239,43 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
   if (!PluginToolId.is(toolId)) return toolId
   return PluginToolId.parse(toolId)?.toolId ?? toolId
 }
-export async function createPluginBlueprint(input: {
-  pluginId: string
-  pluginGeneration: string
-  scopeId: string
-  context: RuntimeContext
-  request: BlueprintCreateInput
-}): Promise<BlueprintLoopInfo> {
-  await requestPluginPermission(input.context, {
-    capability: "blueprint.delegate",
-    permission: "task",
-    patterns: [input.request.noteID],
-    metadata: { capability: "blueprint.delegate", source: "plugin", noteID: input.request.noteID },
-  })
-  return createBlueprintLoop({
-    pluginId: input.pluginId,
-    pluginGeneration: input.pluginGeneration,
-    scopeId: input.scopeId,
-    sessionId: input.context.sessionID,
-    request: input.request,
-  })
-}
-
+/**
+ * Protocol 5 Blueprint atomic start — full validation, note/session/loop creation, rollback on failure.
+ */
 export async function startPluginBlueprint(input: {
   pluginId: string
   pluginGeneration: string
   scopeId: string
+  pluginDir?: string
   context: RuntimeContext
-  loopID: string
+  request: BlueprintStartInput
 }): Promise<BlueprintLoopInfo> {
   await requestPluginPermission(input.context, {
     capability: "blueprint.delegate",
     permission: "task",
-    patterns: [input.loopID],
-    metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
+    patterns: [input.request.executionAgent, input.request.auditAgent],
+    metadata: { capability: "blueprint.delegate", source: "plugin" },
   })
-  return startBlueprintLoop(input)
+  return startBlueprint({
+    context: {
+      pluginId: input.pluginId,
+      pluginGeneration: input.pluginGeneration,
+      scopeId: input.scopeId,
+      pluginDir: input.pluginDir,
+      parentSessionID: input.context.sessionID,
+      parentMessageID: input.context.messageID,
+    },
+    request: input.request,
+  })
 }
 
-// Read-only operations need the manifest capability but do not trigger a runtime permission ask.
-export async function getPluginBlueprint(input: { scopeId: string; loopID: string }): Promise<BlueprintLoopInfo> {
-  return getBlueprintLoop(input)
-}
-
-export async function listPluginBlueprints(scopeId: string): Promise<BlueprintLoopInfo[]> {
-  return listBlueprintLoops(scopeId)
+export async function getPluginBlueprint(input: {
+  scopeId: string
+  loopID: string
+  pluginId: string
+  pluginGeneration: string
+}): Promise<BlueprintLoopInfo> {
+  return getBlueprint(input)
 }
 
 export async function cancelPluginBlueprint(input: {
@@ -303,23 +291,229 @@ export async function cancelPluginBlueprint(input: {
     patterns: [input.loopID],
     metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
   })
-  return cancelBlueprintLoop(input)
+  return cancelBlueprint(input)
 }
 
-export async function enablePluginLightLoop(input: {
+
+
+async function assertLightLoopDelegation(
+  input: {
+    pluginId: string
+    pluginGeneration: string
+    pluginDir: string
+    executionAgent: string
+    reviewAgent: string
+  },
+  manifestCapability: string,
+) {
+  const execAgent = await Agent.get(input.executionAgent)
+  if (!execAgent) throw new Error(`Unknown execution agent: ${input.executionAgent}`)
+  if (execAgent.mode === "primary") throw new Error(`Execution agent "${input.executionAgent}" is a primary agent`)
+  if (!execAgent.hidden) throw new Error(`Execution agent "${input.executionAgent}" is not hidden`)
+
+  const reviewAgent = await Agent.get(input.reviewAgent)
+  if (!reviewAgent) throw new Error(`Unknown review agent: ${input.reviewAgent}`)
+  if (reviewAgent.mode === "primary") throw new Error(`Review agent "${input.reviewAgent}" is a primary agent`)
+  if (!reviewAgent.hidden) throw new Error(`Review agent "${input.reviewAgent}" is not hidden`)
+
+  if (input.executionAgent === input.reviewAgent) throw new Error("Execution and review agents must differ")
+
+  const manifest = await readPluginManifest(input.pluginDir)
+  const cap = manifest.capabilities.find((c) => c.id === manifestCapability)
+  if (!cap) throw new Error(`Plugin manifest does not declare capability ${manifestCapability}`)
+
+  const agents = Array.isArray(cap.constraints?.agents) ? cap.constraints.agents : undefined
+  if (agents) {
+    if (!agents.includes(input.executionAgent))
+      throw new Error(`Plugin manifest does not allow LightLoop execution agent "${input.executionAgent}"`)
+    if (!agents.includes(input.reviewAgent))
+      throw new Error(`Plugin manifest does not allow LightLoop review agent "${input.reviewAgent}"`)
+  }
+
+  const execOwner = Agent.pluginOwner(execAgent)
+  if (!execOwner || execOwner.pluginId !== input.pluginId || execOwner.pluginGeneration !== input.pluginGeneration) {
+    throw new Error(`Execution agent "${input.executionAgent}" is not owned by this plugin generation`)
+  }
+  const reviewOwner = Agent.pluginOwner(reviewAgent)
+  if (!reviewOwner || reviewOwner.pluginId !== input.pluginId || reviewOwner.pluginGeneration !== input.pluginGeneration) {
+    throw new Error(`Review agent "${input.reviewAgent}" is not owned by this plugin generation`)
+  }
+}
+
+export async function startLightLoop(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  pluginDir: string
   context: RuntimeContext
-  request: LightLoopEnableInput
-}): Promise<void> {
+  request: LightLoopStartInput
+}): Promise<LightLoopInfo> {
+  const request = input.request
+
+  if (!request.instructions?.trim()) throw new Error("lightloop.start requires instructions")
+  if (!request.correlationId?.trim()) throw new Error("lightloop.start requires correlationId")
+  if (!request.executionAgent?.trim()) throw new Error("lightloop.start requires executionAgent")
+  if (!request.reviewAgent?.trim()) throw new Error("lightloop.start requires reviewAgent")
+  if (!request.budget) throw new Error("lightloop.start requires budget")
+  if (!Number.isFinite(request.budget.maxRuntimeMs) || request.budget.maxRuntimeMs <= 0)
+    throw new Error("budget.maxRuntimeMs must be a positive integer")
+  if (!Number.isFinite(request.budget.maxIterations) || request.budget.maxIterations <= 0)
+    throw new Error("budget.maxIterations must be a positive integer")
+
+  await assertLightLoopDelegation(
+    {
+      pluginId: input.pluginId,
+      pluginGeneration: input.pluginGeneration,
+      pluginDir: input.pluginDir,
+      executionAgent: request.executionAgent.trim(),
+      reviewAgent: request.reviewAgent.trim(),
+    },
+    "lightloop.delegate",
+  )
+
   await requestPluginPermission(input.context, {
     capability: "lightloop.delegate",
     permission: "task",
-    patterns: [input.request.taskDescription],
+    patterns: [request.executionAgent, request.reviewAgent],
     metadata: { capability: "lightloop.delegate", source: "plugin" },
   })
-  return enableLightLoop({
-    scopeId: ScopeContext.current.scope.id,
-    sessionId: input.context.sessionID,
-    request: input.request,
+
+  const execAgent = (await Agent.get(request.executionAgent.trim()))!
+  const model = request.model ?? (await Agent.getAvailableModel(execAgent)) ?? (await parentModel(input.context))
+  const limits = await defaultPluginRuntimeLimits(input.pluginDir)
+  const timeoutMs = request.budget.maxRuntimeMs
+
+  // Create dedicated hidden execution session
+  const task = await Cortex.launch({
+    description: `[LightLoop] ${request.instructions.slice(0, 80)}`,
+    prompt: request.instructions.trim(),
+    agent: request.executionAgent.trim(),
+    executionRole: "delegated_subagent",
+    category: "general",
+    parentSessionID: input.context.sessionID,
+    parentMessageID: input.context.messageID,
+    model,
+    tools: request.tools,
+    visibility: "hidden",
+    notifyParentOnComplete: false,
+    timeoutMs,
+    owner: {
+      pluginId: input.pluginId,
+      pluginGeneration: input.pluginGeneration,
+      scopeId: input.scopeId,
+      correlationId: request.correlationId.trim(),
+    },
+  })
+
+  // Write the Light Loop workflow onto the execution session
+  const deadlineAt = Date.now() + timeoutMs
+  await SessionWorkflowService.startLightloop(task.sessionID, request.instructions.trim())
+  await Session.update(task.sessionID, (draft) => {
+    if (draft.workflow?.kind !== "lightloop") return
+    draft.workflow = {
+      ...draft.workflow,
+      status: "running",
+      executionAgent: request.executionAgent.trim(),
+      reviewAgent: request.reviewAgent.trim(),
+      pluginOwner: {
+        pluginId: input.pluginId,
+        pluginGeneration: input.pluginGeneration,
+        scopeId: input.scopeId,
+        correlationId: request.correlationId.trim(),
+      },
+      budget: request.budget,
+      deadlineAt,
+    }
+  })
+
+  // Schedule deadline timer
+  LightLoopRuntime.scheduleDeadline(task.sessionID, deadlineAt)
+
+  return {
+    sessionID: task.sessionID,
+    status: "running",
+    instructions: request.instructions.trim(),
+  }
+}
+
+const lightLoopTerminalStatuses = new Set<LightLoopInfo["status"]>([
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+  "iteration_exhausted",
+])
+
+export async function getLightLoop(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  sessionID: string
+}): Promise<LightLoopInfo> {
+  const session = await Session.get(input.sessionID)
+  if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
+  if (session.workflow?.kind !== "lightloop") throw new Error(`Session ${input.sessionID} is not a LightLoop`)
+
+  const owner = session.workflow.pluginOwner
+  if (!owner) throw new Error(`LightLoop ${input.sessionID} is not plugin-owned`)
+  if (owner.pluginId !== input.pluginId || owner.pluginGeneration !== input.pluginGeneration || owner.scopeId !== input.scopeId) {
+    throw new Error(`LightLoop not found`)
+  }
+
+  const persistedStatus = session.workflow.status
+  const status: LightLoopInfo["status"] =
+    persistedStatus && lightLoopTerminalStatuses.has(persistedStatus)
+      ? persistedStatus
+      : session.workflow.stopRequest?.reviewSessionID
+        ? "reviewing"
+        : "running"
+
+  return {
+    sessionID: input.sessionID,
+    status,
+    instructions: session.workflow.instructions,
+    ...(session.workflow.terminalError ? { error: session.workflow.terminalError } : {}),
+  }
+}
+
+export async function cancelLightLoop(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  context: RuntimeContext
+  sessionID: string
+}): Promise<LightLoopInfo> {
+  const session = await Session.get(input.sessionID)
+  if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
+  if (session.workflow?.kind !== "lightloop") throw new Error(`Session ${input.sessionID} is not a LightLoop`)
+
+  const owner = session.workflow.pluginOwner
+  if (!owner) throw new Error(`LightLoop ${input.sessionID} is not plugin-owned`)
+  if (owner.pluginId !== input.pluginId || owner.pluginGeneration !== input.pluginGeneration || owner.scopeId !== input.scopeId) {
+    throw new Error(`LightLoop not found`)
+  }
+
+  // Cancel the execution session
+  const { Cortex: CortexModule } = await import("@/cortex")
+  const delegated = session.cortex
+  if (delegated) {
+    await CortexModule.cancel(delegated.taskID).catch(() => {})
+  }
+
+  // Cancel any pending review session
+  if (session.workflow.stopRequest?.reviewSessionID) {
+    const reviewSession = await Session.get(session.workflow.stopRequest.reviewSessionID).catch(() => undefined)
+    if (reviewSession?.cortex) {
+      await CortexModule.cancel(reviewSession.cortex.taskID).catch(() => {})
+    }
+  }
+
+  await LightLoopRuntime.setTerminalStatus(input.sessionID, "cancelled")
+  return getLightLoop({
+    pluginId: input.pluginId,
+    pluginGeneration: input.pluginGeneration,
+    scopeId: input.scopeId,
+    sessionID: input.sessionID,
   })
 }
 

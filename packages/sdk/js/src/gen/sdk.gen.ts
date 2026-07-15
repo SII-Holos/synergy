@@ -2903,9 +2903,9 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Update Light Loop task
+   * Update Light Loop instructions
    *
-   * Update the task description for an active Light Loop. The next model step uses the new task.
+   * Update the instructions for an active Light Loop. The next model step uses the new instructions.
    */
   public updateLightloop<ThrowOnError extends boolean = false>(
     parameters: {

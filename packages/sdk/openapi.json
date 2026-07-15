@@ -13842,8 +13842,8 @@
             "description": "Session ID"
           }
         ],
-        "summary": "Update Light Loop task",
-        "description": "Update the task description for an active Light Loop. The next model step uses the new task.",
+        "summary": "Update Light Loop instructions",
+        "description": "Update the instructions for an active Light Loop. The next model step uses the new instructions.",
         "responses": {
           "200": {
             "description": "Updated session",
@@ -35132,12 +35132,12 @@
       "LightloopUpdateInput": {
         "type": "object",
         "properties": {
-          "taskDescription": {
-            "description": "Updated task description for the active Light Loop",
+          "instructions": {
+            "description": "Updated instructions for the active Light Loop",
             "type": "string"
           }
         },
-        "required": ["taskDescription"]
+        "required": ["instructions"]
       },
       "AssetInfo": {
         "type": "object",

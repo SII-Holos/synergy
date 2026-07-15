@@ -16,18 +16,18 @@ describe("workflow routes", () => {
   test("updates and cancels an active Light Loop", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await SessionWorkflowService.startLightloop(session.id, "Original task")
       const app = Server.App()
 
       const updatedResponse = await app.request(`/workflow/session/${session.id}/lightloop`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-synergy-scope-id": scope.id },
-        body: JSON.stringify({ taskDescription: "Revised task" }),
+        body: JSON.stringify({ instructions: "Revised task" }),
       })
       const updatedResponseBody = await updatedResponse.clone().text()
       expect(updatedResponse.status, updatedResponseBody).toBe(200)
       const updated = await updatedResponse.json()
-      expect(updated.workflow).toEqual({ kind: "lightloop", taskDescription: "Revised task" })
+      expect(updated.workflow).toEqual({ kind: "lightloop", instructions: "Revised task" })
 
       const cancelledResponse = await app.request(`/workflow/session/${session.id}/lightloop/cancel`, {
         method: "POST",
@@ -42,7 +42,7 @@ describe("workflow routes", () => {
   test("returns structured cancellation errors", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await SessionWorkflowService.startLightloop(session.id, "Original task")
       const cancel = spyOn(SessionWorkflowService, "cancelLightloop").mockRejectedValueOnce(new Error("Cancel failed"))
 
       try {
@@ -59,20 +59,20 @@ describe("workflow routes", () => {
     })
   })
 
-  test("rejects empty task descriptions", async () => {
+  test("rejects empty instructions", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await SessionWorkflowService.startLightloop(session.id, "Original task")
 
       const response = await Server.App().request(`/workflow/session/${session.id}/lightloop`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-synergy-scope-id": scope.id },
-        body: JSON.stringify({ taskDescription: " " }),
+        body: JSON.stringify({ instructions: " " }),
       })
 
       expect(response.status).toBe(400)
       expect(await response.json()).toEqual({
-        message: "taskDescription is required when updating Light Loop.",
+        message: "instructions is required when updating Light Loop.",
       })
     })
   })

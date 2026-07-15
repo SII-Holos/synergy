@@ -38,10 +38,10 @@ function ctx(sessionID: string): Tool.Context {
   }
 }
 
-function sessionWithLightLoop(active: boolean, taskDescription = "Test task") {
+function sessionWithLightLoop(active: boolean, instructions = "Test task") {
   return {
     id: "ses_test_loop",
-    workflow: active ? { kind: "lightloop" as const, taskDescription } : { kind: "plan" as const },
+    workflow: active ? { kind: "lightloop" as const, instructions } : { kind: "plan" as const },
   } as unknown as Session.Info
 }
 

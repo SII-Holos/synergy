@@ -264,7 +264,7 @@ function workflowFromLegacySession(info: Record<string, unknown>, hasActiveBluep
 
   const lightLoop = asRecord(info.lightLoop)
   if (lightLoop?.active === true) {
-    const taskDescription = asString(lightLoop.taskDescription)
+    const taskDescription = asString(lightLoop.instructions)
     if (taskDescription) return { kind: "lightloop", taskDescription }
   }
 

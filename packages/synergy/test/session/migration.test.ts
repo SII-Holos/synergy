@@ -841,12 +841,12 @@ describe("session migrations", () => {
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)), {
           ...latticeSession,
           planMode: true,
-          lightLoop: { active: true, taskDescription: "ignored" },
+          lightLoop: { active: true, instructions: "ignored" },
           lattice: { runID: "ltr_legacy", mode: "auto", firstBlueprintStarted: true },
         })
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(lightloopSession.id)), {
           ...lightloopSession,
-          lightLoop: { active: true, taskDescription: "Keep going" },
+          lightLoop: { active: true, instructions: "Keep going" },
         })
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(planSession.id)), {
           ...planSession,
@@ -868,7 +868,7 @@ describe("session migrations", () => {
           ...conflictSession,
           blueprint: { loopID },
           planMode: true,
-          lightLoop: { active: true, taskDescription: "conflict" },
+          lightLoop: { active: true, instructions: "conflict" },
         })
 
         const planMessageID = Identifier.ascending("message")
@@ -922,7 +922,7 @@ describe("session migrations", () => {
           mode: "auto",
           firstBlueprintStarted: true,
         })
-        expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", taskDescription: "Keep going" })
+        expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", instructions: "Keep going" })
         expect(migratedPlan.workflow).toEqual({ kind: "plan" })
         expect(migratedConflict.workflow).toBeUndefined()
 

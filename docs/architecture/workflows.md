@@ -6,7 +6,7 @@ These workflows provide durable orchestration above the ordinary serial LLM loop
 
 ## Mutual Exclusion and Ownership
 
-Enabling or switching any workflow, plus ordinary workflow disabling, requires an idle session. Light Loop has dedicated task-update and cancellation operations: its task can change only while no completion review is pending, and cancellation aborts active session work plus descendant reviewer tasks before clearing the workflow. Plan and Light Loop cannot be enabled while another workflow or active BlueprintLoop exists. Lattice can resume its own run but refuses a live user-owned BlueprintLoop.
+Enabling or switching any workflow, plus ordinary workflow disabling, requires an idle session. Light Loop has dedicated instruction-update and cancellation operations: its instructions can change only while no completion review is pending, and cancellation aborts active session work plus descendant reviewer tasks before clearing the workflow. Plan and Light Loop cannot be enabled while another workflow or active BlueprintLoop exists. Lattice can resume its own run but refuses a live user-owned BlueprintLoop.
 
 A user-owned BlueprintLoop can replace Plan or Light Loop after the session is idle. It cannot replace an active Lattice workflow. A BlueprintLoop with `source: "lattice"` is valid only while Lattice owns the session.
 
@@ -54,12 +54,12 @@ For user-owned loops, approval returns a completion notice to the execution sess
 
 ## Light Loop State
 
-Light Loop stores its task description directly on the session workflow. A stop request first records the executor's summary, claimed completed work, evidence, limitations, and request identity without reviewer IDs.
+Light Loop stores its instructions directly on the session workflow. A stop request first records the executor's summary, claimed completed work, evidence, limitations, and request identity without reviewer IDs.
 
 After the execution-session lease is released, the Light Loop continuation prepares a visible Cortex reviewer, durably binds its task and session IDs to the stop request, then starts it. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Repeated `loop_stop` calls are idempotent while either the unbound stop intent or bound review is pending.
 
 The `lightloop-reviewer` has exclusive access to `light_loop_approve` and `light_loop_reject` for its parent stop request. Approval clears the workflow even though the review child is running. Rejection clears `stopRequest`, records attempt metadata, and delivers the reason, remaining items, and concrete instructions to the execution session.
-The active task description may be updated without restarting the workflow; the next model step re-reads the session and uses the revised task. The product surface permits editing only while the session is idle, and the service rejects updates while a stop request is under review. Light Loop cancellation is idempotent and uses the shared session-abort path to stop the active turn and descendant Cortex review tasks before conditionally clearing the workflow.
+The active instructions may be updated without restarting the workflow; the next model step re-reads the session and uses the revised instructions. The product surface permits editing only while the session is idle, and the service rejects updates while a stop request is under review. Light Loop cancellation is idempotent and uses the shared session-abort path to stop the active turn and descendant Cortex review tasks before conditionally clearing the workflow.
 
 ## Lattice Run State
 

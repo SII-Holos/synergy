@@ -759,12 +759,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const updateLightLoopTask = async (taskDescription: string) => {
+  const updateLightLoopInstructions = async (instructions: string) => {
     const sessionID = params.id
     if (!sessionID) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
     await sdk.client.workflow.session.updateLightloop({
       id: sessionID,
-      lightloopUpdateInput: { taskDescription },
+      lightloopUpdateInput: { instructions },
     })
   }
 
@@ -773,11 +773,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!params.id || workflow?.kind !== "lightloop") return
     workflowDialog.show(() => (
       <EditLightLoopDialog
-        taskDescription={workflow.taskDescription}
+        instructions={workflow.instructions}
         active={persistedLightLoopActive}
         working={working}
         reviewPending={lightLoopReviewPending}
-        onSave={updateLightLoopTask}
+        onSave={updateLightLoopInstructions}
       />
     ))
   }
@@ -1973,10 +1973,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </Tooltip>
                   )}
                 </Show>
-                <Show when={lightLoopTaskDesc()}>
-                  {(taskDescription) => (
+                <Show when={lightLoopInstructions()}>
+                  {(instructions) => (
                     <LightLoopSubmitControl
-                      taskDescription={taskDescription()}
+                      instructions={instructions()}
                       onEdit={openLightLoopDialog}
                       onCancel={safelyCancelLightLoop}
                     />

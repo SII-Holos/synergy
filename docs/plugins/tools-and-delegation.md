@@ -84,19 +84,15 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 ## BlueprintLoop Delegation
 
-`context.blueprint` exists only when `blueprint.delegate` is approved. It exposes five methods for creating and controlling BlueprintLoop workflows:
+`context.blueprint` exists only when `blueprint.delegate` is approved. It exposes three methods for creating and controlling BlueprintLoop workflows:
 
 ```ts
-const loop = await context.blueprint.create({ noteID, sessionID?, runMode?, model? })
-const started = await context.blueprint.start(loopID)
+const loop = await context.blueprint.start({ plan: markdownPlan, digest: noteDigest, sessionID?, runMode?, model? })
 const info = await context.blueprint.get(loopID)
-const all = await context.blueprint.list()
 const cancelled = await context.blueprint.cancel(loopID)
 ```
 
-`create()` registers a new BlueprintLoop bound to the given note. It does not start execution. All blueprint methods operate within the plugin's active Scope and require the `blueprint.delegate` capability at runtime through the `task` permission category.
-
-`start()` begins loop execution. `get()` returns the current `BlueprintLoopInfo` snapshot with status, audit state, timestamps, and resolved model. `list()` returns all BlueprintLoops in the active Scope. These read methods are intentionally Scope-scoped rather than owner-filtered, so a plugin with the capability can inspect user-, Lattice-, and plugin-owned loops in that Scope. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cancellation should treat that error as an already-finished result.
+`start()` accepts a `BlueprintStartInput` with a Markdown `plan` body and a `digest` identifier; it creates a new BlueprintLoop bound to a new Note, starts execution, and returns the `BlueprintLoopInfo` snapshot. `get()` returns the current `BlueprintLoopInfo` snapshot with status, audit state, timestamps, and resolved model. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cleanup should inspect the current status first.
 
 The `source` field in `BlueprintLoopInfo` is set to `"plugin"` when the loop was created by a plugin. The `pluginOwner` field records the creating plugin's ID, generation, Scope, and optional correlationId for durable workflow correlation.
 
@@ -132,13 +128,45 @@ The typed payload is `{ loop: BlueprintLoopInfo }`. Synergy invokes this hook on
 
 ## Light Loop
 
-`context.lightloop` exists only when `lightloop.delegate` is approved. It exposes a single method:
+`context.lightloop` exists only when `lightloop.delegate` is approved. It exposes three methods:
 
 ```ts
-await context.lightloop.enable({ sessionID?, taskDescription })
+const info = await context.lightloop.start({ sessionID?, taskDescription })
+const current = await context.lightloop.get(sessionID)
+await context.lightloop.cancel(sessionID)
 ```
 
-`enable()` is available from an agent invocation and activates the Light Loop workflow in an existing Session. The `taskDescription` feeds into the Light Loop's objective definition. When `sessionID` is omitted the current Session is used. This is a fire-and-forget operation — it returns `void` and the Light Loop runs asynchronously. The Light Loop lifecycle (start, progress, completion) is observable through events and Session state.
+`start()` activates the Light Loop workflow in an existing Session and returns a `LightLoopInfo` snapshot. The `taskDescription` feeds into the Light Loop's objective definition. When `sessionID` is omitted the current Session is used.
+
+`get()` returns the current `LightLoopInfo` with status, sessionID, and taskDescription. `cancel()` disables the LightLoop workflow on the given Session.
+
+### LightLoop After Hook
+
+Contribute a `lightloop.after` hook to react to LightLoop completions:
+
+```ts
+import { capability, definePlugin, hook } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  id: "my-plugin",
+  version: "1.0.0",
+  capabilities: [capability("lightloop.delegate")],
+  contributions: [
+    hook({
+      id: "on-lightloop-done",
+      point: "lightloop.after",
+      priority: 0,
+      async handler(input, context) {
+        // input.loop is LightLoopInfo
+        const loop = input.loop
+        context.log.info("LightLoop finished", { sessionID: loop.sessionID, status: loop.status })
+      },
+    }),
+  ],
+})
+```
+
+The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin that started the LightLoop.
 
 ## Session Control
 

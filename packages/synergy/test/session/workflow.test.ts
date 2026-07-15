@@ -33,13 +33,13 @@ describe("SessionWorkflowService", () => {
     await withScope(async () => {
       const plan = await Session.create({})
       await SessionWorkflowService.enablePlan(plan.id)
-      await expect(SessionWorkflowService.enableLightloop(plan.id, "continue")).rejects.toThrow("plan workflow")
+      await expect(SessionWorkflowService.startLightloop(plan.id, "continue")).rejects.toThrow("plan workflow")
       await expect(SessionWorkflowService.enableLattice(plan.id, { kind: "lattice", mode: "auto" })).rejects.toThrow(
         "plan",
       )
 
       const lightloop = await Session.create({})
-      await SessionWorkflowService.enableLightloop(lightloop.id, "continue")
+      await SessionWorkflowService.startLightloop(lightloop.id, "continue")
       await expect(SessionWorkflowService.enablePlan(lightloop.id)).rejects.toThrow("lightloop")
 
       const lattice = await Session.create({})
@@ -48,16 +48,16 @@ describe("SessionWorkflowService", () => {
     })
   })
 
-  test("updates an active Light Loop task description from the next model step", async () => {
+  test("updates active Light Loop instructions from the next model step", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await SessionWorkflowService.startLightloop(session.id, "Original task")
       const lease = SessionManager.acquire(session.id)
       expect(lease).toBeDefined()
 
       try {
-        const updated = await SessionWorkflowService.updateLightloopTaskDescription(session.id, "  Revised task  ")
-        expect(updated.workflow).toEqual({ kind: "lightloop", taskDescription: "Revised task" })
+        const updated = await SessionWorkflowService.updateLightloopInstructions(session.id, "  Revised task  ")
+        expect(updated.workflow).toEqual({ kind: "lightloop", instructions: "Revised task" })
       } finally {
         await SessionManager.release(lease!, { requestNextWork: false })
         SessionManager.unregisterRuntime(session.id)
@@ -65,10 +65,10 @@ describe("SessionWorkflowService", () => {
     })
   })
 
-  test("rejects task description updates while Light Loop review is pending", async () => {
+  test("rejects instruction updates while Light Loop review is pending", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await SessionWorkflowService.startLightloop(session.id, "Original task")
       await Session.update(session.id, (draft) => {
         if (draft.workflow?.kind !== "lightloop") return
         draft.workflow.stopRequest = {
@@ -81,18 +81,18 @@ describe("SessionWorkflowService", () => {
         }
       })
 
-      await expect(SessionWorkflowService.updateLightloopTaskDescription(session.id, "Revised task")).rejects.toThrow(
+      await expect(SessionWorkflowService.updateLightloopInstructions(session.id, "Revised task")).rejects.toThrow(
         "review is pending",
       )
       const unchanged = await Session.get(session.id)
-      expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.taskDescription).toBe("Original task")
+      expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.instructions).toBe("Original task")
     })
   })
 
   test("cancels a running Light Loop and remains idempotent", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Finish the task")
+      await SessionWorkflowService.startLightloop(session.id, "Finish the task")
       const lease = SessionManager.acquire(session.id)
       expect(lease).toBeDefined()
 
@@ -118,7 +118,7 @@ describe("SessionWorkflowService", () => {
 
       const lightloopSession = await Session.create({})
       await bindLoop(lightloopSession.id)
-      await expect(SessionWorkflowService.enableLightloop(lightloopSession.id, "continue")).rejects.toThrow(
+      await expect(SessionWorkflowService.startLightloop(lightloopSession.id, "continue")).rejects.toThrow(
         "BlueprintLoop",
       )
     })
@@ -203,7 +203,7 @@ describe("BlueprintLoop workflow source gates", () => {
   test("user loops clear idle Light Loop workflow when starting", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLightloop(session.id, "Finish this task")
+      await SessionWorkflowService.startLightloop(session.id, "Finish this task")
       const loop = await BlueprintLoopStore.create({
         noteID: "note_test",
         title: "Manual Loop",

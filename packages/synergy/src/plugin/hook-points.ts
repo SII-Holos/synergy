@@ -27,6 +27,7 @@ for (const name of [
   "session.turn.after",
   "cortex.task.after",
   "blueprint.after",
+  "lightloop.after",
   "agenda.run.after",
   "agenda.run.error",
   "note.create.after",

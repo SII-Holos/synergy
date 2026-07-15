@@ -63,16 +63,16 @@ export function createPluginInvocationContext(input: {
       : undefined,
     blueprint: capabilities.has("blueprint.delegate")
       ? {
-          create: (value) => input.invokeHost("blueprint.create", value) as never,
-          start: (loopID) => input.invokeHost("blueprint.start", { loopID }) as never,
-          get: (loopID) => input.invokeHost("blueprint.get", { loopID }) as never,
-          list: () => input.invokeHost("blueprint.list", {}) as never,
-          cancel: (loopID) => input.invokeHost("blueprint.cancel", { loopID }) as never,
+          start: (value) => input.invokeHost("blueprint.start", value) as Promise<any>,
+          get: (loopID) => input.invokeHost("blueprint.get", { loopID }) as Promise<any>,
+          cancel: (loopID) => input.invokeHost("blueprint.cancel", { loopID }) as Promise<any>,
         }
       : undefined,
     lightloop: capabilities.has("lightloop.delegate")
       ? {
-          enable: (value) => input.invokeHost("lightloop.enable", value) as Promise<void>,
+          start: (value: any) => input.invokeHost("lightloop.start", value) as Promise<any>,
+          get: (sessionID: string) => input.invokeHost("lightloop.get", { sessionID }) as Promise<any>,
+          cancel: (sessionID: string) => input.invokeHost("lightloop.cancel", { sessionID }) as Promise<any>,
         }
       : undefined,
     settings:

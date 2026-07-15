@@ -84,7 +84,26 @@ export const WorkflowInfo = z
     }),
     z.object({
       kind: z.literal("lightloop"),
-      taskDescription: z.string(),
+      instructions: z.string(),
+      status: z.enum(["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]).optional(),
+      executionAgent: z.string().optional(),
+      reviewAgent: z.string().optional(),
+      pluginOwner: z
+        .object({
+          pluginId: z.string(),
+          pluginGeneration: z.string(),
+          scopeId: z.string(),
+          correlationId: z.string().optional(),
+        })
+        .optional(),
+      budget: z.object({
+        maxRuntimeMs: z.number().int().positive(),
+        maxIterations: z.number().int().positive(),
+      }).optional(),
+      deadlineAt: z.number().positive().optional(),
+      terminalError: z.string().optional(),
+      terminalHookDeliveredAt: z.number().optional(),
+      terminalHookError: z.string().optional(),
       stopRequest: z
         .object({
           summary: z.string(),

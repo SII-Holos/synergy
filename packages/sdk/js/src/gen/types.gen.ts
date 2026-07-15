@@ -6200,9 +6200,9 @@ export type WorkflowSetInput =
 
 export type LightloopUpdateInput = {
   /**
-   * Updated task description for the active Light Loop
+   * Updated instructions for the active Light Loop
    */
-  taskDescription: string
+  instructions: string
 }
 
 export type AssetInfo = {

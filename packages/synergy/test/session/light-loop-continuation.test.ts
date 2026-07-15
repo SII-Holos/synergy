@@ -29,7 +29,7 @@ describe("LightLoopContinuationPolicy", () => {
     const proposal = await LightLoopContinuationPolicy.handle(
       gate({
         id: "ses_light_loop",
-        workflow: { kind: "lightloop", taskDescription: "Write unit tests" },
+        workflow: { kind: "lightloop", instructions: "Write unit tests" },
       }),
     )
 
@@ -62,7 +62,7 @@ describe("LightLoopContinuationPolicy", () => {
         id: "ses_review_pending",
         workflow: {
           kind: "lightloop",
-          taskDescription: "Write unit tests",
+          instructions: "Write unit tests",
           stopRequest: {
             summary: "done",
             requestedAt: Date.now(),
@@ -83,7 +83,8 @@ describe("LightLoopContinuationPolicy", () => {
       id: "ses_partial_review",
       workflow: {
         kind: "lightloop" as const,
-        taskDescription: "Write unit tests",
+        instructions: "Write unit tests",
+        reviewAgent: "security-reviewer",
         stopRequest: {
           summary: "done",
           completed: ["Implemented the behavior"],
@@ -98,7 +99,7 @@ describe("LightLoopContinuationPolicy", () => {
       order.push("prepare")
       expect(input.parentSessionID).toBe(session.id)
       expect(input.parentMessageID).toBe("msg_123")
-      expect(input.agent).toBe("lightloop-reviewer")
+      expect(input.agent).toBe("security-reviewer")
       expect(input.visibility).toBe("visible")
       expect(input.notifyParentOnComplete).toBe(false)
       expect(input.prompt).toContain("Focused tests pass")

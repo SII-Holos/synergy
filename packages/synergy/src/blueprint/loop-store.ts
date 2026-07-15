@@ -45,6 +45,8 @@ export namespace BlueprintLoopStore {
     loopIndex?: number
     model?: { providerID: string; modelID: string }
     source?: Info["source"]
+    sourceDigest?: string
+    budget?: Info["budget"]
     pluginOwner?: Info["pluginOwner"]
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
@@ -77,8 +79,9 @@ export namespace BlueprintLoopStore {
       runMode: input.runMode,
       parentSessionID: input.parentSessionID,
       firstPrompt: input.firstPrompt,
-      loopIndex: input.loopIndex,
       source: input.source ?? "user",
+      sourceDigest: input.sourceDigest,
+      budget: input.budget,
       pluginOwner: input.pluginOwner,
       model: input.model,
       time: { created: now, updated: now },
@@ -199,6 +202,7 @@ export namespace BlueprintLoopStore {
     }
 
     if (isTerminal) {
+      // Clear activeLoopID from note
       try {
         const note = await NoteStore.get(scopeID, updated.noteID)
         if (note.kind === "blueprint" && note.blueprint?.activeLoopID === id) {
@@ -210,6 +214,7 @@ export namespace BlueprintLoopStore {
         // best effort
       }
 
+      // Unbind execution session
       try {
         if (updated.sessionID) {
           await Session.update(updated.sessionID, (draft) => {
@@ -219,20 +224,55 @@ export namespace BlueprintLoopStore {
       } catch {
         // best effort
       }
+
+      // Archive plugin-owned generated resources (Note + execution Session)
+      // User/lattice-owned loops archive via their own lifecycle paths.
+      if (updated.source === "plugin") {
+        void NoteStore.update(scopeID, updated.noteID, { archived: true }).catch(() => {})
+        void Session.update(updated.sessionID, (draft) => {
+          draft.time.archived = Date.now()
+        }).catch(() => {})
+      }
     }
 
+    // Deliver blueprint.after hook for plugin-owned terminal loops.
+    // Idempotent: check terminalHookDeliveredAt before delivery.
     if (isTerminal && updated.source === "plugin" && updated.pluginOwner) {
-      void Plugin.triggerForPlugin(
-        updated.pluginOwner.pluginId,
-        updated.pluginOwner.pluginGeneration,
-        "blueprint.after",
-        { loop: updated },
-        {},
-      )
+      deliverTerminalHook(scopeID, id, updated).catch(() => {})
     }
 
     await Bus.publish(LoopEvent.Updated, { loop: updated })
     return updated
+  }
+
+  /**
+   * Deliver blueprint.after hook for a plugin-owned terminal loop.
+   * Idempotent: sets terminalHookDeliveredAt on success; retries if missing.
+   * Hook failure stores terminalHookError and leaves terminalHookDeliveredAt
+   * undefined so the next terminal transition retries.
+   */
+  async function deliverTerminalHook(scopeID: string, id: string, loop: Info): Promise<void> {
+    if (!loop.pluginOwner) return
+    if (loop.terminalHookDeliveredAt !== undefined) return
+
+    const delivered = await Plugin.triggerForPlugin(
+      loop.pluginOwner.pluginId,
+      loop.pluginOwner.pluginGeneration,
+      "blueprint.after",
+      { loop },
+      {},
+    ).catch(() => undefined)
+
+    if (delivered) {
+      await Storage.update<Info>(StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id), (draft) => {
+        draft.terminalHookDeliveredAt = Date.now()
+        draft.terminalHookError = undefined
+      }).catch(() => {})
+    } else {
+      await Storage.update<Info>(StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id), (draft) => {
+        draft.terminalHookError = "delivery_failed"
+      }).catch(() => {})
+    }
   }
 
   export async function complete(scopeID: string, id: string): Promise<Info> {

@@ -15,6 +15,8 @@ import {
 } from "./loader"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
+import { LightLoopRuntime } from "../session/light-loop-runtime"
+import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
@@ -162,6 +164,8 @@ export async function init() {
       )
     }
   }
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function reload() {
@@ -177,6 +181,8 @@ export async function reload() {
   await resetAllPluginState()
   const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
   await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function reloadMcpContributions() {

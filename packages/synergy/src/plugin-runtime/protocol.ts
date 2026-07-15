@@ -26,12 +26,13 @@ export type PluginHostServiceMethod =
   | "task.current"
   | "task.get"
   | "task.cancel"
-  | "blueprint.create"
   | "blueprint.start"
   | "blueprint.get"
-  | "blueprint.list"
   | "blueprint.cancel"
-  | "lightloop.enable"
+
+  | "lightloop.start"
+  | "lightloop.get"
+  | "lightloop.cancel"
   | "workspace.read"
   | "workspace.write"
   | "workspace.metadata"
@@ -103,5 +104,5 @@ export function deserializePluginRuntimeError(error: SerializedPluginRuntimeErro
   })
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 4
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 5
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

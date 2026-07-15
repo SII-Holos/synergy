@@ -37,6 +37,13 @@ export const Info = z
     source: z
       .enum(["user", "lattice", "plugin"])
       .meta({ description: "Owner that created and drives this loop lifecycle" }),
+    sourceDigest: z.string().optional(),
+    budget: z
+      .object({
+        maxRuntimeMs: z.number(),
+        maxIterations: z.number(),
+      })
+      .optional(),
     pluginOwner: z
       .object({
         pluginId: z.string(),
@@ -59,6 +66,8 @@ export const Info = z
       completed: z.number().optional(),
     }),
     model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+    terminalHookDeliveredAt: z.number().optional(),
+    terminalHookError: z.string().optional(),
   })
   .meta({ ref: "BlueprintLoopInfo" })
 
