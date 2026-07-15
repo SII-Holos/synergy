@@ -3,6 +3,10 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { SessionNav, SessionNavResponse, SessionNavEntry } from "../session/nav"
 
+const GlobalRecentResponse = SessionNavResponse.extend({
+  unreadCompletionCount: z.number().int().nonnegative(),
+}).meta({ ref: "GlobalRecentResponse" })
+
 const PinnedResponse = z
   .object({
     items: SessionNavEntry.array(),
@@ -22,7 +26,7 @@ export const GlobalNavRoute = new Hono()
           description: "Paginated recent sessions",
           content: {
             "application/json": {
-              schema: resolver(SessionNavResponse),
+              schema: resolver(GlobalRecentResponse),
             },
           },
         },

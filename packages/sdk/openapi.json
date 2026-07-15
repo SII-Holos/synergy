@@ -1763,7 +1763,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionNavResponse"
+                  "$ref": "#/components/schemas/GlobalRecentResponse"
                 }
               }
             }
@@ -21593,7 +21593,7 @@
         },
         "required": ["lastActivityAt", "id"]
       },
-      "SessionNavResponse": {
+      "GlobalRecentResponse": {
         "type": "object",
         "properties": {
           "items": {
@@ -21614,9 +21614,14 @@
           },
           "total": {
             "type": "number"
+          },
+          "unreadCompletionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
-        "required": ["items", "nextCursor", "total"]
+        "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
       },
       "PinnedResponse": {
         "type": "object",
@@ -26625,6 +26630,31 @@
           }
         },
         "required": ["branch"]
+      },
+      "SessionNavResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NavCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
       },
       "SessionStatus": {
         "anyOf": [

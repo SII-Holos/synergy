@@ -1146,10 +1146,11 @@ export type NavCursor = {
   id: string
 }
 
-export type SessionNavResponse = {
+export type GlobalRecentResponse = {
   items: Array<SessionNavEntry>
   nextCursor: NavCursor | null
   total: number
+  unreadCompletionCount: number
 }
 
 export type PinnedResponse = {
@@ -3730,6 +3731,12 @@ export type WorktreeRemoveInput = {
 
 export type VcsInfo = {
   branch: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
 }
 
 export type SessionStatus =
@@ -7947,7 +7954,7 @@ export type GlobalNavRecentResponses = {
   /**
    * Paginated recent sessions
    */
-  200: SessionNavResponse
+  200: GlobalRecentResponse
 }
 
 export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]

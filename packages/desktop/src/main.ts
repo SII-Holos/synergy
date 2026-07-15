@@ -64,6 +64,7 @@ import {
   desktopWindowChromeOptions,
   desktopWindowState,
 } from "./window-chrome.js"
+import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
@@ -84,6 +85,10 @@ let isQuitting = false
 let isUpdateQuit = false
 let pendingCreateWindow: Promise<void> | null = null
 let currentDesktopTheme: DesktopThemeSnapshot | null = null
+let unreadCompletionCount = 0
+let desktopUnreadOverlayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let desktopUnreadTrayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -119,6 +124,51 @@ async function loadStartupIconDataURL(iconPath: string): Promise<string | undefi
 }
 
 runtimeLog("mainLoaded", { argv: process.argv })
+
+function loadDesktopUnreadImage(assetPath: string | undefined, asset: string) {
+  if (!assetPath) return null
+  const image = nativeImage.createFromPath(assetPath)
+  if (!image.isEmpty()) return image
+  runtimeLog("unreadIndicatorAssetUnavailable", { asset, assetPath })
+  return null
+}
+
+function initializeDesktopUnreadAssets(): void {
+  const paths = desktopUnreadAssetPaths({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  desktopUnreadOverlayIcon = loadDesktopUnreadImage(paths.overlay, "overlay")
+  desktopUnreadTrayIcon = loadDesktopUnreadImage(paths.trayUnread, "tray")
+}
+
+function applyDesktopUnreadState(): void {
+  const presentation = desktopUnreadPresentation(
+    process.platform,
+    unreadCompletionCount,
+    desktopWindowTitle(desktopChannel(app.isPackaged)),
+  )
+  if (presentation.dockBadge !== undefined) app.dock?.setBadge(presentation.dockBadge)
+  if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+    const overlay = presentation.overlayVisible ? desktopUnreadOverlayIcon : null
+    mainWindow.setOverlayIcon(overlay, presentation.overlayDescription)
+  }
+  if (presentation.launcherBadgeCount !== undefined) {
+    app.setBadgeCount(presentation.launcherBadgeCount)
+  }
+  if (desktopTray) {
+    const image = presentation.trayUnread ? desktopUnreadTrayIcon : desktopTrayDefaultIcon
+    if (image) desktopTray.setImage(image)
+    desktopTray.setToolTip(presentation.trayTooltip)
+  }
+}
+
+function setDesktopUnreadCount(count: number): void {
+  unreadCompletionCount = count
+  applyDesktopUnreadState()
+}
 
 async function createWindow() {
   const channel = desktopChannel(app.isPackaged)
@@ -177,6 +227,7 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  applyDesktopUnreadState()
   runtimeLog("createWindow", { mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
@@ -377,6 +428,14 @@ function registerIpcHandlers() {
     isUpdateQuit = true
     return updater?.installAndRestart()
   })
+  ipcMain.handle("desktop.badge.setState", (event, input: unknown) => {
+    applyDesktopUnreadUpdate({
+      mainWindow,
+      sender: event.sender,
+      rawState: input,
+      setCount: setDesktopUnreadCount,
+    })
+  })
   ipcMain.handle("desktop.shell.openExternal", async (_event, input: unknown) => {
     const url = parseExternalUrl(input)
     await shell.openExternal(url)
@@ -468,8 +527,10 @@ function installDesktopTray(channel: DesktopChannel): void {
     return
   }
 
+  desktopTrayDefaultIcon = icon
   desktopTray = new Tray(icon)
   desktopTray.setToolTip(desktopWindowTitle(channel))
+  applyDesktopUnreadState()
   desktopTray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Synergy", click: showMainWindow },
@@ -566,9 +627,11 @@ app.on("activate", () => {
 updateQuitApp.on("before-quit-for-update", () => {
   isUpdateQuit = true
   isQuitting = true
+  setDesktopUnreadCount(0)
 })
 
 app.on("before-quit", (event) => {
+  setDesktopUnreadCount(0)
   if (isUpdateQuit) return
   if (isQuitting) return
   event.preventDefault()
@@ -595,6 +658,7 @@ async function start() {
   if (!shouldStart) return
   await app.whenReady()
   await initializeDesktopTheme()
+  initializeDesktopUnreadAssets()
   installDesktopThemeNativeListener()
   runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })
   const dockIconPath = desktopDevDockIconPath({

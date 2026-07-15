@@ -47,6 +47,12 @@ A session is the durable unit users navigate, resume, archive, fork, export, and
 
 Only one LLM loop writes a session at a time. New reply-requiring work waits as the next task; steering input can influence the active task; context input can join model context without demanding another reply.
 
+### Completion notices
+
+When background or unattended work finishes, the root session can retain an unread completion notice until that session is viewed. The global session navigation response reports the total unread completion count across non-archived root sessions in every Scope; the count is independent of navigation pagination.
+
+Desktop mirrors this state with platform-native indicators. macOS shows a numeric Dock badge (capped visually at `99+`), Windows shows an accessible taskbar overlay dot, and Linux uses the launcher badge where supported plus an unread tray icon and count in its tooltip. Hiding or focusing the window does not clear the indicator; acknowledging the completion notice in its session does.
+
 ## Tasks and Messages
 
 One root user message defines one task. Every assistant message generated for that task points back to the same root. This stable grouping is independent of visual rendering or model inclusion.

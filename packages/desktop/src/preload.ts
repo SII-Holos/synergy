@@ -11,6 +11,7 @@ import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
 import { mapSelectDirectoryDialogResponse, type SelectDirectoryDialogBridgeResponse } from "./directory-picker.js"
 import type { DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
+import type { DesktopBadgeState } from "./ipc-contract.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -131,6 +132,12 @@ const desktopWindow = {
   },
 }
 
+const desktopBadge = {
+  setState(state: DesktopBadgeState) {
+    return ipcRenderer.invoke("desktop.badge.setState", state) as Promise<void>
+  },
+}
+
 contextBridge.exposeInMainWorld("synergyDesktop", {
   platform: "desktop",
   openDirectoryPickerDialog,
@@ -141,5 +148,6 @@ contextBridge.exposeInMainWorld("synergyDesktop", {
   startup: desktopStartup,
   theme: desktopTheme,
   window: desktopWindow,
+  badge: desktopBadge,
   browserNative,
 })
