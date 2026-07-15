@@ -27,10 +27,11 @@ For every sessionless call:
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
 2. Resolve it through `Agent.get()`, `Agent.getAvailableModel()`, and `Provider.getModel()` so role configuration and availability remain authoritative.
 3. Use `LLM.stream()` so provider transforms, variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization still apply.
-4. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
-5. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
-6. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
-7. Test model-role fallback, timeout/cancellation, parsing, redaction, and failure semantics without making a live provider call.
+4. Consume the result through `LLM.collectText()`, `LLM.takeTextStream()`, or `LLM.takeFullStream()`. Dispose owned streams in `finally`; do not access AI SDK stream/text getters directly because each getter retains a tee branch until explicitly cancelled.
+5. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
+6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
+7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
+8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
 
@@ -53,6 +54,12 @@ Use a hidden reviewer through Cortex for decisions that must be independently au
 ## Direct AI SDK Calls
 
 `config/setup.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy.
+
+## Streaming Bounds
+
+Provider SSE protection is a per-event parser bound, not a total response, transport chunk, or process-memory limit. Keep code identifiers, error names, tests, and architecture documentation explicit about `SSE event parser bound` semantics. Test LF and CRLF event delimiters across chunk boundaries, including consecutive events exactly at the bound.
+
+Tool-call input has a separate serialized-input bound. Enforce it for incremental argument deltas, final-only provider tool calls, and immediately before executor dispatch so providers cannot bypass it by omitting delta events.
 
 ## Verify and Document
 
