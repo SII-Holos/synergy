@@ -892,7 +892,7 @@ export namespace Provider {
 
         const responseBody =
           response.body && ProviderStream.isSSE(response.headers)
-            ? ProviderStream.limitSSEEventBytes(response.body)
+            ? ProviderStream.enforceSSEEventParserBound(response.body)
             : response.body
 
         // For streaming responses, wrap the body to reset idle timer on each chunk

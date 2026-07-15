@@ -7,6 +7,14 @@ export namespace SessionBounds {
     return Buffer.byteLength(value, "utf8")
   }
 
+  export function toolInputByteLength(input: unknown): number {
+    return byteLength(JSON.stringify(input) ?? "")
+  }
+
+  export function toolInputExceededMessage(): string {
+    return `Tool input exceeded ${TOOL_INPUT_MAX_BYTES} bytes`
+  }
+
   export function middlePreview(value: string, maxChars: number): { text: string; truncated: boolean } {
     if (value.length <= maxChars) return { text: value, truncated: false }
     const omitted = value.length - maxChars

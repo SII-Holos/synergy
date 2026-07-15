@@ -929,7 +929,7 @@ export namespace SessionProcessor {
                       if (prevRaw === undefined) break
                       const receivedBytes = (generatingBytes[value.id] ?? 0) + SessionBounds.byteLength(value.delta)
                       if (receivedBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
-                        const error = `Tool input exceeded ${SessionBounds.TOOL_INPUT_MAX_BYTES} bytes`
+                        const error = SessionBounds.toolInputExceededMessage()
                         const part = await Session.updatePart({
                           ...match,
                           state: {
@@ -998,6 +998,32 @@ export namespace SessionProcessor {
                       if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
                       const match = toolcalls[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
+                      if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                        const error = SessionBounds.toolInputExceededMessage()
+                        const part = await Session.updatePart({
+                          ...(match ?? {
+                            id: Identifier.ascending("part"),
+                            messageID: input.assistantMessage.id,
+                            sessionID: input.assistantMessage.sessionID,
+                            type: "tool" as const,
+                            callID: value.toolCallId,
+                          }),
+                          tool: value.toolName,
+                          state: {
+                            status: "error",
+                            input: {},
+                            error,
+                            metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                            time: { start: Date.now(), end: Date.now() },
+                          },
+                          metadata: value.providerMetadata,
+                        })
+                        toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                        settledToolCalls.add(value.toolCallId)
+                        delete generatingAccum[value.toolCallId]
+                        delete generatingBytes[value.toolCallId]
+                        throw new Error(error)
+                      }
                       const part = await Session.updatePart({
                         ...(match ?? {
                           id: Identifier.ascending("part"),

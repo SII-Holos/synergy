@@ -1,10 +1,10 @@
 export namespace ProviderStream {
-  export const SSE_EVENT_MAX_BYTES = 16 * 1024 * 1024
+  export const SSE_EVENT_PARSER_BOUND_BYTES = 16 * 1024 * 1024
 
-  export class SSEEventTooLargeError extends Error {
-    constructor(maxBytes: number) {
-      super(`SSE event exceeded ${maxBytes} bytes`)
-      this.name = "ProviderSSEEventTooLargeError"
+  export class SSEEventParserBoundError extends Error {
+    constructor(parserBoundBytes: number) {
+      super(`SSE event parser bound of ${parserBoundBytes} bytes exceeded`)
+      this.name = "ProviderSSEEventParserBoundError"
     }
   }
 
@@ -12,13 +12,14 @@ export namespace ProviderStream {
     return headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true
   }
 
-  export function limitSSEEventBytes(
+  export function enforceSSEEventParserBound(
     stream: ReadableStream<Uint8Array>,
-    maxBytes = SSE_EVENT_MAX_BYTES,
+    parserBoundBytes = SSE_EVENT_PARSER_BOUND_BYTES,
   ): ReadableStream<Uint8Array> {
     let eventBytes = 0
     let atLineStart = true
     let previousWasCarriageReturn = false
+    let previousCarriageReturnEndedEvent = false
 
     return stream.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
@@ -26,12 +27,15 @@ export namespace ProviderStream {
           for (const byte of chunk) {
             eventBytes++
             if (byte === 13) {
-              if (atLineStart) eventBytes = 0
+              previousCarriageReturnEndedEvent = atLineStart
+              if (previousCarriageReturnEndedEvent) eventBytes = 0
               atLineStart = true
               previousWasCarriageReturn = true
             } else if (byte === 10) {
               if (previousWasCarriageReturn) {
+                if (previousCarriageReturnEndedEvent) eventBytes = 0
                 previousWasCarriageReturn = false
+                previousCarriageReturnEndedEvent = false
               } else {
                 if (atLineStart) eventBytes = 0
                 atLineStart = true
@@ -39,8 +43,9 @@ export namespace ProviderStream {
             } else {
               atLineStart = false
               previousWasCarriageReturn = false
+              previousCarriageReturnEndedEvent = false
             }
-            if (eventBytes > maxBytes) throw new SSEEventTooLargeError(maxBytes)
+            if (eventBytes > parserBoundBytes) throw new SSEEventParserBoundError(parserBoundBytes)
           }
           controller.enqueue(chunk)
         },

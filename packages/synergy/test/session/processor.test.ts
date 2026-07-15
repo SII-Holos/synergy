@@ -266,6 +266,26 @@ describe("SessionProcessor tool input bounds", () => {
       expect(part.state.error).toContain("exceeded")
     }
   })
+
+  test("terminates a final-only tool call when input exceeds the byte limit", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_final_tool_input_limit",
+      async *stream() {
+        yield {
+          type: "tool-call",
+          toolCallId: "call_final_large",
+          toolName: "edit",
+          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+        }
+      },
+    })
+
+    const part = firstTool(parts, "call_final_large")
+    expect(part?.state.status).toBe("error")
+    if (part?.state.status === "error") {
+      expect(part.state.error).toContain("exceeded")
+    }
+  })
 })
 
 function firstTool(parts: MessageV2.Part[], callID?: string) {

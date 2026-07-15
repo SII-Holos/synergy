@@ -5,6 +5,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { tmpdir } from "../fixture/fixture"
+import { SessionBounds } from "../../src/session/bounds"
 
 for (const scenario of [
   { name: "successful", terminalEvent: "tool-result", error: false },
@@ -76,6 +77,73 @@ for (const scenario of [
     })
   })
 }
+
+test("rejects oversized tool input before the handler executes", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const sessionID = "ses_tool_input_bound"
+      const processor = SessionProcessor.create({
+        assistantMessage: {
+          id: "msg_tool_input_bound",
+          sessionID,
+          role: "assistant",
+          parentID: "msg_user",
+          modelID: "test-model",
+          providerID: "test-provider",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 0 },
+        },
+        sessionID,
+        model,
+        abort: new AbortController().signal,
+      })
+      let executionCount = 0
+
+      try {
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID,
+          processor,
+          ephemeralTools: [
+            {
+              id: "bounded_execution",
+              description: "Rejects oversized input before execution",
+              inputSchema: {
+                type: "object",
+                properties: { value: { type: "string" } },
+                required: ["value"],
+                additionalProperties: false,
+              },
+              async execute() {
+                executionCount++
+                return { title: "Unexpected", output: "unexpected" }
+              },
+            },
+          ],
+          userTools: { bounded_execution: true },
+          includeMCP: false,
+        })
+
+        await expect(
+          (resolved.tools.bounded_execution as any).execute(
+            { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+            { toolCallId: "call_oversized" },
+          ),
+        ).rejects.toThrow(`Tool input exceeded ${SessionBounds.TOOL_INPUT_MAX_BYTES} bytes`)
+        expect(executionCount).toBe(0)
+      } finally {
+        processor.dispose("test")
+      }
+    },
+  })
+})
 
 const allowAllAgent = {
   name: "synergy",

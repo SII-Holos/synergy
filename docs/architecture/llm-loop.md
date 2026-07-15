@@ -225,7 +225,7 @@ Text, reasoning, and tool parts are persisted throughout the step. Streaming tex
 
 Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
 
-Provider SSE input is bounded before it enters the AI SDK parser: one unterminated event may contain at most 16 MiB. Streamed tool-call input is bounded independently at 1 MiB and becomes a terminal tool and assistant error when exceeded.
+Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
 
 Client wire transport can replace full accumulated streaming parts with incremental delta frames and periodic full checkpoints. That optimization does not change the in-process message or event model; see [Frontend data sync](frontend-data-sync.md).
 

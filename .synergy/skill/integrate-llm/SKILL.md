@@ -55,6 +55,12 @@ Use a hidden reviewer through Cortex for decisions that must be independently au
 
 `config/setup.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy.
 
+## Streaming Bounds
+
+Provider SSE protection is a per-event parser bound, not a total response, transport chunk, or process-memory limit. Keep code identifiers, error names, tests, and architecture documentation explicit about `SSE event parser bound` semantics. Test LF and CRLF event delimiters across chunk boundaries, including consecutive events exactly at the bound.
+
+Tool-call input has a separate serialized-input bound. Enforce it for incremental argument deltas, final-only provider tool calls, and immediately before executor dispatch so providers cannot bypass it by omitting delta events.
+
 ## Verify and Document
 
 1. Test the chosen lifecycle boundary as a behavior: no session for sessionless work; explicit child lineage and output for Cortex work.
