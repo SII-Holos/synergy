@@ -59,6 +59,7 @@ import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.
 import {
   desktopDevDockIconPath,
   desktopIconPath,
+  desktopEmitsWindowStateEvents,
   desktopShouldHideToTray,
   desktopStartupIconPath,
   desktopUsesSystemTray,
@@ -194,7 +195,9 @@ async function createWindow() {
   enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
   installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
-  const windowStateEvents = process.platform === "darwin" ? null : installDesktopWindowStateEvents(mainWindow)
+  const windowStateEvents = desktopEmitsWindowStateEvents(process.platform)
+    ? installDesktopWindowStateEvents(mainWindow)
+    : null
   emitDesktopWindowState = windowStateEvents?.emit ?? null
   installWindowCloseBehavior(mainWindow)
 
@@ -409,7 +412,7 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.startup.appReady", async (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return false
     const delivery = mainRendererDelivery
-    if (!delivery?.markReady()) return false
+    if (!delivery?.markReady(event.senderFrame)) return false
     emitDesktopWindowState?.()
     delivery.sendLatest("desktop-theme", "desktop-theme:event", {
       type: "theme",

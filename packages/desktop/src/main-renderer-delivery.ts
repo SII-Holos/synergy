@@ -17,8 +17,8 @@ export class DesktopRendererDelivery {
     contents.on("destroyed", this.markUnavailable)
   }
 
-  markReady(): boolean {
-    if (!this.deliverableFrame()) {
+  markReady(frame: WebFrameMain | null): boolean {
+    if (!frame || !this.isCurrentDeliverableFrame(frame)) {
       this.ready = false
       return false
     }
@@ -38,7 +38,7 @@ export class DesktopRendererDelivery {
       frame.send(channel, ...args)
       return true
     } catch (error) {
-      if (this.deliverableFrame()) throw error
+      if (!this.frameUnavailable(frame)) throw error
       this.ready = false
       return false
     }
@@ -89,6 +89,29 @@ export class DesktopRendererDelivery {
       const message = this.queue[0]!
       if (!this.send(message.channel, ...message.args)) return
       this.queue.shift()
+    }
+  }
+
+  private isCurrentDeliverableFrame(frame: WebFrameMain): boolean {
+    const current = this.deliverableFrame()
+    return current !== null && this.sameFrame(current, frame)
+  }
+
+  private frameUnavailable(frame: WebFrameMain): boolean {
+    if (this.disposed || this.contents.isDestroyed() || this.contents.isCrashed()) return true
+    try {
+      if (frame.isDestroyed() || frame.detached) return true
+      return !this.sameFrame(this.contents.mainFrame, frame)
+    } catch {
+      return true
+    }
+  }
+
+  private sameFrame(left: WebFrameMain, right: WebFrameMain): boolean {
+    try {
+      return left.processId === right.processId && left.routingId === right.routingId
+    } catch {
+      return false
     }
   }
 
