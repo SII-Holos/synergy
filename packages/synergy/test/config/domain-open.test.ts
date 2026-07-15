@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { ConfigDomainOpen } from "../../src/config/domain-open"
+import { domainOpenError } from "../../src/server/config-route"
 
 describe("ConfigDomainOpen", () => {
   test("resolves macOS opener", () => {
@@ -20,10 +21,36 @@ describe("ConfigDomainOpen", () => {
     expect(cmd.slice(1)).toEqual(["/c", "start", "", "C:\\Users\\test\\00-general.jsonc"])
   })
 
-  test("throws when platform opener is missing", () => {
-    expect(() => ConfigDomainOpen.commandForPlatform("/tmp/00-general.jsonc", "linux", () => undefined)).toThrow(
+  test("returns the config path when the platform opener is missing", () => {
+    const filepath = "/tmp/00-general.jsonc"
+    expect(() => ConfigDomainOpen.commandForPlatform(filepath, "linux", () => undefined)).toThrow(
       ConfigDomainOpen.OpenerMissingError,
     )
+
+    const result = domainOpenError(new ConfigDomainOpen.OpenerMissingError(filepath, "xdg-open"))
+    expect(result).toEqual({
+      status: 500,
+      body: {
+        success: false,
+        error: "ConfigDomainOpenOpenerMissingError",
+        message: 'Required opener "xdg-open" was not found',
+        path: filepath,
+      },
+    })
+  })
+
+  test("returns the config path for unsupported platforms", () => {
+    const filepath = "/tmp/00-general.jsonc"
+    const result = domainOpenError(new ConfigDomainOpen.UnsupportedPlatformError(filepath, "freebsd"))
+    expect(result.status).toBe(400)
+    expect(result.body.path).toBe(filepath)
+  })
+
+  test("returns the config path when the opener command fails", () => {
+    const filepath = "/tmp/00-general.jsonc"
+    const result = domainOpenError(new ConfigDomainOpen.OpenFailedError(filepath, 1, "editor unavailable"))
+    expect(result.status).toBe(500)
+    expect(result.body.path).toBe(filepath)
   })
 
   test("materializes a canonical domain file only", async () => {

@@ -57,6 +57,7 @@ Keep navigation surfaces mentally aligned with where they live. Sidebar destinat
 
 Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use switches for binary choices, guided scales for ordered multi-step values, and direct option controls for unordered choices. Do not expose inline restore-to-default options for ordinary preference controls; defaults should be reachable through the same control when needed. Reserve raw domain-file syntax for import/export or advanced configuration views. Default primary agent model should live in Models, not General.
 Internal and developer settings such as formatter, lsp, and observability should be hidden by default and surfaced only through local developer mode; the ordinary Settings surface remains human-facing.
+Config file access is server-host behavior: Open File asks the server host to launch its default editor. Every failure must retain the canonical file path and direct the user to the existing Copy Path action so headless and remote deployments have an actionable fallback.
 
 Settings typography should use the global semantic UI type tokens, not local pixel sizes or historical `text-12-*` utility classes. Page titles, section titles, row titles, body copy, control text, and captions should map to fixed rem-based roles with regular, medium, and semibold weights only. Keep the density close to Manus: comfortable enough to read as product settings, still efficient enough for a daily developer tool.
 

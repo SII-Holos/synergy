@@ -58,6 +58,7 @@ import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } fr
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
+import { configFileOpenFailure } from "./config-file-open-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -266,8 +267,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description: res.data?.path ?? domain,
       })
       await refetchDomains()
-    } catch (error: any) {
-      showToast({ type: "error", title: "Open file failed", description: error.message })
+    } catch (error) {
+      const filepath = domainSummaries()?.find((item) => item.id === domain)?.path ?? domain
+      showToast({ type: "error", ...configFileOpenFailure(error, filepath) })
     } finally {
       setOpeningDomain(undefined)
     }

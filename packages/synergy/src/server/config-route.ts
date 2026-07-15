@@ -39,12 +39,18 @@ const DomainOpenError = z
   })
   .meta({ ref: "ConfigDomainOpenError" })
 
-function domainOpenError(error: unknown) {
+export function domainOpenError(error: unknown) {
   if (error instanceof ConfigDomainOpen.UnsupportedPlatformError) {
-    return { status: 400 as const, body: { success: false as const, error: error.name, message: error.message } }
+    return {
+      status: 400 as const,
+      body: { success: false as const, error: error.name, message: error.message, path: error.filepath },
+    }
   }
   if (error instanceof ConfigDomainOpen.OpenerMissingError) {
-    return { status: 500 as const, body: { success: false as const, error: error.name, message: error.message } }
+    return {
+      status: 500 as const,
+      body: { success: false as const, error: error.name, message: error.message, path: error.filepath },
+    }
   }
   if (error instanceof ConfigDomainOpen.OpenFailedError) {
     return {
