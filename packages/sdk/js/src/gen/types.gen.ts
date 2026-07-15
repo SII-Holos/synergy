@@ -3211,6 +3211,15 @@ export type ConfigImportProjectScopeRequiredError = {
   }
 }
 
+export type ConfigImportInvalidConfigError = {
+  name: "ConfigInvalidError"
+  data: {
+    path: string
+    issues?: Array<unknown>
+    message?: string
+  }
+}
+
 export type ConfigDomainImportPlanInput = {
   config: Config
   only?: Array<
@@ -3308,6 +3317,14 @@ export type ConfigImportRevisionConflictError = {
       | "email"
       | "runtime"
     >
+  }
+}
+
+export type ConfigImportLockedError = {
+  name: "ConfigImportLockedError"
+  data: {
+    message: string
+    scope: ConfigImportScope
   }
 }
 
@@ -8618,7 +8635,7 @@ export type ConfigImportPlanErrors = {
   /**
    * Invalid import or missing project scope
    */
-  400: ConfigImportProjectScopeRequiredError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
 }
 
 export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
@@ -8644,13 +8661,13 @@ export type ConfigImportApplyData = {
 
 export type ConfigImportApplyErrors = {
   /**
-   * Bad request
+   * Invalid import or missing project scope
    */
-  400: BadRequestError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
   /**
    * Stale plan or concurrent import
    */
-  409: ConfigImportRevisionConflictError
+  409: ConfigImportRevisionConflictError | ConfigImportLockedError
 }
 
 export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]

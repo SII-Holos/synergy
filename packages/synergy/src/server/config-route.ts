@@ -9,7 +9,7 @@ import { ConfigDomainOpen } from "../config/domain-open"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
 import { Log } from "../util/log"
-import { errors } from "./error"
+import { BadRequestError, errors } from "./error"
 
 const log = Log.create({ service: "config-route" })
 
@@ -39,6 +39,24 @@ const DomainOpenError = z
     path: z.string().optional(),
   })
   .meta({ ref: "ConfigDomainOpenError" })
+const ConfigImportInvalidConfigError = z
+  .object({
+    name: z.literal("ConfigInvalidError"),
+    data: z.object({
+      path: z.string(),
+      issues: z.array(z.any()).optional(),
+      message: z.string().optional(),
+    }),
+  })
+  .meta({ ref: "ConfigImportInvalidConfigError" })
+
+const ConfigImportBadRequestError = z.union([
+  BadRequestError,
+  ConfigImport.ProjectScopeRequiredError.Schema,
+  ConfigImportInvalidConfigError,
+])
+
+const ConfigImportConflictError = z.union([ConfigImport.RevisionConflictError.Schema, ConfigImport.LockedError.Schema])
 
 function domainOpenError(error: unknown) {
   if (error instanceof ConfigDomainOpen.UnsupportedPlatformError) {
@@ -219,7 +237,7 @@ export const ConfigRoute = new Hono()
         },
         400: {
           description: "Invalid import or missing project scope",
-          content: { "application/json": { schema: resolver(ConfigImport.ProjectScopeRequiredError.Schema) } },
+          content: { "application/json": { schema: resolver(ConfigImportBadRequestError) } },
         },
       },
     }),
@@ -237,10 +255,13 @@ export const ConfigRoute = new Hono()
           description: "Applied config import result",
           content: { "application/json": { schema: resolver(ConfigImport.ApplyResult) } },
         },
-        ...errors(400),
+        400: {
+          description: "Invalid import or missing project scope",
+          content: { "application/json": { schema: resolver(ConfigImportBadRequestError) } },
+        },
         409: {
           description: "Stale plan or concurrent import",
-          content: { "application/json": { schema: resolver(ConfigImport.RevisionConflictError.Schema) } },
+          content: { "application/json": { schema: resolver(ConfigImportConflictError) } },
         },
       },
     }),

@@ -1039,11 +1039,27 @@ export namespace Config {
 
   export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
     if (mode === "replace-domain") return patch
+    if (mode === "append") return mergeAppendArrays(current, patch) as Info
     const merged = mergeDeep(current, patch) as Info
     if (current.plugin || patch.plugin) {
       merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
     }
     return merged
+  }
+
+  function mergeAppendArrays(current: unknown, patch: unknown): unknown {
+    if (Array.isArray(current) && Array.isArray(patch)) return [...current, ...patch]
+    if (!isConfigObject(current) || !isConfigObject(patch)) return patch
+
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+      merged[key] = key in current ? mergeAppendArrays(current[key], value) : value
+    }
+    return merged
+  }
+
+  function isConfigObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
   }
 
   function mergePluginSpecList(current: string[], patch: string[]): string[] {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
@@ -81,6 +82,36 @@ describe("config import routes", () => {
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ name: "ConfigImportRevisionConflictError" })
+  })
+
+  test("returns a structured bad request when conflicts are not confirmed", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const root = path.join(tmp.path, ".synergy")
+    await Config.domainUpdate("general", { username: "existing" }, { root, mode: "replace-domain" })
+
+    const response = await post(Server.App(), `/config/import/apply?directory=${encodeURIComponent(tmp.path)}`, {
+      config: { username: "imported" },
+      scope: "project",
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ name: "ConfigInvalidError" })
+  })
+
+  test("returns a structured conflict while the project import lock is held", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const directory = ConfigDomain.directory(path.join(tmp.path, ".synergy"))
+    await fs.mkdir(directory, { recursive: true })
+    await Bun.write(path.join(directory, ".import.lock"), JSON.stringify({ createdAt: Date.now() }))
+
+    const response = await post(Server.App(), `/config/import/apply?directory=${encodeURIComponent(tmp.path)}`, {
+      config: { username: "imported" },
+      scope: "project",
+      yes: true,
+    })
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ name: "ConfigImportLockedError" })
   })
 
   test("rejects project scope without an explicit project context", async () => {

@@ -56,6 +56,46 @@ describe("config import planning", () => {
     })
   })
 
+  test("append mode recursively appends arrays while overriding scalar values", async () => {
+    await withProject(async ({ root }) => {
+      await Config.domainUpdate(
+        "agents",
+        {
+          default_agent: "old-agent",
+          instructions: ["base.md"],
+          agent: { reviewer: { description: "Old", tools: { read: true } } },
+        },
+        { root, mode: "replace-domain" },
+      )
+
+      const plan = await ConfigImport.plan({
+        config: {
+          default_agent: "new-agent",
+          instructions: ["extra.md"],
+          agent: { reviewer: { description: "New", tools: { write: true } } },
+        },
+        scope: "project",
+        mode: "append",
+      })
+
+      expect(plan.domains[0]!.changes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: "default_agent", after: "new-agent" }),
+          expect.objectContaining({ key: "instructions", after: ["base.md", "extra.md"] }),
+          expect.objectContaining({
+            key: "agent",
+            after: expect.objectContaining({
+              reviewer: expect.objectContaining({
+                description: "New",
+                tools: { read: true, write: true },
+              }),
+            }),
+          }),
+        ]),
+      )
+    })
+  })
+
   test("uses the explicit project scope root without touching global paths", async () => {
     await withProject(async ({ project }) => {
       const plan = await ConfigImport.plan({ config: { model: "test/project" }, scope: "project" })

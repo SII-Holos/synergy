@@ -3062,7 +3062,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
                 }
               }
             }
@@ -3118,11 +3128,21 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid import or missing project scope",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
                 }
               }
             }
@@ -3132,7 +3152,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigImportRevisionConflictError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConfigImportRevisionConflictError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportLockedError"
+                    }
+                  ]
                 }
               }
             }
@@ -25011,6 +25038,32 @@
         },
         "required": ["name", "data"]
       },
+      "ConfigImportInvalidConfigError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array",
+                "items": {}
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "ConfigDomainImportPlanInput": {
         "type": "object",
         "properties": {
@@ -25257,6 +25310,28 @@
               }
             },
             "required": ["message", "domains"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ConfigImportScope"
+              }
+            },
+            "required": ["message", "scope"]
           }
         },
         "required": ["name", "data"]
