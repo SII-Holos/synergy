@@ -3636,7 +3636,24 @@ export type SessionWorkflowInfo =
     }
   | {
       kind: "lightloop"
-      taskDescription: string
+      instructions: string
+      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+      executionAgent?: string
+      reviewAgent?: string
+      pluginOwner?: {
+        pluginId: string
+        pluginGeneration: string
+        scopeId: string
+        correlationId?: string
+      }
+      budget?: {
+        maxRuntimeMs: number
+        maxIterations: number
+      }
+      deadlineAt?: number
+      terminalError?: string
+      terminalHookDeliveredAt?: number
+      terminalHookError?: string
       stopRequest?: {
         summary: string
         completed?: Array<string>
@@ -5996,6 +6013,11 @@ export type BlueprintLoopInfo = {
    * Owner that created and drives this loop lifecycle
    */
   source: "user" | "lattice" | "plugin"
+  sourceDigest?: string
+  budget?: {
+    maxRuntimeMs: number
+    maxIterations: number
+  }
   pluginOwner?: {
     pluginId: string
     pluginGeneration: string
@@ -6017,6 +6039,8 @@ export type BlueprintLoopInfo = {
     providerID: string
     modelID: string
   }
+  terminalHookDeliveredAt?: number
+  terminalHookError?: string
 }
 
 export type BlueprintLoopCreateInput = {
@@ -6174,9 +6198,9 @@ export type WorkflowSetInput =
   | {
       kind: "lightloop"
       /**
-       * Task description for Light Loop
+       * Instructions for Light Loop
        */
-      taskDescription: string
+      instructions: string
     }
   | {
       kind: "lattice"
