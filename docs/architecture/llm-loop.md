@@ -189,14 +189,16 @@ The compaction job:
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
 3. trims oldest summary input if even the compaction model cannot accept the full history;
-4. asks only for a structured continuation summary;
-5. writes a terminal assistant message with `summary = true`, `parentID = R.id`, and `rootID = R.id`;
-6. writes a `compaction_recovery` part for frontend and recovery use;
-7. publishes `session.compacted`.
+4. persists a hidden compaction attempt with `includeInContext = false` so streamed output and failures remain auditable without affecting later prompts;
+5. asks only for a structured continuation summary;
+6. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant as a terminal boundary with `summary = true`, `parentID = R.id`, and `rootID = R.id`;
+7. publishes `session.compacted` only after that commit.
+
+The `summary` flag is the commit marker, not an in-progress placeholder. A failed or empty attempt stays hidden and excluded from model context, does not fulfill the request, and does not establish a filtering or pruning boundary.
 
 The compaction agent cannot use tools or continue the user's task. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 
-If the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback containing recent user requests, involved files, used tools, and a pointer to full history. Other compaction-model failures remain explicit failures.
+If the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback and commits it through the same boundary. Other compaction-model failures remain explicit failures.
 
 ### Anchor and continuation
 
