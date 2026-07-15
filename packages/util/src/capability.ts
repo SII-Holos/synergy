@@ -168,6 +168,18 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Delegate tasks to subagents",
     description: "Runtime control-profile permission to launch an approved Synergy subagent.",
   },
+  "blueprint.delegate": {
+    category: "runtime",
+    severity: "high",
+    title: "Delegate Blueprint runs",
+    description: "Can create and control BlueprintLoop executions in an existing Session.",
+  },
+  "lightloop.delegate": {
+    category: "runtime",
+    severity: "high",
+    title: "Enable Light Loop",
+    description: "Can enable the Light Loop workflow in an existing Session.",
+  },
   prompt_transform: {
     category: "hooks",
     severity: "high",

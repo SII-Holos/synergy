@@ -35,6 +35,7 @@ export namespace BlueprintLoopService {
     loopIndex?: number
     model?: { providerID: string; modelID: string }
     source?: Info["source"]
+    pluginOwner?: Info["pluginOwner"]
   }
 
   export function isCodingBlueprintAgent(agentName?: string): boolean {

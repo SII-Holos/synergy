@@ -34658,7 +34658,25 @@
           "source": {
             "description": "Owner that created and drives this loop lifecycle",
             "type": "string",
-            "enum": ["user", "lattice"]
+            "enum": ["user", "lattice", "plugin"]
+          },
+          "pluginOwner": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginGeneration": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "pluginGeneration", "scopeId"]
           },
           "audit": {
             "type": "object",

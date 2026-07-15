@@ -13,10 +13,16 @@ import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
 import {
+  cancelPluginBlueprint,
   cancelPluginTask,
+  createPluginBlueprint,
+  enablePluginLightLoop,
   getCurrentPluginTask,
+  getPluginBlueprint,
   getPluginTask,
   invokePluginTool,
+  listPluginBlueprints,
+  startPluginBlueprint,
   startPluginTask,
 } from "./host-services"
 
@@ -27,6 +33,12 @@ const capabilityByMethod = {
   "task.current": "task.delegate",
   "task.get": "task.delegate",
   "task.cancel": "task.delegate",
+  "blueprint.create": "blueprint.delegate",
+  "blueprint.start": "blueprint.delegate",
+  "blueprint.get": "blueprint.delegate",
+  "blueprint.list": "blueprint.delegate",
+  "blueprint.cancel": "blueprint.delegate",
+  "lightloop.enable": "lightloop.delegate",
   "workspace.read": "workspace.read",
   "workspace.write": "workspace.write",
   "workspace.metadata": "workspace.read",
@@ -178,6 +190,14 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         handle: value as never,
       })
     }
+    if (input.method === "blueprint.get") {
+      const loopID = value.loopID
+      if (typeof loopID !== "string") throw new Error("blueprint.get requires loopID")
+      return getPluginBlueprint({ scopeId: input.invocation.scopeId, loopID })
+    }
+    if (input.method === "blueprint.list") {
+      return listPluginBlueprints(input.invocation.scopeId)
+    }
     const actor = input.invocation.actor
     if (input.method === "task.start") {
       const parent =
@@ -233,6 +253,30 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       callID: actor.callId,
       directory: input.invocation.directory,
       abort: input.signal,
+    }
+    if (input.method === "blueprint.create") {
+      return createPluginBlueprint({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        context: runtimeContext,
+        request: value as never,
+      })
+    }
+    if (input.method === "blueprint.start" || input.method === "blueprint.cancel") {
+      const loopID = value.loopID
+      if (typeof loopID !== "string") throw new Error(`${input.method} requires loopID`)
+      const request = {
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        context: runtimeContext,
+        loopID,
+      }
+      return input.method === "blueprint.start" ? startPluginBlueprint(request) : cancelPluginBlueprint(request)
+    }
+    if (input.method === "lightloop.enable") {
+      return enablePluginLightLoop({ context: runtimeContext, request: value as never })
     }
     if (input.method === "tool.invoke") {
       const toolId = value.toolId

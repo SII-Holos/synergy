@@ -80,7 +80,8 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
   const components = trustedComponents(definition.contributions)
   if (components.length === 0) return undefined
 
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-ui-"))
+  // Resolve temporary-directory aliases before generating relative component imports.
+  const tempDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-ui-")))
   const entry = path.join(tempDirectory, "index.tsx")
   const exports: Record<string, string> = {}
   const lines: string[] = []

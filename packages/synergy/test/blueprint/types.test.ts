@@ -62,6 +62,26 @@ describe("Blueprint types", () => {
       expect(result.success).toBe(true)
     })
 
+    test("validates plugin-owned loop metadata", () => {
+      const result = BlueprintLoopInfo.safeParse({
+        id: "bll_plugin1",
+        noteID: "note_plugin",
+        title: "Plugin Blueprint",
+        sessionID: "ses_plugin",
+        auditAgent: "supervisor",
+        scopeID: "scp_test",
+        status: "armed",
+        source: "plugin",
+        pluginOwner: {
+          pluginId: "focus",
+          pluginGeneration: "generation-one",
+          scopeId: "scp_test",
+        },
+        time: { created: Date.now(), updated: Date.now() },
+      })
+
+      expect(result.success).toBe(true)
+    })
     test("validates loop with durable user prompt context", () => {
       const now = Date.now()
       const loop = {

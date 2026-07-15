@@ -49,8 +49,7 @@ await context.task.cancel(handle)
 
 `current()` resolves the Task that owns the invocation's current child Session. It returns the same durable snapshot only when plugin ID, generation, and Scope all match; outside an owned plugin Task it returns `undefined`. This lets an internal plugin tool bind domain work from the Task's persisted `correlationId` without waiting for a post-launch Session attachment. `get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
 
-For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. Synergy invokes this hook only for the plugin that owns the Task. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
-
+For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. For BlueprintLoop completions, use `blueprint.after` with payload `{ loop: BlueprintLoopInfo }`. Synergy invokes each hook only for the plugin that owns the Task or BlueprintLoop. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
 Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.task.running`, and terminal `plugin.task.*` observability records. They use the plugin correlation ID as the trace ID and include generation, Scope, Task, Session, resolved model, and duration. The child Session remains the source of truth for full Agent messages and tool traces; plugins should keep stable Task/Session references instead of copying Session history.
 
 A non-agent handler may call `start()` only when it supplies an explicit parent Session/message in the active Scope. This supports hook-driven continuations and trusted plugin UI commands using a previously bound control Session. Agent tool handlers may omit `parent`; the current invocation supplies it.
@@ -64,6 +63,8 @@ The capability constrains allowed subagents and maximum runtime. Targets use Syn
 After target authorization, the normal control profile, permission policy, Scope ownership, cancellation, task ownership, Session loop, and Cortex lifecycle apply. A plugin must not implement a second Agent registry or task runner.
 
 `task.delegate` and `task` are deliberately different contracts. `task.delegate` is the approved plugin Host Service capability recorded in the manifest. `task` is the runtime permission evaluated by the active Synergy control profile for one concrete delegation. The Host first validates `task.delegate`, then asks/evaluates `task`; it never looks for a manifest capability named `task`.
+
+Plugin Host Service permission checks merge agent rules, persistent user rules, and Session rules. A user choice saved as an always/never rule therefore applies to later plugin Host Service calls under the same runtime permission, while an explicit deny continues to take precedence.
 
 Parent Session failures use stable Host Service error codes: `PLUGIN_TASK_PARENT_REQUIRED` and `PLUGIN_TASK_PARENT_SCOPE_MISMATCH`. Error name, message, stack, and code survive process-runtime IPC so a plugin can distinguish rebinding from policy, workflow, or runtime failures instead of parsing text.
 
@@ -80,3 +81,101 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 ## Agents, Skills, and MCP
 
 `agent`, `skill`, and `mcp` contributions are declarative. `hidden` controls prompt/native-task exposure, not whether the owning host workflow can invoke the Agent. The `tools` map inside a delegated task is a per-task visibility toggle, not a capability declaration.
+
+## BlueprintLoop Delegation
+
+`context.blueprint` exists only when `blueprint.delegate` is approved. It exposes five methods for creating and controlling BlueprintLoop workflows:
+
+```ts
+const loop = await context.blueprint.create({ noteID, sessionID?, runMode?, model? })
+const started = await context.blueprint.start(loopID)
+const info = await context.blueprint.get(loopID)
+const all = await context.blueprint.list()
+const cancelled = await context.blueprint.cancel(loopID)
+```
+
+`create()` registers a new BlueprintLoop bound to the given note. It does not start execution. All blueprint methods operate within the plugin's active Scope and require the `blueprint.delegate` capability at runtime through the `task` permission category.
+
+`start()` begins loop execution. `get()` returns the current `BlueprintLoopInfo` snapshot with status, audit state, timestamps, and resolved model. `list()` returns all BlueprintLoops in the active Scope. These read methods are intentionally Scope-scoped rather than owner-filtered, so a plugin with the capability can inspect user-, Lattice-, and plugin-owned loops in that Scope. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cancellation should treat that error as an already-finished result.
+
+The `source` field in `BlueprintLoopInfo` is set to `"plugin"` when the loop was created by a plugin. The `pluginOwner` field records the creating plugin's ID, generation, Scope, and optional correlationId for durable workflow correlation.
+
+Plugin-created loops follow the same execution lifecycle as user-created loops: agents, audit, cancellation, and all control profiles apply identically.
+
+### Blueprint After Hook
+
+Contribute a `blueprint.after` hook to react to BlueprintLoop completions:
+
+```ts
+import { capability, definePlugin, hook } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  id: "my-plugin",
+  version: "1.0.0",
+  capabilities: [capability("blueprint.delegate")],
+  contributions: [
+    hook({
+      id: "on-blueprint-done",
+      point: "blueprint.after",
+      priority: 0,
+      async handler(input, context) {
+        // input.loop is BlueprintLoopInfo
+        const loop = input.loop
+        context.log.info("Blueprint complete", { id: loop.id, status: loop.status })
+      },
+    }),
+  ],
+})
+```
+
+The typed payload is `{ loop: BlueprintLoopInfo }`. Synergy invokes this hook only for the plugin that owns the BlueprintLoop. Hook priority controls invocation order among multiple hooks on the same point within a plugin.
+
+## Light Loop
+
+`context.lightloop` exists only when `lightloop.delegate` is approved. It exposes a single method:
+
+```ts
+await context.lightloop.enable({ sessionID?, taskDescription })
+```
+
+`enable()` is available from an agent invocation and activates the Light Loop workflow in an existing Session. The `taskDescription` feeds into the Light Loop's objective definition. When `sessionID` is omitted the current Session is used. This is a fire-and-forget operation — it returns `void` and the Light Loop runs asynchronously. The Light Loop lifecycle (start, progress, completion) is observable through events and Session state.
+
+## Session Control
+
+Plugins with `session.control` capability can interact with Sessions beyond the current invocation scope. The capability gates `context.session.abort()` to terminate a Session by ID. For broader Session lifecycle actions — creating a parentless Primary Session, inspecting agent messages, compacting history, setting control profiles, or answering permission prompts — plugins declare a `tool` contribution with `requires: ["session.control"]` that calls the built-in `session_control` tool through `context.tools.invoke()`:
+
+```ts
+import { definePlugin, tool, capability } from "@ericsanchezok/synergy-plugin"
+import z from "zod"
+
+export default definePlugin({
+  id: "session-manager",
+  version: "1.0.0",
+  capabilities: [capability("session.control")],
+  contributions: [
+    tool({
+      id: "start-primary",
+      description: "Create a parentless Primary Session in a given Scope",
+      requires: ["session.control"],
+      input: z.object({
+        scopeID: z.string(),
+        title: z.string().optional(),
+        agent: z.string().optional(),
+        initialMessage: z.string().optional(),
+      }),
+      async handler(input, context) {
+        const result = await context.tools!.invoke("session_control", {
+          action: "create",
+          scopeID: input.scopeID,
+          title: input.title,
+          agent: input.agent,
+          initialMessage: input.initialMessage,
+        })
+        return result.output
+      },
+    }),
+  ],
+})
+```
+
+The `session_control` tool supports actions: `create`, `abort`, `status`, `compact`, `set_agent`, `set_model`, `set_mode`, `set_control_profile`, `worktree_enter`, `worktree_leave`, `question_reply`, `question_reject`, and `permission_reply`. A `create` action with no parent produces a parentless Primary Session — the plugin's own Session hierarchy is separate from the new Session it creates. Plugin-originated sessions use the plugin's approved `session.control` capability for runtime permission evaluation.

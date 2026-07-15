@@ -7,6 +7,7 @@ import { LoopEvent } from "./event"
 import { LoopError } from "./error"
 import { NoteStore } from "../note"
 import { Session } from "../session"
+import { Plugin } from "../plugin"
 import type { Info } from "./types"
 
 type LoopStatus = Info["status"]
@@ -44,6 +45,7 @@ export namespace BlueprintLoopStore {
     loopIndex?: number
     model?: { providerID: string; modelID: string }
     source?: Info["source"]
+    pluginOwner?: Info["pluginOwner"]
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
@@ -77,6 +79,7 @@ export namespace BlueprintLoopStore {
       firstPrompt: input.firstPrompt,
       loopIndex: input.loopIndex,
       source: input.source ?? "user",
+      pluginOwner: input.pluginOwner,
       model: input.model,
       time: { created: now, updated: now },
     }
@@ -216,6 +219,16 @@ export namespace BlueprintLoopStore {
       } catch {
         // best effort
       }
+    }
+
+    if (isTerminal && updated.source === "plugin" && updated.pluginOwner) {
+      void Plugin.triggerForPlugin(
+        updated.pluginOwner.pluginId,
+        updated.pluginOwner.pluginGeneration,
+        "blueprint.after",
+        { loop: updated },
+        {},
+      )
     }
 
     await Bus.publish(LoopEvent.Updated, { loop: updated })

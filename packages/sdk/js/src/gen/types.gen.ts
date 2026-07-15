@@ -5995,7 +5995,13 @@ export type BlueprintLoopInfo = {
   /**
    * Owner that created and drives this loop lifecycle
    */
-  source: "user" | "lattice"
+  source: "user" | "lattice" | "plugin"
+  pluginOwner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId?: string
+  }
   audit?: {
     lastReason?: string
     lastAuditedAt?: number

@@ -34,7 +34,17 @@ export const Info = z
     userPrompt: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
-    source: z.enum(["user", "lattice"]).meta({ description: "Owner that created and drives this loop lifecycle" }),
+    source: z
+      .enum(["user", "lattice", "plugin"])
+      .meta({ description: "Owner that created and drives this loop lifecycle" }),
+    pluginOwner: z
+      .object({
+        pluginId: z.string(),
+        pluginGeneration: z.string(),
+        scopeId: z.string(),
+        correlationId: z.string().optional(),
+      })
+      .optional(),
     audit: z
       .object({
         lastReason: z.string().optional(),

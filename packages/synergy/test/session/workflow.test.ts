@@ -15,7 +15,7 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   return ScopeContext.provide({ scope, fn })
 }
 
-async function bindLoop(sessionID: string, source: "user" | "lattice" = "user") {
+async function bindLoop(sessionID: string, source: "user" | "lattice" | "plugin" = "user") {
   const loop = await BlueprintLoopStore.create({
     noteID: Identifier.ascending("note"),
     title: "Workflow Loop",
@@ -255,6 +255,39 @@ describe("BlueprintLoop workflow source gates", () => {
 
       await expect(BlueprintLoopService.start(ScopeContext.current.scope.id, loop.id)).rejects.toThrow(
         "User BlueprintLoops",
+      )
+    })
+  })
+
+  test("plugin loops bind without inheriting lattice workflow requirements", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const loop = await BlueprintLoopStore.create({
+        noteID: "note_plugin",
+        title: "Plugin Loop",
+        sessionID: session.id,
+        source: "plugin",
+        pluginOwner: {
+          pluginId: "focus",
+          pluginGeneration: "generation-one",
+          scopeId: ScopeContext.current.scope.id,
+        },
+      })
+
+      await BlueprintLoopService.bindSessionToLoop(session.id, loop.id, "execution")
+
+      const updated = await Session.get(session.id)
+      expect(updated.blueprint?.loopID).toBe(loop.id)
+    })
+  })
+
+  test("lattice cannot replace an active plugin BlueprintLoop", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await bindLoop(session.id, "plugin")
+
+      await expect(SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })).rejects.toThrow(
+        "plugin BlueprintLoop",
       )
     })
   })

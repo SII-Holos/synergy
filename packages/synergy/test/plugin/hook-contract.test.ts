@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { applyPluginHookResult, PluginHookDeniedError, sortPluginHookHandlers } from "../../src/plugin/lifecycle"
+import { PluginHookPointRegistry } from "../../src/plugin/hook-points"
 
 describe("plugin hook contract", () => {
   test("orders handlers by priority, plugin id and contribution id", () => {
@@ -28,5 +29,13 @@ describe("plugin hook contract", () => {
     expect(() =>
       applyPluginHookResult({ name: "guard", mode: "guard" }, "original", { allow: false, reason: "blocked" }),
     ).toThrow(PluginHookDeniedError)
+  })
+  test("registers blueprint.after as a continuing observer", () => {
+    expect(PluginHookPointRegistry.get("blueprint.after")).toMatchObject({
+      name: "blueprint.after",
+      mode: "observer",
+      failure: "continue",
+      timeoutMs: 120_000,
+    })
   })
 })

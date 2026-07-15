@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -10,6 +10,7 @@ import { NoteStore } from "../../src/note"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
+import { Plugin } from "../../src/plugin"
 
 /**
  * BlueprintLoopStore transition validation tests.
@@ -430,5 +431,53 @@ describe("BlueprintLoopStore transitions", () => {
         expect(updated.status).toBe("completed")
       },
     })
+  })
+  test("triggers blueprint.after only for terminal plugin-owned loops", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const originalTriggerForPlugin = Plugin.triggerForPlugin
+    const calls: unknown[][] = []
+    ;(Plugin as any).triggerForPlugin = mock(async (...args: unknown[]) => {
+      calls.push(args)
+      return {}
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const pluginLoop = await BlueprintLoopStore.create({
+            noteID: "note_plugin_hook",
+            title: "Plugin loop",
+            sessionID: "ses_plugin_hook",
+            source: "plugin",
+            pluginOwner: {
+              pluginId: "research-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: scope.id,
+            },
+          })
+          await BlueprintLoopStore.updateStatus(scope.id, pluginLoop.id, { status: "cancelled" })
+
+          const userLoop = await BlueprintLoopStore.create({
+            noteID: "note_user_hook",
+            title: "User loop",
+            sessionID: "ses_user_hook",
+          })
+          await BlueprintLoopStore.updateStatus(scope.id, userLoop.id, { status: "cancelled" })
+
+          expect(calls).toHaveLength(1)
+          expect(calls[0]).toEqual([
+            "research-plugin",
+            "generation-one",
+            "blueprint.after",
+            { loop: expect.objectContaining({ id: pluginLoop.id, status: "cancelled", source: "plugin" }) },
+            {},
+          ])
+        },
+      })
+    } finally {
+      ;(Plugin as any).triggerForPlugin = originalTriggerForPlugin
+    }
   })
 })

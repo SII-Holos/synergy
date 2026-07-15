@@ -1,4 +1,11 @@
-import type { PluginTaskHandle, PluginTaskSnapshot, PluginTaskStartInput } from "@ericsanchezok/synergy-plugin"
+import type {
+  BlueprintCreateInput,
+  BlueprintLoopInfo,
+  LightLoopEnableInput,
+  PluginTaskHandle,
+  PluginTaskSnapshot,
+  PluginTaskStartInput,
+} from "@ericsanchezok/synergy-plugin"
 import type { ToolInvokeInput, ToolResult } from "@ericsanchezok/synergy-plugin/tool"
 import { Agent } from "@/agent/agent"
 import { AgentDelegation } from "@/agent/delegation"
@@ -8,6 +15,7 @@ import { ApprovalPolicy } from "@/control-profile/approval"
 import { Cortex } from "@/cortex"
 import { EnforcementError } from "@/enforcement/errors"
 import { PermissionNext } from "@/permission/next"
+import { PermissionRules } from "@/permission/rules"
 import { Provider } from "@/provider/provider"
 import { ScopeContext } from "@/scope/context"
 import { Session } from "@/session"
@@ -18,6 +26,14 @@ import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
+import {
+  cancelBlueprintLoop,
+  createBlueprintLoop,
+  enableLightLoop,
+  getBlueprintLoop,
+  listBlueprintLoops,
+  startBlueprintLoop,
+} from "../blueprint/plugin-adapter"
 
 type RuntimeContext = {
   pluginId?: string
@@ -227,6 +243,85 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
   if (!PluginToolId.is(toolId)) return toolId
   return PluginToolId.parse(toolId)?.toolId ?? toolId
 }
+export async function createPluginBlueprint(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  context: RuntimeContext
+  request: BlueprintCreateInput
+}): Promise<BlueprintLoopInfo> {
+  await requestPluginPermission(input.context, {
+    capability: "blueprint.delegate",
+    permission: "task",
+    patterns: [input.request.noteID],
+    metadata: { capability: "blueprint.delegate", source: "plugin", noteID: input.request.noteID },
+  })
+  return createBlueprintLoop({
+    pluginId: input.pluginId,
+    pluginGeneration: input.pluginGeneration,
+    scopeId: input.scopeId,
+    sessionId: input.context.sessionID,
+    request: input.request,
+  })
+}
+
+export async function startPluginBlueprint(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  context: RuntimeContext
+  loopID: string
+}): Promise<BlueprintLoopInfo> {
+  await requestPluginPermission(input.context, {
+    capability: "blueprint.delegate",
+    permission: "task",
+    patterns: [input.loopID],
+    metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
+  })
+  return startBlueprintLoop(input)
+}
+
+// Read-only operations need the manifest capability but do not trigger a runtime permission ask.
+export async function getPluginBlueprint(input: { scopeId: string; loopID: string }): Promise<BlueprintLoopInfo> {
+  return getBlueprintLoop(input)
+}
+
+export async function listPluginBlueprints(scopeId: string): Promise<BlueprintLoopInfo[]> {
+  return listBlueprintLoops(scopeId)
+}
+
+export async function cancelPluginBlueprint(input: {
+  pluginId: string
+  pluginGeneration: string
+  scopeId: string
+  context: RuntimeContext
+  loopID: string
+}): Promise<BlueprintLoopInfo> {
+  await requestPluginPermission(input.context, {
+    capability: "blueprint.delegate",
+    permission: "task",
+    patterns: [input.loopID],
+    metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
+  })
+  return cancelBlueprintLoop(input)
+}
+
+export async function enablePluginLightLoop(input: {
+  context: RuntimeContext
+  request: LightLoopEnableInput
+}): Promise<void> {
+  await requestPluginPermission(input.context, {
+    capability: "lightloop.delegate",
+    permission: "task",
+    patterns: [input.request.taskDescription],
+    metadata: { capability: "lightloop.delegate", source: "plugin" },
+  })
+  return enableLightLoop({
+    scopeId: ScopeContext.current.scope.id,
+    sessionId: input.context.sessionID,
+    request: input.request,
+  })
+}
 
 export async function assertPluginManifestCapability(input: {
   pluginDir?: string
@@ -314,7 +409,11 @@ export async function requestPluginPermission(
     patterns: request.patterns,
     metadata,
     tool: context.callID ? { messageID: context.messageID, callID: context.callID } : undefined,
-    ruleset: PermissionNext.merge(agent?.permission ?? [], PermissionNext.sessionRuleset(session)),
+    ruleset: PermissionNext.merge(
+      agent?.permission ?? [],
+      await PermissionRules.userRuleset(),
+      PermissionNext.sessionRuleset(session),
+    ),
     signal: context.abort,
   })
 }

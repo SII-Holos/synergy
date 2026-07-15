@@ -115,6 +115,65 @@ export interface TaskHostService {
   cancel(handle: PluginTaskHandle): Promise<void>
 }
 
+export type BlueprintCreateInput = {
+  noteID: string
+  sessionID?: string
+  runMode?: "current" | "new" | "worktree"
+  model?: { providerID: string; modelID: string }
+}
+
+export type BlueprintLoopInfo = {
+  id: string
+  noteID: string
+  noteVersion?: number
+  title: string
+  description?: string
+  sessionID: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
+  auditTaskID?: string
+  scopeID: string
+  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  runMode?: "current" | "new" | "worktree"
+  parentSessionID?: string
+  firstPrompt?: string
+  userPrompt?: string
+  error?: string
+  loopIndex?: number
+  source: "user" | "lattice" | "plugin"
+  pluginOwner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId?: string
+  }
+  audit?: { lastReason?: string; lastAuditedAt?: number; attempts: number }
+  time: { created: number; started?: number; updated: number; completed?: number }
+  model?: { providerID: string; modelID: string }
+}
+
+export type BlueprintAfterInput = {
+  loop: BlueprintLoopInfo
+}
+
+export interface BlueprintHostService {
+  create(input: BlueprintCreateInput): Promise<BlueprintLoopInfo>
+  start(loopID: string): Promise<BlueprintLoopInfo>
+  get(loopID: string): Promise<BlueprintLoopInfo>
+  list(): Promise<BlueprintLoopInfo[]>
+  cancel(loopID: string): Promise<BlueprintLoopInfo>
+}
+
+export type LightLoopEnableInput = {
+  sessionID?: string
+  taskDescription: string
+}
+
+export interface LightLoopHostService {
+  enable(input: LightLoopEnableInput): Promise<void>
+}
+
 export interface WorkspaceHostService {
   read?(path: string): Promise<string>
   write?(path: string, content: string): Promise<void>
@@ -147,6 +206,8 @@ export interface PluginInvocationContext {
   events: ScopedPluginEventPublisher
   session?: SessionHostService
   task?: TaskHostService
+  blueprint?: BlueprintHostService
+  lightloop?: LightLoopHostService
   workspace?: WorkspaceHostService
   settings?: PluginSettingsService
   secrets?: PluginSecretsService
