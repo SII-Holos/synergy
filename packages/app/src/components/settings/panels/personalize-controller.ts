@@ -1,5 +1,5 @@
 import type { ConfigInstructionsInfo } from "@ericsanchezok/synergy-sdk/client"
-import { createMemo, createSignal } from "solid-js"
+import { createSignal } from "solid-js"
 
 export type CustomInstructionsInfo = ConfigInstructionsInfo
 export type PersonalizeStatus = "idle" | "loading" | "saving" | "resetting" | "error"
@@ -17,11 +17,11 @@ export function createPersonalizeController(api: PersonalizeApi) {
   const [status, setStatus] = createSignal<PersonalizeStatus>("idle")
   const [error, setError] = createSignal<string>()
 
-  const byteCount = createMemo(() => new TextEncoder().encode(content()).byteLength)
-  const dirty = createMemo(() => content() !== savedContent())
-  const overLimit = createMemo(() => byteCount() > (info()?.maxBytes ?? Number.POSITIVE_INFINITY))
-  const busy = createMemo(() => status() === "loading" || status() === "saving" || status() === "resetting")
-  const canSave = createMemo(() => dirty() && !overLimit() && !busy())
+  const byteCount = () => new TextEncoder().encode(content()).byteLength
+  const dirty = () => content() !== savedContent()
+  const overLimit = () => byteCount() > (info()?.maxBytes ?? Number.POSITIVE_INFINITY)
+  const busy = () => status() === "loading" || status() === "saving" || status() === "resetting"
+  const canSave = () => dirty() && !overLimit() && !busy()
 
   function adopt(next: CustomInstructionsInfo) {
     setInfo(next)

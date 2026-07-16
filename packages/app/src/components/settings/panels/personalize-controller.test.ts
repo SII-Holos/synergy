@@ -1,14 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { createRoot, createSignal } from "solid-js"
+import { createRoot } from "solid-js"
 import { createPersonalizeController, type CustomInstructionsInfo } from "./personalize-controller"
-
-const CLIENT_BUILD = createRoot((dispose) => {
-  const [value, setValue] = createSignal("before")
-  setValue("after")
-  const result = value() === "after"
-  dispose()
-  return result
-})
 
 const primary: CustomInstructionsInfo = {
   content: "Base instructions.\n",
@@ -39,7 +31,7 @@ function withController<T>(
   })
 }
 
-describe.skipIf(!CLIENT_BUILD)("Personalize custom instructions controller", () => {
+describe("Personalize custom instructions controller", () => {
   test("loads the effective AGENTS.md content without marking it dirty", async () => {
     const result = await withController(
       {
