@@ -35,6 +35,7 @@ Use `synergy config path` to print the active global roots.
 | `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                                              |
 | `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
 | `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
+| `105-clarus.jsonc`     | Clarus      | Clarus project binding, task session routing, and REST API origin override                                                                                      |
 | `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
 | `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                                    |
 | `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |

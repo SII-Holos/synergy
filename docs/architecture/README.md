@@ -32,6 +32,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                                 |
 | [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                                        |
 | [GitHub integration](github-shadow.md)           | Webhook receipt, L0 gate, L1 sessionless classification, L2 shadow proposals, autonomous fix delivery, and automatic PR review/test. |
+| [Clarus](clarus.md)                              | Native Holos Agent Tunnel project/task operations, persistence, reconciliation, navigation, and session integration.                 |
 
 ## Cross-Cutting Invariants
 
@@ -64,6 +65,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | Automation               | `packages/synergy/src/agenda/`                                                                     |
 | Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`, `github/` |
 | External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                                     |
+| Clarus                   | `packages/synergy/src/clarus/`, `packages/synergy/src/holos/clarus.ts`, `clarus-route.ts`, Clarus UI modules |
 | Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                            |
 | Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes                      |
 | Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                           |
