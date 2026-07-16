@@ -3,9 +3,9 @@ import path from "path"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { WorkspaceFile } from "./types"
+import { WorkspaceFileStatusCache } from "./status-cache"
 
 type StatusEntry = {
-  fetchedAt: number
   summary: WorkspaceFile.StatusSummary
   byPath: Map<string, WorkspaceFile.GitStatus>
 }
@@ -93,35 +93,33 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
 }
 
 export namespace WorkspaceFileStatus {
-  const state = ScopedState.create<StatusEntry>(() => ({
-    fetchedAt: 0,
-    summary: { files: [] },
-    byPath: new Map(),
-  }))
+  const state = ScopedState.create(() =>
+    WorkspaceFileStatusCache.create<StatusEntry>({
+      ttlMs: STATUS_TTL_MS,
+      build: async () => {
+        const summary = await build()
+        return {
+          summary,
+          byPath: new Map(summary.files.map((file) => [file.path, file.status])),
+        }
+      },
+    }),
+  )
 
   export function invalidate() {
-    state().fetchedAt = 0
+    state().invalidate()
   }
 
   export async function summary(options?: { force?: boolean }): Promise<WorkspaceFile.StatusSummary> {
-    const entry = state()
-    const stale = Date.now() - entry.fetchedAt > STATUS_TTL_MS
-    if (options?.force || entry.fetchedAt === 0 || stale) {
-      entry.summary = await build()
-      entry.byPath = new Map(entry.summary.files.map((file) => [file.path, file.status]))
-      entry.fetchedAt = Date.now()
-    }
-    return entry.summary
+    return (await state().get(options)).summary
   }
 
   export async function statusForPath(relativePath: string): Promise<WorkspaceFile.GitStatus | undefined> {
     if (!relativePath) return undefined
-    await summary()
-    return state().byPath.get(relativePath)
+    return (await state().get()).byPath.get(relativePath)
   }
 
   export async function statusMap(): Promise<ReadonlyMap<string, WorkspaceFile.GitStatus>> {
-    await summary()
-    return state().byPath
+    return (await state().get()).byPath
   }
 }

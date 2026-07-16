@@ -7,6 +7,7 @@ import { Bus } from "../../src/bus"
 import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
 import { connectClientOrCloseOnFailure, McpSupervisor } from "../../src/mcp/supervisor"
+import { PendingOAuth } from "../../src/mcp/pending-oauth"
 import { Plugin } from "../../src/plugin"
 import { computeManifestHash, computePermissionsHash, saveApproval } from "../../src/plugin/consent/approval-store"
 import { startForPlugin } from "../../src/plugin/mcp"
@@ -146,6 +147,34 @@ describe.serial("McpSupervisor", () => {
       connectClientOrCloseOnFailure(client, undefined as never, undefined, "invalid", "connect:stdio"),
     ).rejects.toThrow("connect failed")
     expect(closed).toBe(true)
+  })
+
+  test("disconnect releases a pending OAuth owner", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        let closed = false
+        McpSupervisor.add("auth-server", {
+          type: "remote",
+          url: "https://example.com/mcp",
+          startup: "manual",
+        })
+        await PendingOAuth.register("auth-server", {
+          client: {
+            close: async () => {
+              closed = true
+            },
+          },
+          transport: { finishAuth: async () => {} },
+        })
+
+        await McpSupervisor.disconnect("auth-server")
+
+        expect(closed).toBe(true)
+      },
+    })
   })
 
   test("registers plugin MCP servers with defaults and skips metadata", async () => {
