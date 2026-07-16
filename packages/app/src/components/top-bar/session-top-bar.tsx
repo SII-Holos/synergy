@@ -228,7 +228,7 @@ export function SessionTopBar(props: {
           class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
           onClick={() => local.model.variant.cycle()}
         >
-          <span class="stb-variant-label">{local.model.variant.current() ?? "Default"}</span>
+          <span class="stb-variant-label">{local.model.variant.displayed() ?? "Default"}</span>
         </button>
       </TooltipKeybind>
     </Show>

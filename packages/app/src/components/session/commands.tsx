@@ -203,7 +203,7 @@ export function useSessionCommands(params: {
         showToast({
           type: "info",
           title: "Thinking effort changed",
-          description: "The thinking effort has been changed to " + (local.model.variant.current() ?? "Default"),
+          description: "The thinking effort has been changed to " + (local.model.variant.displayed() ?? "Default"),
         })
       },
     },

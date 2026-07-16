@@ -225,6 +225,8 @@ Lower layers never write into higher layers. Selecting a model explicitly persis
 
 Agent and workflow selections follow the same principle: server session fields are durable defaults, while unsent composer intent remains local until the user performs an action that explicitly persists it.
 
+Variant display resolves the explicit or historical session variant first, then the agent default and configured model-role default. Only the session variant is submitted; displaying a configured fallback never writes it into message history.
+
 ## Invariants
 
 - One global event WebSocket multiplexes events by owning Scope directory.
