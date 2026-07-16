@@ -336,9 +336,14 @@
   [data-component="compaction-card"] [data-slot="compaction-card-header"],
   [data-component="compaction-card"] [data-slot="compaction-card-icon"],
   [data-component="compaction-card"] [data-slot="compaction-card-arrow"],
-  [data-component="compaction-card"][data-status="running"]::before,
   [data-component="compaction-card"] [data-slot="collapsible-content"] {
     animation: none;
     transition: none;
+  }
+
+  [data-component="compaction-card"][data-status="running"]::before {
+    animation: none;
+    transition: none;
+    will-change: auto;
   }
 }
