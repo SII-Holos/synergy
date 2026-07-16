@@ -104,6 +104,30 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 | `synergy mcp add\|list\|auth\|logout\|debug` | Configure, authenticate, and inspect MCP servers                |
 | `synergy embed download`                     | Download the local embedding model assets                       |
 
+### config import
+
+`synergy config import <source>` imports JSON or JSONC configuration from a local file path or an HTTP(S) URL. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. The command produces a domain-aware plan, shows value-level changes, and asks for confirmation before applying.
+
+```bash
+synergy config import ./settings.jsonc
+synergy config import https://example.com/config.json --dry-run
+synergy config import ./config.jsonc --scope project --only models --only providers
+synergy config import ./config.jsonc --mode replace-domain --yes
+```
+
+| Option                                 | Meaning                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| `--scope global\|project`              | Target scope; defaults to `global`; project scope requires an active project |
+| `--only <domain>`                      | Import only the named domain; repeatable for multiple domains                |
+| `--mode merge\|replace-domain\|append` | Override the per-domain default merge policy                                 |
+| `--dry-run`                            | Show the plan without writing files                                          |
+| `--force`                              | Apply even when config changed after planning (stale revision)               |
+| `--yes`, `-y`                          | Skip the confirmation prompt                                                 |
+
+All domains are importable and default to `merge` mode. `append` recursively merges objects and appends arrays in source order; imported scalar values override existing values. Conflicts and hardcoded secrets are flagged as warnings without blocking. A stale plan (config changed between plan and apply) is rejected unless `--force` is supplied.
+
+JSONC comments in existing domain files are preserved. Committed files trigger a runtime config reload; reload failure does not roll back the committed changes.
+
 The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. Their login, storage, usage, and billing semantics are intentionally separate.
 
 See [Configuration](configuration.md) for files, precedence, domains, and instruction discovery.

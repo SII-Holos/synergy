@@ -26,6 +26,7 @@ import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionBounds } from "./bounds"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -177,6 +178,7 @@ export namespace SessionProcessor {
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
     const generatingAccum: Record<string, string> = {}
+    const generatingBytes: Record<string, number> = {}
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -344,6 +346,7 @@ export namespace SessionProcessor {
     function shouldIgnoreSettledStreamEvent(callID: string, event: "tool-input-start" | "tool-call", tool: string) {
       if (!settledToolCalls.has(callID)) return false
       delete generatingAccum[callID]
+      delete generatingBytes[callID]
       log.warn("ignoring tool stream event after settlement", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
@@ -539,6 +542,8 @@ export namespace SessionProcessor {
     function forgetToolCall(callID: string) {
       executions.delete(callID)
       delete toolcalls[callID]
+      delete generatingAccum[callID]
+      delete generatingBytes[callID]
     }
 
     async function waitForOutcomesAndSettle(parts: MessageV2.Part[]) {
@@ -700,6 +705,7 @@ export namespace SessionProcessor {
       settlementPromises.clear()
       settledToolCalls.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
+      for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
       snapshot = undefined
       log.info("processor disposed", {
         sessionID: input.sessionID,
@@ -808,8 +814,9 @@ export namespace SessionProcessor {
                 }
               }
 
+              const ownedStream = LLM.takeFullStream(stream)
               try {
-                for await (const value of stream.fullStream) {
+                for await (const value of ownedStream.stream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
                     case "start":
@@ -911,6 +918,7 @@ export namespace SessionProcessor {
                       })
                       toolcalls[value.id] = part as MessageV2.ToolPart
                       generatingAccum[value.id] = ""
+                      generatingBytes[value.id] = 0
                       break
                     }
 
@@ -919,6 +927,26 @@ export namespace SessionProcessor {
                       if (!match) break
                       const prevRaw = generatingAccum[value.id]
                       if (prevRaw === undefined) break
+                      const receivedBytes = (generatingBytes[value.id] ?? 0) + SessionBounds.byteLength(value.delta)
+                      if (receivedBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                        const error = SessionBounds.toolInputExceededMessage()
+                        const part = await Session.updatePart({
+                          ...match,
+                          state: {
+                            status: "error",
+                            input: {},
+                            error,
+                            metadata: streamingToolMetadata(match),
+                            time: { start: Date.now(), end: Date.now() },
+                          },
+                        })
+                        toolcalls[value.id] = part as MessageV2.ToolPart
+                        settledToolCalls.add(value.id)
+                        delete generatingAccum[value.id]
+                        delete generatingBytes[value.id]
+                        throw new Error(error)
+                      }
+                      generatingBytes[value.id] = receivedBytes
                       const raw = prevRaw + value.delta
                       generatingAccum[value.id] = raw
                       // Throttle generating updates: emit when enough new content has accumulated
@@ -970,6 +998,32 @@ export namespace SessionProcessor {
                       if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
                       const match = toolcalls[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
+                      if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                        const error = SessionBounds.toolInputExceededMessage()
+                        const part = await Session.updatePart({
+                          ...(match ?? {
+                            id: Identifier.ascending("part"),
+                            messageID: input.assistantMessage.id,
+                            sessionID: input.assistantMessage.sessionID,
+                            type: "tool" as const,
+                            callID: value.toolCallId,
+                          }),
+                          tool: value.toolName,
+                          state: {
+                            status: "error",
+                            input: {},
+                            error,
+                            metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                            time: { start: Date.now(), end: Date.now() },
+                          },
+                          metadata: value.providerMetadata,
+                        })
+                        toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                        settledToolCalls.add(value.toolCallId)
+                        delete generatingAccum[value.toolCallId]
+                        delete generatingBytes[value.toolCallId]
+                        throw new Error(error)
+                      }
                       const part = await Session.updatePart({
                         ...(match ?? {
                           id: Identifier.ascending("part"),
@@ -991,6 +1045,7 @@ export namespace SessionProcessor {
                       })
                       toolcalls[value.toolCallId] = part as MessageV2.ToolPart
                       delete generatingAccum[value.toolCallId]
+                      delete generatingBytes[value.toolCallId]
                       log.info("tool.stream.tool_call.part_running", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1249,6 +1304,7 @@ export namespace SessionProcessor {
                 ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
+                await ownedStream.dispose()
                 flushChunkMetrics()
                 currentText = undefined
                 reasoningMap = {}

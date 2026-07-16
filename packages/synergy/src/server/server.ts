@@ -14,6 +14,7 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
+import { ConfigImport } from "../config/import"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { ScopeContext } from "../scope/context"
@@ -366,7 +367,17 @@ export namespace Server {
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof Provider.ModelNotFoundError) status = 400
+            if (err instanceof ConfigImport.RevisionConflictError || err instanceof ConfigImport.LockedError)
+              status = 409
+            else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
+            else if (
+              err instanceof ConfigImport.ProjectScopeRequiredError ||
+              err instanceof ConfigImport.SourceParseError ||
+              err instanceof ConfigImport.SourceFetchError ||
+              err instanceof Config.InvalidError ||
+              err instanceof Provider.ModelNotFoundError
+            )
+              status = 400
             else if (err.name === "ChannelStartError") status = 400
             else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else if (err.name.startsWith("ProviderAuth")) status = 400

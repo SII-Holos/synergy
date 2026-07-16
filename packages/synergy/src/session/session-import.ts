@@ -180,10 +180,12 @@ export namespace SessionImport {
         }
       }
 
-      const dag = data.dag.map((node) => ({
-        ...node,
-        session_id: node.session_id ? (idMap.get(node.session_id) ?? node.session_id) : undefined,
-      }))
+      const dag = Dag.normalizeRetiredAssignments(
+        data.dag.map((node) => ({
+          ...node,
+          session_id: node.session_id ? (idMap.get(node.session_id) ?? node.session_id) : undefined,
+        })),
+      )
       if (dag.length > 0) await Dag.update({ sessionID, nodes: dag })
       if (data.todos.length > 0) await Todo.update({ sessionID, todos: data.todos })
       if (data.diffs.length > 0) {

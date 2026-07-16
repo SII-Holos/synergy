@@ -10,6 +10,8 @@ const PNG_BYTES = Buffer.from(
   "base64",
 )
 
+const GIF_BYTES = Buffer.from("GIF89a")
+
 const ctx = {
   sessionID: "ses_test123",
   messageID: "msg_test123",
@@ -58,6 +60,51 @@ describe("tool.view_image", () => {
           summary: "image.png (image/png) loaded by view_image",
         })
         expect(attachment?.presentation).toEqual({ renderer: "image", size: "medium", crop: false })
+      },
+    })
+  })
+
+  test("rejects an image format the active model does not support", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "image.gif"), GIF_BYTES)
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const viewImage = await ViewImageTool.init()
+        const requests: unknown[] = []
+        const result = await viewImage.execute(
+          { filePath: path.join(tmp.path, "image.gif") },
+          {
+            ...ctx,
+            ask: async (request) => {
+              requests.push(request)
+            },
+            extra: {
+              lookAtAvailable: false,
+              model: {
+                capabilities: {
+                  input: {
+                    image: true,
+                    supportedImageMediaTypes: ["image/png", "image/jpeg"],
+                  },
+                },
+              },
+            },
+          },
+        )
+
+        expect(result.title).toBe("Unsupported image format")
+        expect(result.output).toContain("image/gif")
+        expect(result.output).toContain("image/png")
+        expect(result.output).toContain("image/jpeg")
+        expect(result.metadata.error).toBe("unsupported_model_image_type")
+        expect(result.attachments).toBeUndefined()
+        expect(result.output).not.toContain("look_at")
+        expect(requests).toHaveLength(0)
       },
     })
   })

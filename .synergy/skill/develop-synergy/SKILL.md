@@ -38,6 +38,16 @@ SYNERGY_HOME="$DEV_HOME" bun dev send "test request"
 
 Use `server` for backend/CLI work, `web` for normal full-stack work, `desktop` for Electron-native behavior, and `desktop --managed` for the production-style managed-server path. Managed mode rebuilds the Web distribution before launch.
 
+## Preserve Desktop Renderer Lifecycle
+
+Route main-process broadcasts for the application renderer through `DesktopRendererDelivery`. A live `BrowserWindow` or `WebContents` does not prove that its current main frame can receive IPC during startup, document navigation, reload, renderer exit, or shutdown.
+
+- Restore delivery only from the trusted `desktop.startup.appReady` handshake; let main-frame navigation, renderer exit, and destruction invalidate it.
+- Use `sendLatest()` for replaceable snapshots such as window, theme, and update state; use `enqueue()` for one-shot messages such as deep links; use `send()` for transient events that should be dropped while the renderer is unavailable.
+- Keep startup-overlay updates on the overlay's own `WebContentsView`; it is not the application renderer.
+- Cover pre-ready, main-frame reload, post-ready convergence, destroyed/detached frame, and renderer-exit behavior before running an isolated Desktop cold-start and reload check.
+- Keep renderer window-state broadcasts disabled on macOS. Native fullscreen moves the window across Spaces asynchronously and can emit unstable focus/fullscreen transitions; macOS uses native chrome and should query state explicitly when needed.
+
 ## Verify and Diagnose
 
 1. Confirm health on the selected server port before opening dependent clients.

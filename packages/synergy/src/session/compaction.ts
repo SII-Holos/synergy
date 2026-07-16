@@ -301,25 +301,29 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
-  export async function prune(input: { sessionID: string; modelID?: string }) {
+  export async function prune(input: { sessionID: string; messages: MessageV2.WithParts[]; modelID?: string }) {
     const config = await Config.current()
     if (config.compaction?.prune === false) return
     log.info("pruning")
-    const msgs = await Session.messages({ sessionID: input.sessionID })
-
-    const toPrune = selectPartsToPrune(msgs, input.modelID)
+    const toPrune = selectPartsToPrune(input.messages, input.modelID)
 
     if (toPrune.length > 0) {
       const completed = toPrune.filter(
         (part): part is MessageV2.ToolPart & { state: { status: "completed"; time: { compacted?: number } } } =>
           part.state.status === "completed",
       )
+      const compacted = Date.now()
       await Promise.all(
-        completed.map((part) => {
-          part.state.time.compacted = Date.now()
-          part.state.output = ""
-          return Session.updatePart(part)
-        }),
+        completed.map((part) =>
+          Session.updatePart({
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+              time: { ...part.state.time, compacted },
+            },
+          }),
+        ),
       )
       log.info("pruned", { count: completed.length })
     }
@@ -602,7 +606,7 @@ export namespace SessionCompaction {
       return [{ type: "prune" }]
     },
     async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID, modelID: ctx.modelID })
+      await prune({ sessionID: ctx.sessionID, messages: ctx.messages, modelID: ctx.modelID })
       return "pass"
     },
   })
