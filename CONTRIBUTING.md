@@ -68,6 +68,14 @@ See the [development reference](docs/reference/development.md) for source modes,
 
    CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
 
+   Frontend copy, accessibility text, and locale-sensitive formatting must also keep the localization catalogs and source contract current:
+
+   ```bash
+   bun run --cwd packages/app i18n:extract
+   bun run --cwd packages/app i18n:check
+   bun script/localization-check.ts --strict
+   ```
+
 3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
 
 4. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.

@@ -27,6 +27,17 @@ bun run --cwd packages/ui test
 
 Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
 
+Localization changes also extract and validate both catalogs, then run the source contract:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run --cwd packages/app i18n:check
+bun script/localization-check.ts --strict
+bun run --cwd packages/app build
+```
+
+Extraction must leave no catalog diff. Report catalog completeness, ICU compilation, production locale chunking, and any reviewed pass-through allowlist entries.
+
 Do not use root `bun test`; it intentionally fails. Do not bypass hooks or weaken tests. Report each command, pass/fail counts, causal failure, fixes made, rerun result, and checks not run.
 
 $ARGUMENTS

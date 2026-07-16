@@ -39,8 +39,9 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
 - Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
 - Preserve plugin-contributed settings and UI lifecycle. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
-- Keep built-in settings labels in English and avoid vague paired `X & Y` headings.
+- Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
 - Read [Plugin UI contributions](../../docs/plugins/ui-contributions.md) before changing the Web plugin host or registries.
+- Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Run the App i18n extraction/check commands and the repository localization contract for affected text.
 
 ## Verification
 

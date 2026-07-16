@@ -23,6 +23,8 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 Inspect two nearby tests and `packages/synergy/test/preload.ts` before introducing a new harness pattern.
 
+For localized UI behavior, use a real Lingui `I18nProvider` with minimal English and Simplified Chinese messages. Assert visible text and accessibility labels after a reactive locale change; do not mock translation calls to return IDs because that hides missing catalogs and stale module-load translations. Keep plugin-author, user, LLM, path, identifier, and raw-error pass-through in the same boundary test as translated host chrome.
+
 ## Use Real Isolation
 
 Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. Restore environment variables and singleton state in cleanup hooks. Honor abort signals and dispose processes, Browser pages, servers, and timers.
@@ -50,6 +52,17 @@ bun run quality:quick
 bun turbo test
 bun run quality
 ```
+
+Localized frontend changes also run:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run --cwd packages/app i18n:check
+bun script/localization-check.ts --strict
+bun run --cwd packages/app build
+```
+
+Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
 
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
 

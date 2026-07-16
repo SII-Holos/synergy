@@ -29,7 +29,13 @@
     "generate:theme": "bun run script/theme.ts",
     "generate:tailwind": "bun run generate:theme"
   },
+  "peerDependencies": {
+    "@lingui/core": "catalog:",
+    "@lingui/solid": "catalog:"
+  },
   "devDependencies": {
+    "@lingui/core": "catalog:",
+    "@lingui/solid": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",

@@ -2,6 +2,7 @@ import "@/index.css"
 import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
+import { LocaleProvider } from "@/context/locale"
 import { Font } from "@ericsanchezok/synergy-ui/font"
 import { MarkedProvider, ensureSynergyHighlightTheme } from "@ericsanchezok/synergy-ui/context/marked"
 import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
@@ -117,18 +118,20 @@ export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Font />
-      <ThemeProvider>
-        <DesktopThemeSync />
-        <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
-          <DialogProvider>
-            <MarkedProvider>
-              <DiffComponentProvider component={Diff}>
-                <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
-              </DiffComponentProvider>
-            </MarkedProvider>
-          </DialogProvider>
-        </ErrorBoundary>
-      </ThemeProvider>
+      <LocaleProvider>
+        <ThemeProvider>
+          <DesktopThemeSync />
+          <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
+            <DialogProvider>
+              <MarkedProvider>
+                <DiffComponentProvider component={Diff}>
+                  <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
+                </DiffComponentProvider>
+              </MarkedProvider>
+            </DialogProvider>
+          </ErrorBoundary>
+        </ThemeProvider>
+      </LocaleProvider>
     </MetaProvider>
   )
 }

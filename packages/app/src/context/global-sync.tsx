@@ -22,6 +22,7 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
+import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./global-config-sync"
 import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planBucketEviction } from "./message-eviction"
@@ -201,6 +202,7 @@ function createGlobalSync() {
     ready: boolean
     error?: InitError
     paths: GlobalPaths
+    config: Config
     scope: Scope[]
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
@@ -208,6 +210,7 @@ function createGlobalSync() {
   }>({
     ready: false,
     paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
+    config: {},
     scope: [],
     provider: {
       all: [],
@@ -367,6 +370,12 @@ function createGlobalSync() {
       .catch((err) => {
         console.error("Failed to load global agenda", err)
       })
+  }
+
+  async function loadGlobalConfig() {
+    return globalSDK.client.config.global().then((x) => {
+      setGlobalStore("config", reconcile(x.data ?? {}))
+    })
   }
 
   async function loadGlobalProviders() {
@@ -890,6 +899,11 @@ function createGlobalSync() {
     }
 
     if (event?.type === "config.updated") {
+      const properties = event.properties as ConfigUpdatedProperties
+      if (shouldRefreshGlobalConfig(properties)) {
+        void loadGlobalConfig()
+        return
+      }
       void refreshAllConfigs()
       return
     }
@@ -1405,6 +1419,7 @@ function createGlobalSync() {
     }
 
     return Promise.all([
+      retry(loadGlobalConfig),
       retry(() =>
         globalSDK.client.global.paths.get().then((x) => {
           setGlobalStore("paths", x.data!)

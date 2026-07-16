@@ -8,6 +8,8 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 
 - Keep components product-agnostic and dependency-light. Do not import app contexts, routes, or runtime-private modules into this package.
 - Prefer composition and typed props over package-global product state. Preserve controlled/uncontrolled behavior, stable callbacks, cleanup, and Solid fine-grained reactivity.
+- Shared product components consume the App-owned Lingui `I18nProvider` through `@lingui/core` and `@lingui/solid` peer dependencies. The UI package does not create a second locale context, own catalogs, inspect browser language, or persist locale state. Tests mount the shared i18n test provider.
+- Synergy-owned copy uses non-macro runtime descriptors with explicit semantic IDs and translates reactively at consumption. Keep user, LLM, plugin-author, brand, path, identifier, code, terminal, and raw diagnostic content verbatim. Do not import App locale contexts into this package; format with the active Lingui locale or a typed locale argument.
 - Keep keyboard access, labels, focus-visible behavior, WCAG AA contrast, reduced motion, loading/empty/error/disabled states, and narrow layouts in reusable primitives.
 - Non-tool product meaning uses `semantic-icon.tsx`; new base glyphs must exist in both `components/icon.tsx` and `plugin/builtin-icons.ts`. Tool cards, file icons, and plugin-declared icons keep their separate registries.
 - Preserve Markdown sanitization, streaming/terminal rendering bounds, attachment behavior, and theme polarity. Treat SVG and rendered HTML as untrusted input at their owning boundary.

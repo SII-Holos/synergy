@@ -367,6 +367,7 @@ function section(
 export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   snapshot: "auto",
   theme: "background",
+  locale: "background",
   username: "background",
   toast: "background",
   model: "explicit",

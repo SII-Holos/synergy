@@ -21,6 +21,17 @@ description: Implement or review Synergy Web and shared UI changes across packag
 5. Preserve Scope/directory parameters, authentication, error semantics, asset URLs, event `seq`/`epoch`, replay, and loading/error states.
 6. For append-only LLM streams, keep the full snapshot as recovery state while imperative renderers track an offset and consume only the appended suffix through the dependency's typed live-update API. Do not rescan the accumulated prefix or insert an independent character-rate playback backlog; reset from a checkpoint only when the append invariant breaks. Derive terminal presentation from explicit part or message lifecycle markers, not coarse session status or the presence of a later timeline part. Key imperative terminal transitions and enhancements by content identity so unrelated sibling updates cannot restart them.
 
+## Localize Product UI
+
+Read [Frontend localization](../../../docs/architecture/localization.md) before adding product copy, accessibility text, locale-sensitive formatting, or language settings.
+
+1. Use the App-owned Lingui runtime and explicit semantic message IDs in the form `{domain}.{component}.{semanticKey}`. Use runtime descriptors or `<Trans>`; do not use Lingui macros, dynamic IDs, language branches, module-load translation calls, or sentence fragments assembled in code.
+2. Keep descriptors statically extractable with an English default message and a translator comment when product context is not obvious. Use ICU variables, plural/select syntax, and component placeholders for complete messages.
+3. Translate Synergy-owned chrome, actions, states, recovery guidance, and accessibility labels together. Keep user, LLM, Note, source-code, terminal, browser-page, plugin-author, brand, path, identifier, and raw diagnostic content verbatim.
+4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
+5. `packages/app` owns locale state, catalog loading, Settings, and persistence. `packages/ui` consumes the same `I18nProvider` through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
+6. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
+
 ## Use Semantic Icons
 
 Non-tool product UI expresses meaning through `packages/ui/src/components/semantic-icon.tsx`.
@@ -79,6 +90,14 @@ bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/app build
+```
+
+For localized UI changes, also run:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run --cwd packages/app i18n:check
+bun script/localization-check.ts --strict
 ```
 
 3. Inspect both themes, keyboard/focus, narrow layout, and loading/error behavior in an existing app or isolated second runtime.

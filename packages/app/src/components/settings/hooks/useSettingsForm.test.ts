@@ -105,3 +105,39 @@ function storageWithModel(value: unknown): Storage {
     },
   }
 }
+
+describe("settings form locale hydration", () => {
+  test("defaults locale to system when absent from config", () => {
+    expect(initializedGeneral({})).toBe("system")
+  })
+
+  test("hydrates explicit en locale from config", () => {
+    expect(initializedGeneral({ locale: "en" })).toBe("en")
+  })
+
+  test("hydrates explicit zh-CN locale from config", () => {
+    expect(initializedGeneral({ locale: "zh-CN" })).toBe("zh-CN")
+  })
+
+  test("hydrates explicit system locale from config", () => {
+    expect(initializedGeneral({ locale: "system" })).toBe("system")
+  })
+})
+
+function initializedGeneral(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.general.locale
+}

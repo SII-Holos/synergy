@@ -1,3 +1,4 @@
+import type { LocalePreference } from "@/context/locale/types"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -32,6 +33,7 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
 export const UI_DEFAULTS = {
+  locale: "system" as LocalePreference,
   theme: "" as string,
   username: "" as string,
   snapshot: true,
@@ -200,6 +202,7 @@ export type GeneralStore = {
   snapshot: boolean
   username: string
   theme: string
+  locale: LocalePreference
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
@@ -300,6 +303,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       snapshot: UI_DEFAULTS.snapshot,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
+      locale: UI_DEFAULTS.locale,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,
